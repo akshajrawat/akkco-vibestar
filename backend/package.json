@@ -1,0 +1,9 @@
+{
+  "name": "vibestar-local-core",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {
+    "better-sqlite3": "^12.6.0",
+    "node-pty": "^1.1.0"
+  }
+}
