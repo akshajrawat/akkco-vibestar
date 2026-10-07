@@ -30,10 +30,18 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
     const task = engine.db.task(a.id);
     const session = await terminals.open(a.id, 100, 25);
     expect(engine.isActive(a.id)).toBe(true);
+    expect(engine.cleanupBlockers(a.id)).toMatchObject([
+      { id: `terminal:${a.id}`, kind: "terminal", task_id: a.id },
+    ]);
     expect((await terminals.open(a.id, 120, 25)).session_id).toBe(
       session.session_id,
     );
-    expect(() => engine.followUp(a.id, "Race this terminal")).toThrow();
+    expect(engine.followUp(a.id, "Save during this terminal")).toMatchObject({
+      disposition: "draft",
+    });
+    expect(engine.db.detail(a.id).messages.at(-1)?.content).toBe(
+      "Save during this terminal",
+    );
     const b = engine.enqueue(
       repo,
       parseIssue("https://github.com/fixture/fixture/issues/13"),
@@ -90,6 +98,7 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
     ).toHaveLength(1);
     await terminals.close(a.id);
     expect(engine.isActive(a.id)).toBe(false);
+    expect(engine.cleanupBlockers(a.id)).toEqual([]);
     expect(terminals.current(a.id)).toBeNull();
     expect(
       engine.db.all("SELECT id FROM terminal_sessions WHERE status='closed'"),

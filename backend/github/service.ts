@@ -21,6 +21,8 @@ export class GitHubService {
   private status: GitHubStatus | null = null;
   private lastSync: string | null = null;
   private error: string | null = null;
+  private stopping = false;
+  private closed = false;
   readonly client: GitHubClient;
   constructor(
     private readonly engine: Engine,
@@ -118,7 +120,7 @@ export class GitHubService {
       base_branch: repository.default_branch,
     };
   };
-  useLocally = async (name: string, deferred = false) => {
+  useLocally = async (name: string, deferred = false, localPath?: string) => {
     let metadata = await this.client.repository(name, this.controller.signal);
     if (metadata.fork && metadata.parent)
       metadata = await this.client.repository(
@@ -133,7 +135,8 @@ export class GitHubService {
           metadata.full_name.toLowerCase(),
       );
     if (existing) {
-      if (!deferred) await this.engine.prepareClone(existing);
+      if (!deferred)
+        await this.engine.prepareClone(existing, undefined, localPath);
       return existing;
     }
     const resolved = await this.resolve(metadata.full_name);
@@ -142,14 +145,36 @@ export class GitHubService {
       resolved.origin_url,
       resolved.base_branch,
       deferred,
+      localPath,
     );
   };
   sync = () => {
     if (this.running) return this.running;
+    if (this.closed || this.stopping) return Promise.resolve(this.snapshot());
+    const release = this.engine.trackActivity(
+      {
+        id: "github-sync",
+        kind: "github_sync",
+        label: "GitHub PR watch sync is running",
+        stoppable: true,
+      },
+      this.stopSync,
+    );
     this.running = this.performSync().finally(() => {
       this.running = undefined;
+      release();
     });
     return this.running;
+  };
+  stopSync = async () => {
+    this.stopping = true;
+    this.controller.abort();
+    try {
+      await this.running;
+    } finally {
+      this.controller = new AbortController();
+      this.stopping = false;
+    }
   };
   private performSync = async () => {
     try {
@@ -242,22 +267,37 @@ export class GitHubService {
       this.lastSync = now();
       this.error = null;
     } catch (e) {
-      this.error = String(e);
+      this.error = this.controller.signal.aborted
+        ? null
+        : e instanceof Error
+          ? e.message
+          : String(e);
     }
     this.engine.changed();
     return this.snapshot();
   };
-  private savePR = (pr: GitHubPullRequest) =>
-    this.engine.db.run(
+  private savePR = (pr: GitHubPullRequest) => {
+    if (pr.task_id && !this.engine.db.tasks().some((t) => t.id === pr.task_id))
+      pr = { ...pr, task_id: null };
+    return this.engine.db.run(
       "INSERT INTO github_pull_requests VALUES(?,?,?) ON CONFLICT(url) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",
       pr.url,
       JSON.stringify(pr),
       pr.updated_at,
     );
+  };
   start = () => {
     const poll = async () => {
-      await this.sync();
-      if (!this.controller.signal.aborted) {
+      try {
+        await this.sync();
+      } catch (error) {
+        if (!this.closed)
+          this.engine.publish({
+            event: "core.error",
+            text: error instanceof Error ? error.message : String(error),
+          });
+      }
+      if (!this.closed) {
         this.timer = setTimeout(() => void poll(), 5 * 60000);
         this.timer.unref();
       }
@@ -265,6 +305,7 @@ export class GitHubService {
     void poll();
   };
   close = async () => {
+    this.closed = true;
     this.controller.abort();
     if (this.timer) clearTimeout(this.timer);
     await this.running;

@@ -1,8 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopApi, ElectronWindowApi } from "./contracts";
 const api: DesktopApi = {
-  rpc: (method, params = {}) =>
-    ipcRenderer.invoke("core:rpc", { method, params }),
+  rpc: async (method, params = {}) => {
+    const response = await ipcRenderer.invoke("core:rpc", { method, params });
+    if (!response.ok) throw response.error;
+    return response.result;
+  },
   subscribe: (callback) => {
     const listener = (
       _event: Electron.IpcRendererEvent,

@@ -108,6 +108,7 @@ it("analyzes unlinked PR feedback in an isolated read-only workspace without clo
       interval_minutes: 60,
       verify_codex: true,
     });
+    await scheduler.close();
     const result = await engine.analyzeScheduled(
       null,
       "Assess this reviewer question without editing any files.",
@@ -123,8 +124,8 @@ it("analyzes unlinked PR feedback in an isolated read-only workspace without clo
         "SELECT stage,status,purpose FROM scheduled_agent_runs ORDER BY started_at",
       ),
     ).toEqual([
-      { stage: 1, status: "completed", purpose: "scheduled" },
-      { stage: 2, status: "completed", purpose: "scheduled" },
+      { stage: 1, status: "completed", purpose: "PR Review Analysis" },
+      { stage: 1, status: "completed", purpose: "Scheduler Verification" },
     ]);
   } finally {
     await scheduler.close();

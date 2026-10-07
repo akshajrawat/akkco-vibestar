@@ -34,6 +34,8 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
   const db = new Database(":memory:");
   const engine = {
     root: "/tmp",
+    trackActivity: vi.fn(() => vi.fn()),
+    isExecuting: vi.fn(() => false),
     db,
     changed: vi.fn(),
     publish: vi.fn(),
@@ -108,7 +110,13 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
 });
 it("uses proven fork parents and refuses a same-name unrelated fork", async () => {
   const db = new Database(":memory:");
-  const engine = { root: "/tmp", db, changed: vi.fn() } as unknown as Engine;
+  const engine = {
+    root: "/tmp",
+    trackActivity: vi.fn(() => vi.fn()),
+    isExecuting: vi.fn(() => false),
+    db,
+    changed: vi.fn(),
+  } as unknown as Engine;
   const service = new GitHubService(engine, new Scheduler(engine));
   vi.spyOn(service.client, "detect").mockResolvedValue({
     installed: true,
@@ -191,7 +199,7 @@ it("classifies approvals, own comments and CI progress without model calls; ques
       },
       ["Comment"],
     ),
-  ).toMatchObject({ analyze: true, action: { manualActionRequired: true } });
+  ).toMatchObject({ analyze: false, action: { manualActionRequired: true } });
   expect(
     assessActivity(
       base,

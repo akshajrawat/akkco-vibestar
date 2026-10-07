@@ -5,9 +5,127 @@ import { afterEach } from "vitest";
 import { StageSettings } from "../src/components/StageSettings";
 import { PlanView } from "../src/components/PlanView";
 import { NewTask } from "../src/components/NewTask";
-import { parseArgv, eventText } from "../src/lib/api";
+import { parseArgv, eventText, tokenUsage } from "../src/lib/api";
 import { defaultSettings } from "../backend/domain";
 afterEach(cleanup);
+it("shows cancelled preparation as a compact row without a yellow box or duplicate Resume", async () => {
+  const { RunError } = await import("../src/components/RunError");
+  const { container } = render(
+    <RunError error="AdeError: Run cancelled" retry={vi.fn()} logs={vi.fn()} />,
+  );
+  const row = screen.getByRole("region", { name: "Cancelled run" });
+  expect(row.className).toContain("run-error-cancelled");
+  expect(container.querySelector(".warning-box")).toBeNull();
+  expect(screen.getByText("Repository preparation was stopped.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+  expect(container.querySelector("details")?.open).toBe(false);
+  expect(screen.getByText("Technical details")).toBeTruthy();
+});
+it("identifies cancelled planning even when detection was stopped before a run was created", async () => {
+  const { RunError } = await import("../src/components/RunError");
+  render(
+    <RunError
+      error="AdeError: antigravity: AdeError: Run cancelled"
+      stage={1}
+    />,
+  );
+  expect(screen.getByText("Antigravity planning was stopped.")).toBeTruthy();
+  expect(screen.queryByText(/implementation was stopped/)).toBeNull();
+});
+it("shows independently reported token fields without inventing a total", () => {
+  const unreported = {
+    input_tokens: null,
+    cached_input_tokens: null,
+    output_tokens: null,
+    reasoning_tokens: null,
+    total_tokens: null,
+  };
+  expect(tokenUsage(unreported)).toContain("provider did not report usage");
+  expect(
+    tokenUsage({ ...unreported, input_tokens: 42, output_tokens: 7 }),
+  ).toBe(
+    "input 42 · cached unavailable · output 7 · reasoning unavailable · total unavailable",
+  );
+  expect(tokenUsage({ ...unreported, total_tokens: 49 })).toContain("total 49");
+});
+it("sends Enter, preserves Shift+Enter and IME composition, and prevents form navigation", async () => {
+  const { TaskWorkspace } = await import("../src/components/TaskWorkspace");
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    value: () => {},
+    configurable: true,
+  });
+  const rpc = vi.fn(async (method: string, params: Record<string, unknown>) =>
+    method === "providers.detect"
+      ? []
+      : {
+          message: {
+            id: "saved",
+            role: "user",
+            content: params.content,
+            created_at: new Date().toISOString(),
+            status: "delivered",
+          },
+        },
+  );
+  Object.defineProperty(window, "vibestar", {
+    value: { rpc },
+    configurable: true,
+  });
+  const ui = render(
+    <TaskWorkspace
+      detail={{
+        task: {
+          id: "keyboard-test",
+          repo_id: "repo",
+          issue_number: 1,
+          issue_url: "https://github.com/a/b/issues/1",
+          claimed_scope: "scope",
+          notes: "",
+          issue: {},
+          branch_name: "",
+          base_branch: "main",
+          base_commit_sha: "",
+          worktree_path: "",
+          created_at: "now",
+          updated_at: "now",
+          status: "cancelled",
+          stage: 1,
+          error: null,
+        },
+        runs: [],
+        events: [],
+        messages: [],
+        artifacts: [],
+        tests: [],
+      }}
+      revision={0}
+      onError={() => {}}
+      back={() => {}}
+    />,
+  );
+  const composer = screen.getByLabelText("Task follow-up");
+  fireEvent.change(composer, { target: { value: "Resume planning" } });
+  expect(fireEvent.keyDown(composer, { key: "Enter", shiftKey: true })).toBe(
+    true,
+  );
+  expect(fireEvent.keyDown(composer, { key: "Enter", isComposing: true })).toBe(
+    true,
+  );
+  expect(
+    rpc.mock.calls.filter(([method]) => method === "task.followup"),
+  ).toHaveLength(0);
+  expect(fireEvent.keyDown(composer, { key: "Enter" })).toBe(false);
+  await vi.waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "task.followup",
+      expect.objectContaining({ content: "Resume planning" }),
+    ),
+  );
+  expect(await screen.findByText("Resume planning")).toBeTruthy();
+  expect((composer as HTMLTextAreaElement).value).toBe("");
+  expect(fireEvent.submit(ui.container.querySelector("form")!)).toBe(false);
+  expect(ui.container.querySelector("form button:not([type])")).toBeNull();
+}, 15000);
 it("shows an agent's actual structured summary without dumping JSON into the conversation", async () => {
   const { AgentResponse } = await import("../src/components/AgentResponse");
   render(
@@ -30,7 +148,7 @@ it("keeps implementation config independent of planning", () => {
   const settings = changed.mock.calls[0][0];
   expect(settings.codex_plan.model).toBe("requested-plan-model");
   expect(settings.codex_implementation.model).toBe("");
-  expect(screen.getAllByText("max", { exact: true })).toHaveLength(1);
+  expect(screen.getAllByText(/discovering…/)).toHaveLength(3);
 });
 it("shows both locally persisted plans", () => {
   render(
@@ -270,7 +388,138 @@ it("groups tool-call updates into expandable actual command results", async () =
       ]}
     />,
   );
-  expect(screen.getAllByText("Ran")).toHaveLength(1);
+  expect(screen.getAllByText("Ran ·")).toHaveLength(1);
   expect(screen.queryByText("Running command")).toBeNull();
   expect(screen.getByText("4 tests passed")).toBeTruthy();
+});
+
+it("dismisses inline cancellations while retaining compact task status", async () => {
+  const { RunError } = await import("../src/components/RunError");
+  const { Status } = await import("../src/components/Status");
+  render(
+    <>
+      <Status status="cancelled" />
+      <RunError error="Run cancelled" stage={1} />
+    </>,
+  );
+  expect(screen.getByText("Cancelled").className).toContain(
+    "status-chip warning",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss run notice" }));
+  expect(screen.queryByRole("region", { name: "Cancelled run" })).toBeNull();
+  expect(screen.getByText("Cancelled")).toBeTruthy();
+});
+
+it("shows named cleanup blockers, keeps technical details collapsed, and requires explicit retry", async () => {
+  const { CleanupError } = await import("../src/components/CleanupError");
+  const blockers = [
+    {
+      id: "terminal:one",
+      kind: "terminal",
+      task_id: "one",
+      label: "Task #26829 terminal session is open",
+      stoppable: true,
+    },
+  ];
+  const call = vi.fn(async (method: string) =>
+    method === "storage.blockers" ? blockers : [],
+  );
+  Object.defineProperty(window, "vibestar", {
+    value: { rpc: call },
+    configurable: true,
+  });
+  const retry = vi.fn();
+  const { container } = render(
+    <CleanupError
+      error={{
+        message: "Task data cleanup is waiting",
+        technical: "raw RPC stack",
+      }}
+      taskId="one"
+      title="Can't delete task data right now"
+      retry={retry}
+      busy={false}
+    />,
+  );
+  await screen.findByText("Task #26829 terminal session is open");
+  expect(container.querySelector("details")?.open).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Stop blockers" }));
+  await screen.findByText("Blockers stopped. Try again to finish cleanup.");
+  expect(call).toHaveBeenCalledWith("storage.stopBlockers", {
+    task_id: "one",
+    ids: ["terminal:one"],
+  });
+  expect(retry).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(retry).toHaveBeenCalledOnce();
+});
+
+it("collapses PR reasoning and highlights active analysis above a previous approval", async () => {
+  const { ScheduledPage } = await import("../src/components/ScheduledPage");
+  const { ActionSchema } = await import("../backend/scheduled/action");
+  const job = {
+    id: "watch",
+    url: "https://github.com/oppia/oppia/pull/27527",
+    task_id: null,
+    interval_minutes: 60,
+    verify_codex: false,
+    enabled: true,
+    next_run_at: new Date().toISOString(),
+    status: "analyzing" as const,
+    last_checked_at: null,
+    last_snapshot: null,
+    pending_snapshot: null,
+    changes: [],
+    error: null,
+    title: "Migrate acceptance tests",
+    analysis_method: "utility_ai" as const,
+    action: ActionSchema.parse({
+      manualActionRequired: false,
+      conversationState: "approved",
+      severity: "none",
+      summary: "Approved",
+      reason: "A long explanation kept in details",
+      recommendedNextAction: "",
+      affectedFiles: [],
+    }),
+  };
+  const { container } = render(
+    <ScheduledPage
+      snapshot={{
+        repositories: [],
+        tasks: [],
+        settings: defaultSettings,
+        root: "/tmp/vibestar",
+        scheduled: [job],
+        attention: [],
+      }}
+      refresh={vi.fn()}
+      open={vi.fn()}
+    />,
+  );
+  expect(screen.getByText(/ANALYZING DISCUSSION/)).toBeTruthy();
+  expect(screen.queryByText("APPROVED")).toBeNull();
+  expect(screen.getByText("Assessing the review conversation.")).toBeTruthy();
+  expect(container.querySelector(".pr-row-details")?.hasAttribute("open")).toBe(
+    false,
+  );
+  expect(container.querySelector(".pr-inbox-row")?.className).toContain(
+    "pr-running",
+  );
+  expect(screen.getByRole("button", { name: /Open PR/ })).toBeTruthy();
+});
+
+it("normalizes legacy transport errors and structured errors without discarding their reason", async () => {
+  const { errorMessage } = await import("../src/lib/api");
+  expect(
+    errorMessage(
+      "Error invoking remote method 'core:rpc': Error: AdeError: Run cancelled",
+    ),
+  ).toBe("Run cancelled");
+  expect(
+    errorMessage({
+      message: "Task terminal is open",
+      context: { task_id: "one" },
+    }),
+  ).toBe("Task terminal is open");
 });

@@ -25,7 +25,7 @@ export const ProvidersPage = () => {
               : p.provider === "codex"
                 ? "OpenAI Codex"
                 : "Google Antigravity";
-          const connected = p.authentication.startsWith("Connected");
+          const connected = p.connected;
           return (
             <section className="provider-row" key={p.provider}>
               <div className="provider-icon">
@@ -34,15 +34,30 @@ export const ProvidersPage = () => {
               <div className="provider-info">
                 <h2>{name}</h2>
                 <p className={connected ? "success" : "subtle"}>
-                  {connected && <CheckCircle2 size={12} />} {p.authentication}
+                  {connected && <CheckCircle2 size={12} />}{" "}
+                  {connected
+                    ? "Connected"
+                    : p.installed
+                      ? "Not connected"
+                      : "CLI not installed"}
                 </p>
+                {p.accountLabel && <p className="subtle">{p.accountLabel}</p>}
                 <details>
                   <summary>
                     {p.version || "CLI not installed"}
                     {p.models.length ? ` · ${p.models.length} models` : ""}
                   </summary>
                   {p.error && <p className="warning-box">{p.error}</p>}
-                  {p.models.length > 0 && <pre>{p.models.join("\n")}</pre>}
+                  {p.models.length > 0 && (
+                    <pre>
+                      {p.models
+                        .map(
+                          (m) =>
+                            `${m.label || m.id} · ${m.supportedEfforts.join(", ")}`,
+                        )
+                        .join("\n")}
+                    </pre>
+                  )}
                   <p className="subtle">{p.capabilities.join(" · ")}</p>
                 </details>
               </div>
@@ -65,6 +80,9 @@ export const ProvidersPage = () => {
       {login && (
         <AuthDialog
           provider={login}
+          initiallyConnected={
+            providers.find((p) => p.provider === login)?.connected
+          }
           done={() => {
             const wasGithub = login === "github";
             setLogin("");

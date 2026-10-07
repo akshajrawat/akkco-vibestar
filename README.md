@@ -63,20 +63,22 @@ Both Linux deb and Windows NSIS installers were built on this machine. Cross-bui
 
 1. Install Node 22, Git, gh, bubblewrap and both official CLIs inside the chosen WSL distribution. Verify `wsl.exe --distribution Ubuntu --exec node --version` works from Windows; shell startup scripts are not used.
 2. Start the Windows Electron application and open **Settings**.
-3. Select the WSL distro. Leave the Linux data directory blank for `~/.akkco-ade`, or set an absolute Linux directory.
+3. Select the WSL distro. Leave the Linux data directory blank for `~/.akkco-vibestar`, or set an absolute Linux directory.
 4. Save and use **Install / update WSL helper**. This copies the bundled core and its locked npm manifest into the selected distro and installs its Linux SQLite/PTY dependencies there.
 5. Keep repositories and data on the Linux filesystem. Do not choose `/mnt/c` or Windows temporary directories for large repositories.
 
 Linux/WSLg builds execute directly in their current distro. The desktop process has a small local configuration file containing distro/path preferences; all execution data resides in the Linux root below. `VIBESTAR_HOME` overrides the data root when running directly on Linux.
 
 ```text
-~/.akkco-ade/
+~/.akkco-vibestar/
   repos/<repository-id>/              # one managed upstream clone
   worktrees/<repository-id>/<scope>/  # independent task checkouts
   logs/<task-id>/                     # preparation and redacted provider logs
   artifacts/                         # temporary structured-output schemas
   state/vibestar.sqlite              # queue, context, settings and schedules
-  state/runtime/                     # Windows-installed WSL helper
+  cache/                             # disposable utility workspaces
+  runtime/                           # Windows-installed WSL helper
+  telemetry/                         # local usage exports
 ```
 
 ## Connect providers
@@ -87,7 +89,11 @@ Open **Providers** to inspect installation, authentication, current Antigravity 
 
 **Codex:** Connect opens the official `codex login` flow in a temporary PTY dialog that closes when success is detected. Detection uses `codex login status`. Subscription runs explicitly require ChatGPT authentication and remove API-key environment overrides. No API credit purchase or API key is needed for supported subscription operations.
 
-**Antigravity:** Connect opens the installed official interactive `agy` flow in a temporary login dialog; select Done after authentication. The Providers page itself contains no persistent terminal. Version 1.2.17 does not advertise a separate login subcommand, so Vibestar does not invent one. Account detection is limited to the safe CLI interfaces; it never examines the keyring. If account status is unavailable, authenticate in the official flow and let a run report any authentication failure.
+**Antigravity:** Connect opens the installed official interactive `agy` flow in a temporary login dialog; select Done after authentication. Successful authenticated `agy models` discovery marks the provider Connected. Model names and supported efforts come from the official CLI; credentials remain provider-owned.
+
+Settings has separate Agents, GitHub & PR Watch, Repositories, Storage, Usage and Execution sections. Utility AI is independent of the coding pipeline and is used only for ambiguous PR conversation semantics. Every model run is recorded locally, with token counts only when reported by the provider. Codex subscription windows are displayed when its official CLI exposes them; unavailable allowance information is labeled explicitly.
+
+Local repository discovery searches configured roots with bounded depth before cloning. Add a specific Windows location through its `/mnt/c/Users/...` path to include it. Imported checkouts remain references; tasks use isolated worktrees under the data root. Storage cleanup never deletes an imported source repository. Existing `~/.akkco-ade` data presents Migrate, Use old location or Start fresh; migration preserves the old root and repairs copied worktree metadata.
 
 In **Settings**, configure **three independent** models, effort values and deadlines. Empty model uses the official CLI default deliberately. Antigravity models come from `agy models`; a model with an effort suffix must match its selected effort. Codex accepts an explicit configured slug and reports provider rejection without silently substituting another model or effort.
 

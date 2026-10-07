@@ -1,10 +1,17 @@
 import type { CoreEvent } from "./types";
+import type { UsageRecord } from "../../backend/execution/usage";
 export const rpc = <T>(method: string, params: unknown = {}): Promise<T> =>
   window.vibestar.rpc<T>(method, params);
 export const subscribe = async (callback: (event: CoreEvent) => void) =>
   window.vibestar.subscribe(callback);
 export const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
+  (error && typeof error === "object" && "message" in error
+    ? String(error.message)
+    : String(error)
+  )
+    .replace(/^Error invoking remote method ['"][^'"]+['"]:\s*/, "")
+    .replace(/(?:AdeError:\s*)+/g, "")
+    .replace(/^(?:Error:\s*)+/, "");
 export const parseArgv = (text: string): string[] => {
   const v: unknown = JSON.parse(text);
   if (
@@ -51,4 +58,27 @@ export const duration = (start: string, end?: string | null) => {
   return seconds < 60
     ? `${seconds}s`
     : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+};
+export const tokenUsage = (
+  row: Pick<
+    UsageRecord,
+    | "input_tokens"
+    | "cached_input_tokens"
+    | "output_tokens"
+    | "reasoning_tokens"
+    | "total_tokens"
+  >,
+) => {
+  const values = [
+    ["input", row.input_tokens],
+    ["cached", row.cached_input_tokens],
+    ["output", row.output_tokens],
+    ["reasoning", row.reasoning_tokens],
+    ["total", row.total_tokens],
+  ];
+  return values.every(([, count]) => count === null)
+    ? "Unavailable — provider did not report usage"
+    : values
+        .map(([label, count]) => `${label} ${count ?? "unavailable"}`)
+        .join(" · ");
 };

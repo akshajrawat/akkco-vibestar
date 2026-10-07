@@ -10,6 +10,7 @@ import {
 import type { Snapshot } from "../lib/types";
 import { Button } from "./ui/button";
 import { rpc, errorMessage } from "../lib/api";
+import type { LocalRepository } from "../../backend/workspace/discovery";
 export const RepositoryPage = ({
   snapshot,
   refresh,
@@ -24,6 +25,10 @@ export const RepositoryPage = ({
   const [upstream, setUpstream] = useState("");
   const [origin, setOrigin] = useState("");
   const [base, setBase] = useState("main");
+  const [choice, setChoice] = useState<{
+    repository: string;
+    candidates: LocalRepository[];
+  }>();
   const github = snapshot.github;
   const action = async (method: string, params: unknown, key: string) => {
     setBusy(key);
@@ -31,8 +36,10 @@ export const RepositoryPage = ({
     try {
       await rpc(method, params);
       await refresh();
+      return true;
     } catch (e) {
       setError(errorMessage(e));
+      return false;
     } finally {
       setBusy("");
     }
@@ -56,10 +63,34 @@ export const RepositoryPage = ({
               ? r.owner.type === "Organization"
               : true,
     );
+  const prepare = async (repository: string, key: string) => {
+    setBusy(key);
+    setError("");
+    try {
+      const result = await rpc<{ candidates: LocalRepository[] }>(
+        "repositories.candidates",
+        { repository },
+      );
+      if (result.candidates.length) {
+        setChoice({ repository, candidates: result.candidates });
+        await refresh();
+      } else await action("github.use", { repository }, key);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy("");
+    }
+  };
   return (
     <div className="page repository-library">
       <div className="page-title">
         <h1>Repositories</h1>
+        <Button
+          disabled={!!busy}
+          onClick={() => void action("repositories.scan", {}, "scan")}
+        >
+          {busy === "scan" ? "Scanning…" : "Scan local"}
+        </Button>
         <Button
           disabled={!!busy}
           onClick={() => void action("github.sync", {}, "sync")}
@@ -131,19 +162,21 @@ export const RepositoryPage = ({
                 </small>
               </div>
               <div className="spacer" />
-              {local ? <span className="success">Managed locally</span> : null}
+              {local ? (
+                <span className="success">
+                  {local.source === "imported"
+                    ? "Existing checkout"
+                    : "Managed locally"}
+                </span>
+              ) : null}
               <Button
                 size="sm"
                 disabled={!!busy}
-                onClick={() =>
-                  void action(
-                    "github.use",
-                    { repository: r.full_name },
-                    String(r.id),
-                  )
-                }
+                onClick={() => void prepare(r.full_name, String(r.id))}
               >
-                {busy === String(r.id) ? "Preparing clone…" : "Use locally"}
+                {busy === String(r.id)
+                  ? "Finding local checkout…"
+                  : "Use locally"}
               </Button>
             </div>
           );
@@ -158,7 +191,7 @@ export const RepositoryPage = ({
       )}
       {!!snapshot.repositories.length && (
         <section className="managed-repos">
-          <h2>Managed local clones</h2>
+          <h2>Local repositories</h2>
           {snapshot.repositories.map((r) => (
             <details key={r.id} className="managed-repo">
               <summary>
@@ -167,6 +200,11 @@ export const RepositoryPage = ({
                 <code>upstream/{r.base_branch}</code>
               </summary>
               <p className="mono">{r.path}</p>
+              <p className="subtle">
+                {r.source === "imported"
+                  ? "Existing checkout · source files remain under your control"
+                  : "Vibestar-managed clone"}
+              </p>
               <p className="subtle">
                 {r.upstream_url}
                 {r.origin_url ? ` · origin ${r.origin_url}` : ""}
@@ -199,7 +237,7 @@ export const RepositoryPage = ({
                   onClick={() => {
                     if (
                       window.confirm(
-                        `Remove ${r.owner}/${r.name} and all its tasks and worktrees?`,
+                        `Remove ${r.owner}/${r.name} and its stopped tasks and Vibestar worktrees? ${r.source === "imported" ? "Your source checkout will be preserved." : "The managed clone will be deleted."}`,
                       )
                     )
                       void action(
@@ -254,10 +292,61 @@ export const RepositoryPage = ({
             />
           </label>
           <Button type="submit" disabled={!!busy}>
-            Prepare managed clone
+            Use repository
           </Button>
         </form>
       </details>
+      {choice && (
+        <div className="modal-backdrop">
+          <section
+            className="modal compact-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Existing local checkout found"
+          >
+            <h2>Existing local checkout found</h2>
+            <p>{choice.repository}</p>
+            {choice.candidates.map((candidate, i) => (
+              <div className="checkout-candidate" key={candidate.path}>
+                <code>{candidate.path}</code>
+                <small>
+                  {candidate.environment === "wsl"
+                    ? "WSL checkout"
+                    : "Windows checkout"}{" "}
+                  — {i === 0 ? "Recommended" : "Available"}
+                </small>
+                <p className="subtle">
+                  {candidate.upstream || candidate.origin}
+                </p>
+                <Button
+                  disabled={!!busy}
+                  variant={i === 0 ? "default" : "secondary"}
+                  onClick={async () => {
+                    const success = await action(
+                      "github.use",
+                      {
+                        repository: choice.repository,
+                        local_path: candidate.path,
+                      },
+                      candidate.path,
+                    );
+                    if (success) setChoice(undefined);
+                  }}
+                >
+                  Use existing
+                </Button>
+              </div>
+            ))}
+            <p className="subtle">
+              Tasks use isolated worktrees under Vibestar's data directory. Your
+              checkout's files and current branch stay in place.
+            </p>
+            <Button disabled={!!busy} onClick={() => setChoice(undefined)}>
+              Cancel
+            </Button>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

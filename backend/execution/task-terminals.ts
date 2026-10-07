@@ -70,14 +70,21 @@ export class TaskTerminals {
         resolveExit = resolve;
       });
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let stopping = false;
       const session = {
         id: sessionId,
         pty,
         output: "",
         sequence: 0,
         stop: async () => {
-          pty.write("\x03");
-          pty.kill("SIGHUP");
+          if (stopping) return exited;
+          stopping = true;
+          try {
+            pty.write("\x03");
+            pty.kill("SIGHUP");
+          } catch {
+            /* The process may already be exiting. */
+          }
           timer = setTimeout(() => {
             try {
               pty.kill("SIGKILL");
@@ -123,15 +130,14 @@ export class TaskTerminals {
         });
       });
       pty.onExit(({ exitCode }) => {
+        stopping = true;
         if (timer) clearTimeout(timer);
-        this.sessions.delete(id);
         this.engine.db.run(
           "UPDATE terminal_sessions SET status='closed',ended_at=?,exit_code=? WHERE id=?",
           now(),
           exitCode,
           sessionId,
         );
-        release();
         this.engine.publish({
           event: "terminal.closed",
           task_id: id,
@@ -147,6 +153,8 @@ export class TaskTerminals {
               text: `Task terminal log could not be closed: ${redact(String(error))}`,
             });
           } finally {
+            this.sessions.delete(id);
+            release();
             resolveExit();
           }
         });
@@ -157,8 +165,17 @@ export class TaskTerminals {
         sequence: session.sequence,
       };
     } catch (e) {
-      await handle?.close();
-      release();
+      try {
+        await handle?.close();
+      } catch (error) {
+        this.engine.publish({
+          event: "core.error",
+          task_id: id,
+          text: `Terminal log cleanup failed: ${redact(String(error))}`,
+        });
+      } finally {
+        release();
+      }
       this.engine.db.run(
         "UPDATE terminal_sessions SET status='failed',ended_at=? WHERE id=?",
         now(),

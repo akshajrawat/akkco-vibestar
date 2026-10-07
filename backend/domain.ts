@@ -1,4 +1,18 @@
 import { z } from "zod";
+export interface ActivityBlocker {
+  id: string;
+  kind:
+    | "task"
+    | "terminal"
+    | "pr_watch"
+    | "github_sync"
+    | "repository_scan"
+    | "repository"
+    | "maintenance";
+  label: string;
+  task_id?: string;
+  stoppable: boolean;
+}
 export class AdeError extends Error {
   constructor(
     public readonly kind: string,
@@ -27,21 +41,34 @@ export const StageConfigSchema = z.object({
     .string()
     .max(200)
     .regex(/^[^\x00-\x1f]*$/),
-  effort: z.string(),
+  effort: z.string().min(1).max(30),
   timeout_secs: z.number().int().min(10).max(86400),
 });
 export const SettingsSchema = z
   .object({
     concurrency: z.number().int().min(1).max(4),
-    antigravity: StageConfigSchema.extend({
-      effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
+    antigravity: StageConfigSchema,
+    codex_plan: StageConfigSchema,
+    codex_implementation: StageConfigSchema,
+    utility_ai: StageConfigSchema.extend({
+      provider: z.enum(["antigravity", "codex"]),
+    }).default({
+      provider: "antigravity",
+      model: "",
+      effort: "medium",
+      timeout_secs: 120,
     }),
-    codex_plan: StageConfigSchema.extend({
-      effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]),
-    }),
-    codex_implementation: StageConfigSchema.extend({
-      effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh"]),
-    }),
+    repository_discovery: z
+      .object({
+        roots: z.array(z.string().min(1).max(2000)).max(30),
+        max_depth: z.number().int().min(1).max(8),
+        scan_home: z.boolean(),
+      })
+      .default({
+        roots: ["~/projects", "~/repos", "~/src", "~/code", "~/workspace"],
+        max_depth: 4,
+        scan_home: true,
+      }),
   })
   .superRefine((settings, context) => {
     const error = modelEffortError(
@@ -55,6 +82,19 @@ export const SettingsSchema = z
         path: ["antigravity", "effort"],
         message: error,
       });
+    if (settings.utility_ai.provider === "antigravity") {
+      const utilityError = modelEffortError(
+        "antigravity",
+        settings.utility_ai.model,
+        settings.utility_ai.effort,
+      );
+      if (utilityError)
+        context.addIssue({
+          code: "custom",
+          path: ["utility_ai", "effort"],
+          message: utilityError,
+        });
+    }
   });
 export type Settings = z.infer<typeof SettingsSchema>;
 export type StageConfig = z.infer<typeof StageConfigSchema>;
@@ -63,6 +103,17 @@ export const defaultSettings: Settings = {
   antigravity: { model: "", effort: "high", timeout_secs: 1800 },
   codex_plan: { model: "", effort: "high", timeout_secs: 1800 },
   codex_implementation: { model: "", effort: "high", timeout_secs: 3600 },
+  utility_ai: {
+    provider: "antigravity",
+    model: "",
+    effort: "medium",
+    timeout_secs: 120,
+  },
+  repository_discovery: {
+    roots: ["~/projects", "~/repos", "~/src", "~/code", "~/workspace"],
+    max_depth: 4,
+    scan_home: true,
+  },
 };
 export const taskStatuses = [
   "queued",
@@ -94,6 +145,7 @@ export interface Repository {
   path: string;
   last_fetched: string | null;
   created_at: string;
+  source?: "managed" | "imported";
 }
 export interface Task {
   id: string;
@@ -115,6 +167,8 @@ export interface Task {
   status: TaskStatus;
   stage: number;
   error: string | null;
+  archived?: boolean;
+  continuation?: "pipeline" | "planning" | "implementation";
 }
 export interface CoreEvent {
   event: string;
@@ -224,9 +278,9 @@ export const remoteIdentity = (input: string) => {
   );
   const m = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
   if (
-    u.protocol !== "https:" ||
+    !["https:", "ssh:"].includes(u.protocol) ||
     u.hostname !== "github.com" ||
-    u.username ||
+    (u.username && !(u.protocol === "ssh:" && u.username === "git")) ||
     u.password ||
     u.port ||
     u.search ||

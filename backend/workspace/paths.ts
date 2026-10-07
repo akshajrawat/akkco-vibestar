@@ -95,7 +95,16 @@ export const createLayout = async (root: string) => {
       "invalid_input",
       "Data directory resolves to a protected root",
     );
-  for (const d of ["repos", "worktrees", "logs", "artifacts", "state"])
+  for (const d of [
+    "repos",
+    "worktrees",
+    "logs",
+    "artifacts",
+    "state",
+    "cache",
+    "runtime",
+    "telemetry",
+  ])
     await mkdir(join(root, d), { recursive: true, mode: 0o700 });
   return root;
 };

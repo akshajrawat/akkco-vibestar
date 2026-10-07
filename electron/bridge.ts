@@ -27,7 +27,7 @@ export class CoreBridge extends EventEmitter {
       ...process.env,
       ...(config.data_home ? { VIBESTAR_HOME: config.data_home } : {}),
     };
-    const launch = `const path=require('node:path');const os=require('node:os');const c=JSON.parse(process.argv[1]);if(c.data_home)process.env.VIBESTAR_HOME=c.data_home;require(c.helper_path||path.join(c.data_home||path.join(os.homedir(),'.akkco-ade'),'state','runtime','core.cjs'));`;
+    const launch = `const path=require('node:path');const os=require('node:os');const c=JSON.parse(process.argv[1]);if(c.data_home)process.env.VIBESTAR_HOME=c.data_home;require(c.helper_path||path.join(c.data_home||path.join(os.homedir(),'.akkco-vibestar'),'runtime','core.cjs'));`;
     this.child =
       process.platform === "win32"
         ? spawn(
@@ -56,7 +56,8 @@ export class CoreBridge extends EventEmitter {
         if (request) {
           clearTimeout(request.timer);
           this.pending.delete(v.id);
-          if (v.error) request.reject(new Error(v.error.message));
+          if (v.error)
+            request.reject(Object.assign(new Error(v.error.message), v.error));
           else request.resolve(v.result);
         } else this.emit("event", v);
       } catch {
@@ -136,7 +137,7 @@ export class CoreBridge extends EventEmitter {
       data[file] = (await readFile(join(this.coreDir, file))).toString(
         "base64",
       );
-    const script = `const fs=require('node:fs/promises');const path=require('node:path');const os=require('node:os');const cp=require('node:child_process');let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{try{const v=JSON.parse(input);const root=v.home||path.join(os.homedir(),'.akkco-ade');const dir=path.join(root,'state','runtime');await fs.mkdir(dir,{recursive:true,mode:448});for(const[name,content]of Object.entries(v.files))await fs.writeFile(path.join(dir,name),Buffer.from(content,'base64'),{mode:384});const p=cp.spawn('npm',['ci','--omit=dev','--no-audit','--no-fund'],{cwd:dir,stdio:'inherit',shell:false});p.on('exit',code=>process.exit(code||0));}catch(e){console.error(String(e));process.exit(1);}});`;
+    const script = `const fs=require('node:fs/promises');const path=require('node:path');const os=require('node:os');const cp=require('node:child_process');let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{try{const v=JSON.parse(input);const root=v.home||path.join(os.homedir(),'.akkco-vibestar');const dir=path.join(root,'runtime');await fs.mkdir(dir,{recursive:true,mode:448});for(const[name,content]of Object.entries(v.files))await fs.writeFile(path.join(dir,name),Buffer.from(content,'base64'),{mode:384});const p=cp.spawn('npm',['ci','--omit=dev','--no-audit','--no-fund'],{cwd:dir,stdio:'inherit',shell:false});p.on('exit',code=>process.exit(code||0));}catch(e){console.error(String(e));process.exit(1);}});`;
     await new Promise<void>((resolve, reject) => {
       const child = spawn(
         "wsl.exe",

@@ -4,7 +4,10 @@ import type { DesktopInfo } from "../../electron/contracts";
 import { useProviders } from "../lib/useWorkspace";
 import { rpc, errorMessage, subscribe } from "../lib/api";
 import { Button } from "./ui/button";
-import { StageSettings } from "./StageSettings";
+import { StageSettings, AgentConfiguration } from "./StageSettings";
+import { StoragePage } from "./StoragePage";
+import { DiscoverySettings } from "./DiscoverySettings";
+import { UsageView } from "./UsageView";
 export const SettingsPage = ({
   settings,
   root,
@@ -20,6 +23,9 @@ export const SettingsPage = ({
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [installLog, setLog] = useState("");
+  const [section, setSection] = useState("Agents");
+  const [watch, setWatch] =
+    useState<import("../../backend/github/contracts").WatchSettings>();
   const { providers } = useProviders();
   useEffect(() => {
     void window.vibestar
@@ -37,6 +43,12 @@ export const SettingsPage = ({
   useEffect(() => {
     setValue(settings);
   }, [settings]);
+  useEffect(() => {
+    if (section === "GitHub & PR Watch")
+      void rpc<import("../lib/types").Snapshot>("snapshot")
+        .then((s) => setWatch(s.github?.settings))
+        .catch((e) => setError(errorMessage(e)));
+  }, [section]);
   const save = async () => {
     setBusy(true);
     setError("");
@@ -64,133 +76,291 @@ export const SettingsPage = ({
       </div>
       {error && <div className="error-box">{error}</div>}
       {notice && <div className="notice">{notice}</div>}
-      <section className="settings-section">
-        <h2>Execution environment</h2>
-        <div className="settings-fields">
-          <label>
-            WSL distribution
-            <select
-              value={desktop?.config.distro || desktop?.distros[0] || ""}
-              disabled={!desktop?.native_windows}
-              onChange={(e) =>
-                desktop &&
-                setDesktop({
-                  ...desktop,
-                  config: { ...desktop.config, distro: e.target.value },
-                })
-              }
-            >
-              {desktop?.native_windows && (
-                <option value="">Select distribution</option>
-              )}
-              {desktop?.distros.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Linux data directory <span className="subtle">optional</span>
-            <input
-              value={desktop?.config.data_home || ""}
-              placeholder="Default: ~/.akkco-ade"
-              onChange={(e) =>
-                desktop &&
-                setDesktop({
-                  ...desktop,
-                  config: { ...desktop.config, data_home: e.target.value },
-                })
-              }
-            />
-          </label>
-          {desktop?.native_windows && (
-            <label>
-              Existing helper path <span className="subtle">optional</span>
-              <input
-                value={desktop.config.helper_path}
-                placeholder="Use the installed bundled helper"
-                onChange={(e) =>
-                  setDesktop({
-                    ...desktop,
-                    config: { ...desktop.config, helper_path: e.target.value },
-                  })
-                }
-              />
-            </label>
-          )}
-          <label>
-            Current local data root
-            <code>{root || "Execution core not connected"}</code>
-          </label>
-        </div>
-        {desktop?.native_windows && (
-          <>
-            <Button
-              disabled={busy || !desktop.config.distro}
-              onClick={async () => {
-                setBusy(true);
-                setError("");
-                try {
-                  await window.vibestar.saveDesktopSettings(desktop.config);
-                  await window.vibestar.installHelper();
-                  await refresh();
-                  setNotice("WSL helper installed.");
-                } catch (e) {
-                  setError(errorMessage(e));
-                } finally {
-                  setBusy(false);
-                }
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings sections">
+          {[
+            "General",
+            "Agents",
+            "GitHub & PR Watch",
+            "Repositories",
+            "Storage",
+            "Usage",
+            "Execution",
+          ].map((name) => (
+            <button
+              type="button"
+              key={name}
+              className={section === name ? "selected" : ""}
+              onClick={() => {
+                setSection(name);
+                setNotice("");
               }}
             >
-              Install / update WSL helper
-            </Button>
-            <p className="subtle">
-              Installs the bundled core and native SQLite/PTY dependencies
-              inside the selected distro. Requires Node 22+, npm, and build
-              tools there.
-            </p>
-            {installLog && <pre className="install-log">{installLog}</pre>}
-          </>
-        )}
-        <p className="subtle">
-          Linux builds execute directly inside the current distro. Windows
-          builds invoke the chosen distro with structured argv and stdin.
-        </p>
-      </section>
-      {value && (
-        <>
-          <section className="settings-section">
-            <h2>Concurrency</h2>
-            <label>
-              Simultaneous tasks
-              <select
-                value={value.concurrency}
-                onChange={(e) =>
-                  setValue({ ...value, concurrency: Number(e.target.value) })
-                }
-              >
-                {[1, 2, 3, 4].map((v) => (
-                  <option key={v}>{v}</option>
-                ))}
-              </select>
-            </label>
-          </section>
-          <section className="settings-section">
-            <h2>Agent stages</h2>
-            <p className="subtle">
-              Models and reasoning settings are independent. Empty model uses
-              that CLI’s default; requested models and effort are never silently
-              substituted.
-            </p>
-            <StageSettings
-              settings={value}
-              onChange={setValue}
-              providers={providers}
-            />
-          </section>
-        </>
-      )}
+              {name}
+            </button>
+          ))}
+        </nav>
+        <div className="settings-content">
+          {section === "Execution" && (
+            <section className="settings-section">
+              <h2>Execution environment</h2>
+              <div className="settings-fields">
+                <label>
+                  WSL distribution
+                  <select
+                    value={desktop?.config.distro || desktop?.distros[0] || ""}
+                    disabled={!desktop?.native_windows}
+                    onChange={(e) =>
+                      desktop &&
+                      setDesktop({
+                        ...desktop,
+                        config: { ...desktop.config, distro: e.target.value },
+                      })
+                    }
+                  >
+                    {desktop?.native_windows && (
+                      <option value="">Select distribution</option>
+                    )}
+                    {desktop?.distros.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Linux data directory <span className="subtle">optional</span>
+                  <input
+                    value={desktop?.config.data_home || ""}
+                    placeholder="Default: ~/.akkco-vibestar"
+                    onChange={(e) =>
+                      desktop &&
+                      setDesktop({
+                        ...desktop,
+                        config: {
+                          ...desktop.config,
+                          data_home: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </label>
+                {desktop?.native_windows && (
+                  <label>
+                    Existing helper path{" "}
+                    <span className="subtle">optional</span>
+                    <input
+                      value={desktop.config.helper_path}
+                      placeholder="Use the installed bundled helper"
+                      onChange={(e) =>
+                        setDesktop({
+                          ...desktop,
+                          config: {
+                            ...desktop.config,
+                            helper_path: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                )}
+                <label>
+                  Current local data root
+                  <code>{root || "Execution core not connected"}</code>
+                </label>
+              </div>
+              {desktop?.native_windows && (
+                <>
+                  <Button
+                    disabled={busy || !desktop.config.distro}
+                    onClick={async () => {
+                      setBusy(true);
+                      setError("");
+                      try {
+                        await window.vibestar.saveDesktopSettings(
+                          desktop.config,
+                        );
+                        await window.vibestar.installHelper();
+                        await refresh();
+                        setNotice("WSL helper installed.");
+                      } catch (e) {
+                        setError(errorMessage(e));
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Install / update WSL helper
+                  </Button>
+                  <p className="subtle">
+                    Installs the bundled core and native SQLite/PTY dependencies
+                    inside the selected distro. Requires Node 22+, npm, and
+                    build tools there.
+                  </p>
+                  {installLog && (
+                    <pre className="install-log">{installLog}</pre>
+                  )}
+                </>
+              )}
+              <p className="subtle">
+                Linux builds execute directly inside the current distro. Windows
+                builds invoke the chosen distro with structured argv and stdin.
+              </p>
+            </section>
+          )}
+          {value && (
+            <>
+              {section === "General" && (
+                <section className="settings-section">
+                  <h2>Concurrency</h2>
+                  <label>
+                    Simultaneous tasks
+                    <select
+                      value={value.concurrency}
+                      onChange={(e) =>
+                        setValue({
+                          ...value,
+                          concurrency: Number(e.target.value),
+                        })
+                      }
+                    >
+                      {[1, 2, 3, 4].map((v) => (
+                        <option key={v}>{v}</option>
+                      ))}
+                    </select>
+                  </label>
+                </section>
+              )}
+              {section === "Agents" && (
+                <section className="settings-section">
+                  <h2>Planning pipeline</h2>
+                  <p className="subtle">
+                    Models and reasoning settings are independent. Empty model
+                    uses that CLI’s default; requested models and effort are
+                    never silently substituted.
+                  </p>
+                  <StageSettings
+                    settings={value}
+                    onChange={setValue}
+                    providers={providers}
+                  />
+                  <h2>Utility AI</h2>
+                  <p className="subtle">
+                    PR discussion reasoning and miscellaneous Vibestar
+                    intelligence. Deterministic inspections never use this
+                    model. Each run appears in Usage.
+                  </p>
+                  <label>
+                    Utility provider
+                    <select
+                      value={value.utility_ai.provider}
+                      onChange={(e) =>
+                        setValue({
+                          ...value,
+                          utility_ai: {
+                            ...value.utility_ai,
+                            provider: e.target
+                              .value as Settings["utility_ai"]["provider"],
+                            model: "",
+                          },
+                        })
+                      }
+                    >
+                      <option value="antigravity">Antigravity</option>
+                      <option value="codex">Codex</option>
+                    </select>
+                  </label>
+                  <AgentConfiguration
+                    id="utility"
+                    label="UTILITY / MISCELLANEOUS AI"
+                    provider={value.utility_ai.provider}
+                    providers={providers}
+                    config={value.utility_ai}
+                    onChange={(config) =>
+                      setValue({
+                        ...value,
+                        utility_ai: {
+                          ...config,
+                          provider: value.utility_ai.provider,
+                        },
+                      })
+                    }
+                  />
+                </section>
+              )}
+              {section === "Repositories" && (
+                <DiscoverySettings
+                  value={value.repository_discovery}
+                  onChange={(repository_discovery) =>
+                    setValue({ ...value, repository_discovery })
+                  }
+                />
+              )}
+            </>
+          )}
+          {section === "Storage" && <StoragePage refresh={refresh} />}
+          {section === "Usage" && <UsageView />}
+          {section === "GitHub & PR Watch" && (
+            <section className="settings-section">
+              <h2>GitHub & PR Watch</h2>
+              <p className="subtle">
+                Official gh authentication is managed on Providers. Watches
+                inspect GitHub while Vibestar is open; only ambiguous
+                conversation uses Utility AI.
+              </p>
+              {watch && (
+                <>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={watch.auto_watch}
+                      onChange={(e) =>
+                        setWatch({ ...watch, auto_watch: e.target.checked })
+                      }
+                    />
+                    Automatically watch authored PRs
+                  </label>
+                  <label>
+                    Inspection interval (minutes)
+                    <input
+                      type="number"
+                      min={5}
+                      max={10080}
+                      value={watch.interval_minutes}
+                      onChange={(e) =>
+                        setWatch({
+                          ...watch,
+                          interval_minutes: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={watch.verify_codex}
+                      onChange={(e) =>
+                        setWatch({ ...watch, verify_codex: e.target.checked })
+                      }
+                    />
+                    Optional Codex verification after Utility AI
+                  </label>
+                  <Button
+                    onClick={() =>
+                      void rpc("github.configure", watch)
+                        .then(refresh)
+                        .then(() => setNotice("PR watch defaults saved."))
+                        .catch((e) => setError(errorMessage(e)))
+                    }
+                  >
+                    Save PR watch defaults
+                  </Button>
+                </>
+              )}
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

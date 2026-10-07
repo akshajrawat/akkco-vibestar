@@ -39,10 +39,46 @@ export interface PullRequestState {
   headRefOid: string;
   author?: string;
   baseRefOid?: string;
-  threads?: { id: string; resolved: boolean; path: string; body: string }[];
+  authenticatedUser?: string;
+  discussion?: DiscussionEntry[];
+  threads?: {
+    id: string;
+    resolved: boolean;
+    path: string;
+    body: string;
+    commentIds?: string[];
+  }[];
   comments: { id: string; body: string; updated_at: string; author?: string }[];
-  reviews: { id: string; body: string; state: string; submitted_at: string }[];
-  checks: { name: string; state: string; url: string }[];
+  reviews: {
+    id: string;
+    body: string;
+    state: string;
+    submitted_at: string;
+    author?: string;
+  }[];
+  checks: {
+    name: string;
+    state: string;
+    url: string;
+    completedAt?: string;
+    startedAt?: string;
+  }[];
+}
+export interface DiscussionEntry {
+  id: string;
+  type: "issue_comment" | "review_comment" | "review" | "thread";
+  author: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  path?: string;
+  line?: number;
+  reviewState?: string;
+  reviewId?: string;
+  resolved?: boolean;
+  threadId?: string;
+  authorAssociation?: string;
+  bot?: boolean;
 }
 export interface ScheduleJob {
   id: string;
@@ -65,6 +101,8 @@ export interface ScheduleJob {
   title?: string;
   action?: import("./action").PullRequestAction;
   attention_source?: "review" | "ci" | "conflict" | null;
+  analysis_method?: "deterministic" | "utility_ai";
+  conversation_action?: import("./action").PullRequestAction;
 }
 export interface ScheduleAttention {
   id: string;
@@ -83,6 +121,11 @@ export const changedPullRequest = (
   current: PullRequestState,
 ) => {
   const changes: string[] = [];
+  if (
+    current.discussion &&
+    JSON.stringify(previous.discussion) !== JSON.stringify(current.discussion)
+  )
+    changes.push("Discussion chronology or authorship changed");
   for (const comment of current.comments)
     if (
       !previous.comments.some(

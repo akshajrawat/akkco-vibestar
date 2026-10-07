@@ -321,19 +321,29 @@ it("scheduled planning reuses isolation and shared slots without changing task p
     );
     const before = await engine.git.fingerprint(engine.db.task(task.id));
     const artifacts = engine.db.detail(task.id).artifacts;
+    const { Scheduler } = await import("../backend/scheduled/scheduler");
+    const scheduler = new Scheduler(engine);
+    const watch = scheduler.add({
+      url: "https://github.com/fixture/fixture/pull/6",
+      task_id: task.id,
+      interval_minutes: 60,
+      verify_codex: true,
+    });
+    await scheduler.close();
     const result = await engine.analyzeScheduled(
       task.id,
       "Analyze PR updates. Do not edit files.",
       true,
+      watch.id,
     );
     expect(result?.analysis).toHaveProperty("summary");
     expect(result?.refinement).toHaveProperty("manualActionRequired");
     expect(await engine.git.fingerprint(engine.db.task(task.id))).toBe(before);
     expect(engine.db.detail(task.id).artifacts).toEqual(artifacts);
     expect(engine.db.task(task.id).status).toBe("ready_for_review");
-    expect(
-      engine.db.all("SELECT id FROM agent_runs WHERE purpose='scheduled'"),
-    ).toHaveLength(2);
+    expect(engine.db.all("SELECT id FROM scheduled_agent_runs")).toHaveLength(
+      2,
+    );
   } finally {
     await engine.close();
     await rm(dir, { recursive: true });

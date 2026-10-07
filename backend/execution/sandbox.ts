@@ -24,13 +24,18 @@ export const sandboxInvocation = async (
   const cwd = task
     ? await taskRoot(root, task)
     : await realpath(analysisWorkspace || "");
-  if (!task && !inside(join(root, "pr-analysis"), cwd))
+  if (!task && !inside(join(root, "cache", "utility"), cwd))
     throw new AdeError(
       "isolation",
       "PR analysis workspace is outside the managed root",
     );
-  const repo = task ? await realpath(db.repository(task.repo_id).path) : null;
-  if (repo && !inside(join(root, "repos"), repo))
+  const repository = task ? db.repository(task.repo_id) : null;
+  const repo = repository ? await realpath(repository.path) : null;
+  if (
+    repo &&
+    repository?.source !== "imported" &&
+    !inside(join(root, "repos"), repo)
+  )
     throw new AdeError(
       "isolation",
       "Managed clone is outside the repository root",
@@ -86,7 +91,30 @@ export const sandboxInvocation = async (
   // Native tools installed in the user's bin directory remain available read-only.
   const localBin = join(home, ".local", "bin");
   if (await exists(localBin)) args.push("--ro-bind", localBin, localBin);
-  if (repo) args.push("--ro-bind", repo, repo);
+  if (repo) {
+    const common = await realpath(
+      await checked(
+        "git",
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd,
+      ),
+    );
+    const gitdir = await realpath(
+      await checked("git", ["rev-parse", "--absolute-git-dir"], cwd),
+    );
+    if (!inside(join(common, "worktrees"), gitdir))
+      throw new AdeError("isolation", "Task has invalid Git worktree metadata");
+    args.push(
+      "--ro-bind",
+      common,
+      common,
+      "--tmpfs",
+      join(common, "worktrees"),
+      readOnly ? "--ro-bind" : "--bind",
+      gitdir,
+      gitdir,
+    );
+  }
   args.push(readOnly ? "--ro-bind" : "--bind", cwd, cwd);
   if (schemaPath) {
     const schema = await realpath(schemaPath);

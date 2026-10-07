@@ -14,7 +14,11 @@ export const buildPrompt = (db: Database, t: Task) => {
     worktree: t.worktree_path,
     baseCommitSha: t.base_commit_sha,
     followUps: db.all(
-      "SELECT role,content FROM task_messages WHERE task_id=? ORDER BY created_at",
+      "SELECT role,content FROM task_messages WHERE task_id=? AND status='delivered' ORDER BY created_at,rowid",
+      t.id,
+    ),
+    linkedReviewContext: db.all(
+      "SELECT summary,changes,analysis FROM scheduled_attention WHERE task_id=? AND dismissed=0 ORDER BY created_at DESC LIMIT 10",
       t.id,
     ),
   };

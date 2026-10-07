@@ -4,6 +4,7 @@ import { activeStatuses } from "../lib/types";
 import { Status } from "./Status";
 import { Button } from "./ui/button";
 import { ScheduledAttention } from "./ScheduledPage";
+import { useState } from "react";
 export const Overview = ({
   snapshot,
   refresh,
@@ -15,16 +16,18 @@ export const Overview = ({
   open: (id: string) => void;
   newTask: () => void;
 }) => {
+  const [archived, setArchived] = useState(false);
+  const tasks = snapshot.tasks.filter((t) => archived || !t.archived);
   const groups = [
     {
       name: "Running agents",
-      tasks: snapshot.tasks.filter(
+      tasks: tasks.filter(
         (t) => activeStatuses.includes(t.status) || t.status === "queued",
       ),
     },
     {
       name: "Recent tasks",
-      tasks: snapshot.tasks
+      tasks: tasks
         .filter(
           (t) => !activeStatuses.includes(t.status) && t.status !== "queued",
         )
@@ -35,6 +38,9 @@ export const Overview = ({
     <div className="page task-library">
       <div className="page-title">
         <h1>Tasks</h1>
+        <Button variant="ghost" onClick={() => setArchived(!archived)}>
+          {archived ? "Hide archived" : "Show archived"}
+        </Button>
         <Button onClick={newTask}>
           <Plus size={13} />
           New task

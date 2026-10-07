@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import { TerminalSquare, Square, PanelBottom } from "lucide-react";
 import { rpc, subscribe, errorMessage } from "../lib/api";
 import { Button } from "./ui/button";
+import { terminalTheme } from "../lib/theme";
 import type { Task } from "../lib/types";
 interface TerminalSnapshot {
   session_id: string;
@@ -43,11 +44,7 @@ export const TaskTerminal = ({
       fontSize: 12,
       fontFamily: "Cascadia Code, Consolas, monospace",
       scrollback: 3000,
-      theme: {
-        background: "#181818",
-        foreground: "#d4d7df",
-        cursor: "#c9bba7",
-      },
+      theme: terminalTheme(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);

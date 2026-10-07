@@ -58,7 +58,7 @@ export const resolveDevHost = async () => {
   }
   env.VIBESTAR_DEV_WSL_CONFIG = JSON.stringify({
     distro: process.env.WSL_DISTRO_NAME,
-    data_home: process.env.VIBESTAR_HOME || join(homedir(), ".akkco-ade"),
+    data_home: process.env.VIBESTAR_HOME || "",
     helper_path: resolve("dist-core/core.cjs"),
   });
   const metadata = join(

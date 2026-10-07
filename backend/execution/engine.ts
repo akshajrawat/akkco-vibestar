@@ -14,6 +14,7 @@ import {
   type Task,
   type Repository,
   type CoreEvent,
+  type ActivityBlocker,
   type IssueRef,
 } from "../domain";
 import { Database } from "../storage/database";
@@ -31,25 +32,215 @@ import { AgentRunner } from "./agent-runner";
 import { CodexProvider } from "./providers/codex";
 import { AntigravityProvider } from "./providers/antigravity";
 import type { AgentProvider } from "./providers/contracts";
+import { RepositoryIndex } from "../workspace/discovery";
+import { UtilityAI, type UtilityRequest } from "./utility-ai";
+import { ActionSchema } from "../scheduled/action";
+import { parsePullRequest } from "../scheduled/contracts";
+import { continuationStage } from "./continuation";
 export class Engine extends EventEmitter {
   readonly db: Database;
   readonly git: GitWorkspace;
+  readonly repositoryIndex: RepositoryIndex;
+  readonly utility: UtilityAI;
   private readonly runner: AgentRunner;
   private readonly active = new Map<
     string,
-    { controller: AbortController; promise: Promise<void> }
+    {
+      controller: AbortController;
+      promise: Promise<void>;
+      taskId?: string;
+      purpose?: string;
+    }
   >();
   private readonly interactive = new Set<string>();
   private draining = false;
   private closed = false;
+  private maintenance = false;
+  private readonly taskMaintenance = new Set<string>();
+  private readonly activities = new Map<
+    string,
+    { blocker: ActivityBlocker; stop: () => Promise<void> }
+  >();
+  private readonly repositoryOperations = new Map<Promise<unknown>, string>();
+  private readonly repositoryController = new AbortController();
+  private repositoryOperation = <T>(
+    operation: () => Promise<T>,
+    label = "Repository preparation is running",
+  ) => {
+    this.assertAvailable();
+    const result = Promise.resolve()
+      .then(operation)
+      .finally(() => {
+        this.repositoryOperations.delete(result);
+        this.changed();
+      });
+    this.repositoryOperations.set(result, label);
+    return result;
+  };
+  withStorageMaintenance = async <T>(operation: () => Promise<T>) => {
+    const blockers = this.cleanupBlockers();
+    if (blockers.length)
+      throw new AdeError(
+        "busy",
+        "Storage cleanup is waiting for active operations to finish.",
+        { blockers },
+      );
+    this.maintenance = true;
+    try {
+      return await operation();
+    } finally {
+      this.maintenance = false;
+      this.changed();
+      void this.drain();
+    }
+  };
+  cleanupBlockers = (taskId?: string): ActivityBlocker[] => {
+    const tasks = this.db.tasks();
+    const label = (id: string) => {
+      const task = tasks.find((t) => t.id === id);
+      return task ? `Task #${task.issue_number}` : "Utility AI";
+    };
+    const blockers: ActivityBlocker[] = [];
+    for (const [id, activity] of this.active) {
+      if (
+        id.startsWith("utility:") &&
+        this.activities.has(`pr-watch:${id.slice(8)}`)
+      )
+        continue;
+      blockers.push({
+        id: `run:${id}`,
+        kind: "task",
+        task_id:
+          activity.taskId || (tasks.some((t) => t.id === id) ? id : undefined),
+        label: activity.purpose
+          ? `${activity.purpose}${activity.taskId ? ` for ${label(activity.taskId)}` : ""} is running`
+          : `${label(id)} is running`,
+        stoppable: true,
+      });
+    }
+    for (const id of this.interactive)
+      blockers.push({
+        id: `terminal:${id}`,
+        kind: "terminal",
+        task_id: id,
+        label: `${label(id)} terminal session is open`,
+        stoppable: true,
+      });
+    for (const task of tasks.filter(
+      (t) => t.status === "queued" && !t.archived && !this.active.has(t.id),
+    ))
+      blockers.push({
+        id: `run:${task.id}`,
+        kind: "task",
+        task_id: task.id,
+        label: `${label(task.id)} is queued`,
+        stoppable: true,
+      });
+    for (const { blocker } of this.activities.values()) blockers.push(blocker);
+    if (this.maintenance)
+      blockers.push({
+        id: "storage-maintenance",
+        kind: "maintenance",
+        label: "Storage cleanup is already running",
+        stoppable: false,
+      });
+    for (const id of this.taskMaintenance)
+      blockers.push({
+        id: `cleanup:${id}`,
+        kind: "maintenance",
+        task_id: id,
+        label: `${label(id)} data cleanup is running`,
+        stoppable: false,
+      });
+    if (!taskId)
+      for (const [index, description] of [
+        ...this.repositoryOperations.values(),
+      ].entries())
+        blockers.push({
+          id: `repository-operation:${index}`,
+          kind: "repository",
+          label: description,
+          stoppable: false,
+        });
+    return blockers.filter(
+      (b) => !taskId || b.task_id === taskId || b.id === "storage-maintenance",
+    );
+  };
+  trackActivity = (blocker: ActivityBlocker, stop: () => Promise<void>) => {
+    this.assertAvailable();
+    if (blocker.task_id && this.taskMaintenance.has(blocker.task_id))
+      throw new AdeError("busy", "Task data cleanup is running", {
+        blockers: this.cleanupBlockers(blocker.task_id),
+      });
+    this.activities.set(blocker.id, { blocker, stop });
+    this.changed();
+    return () => {
+      this.activities.delete(blocker.id);
+      this.changed();
+    };
+  };
+  stopActivity = async (id: string) => {
+    if (id.startsWith("run:")) {
+      const key = id.slice(4);
+      const active = this.active.get(key);
+      if (active) {
+        active.controller.abort();
+        await active.promise;
+      } else if (
+        this.db
+          .tasks()
+          .some((t) => t.id === key && t.status === "queued" && !t.archived)
+      )
+        this.cancel(key);
+    } else await this.activities.get(id)?.stop();
+  };
+  withTaskMaintenance = async <T>(id: string, operation: () => Promise<T>) => {
+    this.assertAvailable();
+    const blockers = this.cleanupBlockers(id);
+    if (blockers.length)
+      throw new AdeError(
+        "busy",
+        "Task data cleanup is waiting for this task's active operations to finish.",
+        { blockers },
+      );
+    this.taskMaintenance.add(id);
+    try {
+      return await operation();
+    } finally {
+      this.taskMaintenance.delete(id);
+      this.changed(id);
+      void this.drain();
+    }
+  };
+  assertAvailable = () => {
+    if (this.maintenance || this.closed)
+      throw new AdeError(
+        "busy",
+        "Vibestar storage is being maintained. Try again when it finishes.",
+      );
+  };
   private constructor(
     readonly root: string,
     private readonly release: () => Promise<void>,
-    providers?: (stage: number) => AgentProvider,
+    providers?: (
+      stage: number,
+      provider?: "codex" | "antigravity",
+    ) => AgentProvider,
   ) {
     super();
     this.db = new Database(join(root, "state", "vibestar.sqlite"));
     this.git = new GitWorkspace(root);
+    this.repositoryIndex = new RepositoryIndex(root, this.db, () =>
+      this.trackActivity(
+        {
+          id: "repository-scan",
+          kind: "repository_scan",
+          label: "Repository scan is active",
+          stoppable: true,
+        },
+        () => this.repositoryIndex.stop(),
+      ),
+    );
     this.runner = new AgentRunner(
       root,
       this.db,
@@ -61,10 +252,14 @@ export class Engine extends EventEmitter {
             ? new AntigravityProvider()
             : new CodexProvider()),
     );
+    this.utility = new UtilityAI(this.db, this.runUtility);
   }
   static create = async (
     root: string,
-    providers?: (stage: number) => AgentProvider,
+    providers?: (
+      stage: number,
+      provider?: "codex" | "antigravity",
+    ) => AgentProvider,
   ) => {
     root = await createLayout(root);
     const path = join(root, "state", "core.lock");
@@ -76,7 +271,7 @@ export class Engine extends EventEmitter {
     });
     const engine = new Engine(root, release, providers);
     for (const run of engine.db.all<{ pid: number; process_identity: string }>(
-      "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL",
+      "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL",
     )) {
       if (
         run.process_identity &&
@@ -118,7 +313,11 @@ export class Engine extends EventEmitter {
   changed = (id?: string) => this.publish({ event: "changed", task_id: id });
   isActive = (id: string) => this.active.has(id) || this.interactive.has(id);
   isExecuting = (id: string) => this.active.has(id);
+  hasActive = () => this.cleanupBlockers().length > 0;
   acquireTerminal = (id: string) => {
+    this.assertAvailable();
+    if (this.taskMaintenance.has(id))
+      throw new AdeError("busy", "Task data cleanup is running");
     if (this.isActive(id) || this.db.task(id).status === "queued")
       throw new AdeError(
         "busy",
@@ -136,16 +335,16 @@ export class Engine extends EventEmitter {
     void this.drain();
   };
   drain = async () => {
-    if (this.draining || this.closed) return;
+    if (this.draining || this.closed || this.maintenance) return;
     this.draining = true;
     try {
       const limit = this.db.settings().concurrency;
       for (const t of this.db
         .tasks()
         .reverse()
-        .filter((t) => t.status === "queued")) {
+        .filter((t) => t.status === "queued" && !t.archived)) {
         if (this.active.size >= limit) break;
-        if (this.isActive(t.id)) continue;
+        if (this.isActive(t.id) || this.taskMaintenance.has(t.id)) continue;
         const controller = new AbortController();
         t.status = stageStatus(t.stage);
         this.db.saveTask(t);
@@ -160,7 +359,7 @@ export class Engine extends EventEmitter {
                   ? "interrupted"
                   : "cancelled"
                 : "failed",
-              error: redact(String(e)),
+              error: redact(e instanceof Error ? e.message : String(e)),
               updated_at: now(),
             });
           })
@@ -175,12 +374,16 @@ export class Engine extends EventEmitter {
       this.draining = false;
     }
   };
-  register = async (
+  register = (...args: Parameters<Engine["registerData"]>) =>
+    this.repositoryOperation(() => this.registerData(...args));
+  private registerData = async (
     upstream: string,
     origin: string | null,
     base: string,
     deferred = false,
+    localPath?: string,
   ) => {
+    this.assertAvailable();
     const { owner, name } = remoteIdentity(upstream);
     if (origin) remoteIdentity(origin);
     if (
@@ -197,6 +400,18 @@ export class Engine extends EventEmitter {
         "Repository is already registered",
       );
     await checked("git", ["check-ref-format", "--branch", base], this.root);
+    await this.repositoryIndex.scan();
+    const candidate = localPath
+      ? await this.repositoryIndex.inspect(localPath)
+      : this.repositoryIndex.matches(`${owner}/${name}`)[0];
+    if (
+      candidate &&
+      !candidate.identities.includes(`${owner}/${name}`.toLowerCase())
+    )
+      throw new AdeError(
+        "repository_mismatch",
+        "Selected checkout does not have a matching GitHub remote.",
+      );
     const id = randomUUID();
     const r: Repository = {
       id,
@@ -205,7 +420,8 @@ export class Engine extends EventEmitter {
       upstream_url: upstream,
       origin_url: origin,
       base_branch: base,
-      path: join(this.root, "repos", id),
+      path: candidate?.path || join(this.root, "repos", id),
+      source: candidate ? "imported" : "managed",
       last_fetched: null,
       created_at: now(),
     };
@@ -221,36 +437,77 @@ export class Engine extends EventEmitter {
     this.changed();
     return r;
   };
-  prepareClone = async (r: Repository, signal?: AbortSignal) =>
-    this.git.withLock(r.id, async () => {
-      if (await exists(join(r.path, ".git"))) return;
-      try {
-        await this.git.clone(r.upstream_url, r.path, signal);
-        if (r.origin_url)
+  prepareClone = (
+    r: Repository,
+    signal = this.repositoryController.signal,
+    localPath?: string,
+  ) =>
+    this.repositoryOperation(() =>
+      this.git.withLock(r.id, async () => {
+        if (r.source === "imported") {
+          const candidate = await this.repositoryIndex.inspect(r.path);
+          if (
+            !candidate.identities.includes(`${r.owner}/${r.name}`.toLowerCase())
+          )
+            throw new AdeError(
+              "repository_mismatch",
+              "Imported checkout remotes no longer match this repository.",
+            );
+          return;
+        }
+        if (await exists(join(r.path, ".git"))) return;
+        await this.repositoryIndex.scan();
+        const existing = localPath
+          ? await this.repositoryIndex.inspect(localPath)
+          : this.repositoryIndex.matches(`${r.owner}/${r.name}`)[0];
+        if (existing) {
+          if (
+            !existing.identities.includes(`${r.owner}/${r.name}`.toLowerCase())
+          )
+            throw new AdeError(
+              "repository_mismatch",
+              "Selected checkout does not have a matching GitHub remote.",
+            );
+          if (
+            this.db.tasks().some((t) => t.repo_id === r.id && t.worktree_path)
+          )
+            throw new AdeError(
+              "isolation",
+              "This repository has existing task worktrees. Restore its original managed clone before continuing.",
+            );
+          r.path = existing.path;
+          r.source = "imported";
+          this.db.saveRepository(r);
+          return;
+        }
+        try {
+          await this.git.clone(r.upstream_url, r.path, signal);
+          if (r.origin_url)
+            await checked(
+              "git",
+              ["remote", "add", "origin", r.origin_url],
+              r.path,
+              signal,
+            );
+          await this.git.fetch(r, signal);
           await checked(
             "git",
-            ["remote", "add", "origin", r.origin_url],
+            [
+              "rev-parse",
+              "--verify",
+              `refs/remotes/upstream/${r.base_branch}^{commit}`,
+            ],
             r.path,
             signal,
           );
-        await this.git.fetch(r, signal);
-        await checked(
-          "git",
-          [
-            "rev-parse",
-            "--verify",
-            `refs/remotes/upstream/${r.base_branch}^{commit}`,
-          ],
-          r.path,
-          signal,
-        );
-        this.db.saveRepository(r);
-      } catch (error) {
-        if (inside(join(this.root, "repos"), r.path))
-          await rm(r.path, { recursive: true, force: true });
-        throw error;
-      }
-    });
+          this.db.saveRepository(r);
+        } catch (error) {
+          if (inside(join(this.root, "repos"), r.path))
+            await rm(r.path, { recursive: true, force: true });
+          throw error;
+        }
+      }),
+    );
   createTask = async (
     url: string,
     scope: string,
@@ -300,6 +557,7 @@ export class Engine extends EventEmitter {
     scopeMode: "whole_issue" | "partial" = "partial",
     settings?: import("../domain").Settings,
   ) => {
+    this.assertAvailable();
     const t: Task = {
       id: randomUUID(),
       repo_id: repo.id,
@@ -394,6 +652,22 @@ export class Engine extends EventEmitter {
             "Implementation reported failed tests. Review Tests and retry implementation.",
           );
       }
+      const queued = this.db.all<{ id: string; configuration: string | null }>(
+        "SELECT id,configuration FROM task_messages WHERE task_id=? AND status='queued' ORDER BY created_at,rowid",
+        t.id,
+      );
+      if (queued.length) {
+        this.db.run(
+          "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status='queued'",
+          t.id,
+        );
+        const configuration = queued.at(-1)?.configuration;
+        if (configuration) t.followup_config = JSON.parse(configuration);
+        if (t.stage >= 3) {
+          t.stage = 2;
+          t.continuation = "implementation";
+        }
+      }
       this.db.saveTask({ ...t, stage: t.stage + 1 });
     }
     t.status = "ready_for_review";
@@ -415,6 +689,9 @@ export class Engine extends EventEmitter {
     this.changed(id);
   };
   retry = async (id: string, stage?: number, restart = false) => {
+    this.assertAvailable();
+    if (this.taskMaintenance.has(id))
+      throw new AdeError("busy", "Task data cleanup is running");
     const t = this.db.task(id);
     if (t.stage === 0 && t.worktree_path && !this.isActive(id)) {
       if (await exists(t.worktree_path)) {
@@ -426,17 +703,43 @@ export class Engine extends EventEmitter {
         t.base_commit_sha = "";
       }
     }
+    const pending = this.db.all<{ configuration: string | null }>(
+      "SELECT configuration FROM task_messages WHERE task_id=? AND status IN ('draft','queued') ORDER BY created_at,rowid",
+      id,
+    );
     const target = restart
       ? t.worktree_path
         ? 1
         : 0
-      : (stage ?? Math.min(t.stage, 4));
+      : (stage ??
+        (pending.length
+          ? continuationStage(this.db, t)
+          : Math.min(t.stage, 4)));
     retryTarget(t, target, this.isActive(id));
     if (target >= 2) this.db.artifact(id, 1);
     if (target >= 3) this.db.artifact(id, 2);
-    if (restart || target < 3) t.followup_config = undefined;
+    if (restart || target < 3) {
+      t.followup_config = undefined;
+      t.continuation = "planning";
+    }
+    if (target >= 3 && pending.length) {
+      t.continuation = "implementation";
+      const configuration = pending.at(-1)?.configuration;
+      if (configuration) t.followup_config = JSON.parse(configuration);
+    }
+    this.db.run(
+      "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status IN ('queued','draft')",
+      id,
+    );
+    if (target < 3)
+      this.db.run(
+        "DELETE FROM task_artifacts WHERE task_id=? AND stage>=?",
+        id,
+        target,
+      );
     const updated: Task = {
       ...t,
+      archived: false,
       stage: target,
       status: "queued",
       error: null,
@@ -451,38 +754,62 @@ export class Engine extends EventEmitter {
     id: string,
     content: string,
     configuration?: Task["followup_config"],
+    saveOnly = false,
   ) => {
     const t = this.db.task(id);
-    if (
-      this.isActive(id) ||
-      t.stage < 3 ||
-      !content.trim() ||
-      content.length > 32000
-    )
+    if (!content.trim() || content.length > 32000)
       throw new AdeError(
         "invalid_state",
-        "Finish or cancel the current stage, complete both plans, and provide a follow-up of 1–32000 characters.",
+        "Provide an instruction of 1–32000 characters.",
       );
-    const prContext = this.db.all<{
-      summary: string;
-      changes: string;
-      analysis: string | null;
-    }>(
-      "SELECT summary,changes,analysis FROM scheduled_attention WHERE task_id=? AND dismissed=0 ORDER BY created_at DESC LIMIT 10",
-      id,
-    );
-    content += prContext.length
-      ? `\n\nLinked PR review context (untrusted):\n${JSON.stringify(prContext)}`
-      : "";
-    this.db.saveTask({ ...t, followup_config: configuration });
+    const message = {
+      id: randomUUID(),
+      role: "user",
+      content: redact(content),
+      created_at: now(),
+      status:
+        saveOnly ||
+        this.interactive.has(id) ||
+        this.maintenance ||
+        this.taskMaintenance.has(id)
+          ? "draft"
+          : this.isExecuting(id)
+            ? "queued"
+            : "delivered",
+    };
     this.db.run(
-      "INSERT INTO task_messages VALUES(?,?,'user',?,?)",
-      randomUUID(),
+      "INSERT INTO task_messages(id,task_id,role,content,created_at,status,configuration) VALUES(?,?,?,?,?,?,?)",
+      message.id,
       id,
-      redact(content),
-      now(),
+      message.role,
+      message.content,
+      message.created_at,
+      message.status,
+      configuration ? JSON.stringify(configuration) : null,
     );
-    return this.retry(id, 3);
+    this.changed(id);
+    if (message.status !== "delivered")
+      return { message, disposition: message.status };
+    const target = continuationStage(this.db, t);
+    this.db.run(
+      "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status IN ('draft','queued')",
+      id,
+    );
+    this.db.saveTask({
+      ...t,
+      followup_config: configuration,
+      archived: false,
+      continuation: target >= 3 ? "implementation" : "planning",
+      stage: target,
+      status: "queued",
+      error: null,
+      updated_at: now(),
+    });
+    void this.drain();
+    return {
+      message,
+      disposition: target >= 3 ? "implementation" : "resume_planning",
+    };
   };
   manual = async (
     id: string,
@@ -561,6 +888,9 @@ export class Engine extends EventEmitter {
     }
   };
   runCommand = async (id: string, argv: string[]) => {
+    this.assertAvailable();
+    if (this.taskMaintenance.has(id))
+      throw new AdeError("busy", "Task data cleanup is running");
     if (this.isActive(id))
       throw new AdeError("invalid_state", "Task already has an active process");
     const controller = new AbortController();
@@ -583,80 +913,148 @@ export class Engine extends EventEmitter {
     prompt: string,
     verify: boolean,
     jobId?: string,
+    signal?: AbortSignal,
   ) => {
-    const task = id ? this.db.task(id) : null;
-    if (
-      !task &&
-      (!jobId ||
-        !this.db.all("SELECT id FROM scheduled_jobs WHERE id=?", jobId).length)
-    )
+    const saved = jobId
+      ? this.db.all<{ data: string }>(
+          "SELECT data FROM scheduled_jobs WHERE id=?",
+          jobId,
+        )[0]
+      : undefined;
+    if (!saved)
       throw new AdeError(
         "invalid_state",
         "PR analysis requires a persisted watch",
       );
-    const key = id || `pr:${jobId}`;
     if (
       this.closed ||
-      this.isActive(key) ||
       this.active.size >= this.db.settings().concurrency ||
-      this.db.tasks().some((t) => t.status === "queued")
+      this.db.tasks().some((t) => t.status === "queued" && !t.archived)
     )
       return null;
-    if (task && !task.worktree_path)
-      throw new AdeError(
-        "invalid_state",
-        "Scheduled analysis requires a prepared isolated task worktree",
-      );
-    const controller = new AbortController();
-    const workspace = task ? undefined : join(this.root, "pr-analysis", jobId!);
-    const output = Promise.resolve().then(async () => {
-      if (workspace) await mkdir(workspace, { recursive: true, mode: 0o700 });
-      const analysis = await this.runner.run(
-        task ? { ...task, stage: 1 } : { id: jobId!, stage: 1 },
-        this.db.settings(),
-        controller.signal,
-        { prompt, purpose: "scheduled", workspace },
-      );
+    const ref = parsePullRequest(JSON.parse(saved.data).url);
+    const request = {
+      purpose: "PR Review Analysis",
+      prompt,
+      schema: ActionSchema,
+      context: {
+        taskId: id || undefined,
+        jobId,
+        repository: `${ref.owner}/${ref.repo}`,
+      },
+    };
+    try {
+      signal?.throwIfAborted();
+      const analysis = await this.utility.run(request);
+      signal?.throwIfAborted();
       const refinement = verify
-        ? await this.runner.run(
-            task ? { ...task, stage: 2 } : { id: jobId!, stage: 2 },
-            this.db.settings(),
-            controller.signal,
+        ? await this.runUtility(
             {
-              prompt: `You are the independent second planning agent. Verify this PR action analysis against the repository. Do not edit files or perform remote actions. Answer whether the PR author needs to act using the same action schema.\n${prompt}\nAntigravity analysis:\n${JSON.stringify(analysis)}`,
-              purpose: "scheduled",
-              workspace,
+              ...request,
+              purpose: "Scheduler Verification",
+              prompt:
+                "Independently verify this discussion decision. Do not edit files or perform remote actions.\n" +
+                prompt +
+                "\nPrevious utility decision:\n" +
+                JSON.stringify(analysis),
             },
+            { ...this.db.settings().codex_plan, provider: "codex" },
           )
         : null;
+      signal?.throwIfAborted();
       return { analysis, refinement };
+    } catch (error) {
+      if (error instanceof AdeError && error.kind === "busy") return null;
+      throw error;
+    }
+  };
+  private runUtility = async (
+    request: UtilityRequest,
+    config: import("../domain").Settings["utility_ai"],
+  ) => {
+    const id = request.context?.jobId || randomUUID();
+    const task =
+      request.workspace && request.context?.taskId
+        ? this.db.task(request.context.taskId)
+        : null;
+    const key = task?.id || `utility:${id}`;
+    if (
+      this.closed ||
+      this.maintenance ||
+      (request.context?.taskId &&
+        this.taskMaintenance.has(request.context.taskId)) ||
+      this.isActive(key) ||
+      this.active.size >= this.db.settings().concurrency ||
+      this.db.tasks().some((t) => t.status === "queued" && !t.archived)
+    )
+      throw new AdeError(
+        "busy",
+        "Utility analysis is waiting for task execution capacity",
+      );
+    const workspace =
+      request.workspace || join(this.root, "cache", "utility", id);
+    if (request.workspace && !task)
+      throw new AdeError(
+        "isolation",
+        "Utility filesystem context requires a linked isolated task",
+      );
+    const controller = new AbortController();
+    const output = Promise.resolve().then(async () => {
+      if (!task) await mkdir(workspace, { recursive: true, mode: 0o700 });
+      return this.runner.run(
+        task ? { ...task, stage: 1 } : { id, stage: 1 },
+        this.db.settings(),
+        controller.signal,
+        {
+          prompt: request.prompt,
+          purpose: request.purpose,
+          workspace,
+          schema: request.schema,
+          jobId: request.context?.jobId,
+          telemetryTaskId: request.context?.taskId,
+          telemetryRepository: request.context?.repository,
+          provider: config.provider,
+          config,
+        },
+      );
     });
-    const promise = output
-      .then(() => {})
-      .catch(() => {})
-      .finally(() => {
-        this.active.delete(key);
-        this.changed(id || undefined);
-        void this.drain();
-      });
-    this.active.set(key, { controller, promise });
-    return output;
+    const completed = output.finally(() => {
+      this.active.delete(key);
+      this.changed(task?.id);
+      void this.drain();
+    });
+    const promise = completed.then(() => {}).catch(() => {});
+    this.active.set(key, {
+      controller,
+      promise,
+      taskId: request.context?.taskId,
+      purpose: request.purpose,
+    });
+    return completed;
   };
   beginShutdown = () => {
     this.closed = true;
+    this.repositoryController.abort();
     for (const a of this.active.values()) a.controller.abort();
   };
   close = async () => {
     this.beginShutdown();
     await Promise.allSettled([...this.active.values()].map((a) => a.promise));
+    await Promise.allSettled([...this.repositoryOperations.keys()]);
+    await this.repositoryIndex.close();
     this.db.close();
     await this.release();
   };
-  fetchRepository = async (id: string) => {
+  fetchRepository = (id: string) =>
+    this.repositoryOperation(
+      () => this.fetchRepositoryData(id),
+      "Repository fetch is running",
+    );
+  private fetchRepositoryData = async (id: string) => {
     const r = this.db.repository(id);
     await this.prepareClone(r);
     await this.git.withLock(id, async () => {
-      await this.git.fetch(r);
+      await this.git.fetch(r, this.repositoryController.signal);
       this.db.saveRepository(r);
     });
     this.changed();
@@ -667,7 +1065,14 @@ export class Engine extends EventEmitter {
       new AntigravityProvider().detect(this.root),
       new CodexProvider().detect(this.root),
     ]);
-  configureRepository = async (
+  configureRepository = (
+    ...args: Parameters<Engine["configureRepositoryData"]>
+  ) =>
+    this.repositoryOperation(
+      () => this.configureRepositoryData(...args),
+      "Repository configuration is being updated",
+    );
+  private configureRepositoryData = async (
     id: string,
     configuration: {
       upstream_url: string;
@@ -696,7 +1101,8 @@ export class Engine extends EventEmitter {
         .tasks()
         .some(
           (t) =>
-            t.repo_id === id && (this.isActive(t.id) || t.status === "queued"),
+            t.repo_id === id &&
+            (this.isActive(t.id) || (t.status === "queued" && !t.archived)),
         )
     )
       throw new AdeError(
@@ -705,7 +1111,7 @@ export class Engine extends EventEmitter {
       );
     const updated = { ...r, ...configuration };
     await this.git.withLock(id, async () => {
-      if (await exists(join(r.path, ".git"))) {
+      if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
         await checked(
           "git",
           ["remote", "set-url", "upstream", updated.upstream_url],

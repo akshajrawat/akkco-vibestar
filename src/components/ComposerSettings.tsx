@@ -1,6 +1,13 @@
+import { useEffect, useRef, useState } from "react";
 import type { Task, StageConfig } from "../lib/types";
 import { defaultSettings } from "../../backend/domain";
+import {
+  supportedEfforts,
+  configurationError,
+} from "../../backend/execution/providers/contracts";
+import { useProviders } from "../lib/useWorkspace";
 import { useTaskView, updateTaskView } from "../lib/taskView";
+import { Button } from "./ui/button";
 export const followupConfiguration = (
   task: Task,
   view: ReturnType<typeof useTaskView>,
@@ -22,47 +29,122 @@ export const followupConfiguration = (
 export const ComposerSettings = ({ task }: { task: Task }) => {
   const view = useTaskView(task.id);
   const { provider, config } = followupConfiguration(task, view);
+  const { providers, loading, refresh } = useProviders();
+  const [open, setOpen] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const detected = providers.find((p) => p.provider === provider);
+  const efforts = supportedEfforts(detected, config.model);
   const update = (value: Partial<StageConfig>) =>
     updateTaskView(task.id, {
       ...(value.model !== undefined ? { followupModel: value.model } : {}),
       ...(value.effort !== undefined ? { followupEffort: value.effort } : {}),
     });
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: MouseEvent) => {
+      if (!container.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", dismiss);
+    return () => document.removeEventListener("mousedown", dismiss);
+  }, [open]);
   return (
-    <div className="composer-settings">
-      <select
-        aria-label="Follow-up provider"
-        value={provider}
-        onChange={(e) =>
-          updateTaskView(task.id, {
-            followupProvider: e.target.value as typeof provider,
-            followupModel: null,
-            followupEffort: null,
-          })
+    <div
+      className="composer-settings"
+      ref={container}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(false);
         }
+      }}
+    >
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="Choose chat model"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
       >
-        <option value="codex">Codex</option>
-        <option value="antigravity">Antigravity</option>
-      </select>
-      <span>·</span>
-      <input
-        aria-label="Task model"
-        placeholder="CLI default model"
-        value={config.model}
-        onChange={(e) => update({ model: e.target.value })}
-      />
-      <span>·</span>
-      <select
-        aria-label="Task reasoning effort"
-        value={config.effort}
-        onChange={(e) => update({ effort: e.target.value })}
-      >
-        {(provider === "codex"
-          ? ["none", "minimal", "low", "medium", "high", "xhigh"]
-          : ["low", "medium", "high", "xhigh", "max"]
-        ).map((v) => (
-          <option key={v}>{v}</option>
-        ))}
-      </select>
+        {provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
+        {detected?.models.find((m) =>
+          config.model ? m.id === config.model : m.isDefault,
+        )?.label ||
+          config.model ||
+          "CLI default"}{" "}
+        · {config.effort}
+      </Button>
+      {open && (
+        <div
+          className="model-picker"
+          role="dialog"
+          aria-label="Chat model configuration"
+        >
+          <strong>Provider</strong>
+          <div className="library-tabs">
+            {(["codex", "antigravity"] as const).map((name) => (
+              <button
+                type="button"
+                key={name}
+                className={name === provider ? "selected" : ""}
+                onClick={() =>
+                  updateTaskView(task.id, {
+                    followupProvider: name,
+                    followupModel: null,
+                    followupEffort: null,
+                  })
+                }
+              >
+                {name === "codex" ? "Codex" : "Antigravity"}
+              </button>
+            ))}
+          </div>
+          <strong>Model</strong>
+          <div className="model-options" role="listbox" aria-label="Task model">
+            <button
+              type="button"
+              role="option"
+              aria-selected={!config.model}
+              onClick={() => update({ model: "" })}
+            >
+              Official CLI default
+            </button>
+            {detected?.models.map((m) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={config.model === m.id}
+                key={m.id}
+                onClick={() => update({ model: m.id })}
+              >
+                {m.label || m.id}
+              </button>
+            ))}
+          </div>
+          <strong>Reasoning</strong>
+          <div className="effort-options">
+            {efforts.map((effort) => (
+              <button
+                type="button"
+                key={effort}
+                aria-pressed={config.effort === effort}
+                onClick={() => update({ effort })}
+              >
+                {effort}
+              </button>
+            ))}
+          </div>
+          {detected?.models.length && configurationError(detected, config) ? (
+            <p className="warning">{configurationError(detected, config)}</p>
+          ) : null}
+          <Button size="sm" disabled={loading} onClick={() => void refresh()}>
+            {loading ? "Discovering…" : "Refresh models"}
+          </Button>
+          <Button size="sm" onClick={() => setOpen(false)}>
+            Done
+          </Button>
+        </div>
+      )}
     </div>
   );
 };

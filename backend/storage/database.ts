@@ -38,6 +38,9 @@ export class Database {
   }
   run = (sql: string, ...params: unknown[]) =>
     this.connection.prepare(sql).run(...params);
+  transaction = <T>(operation: () => T) =>
+    this.connection.transaction(operation)();
+  backup = (path: string) => this.connection.backup(path);
   all = <T extends object = Record<string, unknown>>(
     sql: string,
     ...params: unknown[]
@@ -112,6 +115,15 @@ export class Database {
         now(),
       );
       this.run(
+        "UPDATE utility_runs SET status='interrupted',ended_at=? WHERE status='running'",
+        now(),
+      );
+      this.run(
+        "UPDATE ai_usage SET status='interrupted',ended_at=?,duration_ms=CAST((julianday(?) - julianday(started_at))*86400000 AS INTEGER) WHERE status='running'",
+        now(),
+        now(),
+      );
+      this.run(
         "UPDATE test_runs SET status='interrupted',ended_at=? WHERE status='running'",
         now(),
       );
@@ -160,6 +172,10 @@ export class Database {
     ),
     activity: this.all(
       "SELECT * FROM task_activity WHERE task_id=? ORDER BY id",
+      id,
+    ),
+    usage: this.all(
+      "SELECT * FROM ai_usage WHERE task_id=? ORDER BY started_at",
       id,
     ),
     tests: this.all(

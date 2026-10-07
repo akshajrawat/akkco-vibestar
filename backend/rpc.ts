@@ -2,19 +2,21 @@ import { GitHubService } from "./github/service";
 import { GitHubClient } from "./github/client";
 import { fetchIssue } from "./workspace/issue";
 import { StageConfigSchema } from "./domain";
+import { StorageService } from "./storage/service";
+import { Usage } from "./execution/usage";
 import { TaskTerminals } from "./execution/task-terminals";
 import { readLogTail } from "./storage/logs";
 import { ReviewService } from "./review/service";
 import { Scheduler } from "./scheduled/scheduler";
 import { GitHubMonitor } from "./scheduled/github";
 import { z } from "zod";
-import { realpath, rm } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { Engine } from "./execution/engine";
 import { AuthSessions } from "./execution/auth";
 import { AdeError, SettingsSchema, parseIssue, now } from "./domain";
 import { capture, checked } from "./execution/process";
-import { inside, taskRoot } from "./workspace/paths";
+import { taskRoot, exists } from "./workspace/paths";
 const idInput = z.object({ id: z.string().uuid() });
 export class Rpc {
   private readonly auth: AuthSessions;
@@ -22,11 +24,13 @@ export class Rpc {
   readonly github: GitHubService;
   private readonly review: ReviewService;
   private readonly terminals: TaskTerminals;
+  private readonly storage: StorageService;
   constructor(readonly engine: Engine) {
     this.scheduler = new Scheduler(engine);
     this.github = new GitHubService(engine, this.scheduler);
     this.review = new ReviewService(engine);
     this.terminals = new TaskTerminals(engine);
+    this.storage = new StorageService(engine);
     this.auth = new AuthSessions(engine.root, (event) => {
       engine.publish(event);
       if (event.event === "auth.closed") void this.github.sync();
@@ -41,6 +45,7 @@ export class Rpc {
           tasks: e.db.tasks(),
           settings: e.db.settings(),
           root: e.root,
+          repository_index: e.repositoryIndex.snapshot(),
           active_tasks: e.db
             .tasks()
             .filter((t) => e.isActive(t.id))
@@ -59,10 +64,176 @@ export class Rpc {
         return this.github.resolve(
           z.object({ repository: z.string().max(200) }).parse(input).repository,
         );
-      case "github.use":
-        return this.github.useLocally(
-          z.object({ repository: z.string().max(200) }).parse(input).repository,
+      case "github.use": {
+        const p = z
+          .object({
+            repository: z.string().max(200),
+            local_path: z.string().max(2000).optional(),
+          })
+          .parse(input);
+        return this.github.useLocally(p.repository, false, p.local_path);
+      }
+      case "repositories.scan": {
+        e.assertAvailable();
+        const result = await e.repositoryIndex.scan();
+        e.changed();
+        return result;
+      }
+      case "repositories.index":
+        return e.repositoryIndex.snapshot();
+      case "repositories.candidates": {
+        e.assertAvailable();
+        const p = z.object({ repository: z.string().max(200) }).parse(input);
+        const metadata = await this.github.client.repository(p.repository);
+        const resolved = await this.github.resolve(
+          metadata.fork && metadata.parent
+            ? metadata.parent.full_name
+            : p.repository,
         );
+        await e.repositoryIndex.scan();
+        e.changed();
+        const registered = e.db
+          .repositories()
+          .find(
+            (r) =>
+              `${r.owner}/${r.name}`.toLowerCase() ===
+              resolved.repository.full_name.toLowerCase(),
+          );
+        return {
+          resolved,
+          candidates:
+            registered &&
+            (registered.source === "imported" ||
+              (await exists(join(registered.path, ".git"))))
+              ? []
+              : e.repositoryIndex.matches(resolved.repository.full_name),
+        };
+      }
+      case "usage.list": {
+        const p = z
+          .object({
+            task_id: z.string().uuid().optional(),
+            job_id: z.string().uuid().optional(),
+            days: z.number().int().min(1).max(3650).optional(),
+          })
+          .parse(input);
+        return new Usage(e.db)
+          .list(p.task_id, p.days)
+          .filter((r) => !p.job_id || r.job_id === p.job_id);
+      }
+      case "storage.info":
+        return this.storage.info();
+      case "storage.blockers": {
+        const p = z
+          .object({ task_id: z.string().uuid().optional() })
+          .parse(input);
+        return e.cleanupBlockers(p.task_id);
+      }
+      case "storage.stopBlockers": {
+        const p = z
+          .object({
+            task_id: z.string().uuid().optional(),
+            ids: z.array(z.string()).max(100),
+          })
+          .parse(input);
+        const blockers = e
+          .cleanupBlockers(p.task_id)
+          .filter((b) => b.stoppable && p.ids.includes(b.id));
+        await Promise.all(
+          blockers.map((b) =>
+            b.kind === "terminal" && b.task_id
+              ? this.terminals.close(b.task_id)
+              : e.stopActivity(b.id),
+          ),
+        );
+        return e.cleanupBlockers(p.task_id);
+      }
+      case "storage.open": {
+        if (process.env.WSL_DISTRO_NAME)
+          await capture(
+            "explorer.exe",
+            [await checked("wslpath", ["-w", e.root], e.root)],
+            e.root,
+          );
+        else await capture("xdg-open", [e.root], e.root);
+        return null;
+      }
+      case "storage.clear": {
+        const p = z
+          .object({
+            kind: z.enum(["logs", "cache"]),
+            confirmed: z.literal(true),
+          })
+          .parse(input);
+        await this.storage.clear(p.kind);
+        return null;
+      }
+      case "storage.cleanCompleted": {
+        z.object({ confirmed: z.literal(true) }).parse(input);
+        return this.storage.cleanCompleted();
+      }
+      case "storage.removeUnused": {
+        z.object({ confirmed: z.literal(true) }).parse(input);
+        return this.storage.removeUnused();
+      }
+      case "storage.reset": {
+        z.object({
+          confirmed: z.literal(true),
+          confirmation: z.literal("RESET VIBESTAR"),
+        }).parse(input);
+        const blockers = e.cleanupBlockers();
+        if (blockers.length)
+          throw new AdeError(
+            "busy",
+            "Data reset is waiting for active operations to finish.",
+            { blockers },
+          );
+        await this.github.close();
+        await this.scheduler.close();
+        return this.storage.reset();
+      }
+      case "task.cleanup": {
+        const p = idInput
+          .extend({
+            confirmed: z.literal(true),
+            worktree: z.boolean(),
+            logs: z.boolean(),
+            artifacts: z.boolean(),
+            history: z.boolean(),
+          })
+          .parse(input);
+        return this.storage.cleanupTask(p.id, p);
+      }
+      case "task.archive": {
+        const p = idInput.extend({ archived: z.boolean() }).parse(input);
+        if (e.isActive(p.id) || e.db.task(p.id).status === "queued")
+          throw new AdeError("busy", "Stop this task before archiving it.");
+        e.db.saveTask({ ...e.db.task(p.id), archived: p.archived });
+        e.changed(p.id);
+        return null;
+      }
+      case "task.message.retry": {
+        const p = idInput
+          .extend({
+            message_id: z.string().uuid(),
+            content: z.string().min(1).max(32000).optional(),
+          })
+          .parse(input);
+        const message = e.db.all<{
+          content: string;
+          configuration: string | null;
+        }>(
+          "SELECT content,configuration FROM task_messages WHERE id=? AND task_id=?",
+          p.message_id,
+          p.id,
+        )[0];
+        if (!message) throw new AdeError("not_found", "Message not found");
+        return e.followUp(
+          p.id,
+          p.content || message.content,
+          message.configuration ? JSON.parse(message.configuration) : undefined,
+        );
+      }
       case "terminal.status":
         return this.terminals.current(idInput.parse(input).id);
       case "terminal.open": {
@@ -207,51 +378,7 @@ export class Rpc {
       }
       case "repository.remove": {
         const p = idInput.extend({ confirmed: z.literal(true) }).parse(input);
-        const r = e.db.repository(p.id);
-        const tasks = e.db.tasks().filter((t) => t.repo_id === r.id);
-        if (tasks.some((t) => e.isActive(t.id)))
-          throw new AdeError(
-            "invalid_state",
-            "Cancel active tasks before removing the repository",
-          );
-        if (
-          this.scheduler
-            .jobs()
-            .some((j) => tasks.some((t) => t.id === j.task_id))
-        )
-          throw new AdeError(
-            "invalid_state",
-            "Pause and unlink scheduled PRs before removing their repository",
-          );
-        await e.git.withLock(r.id, async () => {
-          for (const t of tasks) {
-            if (t.worktree_path) {
-              const path = await taskRoot(e.root, t);
-              await checked(
-                "git",
-                ["worktree", "remove", "--force", "--", path],
-                r.path,
-              );
-            }
-            for (const table of [
-              "agent_events",
-              "test_runs",
-              "task_artifacts",
-              "task_messages",
-              "agent_runs",
-            ])
-              e.db.run(`DELETE FROM ${table} WHERE task_id=?`, t.id);
-            e.db.run("DELETE FROM tasks WHERE id=?", t.id);
-          }
-          e.db.run("DELETE FROM issues WHERE repo_id=?", r.id);
-          const path = await realpath(r.path);
-          if (!inside(join(e.root, "repos"), path))
-            throw new AdeError("isolation", "Invalid managed clone path");
-          await rm(path, { recursive: true });
-          e.db.run("DELETE FROM repositories WHERE id=?", r.id);
-        });
-        e.changed();
-        return null;
+        return this.storage.removeRepository(p.id);
       }
       case "task.preview": {
         const p = z.object({ issue_url: z.string() }).parse(input);
@@ -353,6 +480,7 @@ export class Rpc {
         const p = idInput
           .extend({
             content: z.string().max(32000),
+            save_only: z.boolean().default(false),
             configuration: z
               .object({
                 provider: z.enum(["codex", "antigravity"]),
@@ -361,17 +489,7 @@ export class Rpc {
               .optional(),
           })
           .parse(input);
-        if (p.configuration) {
-          const key =
-            p.configuration.provider === "codex"
-              ? "codex_implementation"
-              : "antigravity";
-          SettingsSchema.parse({
-            ...e.db.settings(),
-            [key]: p.configuration.config,
-          });
-        }
-        return e.followUp(p.id, p.content, p.configuration);
+        return e.followUp(p.id, p.content, p.configuration, p.save_only);
       }
       case "task.complete": {
         const t = e.db.task(idInput.parse(input).id);
@@ -424,21 +542,14 @@ export class Rpc {
           e.providers(),
           new GitHubClient(e.root).detect(),
         ]);
-        const ag = agents.find((p) => p.provider === "antigravity");
-        const success = e.db.all<{ ended_at: string }>(
-          "SELECT ended_at FROM agent_runs WHERE provider='antigravity' AND status='completed' ORDER BY ended_at DESC LIMIT 1",
-        )[0];
-        if (ag && success)
-          ag.authentication = `Connected · last successful run ${success.ended_at}`;
         return [
           ...agents,
           {
             provider: "github",
             installed: github.installed,
             version: github.version,
-            authentication: github.connected
-              ? `Connected as @${github.username}`
-              : "Not connected",
+            connected: github.connected,
+            accountLabel: github.username ? `@${github.username}` : undefined,
             models: [],
             efforts: [],
             capabilities: github.installed

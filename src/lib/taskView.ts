@@ -21,7 +21,7 @@ const state = (id: string) => {
   if (!value) {
     value = {
       tab: "Chat",
-      draft: "",
+      draft: localStorage.getItem(`vibestar.draft.${id}`) || "",
       diffMode: "side",
       diffPath: "",
       diffReview: false,
@@ -39,6 +39,11 @@ const state = (id: string) => {
   return value;
 };
 export const updateTaskView = (id: string, update: Partial<TaskView>) => {
+  if (update.draft !== undefined) {
+    if (update.draft)
+      localStorage.setItem(`vibestar.draft.${id}`, update.draft);
+    else localStorage.removeItem(`vibestar.draft.${id}`);
+  }
   views.set(id, { ...state(id), ...update });
   for (const listener of listeners) listener();
 };

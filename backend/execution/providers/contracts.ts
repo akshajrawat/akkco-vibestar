@@ -4,12 +4,48 @@ export interface ProviderDetection {
   provider: string;
   installed: boolean;
   version: string;
-  authentication: string;
-  models: string[];
+  connected: boolean;
+  accountLabel?: string;
+  subscriptionLimits?: {
+    reportedAt: string;
+    planType?: string;
+    windows: {
+      usedPercent: number;
+      windowDurationMins: number;
+      resetsAt: number;
+    }[];
+  };
+  models: {
+    id: string;
+    label?: string;
+    supportedEfforts: string[];
+    isDefault?: boolean;
+  }[];
   efforts: string[];
   capabilities: string[];
   error: string | null;
 }
+export const supportedEfforts = (
+  d: ProviderDetection | undefined,
+  model: string,
+) =>
+  (model
+    ? d?.models.find((m) => m.id === model)
+    : d?.models.find((m) => m.isDefault)
+  )?.supportedEfforts ||
+  d?.efforts ||
+  [];
+export const configurationError = (
+  d: ProviderDetection,
+  config: StageConfig,
+) => {
+  if (config.model && !d.models.some((m) => m.id === config.model))
+    return `${d.provider} model '${config.model}' is not available from the official CLI. Refresh model discovery.`;
+  const efforts = supportedEfforts(d, config.model);
+  if (!efforts.includes(config.effort))
+    return `${d.provider} model '${config.model || "CLI default"}' does not support '${config.effort}' effort. Supported: ${efforts.join(", ") || "capabilities unavailable"}.`;
+  return null;
+};
 export interface AgentRunRequest {
   runId: string;
   cwd: string;
@@ -18,6 +54,7 @@ export interface AgentRunRequest {
   prompt: string;
   schemaPath: string;
   schema: Record<string, unknown>;
+  workspaceType?: "task" | "utility";
 }
 export interface AgentProvider {
   readonly name: string;
@@ -30,6 +67,11 @@ export interface AgentProvider {
   normalize: (raw: Record<string, unknown>) => NormalizedEvent[];
   result: (raw: Record<string, unknown>) => unknown;
   conversationId: (raw: Record<string, unknown>) => string | null;
+  outputSchema?: (schema: Record<string, unknown>) => Record<string, unknown>;
+  parseStructuredOutput?: (
+    schema: Record<string, unknown>,
+    value: unknown,
+  ) => unknown;
 }
 const list = z.array(z.string());
 export const planSchemas = {

@@ -6,13 +6,22 @@ export const Status = ({ status }: { status: string }) => {
       ? "success"
       : ["failed"].includes(status)
         ? "failure"
-        : ["interrupted"].includes(status)
+        : ["interrupted", "cancelled"].includes(status)
           ? "warning"
           : "muted";
   return (
-    <span className={`status ${color}`}>
+    <span
+      className={`status status-chip ${color}`}
+      title={status.replaceAll("_", " ")}
+    >
       <i />
-      {status.replaceAll("_", " ")}
+      {activeStatuses.includes(status)
+        ? "Running"
+        : status === "ready_for_review"
+          ? "Ready"
+          : status
+              .replaceAll("_", " ")
+              .replace(/^./, (letter) => letter.toUpperCase())}
     </span>
   );
 };

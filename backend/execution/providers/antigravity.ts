@@ -7,6 +7,12 @@ import {
   type ProviderDetection,
 } from "./contracts";
 import type { NormalizedEvent } from "../../domain";
+// These CLI models expose adjustable thinking effort rather than fixed variants.
+// New unsuffixed models require an explicit capability entry before execution.
+const adjustableModels = new Set([
+  "claude-sonnet-4-6",
+  "claude-opus-4-6-thinking",
+]);
 export class AntigravityProvider implements AgentProvider {
   readonly name = "antigravity";
   detect = async (
@@ -17,7 +23,7 @@ export class AntigravityProvider implements AgentProvider {
       provider: this.name,
       installed: false,
       version: "",
-      authentication: "Unknown · official CLI owns authentication",
+      connected: false,
       models: [],
       efforts: ["low", "medium", "high", "xhigh", "max"],
       capabilities: [],
@@ -36,11 +42,29 @@ export class AntigravityProvider implements AgentProvider {
       ]);
       const models = await capture("agy", ["models"], cwd, signal);
       if (models.code === 0) {
-        d.models = (models.stdout + models.stderr)
+        d.models = models.stdout
           .split("\n")
           .filter((s) => s.includes("\t"))
-          .map((s) => s.split("\t")[0]);
-        d.authentication = "Model discovery available · account owned by CLI";
+          .map((s) => {
+            const [id, label] = s.trim().split("\t");
+            const effort = id.match(/-(low|medium|high|xhigh|max)$/)?.[1];
+            return {
+              id,
+              label,
+              supportedEfforts: effort
+                ? [effort]
+                : adjustableModels.has(id)
+                  ? d.efforts
+                  : [],
+            };
+          });
+        d.connected = d.models.length > 0;
+        d.accountLabel = d.connected
+          ? "Authenticated account · managed by Antigravity CLI"
+          : undefined;
+        if (!d.connected)
+          d.error =
+            "Model discovery returned no available models. Reconnect Antigravity.";
       } else d.error = models.stderr;
       d.capabilities = [
         "plan-mode",

@@ -25,6 +25,7 @@ import { useTaskView, updateTaskView } from "./lib/taskView";
 import { rpc, errorMessage } from "./lib/api";
 import { ScheduledPage } from "./components/ScheduledPage";
 import { TitleBar } from "./components/TitleBar";
+import { DataMigration } from "./components/DataMigration";
 const navigation = [
   ["Tasks", ListTodo],
   ["Scheduled", GitPullRequest],
@@ -139,6 +140,9 @@ export const App = () => {
         }
       />
       <div className="app-shell">
+        {snapshot?.migration && (
+          <DataMigration migration={snapshot.migration} refresh={refresh} />
+        )}
         {sidebar && (
           <>
             <aside className="sidebar" style={{ width: sidebarWidth }}>
@@ -173,7 +177,7 @@ export const App = () => {
                     <button
                       className={page === label ? "selected" : ""}
                       key={label}
-                      aria-label={label}
+                      aria-label={label === "Scheduled" ? "PR watch" : label}
                       onClick={() => navigate(label)}
                     >
                       <Icon size={14} />
@@ -209,7 +213,13 @@ export const App = () => {
         <main className="main-area">
           {error && (
             <div className="global-error">
-              <span>{error}</span>
+              <div>
+                <strong>Couldn't complete the operation</strong>
+                <details>
+                  <summary>Technical details</summary>
+                  <pre>{error}</pre>
+                </details>
+              </div>
               <Button
                 size="icon"
                 variant="ghost"

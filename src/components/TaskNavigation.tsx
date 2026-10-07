@@ -42,6 +42,7 @@ export const TaskNavigation = ({
             </button>
             {!collapsed.has(repo.id) &&
               tasks
+                .filter((t) => !t.archived)
                 .filter((t) => t.repo_id === repo.id)
                 .map((task) => (
                   <button

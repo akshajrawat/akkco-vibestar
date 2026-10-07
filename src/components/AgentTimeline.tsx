@@ -11,18 +11,24 @@ import {
 import type { AgentEvent, Run, Message, DiffFile } from "../lib/types";
 import { eventData, duration } from "../lib/api";
 import { AgentResponse } from "./AgentResponse";
+import { RunError } from "./RunError";
+import { Button } from "./ui/button";
 export const AgentTimeline = ({
   events,
   runs,
   messages = [],
   files = [],
   openDiff,
+  retryMessage,
+  editMessage,
 }: {
   events: AgentEvent[];
   runs: Run[];
   messages?: Message[];
   files?: DiffFile[];
   openDiff?: (path: string) => void;
+  retryMessage?: (message: Message) => void;
+  editMessage?: (message: Message) => void;
 }) => {
   const entries = useMemo(() => {
     const result: {
@@ -124,10 +130,13 @@ export const AgentTimeline = ({
         className={`tool-event ${failed ? "tool-failed" : ""}`}
         key={row.key}
       >
-        <details open={failed}>
+        <details>
           <summary>
             <Icon size={13} />
-            <span>{label}</span>
+            <span>
+              {label}
+              {command ? " ·" : ""}
+            </span>
             <code>
               {paths.length
                 ? `${paths.length} file${paths.length === 1 ? "" : "s"}`
@@ -204,6 +213,14 @@ export const AgentTimeline = ({
       content: (
         <article className="user-message">
           <small>You</small>
+          {message.status === "queued" && (
+            <small className="running">Queued for the next stage</small>
+          )}
+          {message.status === "draft" && (
+            <small className="warning">
+              Saved instruction · waiting to resume
+            </small>
+          )}
           <p>
             {
               message.content.split(
@@ -211,6 +228,37 @@ export const AgentTimeline = ({
               )[0]
             }
           </p>
+          <div className="message-actions">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(message.content)
+                  .catch(() => {})
+              }
+            >
+              Copy
+            </Button>
+            {retryMessage && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => retryMessage(message)}
+              >
+                Retry
+              </Button>
+            )}
+            {editMessage && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => editMessage(message)}
+              >
+                Edit &amp; retry
+              </Button>
+            )}
+          </div>
         </article>
       ),
     });
@@ -267,7 +315,7 @@ export const AgentTimeline = ({
           {run.output && run.status === "completed" && (
             <AgentResponse text={run.output} />
           )}
-          {run.error && <p className="error-box">{run.error}</p>}
+          {run.error && <RunError error={run.error} run={run} />}
           {run.id && (
             <div className="turn-outcome">
               {run.status === "running" ? (

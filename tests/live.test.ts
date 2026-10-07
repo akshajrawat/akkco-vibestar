@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Engine } from "../backend/execution/engine";
-import { parseIssue } from "../backend/domain";
+import { parseIssue, defaultSettings } from "../backend/domain";
 import { fixtureRepository } from "./fixtures";
 import { AntigravityProvider } from "../backend/execution/providers/antigravity";
 it.skipIf(process.env.VIBESTAR_LIVE_TEST !== "1")(
@@ -15,10 +15,12 @@ it.skipIf(process.env.VIBESTAR_LIVE_TEST !== "1")(
       const detection = await new AntigravityProvider().detect(dir);
       const model =
         process.env.VIBESTAR_AG_MODEL ||
-        detection.models.find((m) => m.endsWith("-low")) ||
-        detection.models[0];
+        detection.models.find((m) => m.id.endsWith("-low"))?.id ||
+        detection.models[0]?.id ||
+        "";
       expect(model).toBeTruthy();
       engine.db.saveSettings({
+        ...defaultSettings,
         concurrency: 2,
         antigravity: { model, effort: "low", timeout_secs: 600 },
         codex_plan: {

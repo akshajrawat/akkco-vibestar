@@ -7,8 +7,12 @@ import {
   type ProviderDetection,
 } from "./contracts";
 import type { NormalizedEvent } from "../../domain";
+import { discoverCodexModels } from "./codex-models";
+import { codexSchema, codexResult } from "./codex-schema";
 export class CodexProvider implements AgentProvider {
   readonly name = "codex";
+  outputSchema = codexSchema;
+  parseStructuredOutput = codexResult;
   detect = async (
     cwd: string,
     signal?: AbortSignal,
@@ -17,9 +21,9 @@ export class CodexProvider implements AgentProvider {
       provider: this.name,
       installed: false,
       version: "",
-      authentication: "Not connected",
+      connected: false,
       models: [],
-      efforts: ["none", "minimal", "low", "medium", "high", "xhigh"],
+      efforts: [],
       capabilities: [],
       error: null,
     };
@@ -36,6 +40,7 @@ export class CodexProvider implements AgentProvider {
         "--output-schema",
         "--ignore-user-config",
         "--ignore-rules",
+        "--skip-git-repo-check",
       ]);
       d.capabilities = [
         "read-only",
@@ -46,12 +51,15 @@ export class CodexProvider implements AgentProvider {
       ];
       const login = await capture("codex", ["login", "status"], cwd, signal);
       const output = login.stdout + login.stderr;
-      d.authentication =
-        login.code === 0 && output.includes("ChatGPT")
-          ? "Connected · ChatGPT subscription"
-          : login.code === 0
-            ? "API-key login detected; connect with ChatGPT to use subscription"
-            : "Not connected";
+      d.connected = login.code === 0 && output.includes("ChatGPT");
+      d.accountLabel = d.connected ? "ChatGPT subscription" : undefined;
+      if (login.code === 0 && !d.connected)
+        d.error =
+          "API-key login detected. Connect with ChatGPT to use your subscription.";
+      if (d.connected) {
+        Object.assign(d, await discoverCodexModels(cwd, signal));
+        d.efforts = d.models.find((m) => m.isDefault)?.supportedEfforts || [];
+      }
     } catch (e) {
       d.error = String(e);
     }
@@ -64,6 +72,7 @@ export class CodexProvider implements AgentProvider {
       "exec",
       "--ignore-user-config",
       "--ignore-rules",
+      ...(r.workspaceType === "utility" ? ["--skip-git-repo-check"] : []),
       "--json",
       "--color",
       "never",
@@ -77,6 +86,8 @@ export class CodexProvider implements AgentProvider {
       'approval_policy="never"',
       "-c",
       'forced_login_method="chatgpt"',
+      "-c",
+      "analytics.enabled=false",
       "-c",
       "sandbox_workspace_write.network_access=false",
       "--output-schema",

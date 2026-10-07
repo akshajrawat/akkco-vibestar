@@ -1,12 +1,144 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import type { ScheduleJob } from "../../backend/scheduled/contracts";
 import { RefreshCw, Settings2, ExternalLink, Pause, Play } from "lucide-react";
 import type { Snapshot } from "../lib/types";
 import { rpc, errorMessage } from "../lib/api";
 import { Button } from "./ui/button";
-const ago = (value: string | null) =>
-  value
-    ? `${Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 60000))}m ago`
-    : "not yet";
+import { PrDetails, PrState, prTone } from "./PrDetails";
+const ago = (value: string | null) => {
+  if (!value || !Number.isFinite(Date.parse(value))) return "not yet";
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - Date.parse(value)) / 60000),
+  );
+  return minutes < 1
+    ? "just now"
+    : minutes < 60
+      ? `${minutes}m ago`
+      : minutes < 1440
+        ? `${Math.floor(minutes / 60)}h ago`
+        : `${Math.floor(minutes / 1440)}d ago`;
+};
+const WatchRow = ({
+  job,
+  details,
+  children,
+}: {
+  job: ScheduleJob;
+  details: () => void;
+  children: ReactNode;
+}) => {
+  const state = job.action?.conversationState;
+  const summary = job.error
+    ? "Inspection unavailable. Retry to get a current decision."
+    : job.status === "analyzing"
+      ? "Assessing the review conversation."
+      : job.status === "polling"
+        ? "Checking the latest discussion and CI state."
+        : job.status === "pending"
+          ? "Discussion analysis is queued."
+          : state === "waiting_for_reviewer"
+            ? "No action required from you. Waiting for reviewer feedback."
+            : state === "approved"
+              ? "Approved. No action required."
+              : state === "waiting_for_ci"
+                ? "Checks are running. Waiting for CI."
+                : state === "merged"
+                  ? "Merged. No action required."
+                  : state === "closed"
+                    ? "Closed. No action required."
+                    : job.action?.summary ||
+                      "Waiting for the first inspection.";
+  const checks =
+    job.pending_snapshot?.checks || job.last_snapshot?.checks || [];
+  return (
+    <article className={`pr-inbox-row pr-${prTone(job)}`}>
+      <div className="pr-row-content">
+        <div className="pr-row-heading">
+          <button
+            type="button"
+            className="pr-details-link pr-reference"
+            onClick={details}
+          >
+            {job.url.replace("https://github.com/", "").replace("/pull/", " #")}
+          </button>
+          <PrState job={job} />
+        </div>
+        <button
+          type="button"
+          className="pr-title pr-details-link"
+          title={job.title}
+          onClick={details}
+        >
+          {job.title || "Pull request"}
+        </button>
+        <p className="pr-one-line" title={summary}>
+          {summary}
+        </p>
+        <div className="pr-metadata">
+          <span>Last checked {ago(job.last_checked_at)}</span>
+          <span>
+            {job.archived
+              ? "Archived"
+              : !job.enabled
+                ? "Paused"
+                : `Next ${Math.max(0, Math.ceil((Date.parse(job.next_run_at) - Date.now()) / 60000))}m`}
+          </span>
+          {job.action?.lastMeaningfulActivityAt && (
+            <span>
+              Last meaningful activity{" "}
+              {ago(job.action.lastMeaningfulActivityAt)}
+            </span>
+          )}
+        </div>
+        <details className="pr-row-details">
+          <summary>
+            Why this state{" "}
+            <span>
+              ·{" "}
+              {job.analysis_method === "utility_ai"
+                ? "Utility AI"
+                : job.analysis_method === "deterministic"
+                  ? "No AI used"
+                  : "Awaiting inspection"}
+            </span>
+          </summary>
+          {job.error ? (
+            <p className="failure">{errorMessage(job.error)}</p>
+          ) : (
+            <>
+              <p>
+                {job.action?.reason ||
+                  "No additional explanation available yet."}
+              </p>
+              {job.action?.recommendedNextAction && (
+                <p>{job.action.recommendedNextAction}</p>
+              )}
+              {job.action?.lastMeaningfulActor && (
+                <small>
+                  Last meaningful actor:{" "}
+                  {job.action.lastMeaningfulActor === "me"
+                    ? "you"
+                    : job.action.lastMeaningfulActor}
+                </small>
+              )}
+              {!!checks.length && (
+                <small>
+                  Checks: {checks.filter((c) => c.state === "SUCCESS").length}/
+                  {checks.length} passed
+                </small>
+              )}
+            </>
+          )}
+          <Button size="sm" variant="ghost" onClick={details}>
+            Conversation, checks &amp; analysis
+          </Button>
+        </details>
+      </div>
+      {children}
+    </article>
+  );
+};
 export const ScheduledAttention = ({
   snapshot,
   refresh,
@@ -17,6 +149,7 @@ export const ScheduledAttention = ({
   open: (id: string) => void;
 }) => {
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<string>();
   return (
     <section className="inbox-group">
       <h2>
@@ -25,27 +158,9 @@ export const ScheduledAttention = ({
       {error && <p className="error-box">{error}</p>}
       {snapshot.attention?.map((item) => {
         const job = snapshot.scheduled?.find((j) => j.id === item.job_id);
-        const reference = job?.url
-          .replace("https://github.com/", "")
-          .replace("/pull/", " #");
+        if (!job) return null;
         return (
-          <article className="pr-inbox-row attention-row" key={item.id}>
-            <i className="attention-dot" />
-            <div className="pr-row-content">
-              <strong>{reference}</strong>
-              {job?.title && <span className="pr-title">{job.title}</span>}
-              <p>{item.summary}</p>
-              <small>{ago(item.created_at)}</small>
-              {job?.action?.recommendedNextAction && (
-                <small>{job.action.recommendedNextAction}</small>
-              )}
-              {item.error && (
-                <details>
-                  <summary>Analysis unavailable</summary>
-                  <p className="failure">{item.error}</p>
-                </details>
-              )}
-            </div>
+          <WatchRow job={job} details={() => setSelected(job.id)} key={item.id}>
             <div className="row-actions">
               {job && !job.archived && (
                 <Button
@@ -93,7 +208,7 @@ export const ScheduledAttention = ({
                   variant="ghost"
                   onClick={() => void window.vibestar.openExternal(job.url)}
                 >
-                  View PR <ExternalLink size={11} />
+                  Open PR <ExternalLink size={11} />
                 </Button>
               )}
               <Button
@@ -108,11 +223,17 @@ export const ScheduledAttention = ({
                 Dismiss
               </Button>
             </div>
-          </article>
+          </WatchRow>
         );
       })}
       {!snapshot.attention?.length && (
         <p className="empty-row">No PRs need your attention.</p>
+      )}
+      {selected && snapshot.scheduled?.find((j) => j.id === selected) && (
+        <PrDetails
+          job={snapshot.scheduled.find((j) => j.id === selected)!}
+          close={() => setSelected(undefined)}
+        />
       )}
     </section>
   );
@@ -127,6 +248,7 @@ export const ScheduledPage = ({
   open: (id: string) => void;
 }) => {
   const [config, setConfig] = useState(false);
+  const [selected, setSelected] = useState<string>();
   const [url, setUrl] = useState("");
   const [task, setTask] = useState("");
   const [busy, setBusy] = useState("");
@@ -248,7 +370,7 @@ export const ScheduledPage = ({
                 })
               }
             />
-            Codex verifies Antigravity review analysis
+            Optional Codex verification after Utility AI
           </label>
           <small>Defaults apply to newly discovered watches.</small>
         </section>
@@ -269,35 +391,11 @@ export const ScheduledPage = ({
               <small>{rows.length}</small>
             </h2>
             {rows.map((job) => (
-              <article className="pr-inbox-row" key={job.id}>
-                <i className={`watch-dot ${job.enabled ? "enabled" : ""}`} />
-                <div className="pr-row-content">
-                  <strong>
-                    {job.url
-                      .replace("https://github.com/", "")
-                      .replace("/pull/", " #")}
-                  </strong>
-                  {job.title && <span className="pr-title">{job.title}</span>}
-                  <p>
-                    {job.action?.summary ||
-                      job.title ||
-                      "Waiting for first check"}
-                  </p>
-                  <small>
-                    {job.archived
-                      ? "Watch archived"
-                      : `Checked ${ago(job.last_checked_at)} · next ${Math.max(0, Math.ceil((Date.parse(job.next_run_at) - Date.now()) / 60000))}m`}
-                    {["polling", "analyzing", "pending"].includes(job.status)
-                      ? ` · ${job.status}`
-                      : ""}
-                  </small>
-                  {job.error && (
-                    <details>
-                      <summary>Inspection error</summary>
-                      <p className="failure">{job.error}</p>
-                    </details>
-                  )}
-                </div>
+              <WatchRow
+                job={job}
+                details={() => setSelected(job.id)}
+                key={job.id}
+              >
                 <div className="row-actions">
                   {job.task_id && (
                     <Button
@@ -311,10 +409,10 @@ export const ScheduledPage = ({
                   <Button
                     size="sm"
                     variant="ghost"
-                    aria-label={`View ${job.url}`}
+                    aria-label={`Open PR ${job.url}`}
                     onClick={() => void window.vibestar.openExternal(job.url)}
                   >
-                    <ExternalLink size={12} />
+                    <ExternalLink size={12} /> Open PR
                   </Button>
                   {!job.archived && (
                     <>
@@ -362,7 +460,7 @@ export const ScheduledPage = ({
                     </>
                   )}
                 </div>
-              </article>
+              </WatchRow>
             ))}
             {!rows.length && (
               <p className="empty-row">
@@ -460,6 +558,12 @@ export const ScheduledPage = ({
         Monitoring runs while Vibestar is open. Unchanged PRs use no model
         calls.
       </footer>
+      {selected && jobs.find((j) => j.id === selected) && (
+        <PrDetails
+          job={jobs.find((j) => j.id === selected)!}
+          close={() => setSelected(undefined)}
+        />
+      )}
     </div>
   );
 };

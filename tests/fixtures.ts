@@ -76,9 +76,10 @@ export class FixtureProvider extends CodexProvider {
       provider: "test-fixture",
       installed: true,
       version: "TEST ONLY",
-      authentication: "Connected · ChatGPT subscription",
-      models: [],
-      efforts: ["high"],
+      connected: true,
+      accountLabel: "ChatGPT subscription",
+      models: [{ id: "next-model", supportedEfforts: ["low", "high"] }],
+      efforts: ["low", "medium", "high"],
       capabilities: ["test-fixture"],
       error: null,
     };
@@ -89,6 +90,9 @@ export class FixtureProvider extends CodexProvider {
       ? {
           manualActionRequired: true,
           severity: "action_required",
+          conversationState: "waiting_for_me",
+          outstandingRequests: [],
+          alreadyAddressed: [],
           summary: "Add test",
           reason: "Review feedback",
           newActivity: ["Add coverage"],

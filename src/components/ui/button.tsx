@@ -24,6 +24,10 @@ export const Button = ({
   VariantProps<typeof variants> & { asChild?: boolean }) => {
   const Comp = asChild ? Slot : "button";
   return (
-    <Comp className={cn(variants({ variant, size, className }))} {...props} />
+    <Comp
+      type="button"
+      className={cn(variants({ variant, size, className }))}
+      {...props}
+    />
   );
 };

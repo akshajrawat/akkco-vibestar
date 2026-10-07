@@ -46,9 +46,30 @@ export class GitWorkspace {
     );
   };
   fetch = async (repo: Repository, signal?: AbortSignal) => {
-    await checked("git", ["fetch", "upstream", "--prune"], repo.path, signal);
+    await checked(
+      "git",
+      this.fetchArgs(repo, repo.base_branch),
+      repo.path,
+      signal,
+    );
     repo.last_fetched = now();
   };
+  private fetchArgs = (repo: Repository, branch: string) =>
+    repo.source === "imported"
+      ? [
+          "fetch",
+          "--no-write-fetch-head",
+          "--no-tags",
+          "--no-recurse-submodules",
+          "--",
+          repo.upstream_url,
+          `+refs/heads/${branch}:refs/vibestar/${repo.id}/${branch}`,
+        ]
+      : ["fetch", "upstream", "--prune"];
+  private baseRef = (repo: Repository, branch: string) =>
+    repo.source === "imported"
+      ? `refs/vibestar/${repo.id}/${branch}`
+      : `refs/remotes/upstream/${branch}`;
   prepare = async (
     repo: Repository,
     t: Task,
@@ -59,7 +80,18 @@ export class GitWorkspace {
     this.withLock(repo.id, async () => {
       const command = async (args: string[]) => {
         const started = now();
-        const o = await capture("git", args, repo.path, signal);
+        const o = await capture(
+          "git",
+          [
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            ...args,
+          ],
+          repo.path,
+          signal,
+        );
         await trace?.({
           argv: ["git", ...args],
           cwd: repo.path,
@@ -73,7 +105,7 @@ export class GitWorkspace {
           );
         return o.stdout.trim();
       };
-      await command(["fetch", "upstream", "--prune"]);
+      await command(this.fetchArgs(repo, t.base_branch));
       repo.last_fetched = now();
       await checked(
         "git",
@@ -86,7 +118,7 @@ export class GitWorkspace {
         [
           "rev-parse",
           "--verify",
-          `refs/remotes/upstream/${t.base_branch}^{commit}`,
+          `${this.baseRef(repo, t.base_branch)}^{commit}`,
         ],
         repo.path,
         signal,

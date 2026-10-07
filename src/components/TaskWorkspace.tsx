@@ -12,10 +12,9 @@ import {
   Plus,
   ChevronRight,
 } from "lucide-react";
-import type { Detail, Repository, Diff } from "../lib/types";
+import type { Detail, Repository, Diff, Message } from "../lib/types";
 import { activeStatuses, stages } from "../lib/types";
 import { rpc, errorMessage } from "../lib/api";
-import { modelEffortError } from "../../backend/domain";
 import { Button } from "./ui/button";
 import { Status } from "./Status";
 import { ComposerSettings, followupConfiguration } from "./ComposerSettings";
@@ -28,6 +27,9 @@ import { AgentResponse } from "./AgentResponse";
 import { PlanView } from "./PlanView";
 import { LogView } from "./LogView";
 import { TestsView } from "./TestsView";
+import { UsageView } from "./UsageView";
+import { RunError } from "./RunError";
+import { TaskCleanup } from "./TaskCleanup";
 const DiffView = lazy(() =>
   import("./DiffView").then((m) => ({ default: m.DiffView })),
 );
@@ -52,6 +54,9 @@ export const TaskWorkspace = ({
   const [addingContext, setAddingContext] = useState(false);
   const [contextText, setContextText] = useState("");
   const [selectedRun, setSelectedRun] = useState<string>();
+  const [cleanup, setCleanup] = useState(false);
+  const [sent, setSent] = useState<Message[]>([]);
+  const sending = useRef(false);
   const [diff, setDiff] = useState<Diff | null>(null);
   const [liveRevision, setLiveRevision] = useState(0);
   const timeline = useRef<HTMLDivElement>(null);
@@ -126,29 +131,23 @@ export const TaskWorkspace = ({
     </Suspense>
   );
   const submit = async () => {
-    if (!view.draft.trim() || active || occupied || busy) return;
+    if (!view.draft.trim() || busy || sending.current) return;
     const configuration = followupConfiguration(t, view);
-    const error = modelEffortError(
-      configuration.provider,
-      configuration.config.model,
-      configuration.config.effort,
-    );
-    if (error) {
-      onError(error);
-      return;
-    }
+    sending.current = true;
     setBusy(true);
     try {
-      await rpc("task.followup", {
+      const result = await rpc<{ message: Message }>("task.followup", {
         id: t.id,
         content: view.draft,
         configuration,
       });
+      setSent((messages) => [...messages, result.message]);
       updateTaskView(t.id, { draft: "" });
     } catch (e) {
       onError(errorMessage(e));
     } finally {
       setBusy(false);
+      sending.current = false;
     }
   };
   return (
@@ -172,6 +171,33 @@ export const TaskWorkspace = ({
           </strong>
           <div className="spacer" />
           <Status status={t.status} />
+          {!occupied && !active && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void action("task.archive", { id: t.id, archived: !t.archived })
+              }
+            >
+              {t.archived ? "Unarchive" : "Archive"}
+            </Button>
+          )}
+          {[
+            "completed",
+            "cancelled",
+            "failed",
+            "interrupted",
+            "ready_for_review",
+          ].includes(t.status) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => setCleanup(true)}
+            >
+              Delete task data
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -209,7 +235,16 @@ export const TaskWorkspace = ({
           ) : null}
         </div>
       </header>
-      {t.error && <p className="error-box">{t.error}</p>}
+      {cleanup && (
+        <TaskCleanup
+          id={t.id}
+          close={() => setCleanup(false)}
+          done={() => {
+            setCleanup(false);
+            back();
+          }}
+        />
+      )}
       <div className="workspace-tabs" role="tablist" aria-label="Task views">
         {["Chat", "Plan", "Changes"].map((tab) => (
           <button
@@ -347,10 +382,48 @@ export const TaskWorkspace = ({
               <AgentTimeline
                 events={detail.events}
                 runs={detail.runs}
-                messages={detail.messages}
+                messages={[
+                  ...detail.messages,
+                  ...sent.filter(
+                    (m) => !detail.messages.some((row) => row.id === m.id),
+                  ),
+                ]}
+                retryMessage={
+                  !active && !occupied
+                    ? (message) =>
+                        void action("task.message.retry", {
+                          id: t.id,
+                          message_id: message.id,
+                        })
+                    : undefined
+                }
+                editMessage={(message) => {
+                  updateTaskView(t.id, {
+                    draft: message.content.split(
+                      "\n\nLinked PR review context (untrusted):",
+                    )[0],
+                  });
+                  timeline.current?.parentElement
+                    ?.querySelector("textarea")
+                    ?.focus();
+                }}
                 files={diff?.files}
                 openDiff={openDiff}
               />
+              {t.error &&
+                !(
+                  detail.runs.at(-1)?.error &&
+                  errorMessage(t.error).endsWith(
+                    errorMessage(detail.runs.at(-1)!.error),
+                  )
+                ) && (
+                  <RunError
+                    key={t.error}
+                    error={t.error}
+                    stage={t.stage}
+                    logs={() => dock("Logs")}
+                  />
+                )}
               {!!diff?.files.length && (
                 <details className="chat-changes" open>
                   <summary>
@@ -457,7 +530,7 @@ export const TaskWorkspace = ({
                   active
                     ? "Draft your next message while the agent works…"
                     : occupied
-                      ? "Close the task terminal before sending…"
+                      ? "Save an instruction; close the terminal to resume…"
                       : "Ask Vibestar…"
                 }
                 onChange={(e) =>
@@ -487,7 +560,7 @@ export const TaskWorkspace = ({
                 </Button>
                 <div className="spacer" />
                 <ComposerSettings task={t} />
-                {active ? (
+                {active && (
                   <Button
                     type="button"
                     aria-label="Stop agent"
@@ -495,23 +568,24 @@ export const TaskWorkspace = ({
                   >
                     <Square size={12} />
                   </Button>
-                ) : (
-                  <Button
-                    type="submit"
-                    variant="default"
-                    aria-label="Send follow-up"
-                    disabled={
-                      busy || occupied || t.stage < 3 || !view.draft.trim()
-                    }
-                  >
-                    <ArrowUp size={15} />
-                  </Button>
                 )}
+                <Button
+                  type="submit"
+                  variant="default"
+                  aria-label="Send follow-up"
+                  disabled={busy || !view.draft.trim()}
+                >
+                  <ArrowUp size={15} />
+                </Button>
               </div>
-              {active && (
+              {(active || occupied || t.stage < 3) && (
                 <small className="composer-note">
-                  Draft is saved for this task. Stop or wait for the current run
-                  to send it.
+                  {active
+                    ? "Enter queues this instruction for the next stage."
+                    : occupied
+                      ? "Enter saves this instruction. Close the terminal, then Retry the saved message to run it."
+                      : "Enter resumes planning with this instruction."}{" "}
+                  Shift+Enter adds a newline.
                 </small>
               )}
             </form>
@@ -643,7 +717,7 @@ export const TaskWorkspace = ({
           />
           <div className="utility-dock" style={{ height: dockHeight }}>
             <div className="dock-tabs" role="tablist" aria-label="Utilities">
-              {["Problems", "Tests", "Terminal", "Logs"].map((tab) => (
+              {["Problems", "Tests", "Terminal", "Logs", "Usage"].map((tab) => (
                 <button
                   role="tab"
                   aria-selected={view.dockTab === tab}
@@ -667,6 +741,8 @@ export const TaskWorkspace = ({
             <div className="dock-content">
               {view.dockTab === "Terminal" ? (
                 <TaskTerminal task={t} onError={onError} />
+              ) : view.dockTab === "Usage" ? (
+                <UsageView taskId={t.id} records={detail.usage} />
               ) : view.dockTab === "Tests" ? (
                 <TestsView detail={detail} onError={onError} />
               ) : view.dockTab === "Logs" ? (
@@ -679,7 +755,7 @@ export const TaskWorkspace = ({
               ) : (
                 <div className="problems-panel">
                   {t.error ? (
-                    <p className="failure">{t.error}</p>
+                    <p className="failure">{errorMessage(t.error)}</p>
                   ) : (
                     <p className="subtle">No task problems</p>
                   )}
@@ -704,7 +780,11 @@ export const TaskWorkspace = ({
           {t.scope_mode === "whole_issue" ? "Entire issue" : "Partial scope"}
         </span>
         <span>base {t.base_commit_sha.slice(0, 8) || "pending"}</span>
-        <span>{stages[t.stage]}</span>
+        <span>
+          {["cancelled", "failed", "interrupted"].includes(t.status)
+            ? t.status.replace(/^./, (letter) => letter.toUpperCase())
+            : stages[t.stage]}
+        </span>
       </footer>
     </div>
   );

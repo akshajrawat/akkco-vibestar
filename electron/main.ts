@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, Menu, screen } from "electron";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, cp, access } from "node:fs/promises";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline";
@@ -14,9 +15,40 @@ let window: BrowserWindow | null = null;
 let bridge: CoreBridge | null = null;
 let quitting = false;
 const main = async () => {
-  if (!app.isPackaged && process.env.VIBESTAR_USER_DATA) {
-    await mkdir(process.env.VIBESTAR_USER_DATA, { recursive: true });
-    app.setPath("userData", process.env.VIBESTAR_USER_DATA);
+  const previousProfile = app.getPath("userData");
+  const profile =
+    !app.isPackaged && process.env.VIBESTAR_USER_DATA
+      ? process.env.VIBESTAR_USER_DATA
+      : process.platform === "linux"
+        ? join(
+            process.env.VIBESTAR_HOME || join(homedir(), ".akkco-vibestar"),
+            "runtime",
+            "desktop",
+          )
+        : null;
+  if (profile) {
+    await mkdir(profile, { recursive: true });
+    if (
+      process.platform === "linux" &&
+      !process.env.VIBESTAR_USER_DATA &&
+      previousProfile !== profile
+    ) {
+      for (const name of ["desktop.json", "Local Storage", "Preferences"]) {
+        const target = join(profile, name);
+        if (
+          await access(target)
+            .then(() => false)
+            .catch(() => true)
+        ) {
+          await cp(join(previousProfile, name), target, {
+            recursive: true,
+          }).catch((error) => {
+            if (error.code !== "ENOENT") throw error;
+          });
+        }
+      }
+    }
+    app.setPath("userData", profile);
   }
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -57,13 +89,30 @@ const main = async () => {
     )
       throw new Error("Untrusted IPC sender");
   };
-  ipcMain.handle("core:rpc", (event, input) => {
+  ipcMain.handle("core:rpc", async (event, input) => {
     trusted(event);
-    const p = z
-      .object({ method: z.string().max(100), params: z.unknown() })
-      .parse(input);
-    if (!bridge) throw new Error("Core not initialized");
-    return bridge.request(p.method, p.params);
+    try {
+      const p = z
+        .object({ method: z.string().max(100), params: z.unknown() })
+        .parse(input);
+      if (!bridge) throw new Error("Core not initialized");
+      return { ok: true, result: await bridge.request(p.method, p.params) };
+    } catch (error) {
+      const failure = error as Error & {
+        kind?: string;
+        context?: Record<string, unknown>;
+        technical?: string;
+      };
+      return {
+        ok: false,
+        error: {
+          kind: failure.kind || "operation_failed",
+          message: failure.message || "The operation could not be completed",
+          context: failure.context,
+          technical: failure.technical || failure.stack,
+        },
+      };
+    }
   });
   ipcMain.handle("desktop:settings", async (event) => {
     trusted(event);
@@ -173,11 +222,26 @@ const main = async () => {
     maximized: !!window && (window.isMaximized() || fallbackMaximized),
     fullscreen: window?.isFullScreen() ?? false,
   });
-  const publishState = () => window?.webContents.send("window:state", state());
+  let publishedState: ReturnType<typeof state> | null = null;
+  const publishState = () => {
+    const current = state();
+    if (
+      publishedState?.maximized === current.maximized &&
+      publishedState.fullscreen === current.fullscreen
+    )
+      return;
+    publishedState = current;
+    window?.webContents.send("window:state", current);
+  };
+  const setFullscreen = (fullscreen: boolean) => {
+    if (boundsTimer) clearTimeout(boundsTimer);
+    boundsTimer = undefined;
+    window?.setFullScreen(fullscreen);
+  };
   const toggleMaximize = () => {
     if (!window) return;
     if (window.isFullScreen()) {
-      window.setFullScreen(false);
+      setFullscreen(false);
       return;
     }
     if (boundsTimer) clearTimeout(boundsTimer);
@@ -191,10 +255,11 @@ const main = async () => {
     restoreBounds = window.getBounds();
     const workArea = screen.getDisplayMatching(restoreBounds).workArea;
     window.maximize();
-    // Some frameless window managers acknowledge maximize without resizing.
-    // Check actual geometry after the native transition before using a fallback.
+    // WSLg may acknowledge maximize without resizing. Windows owns its native
+    // transition and DPI geometry; a timed setBounds would fight that transition.
+    if (!isWslg) return;
     boundsTimer = setTimeout(() => {
-      if (!window || window.isFullScreen()) return;
+      if (!window || window.isFullScreen() || window.isMinimized()) return;
       const bounds = window.getBounds();
       if (
         Math.abs(bounds.x - workArea.x) > 20 ||
@@ -215,7 +280,7 @@ const main = async () => {
   });
   ipcMain.handle("window:fullscreen", (event) => {
     trusted(event);
-    if (window) window.setFullScreen(!window.isFullScreen());
+    if (window) setFullscreen(!window.isFullScreen());
   });
   ipcMain.handle("window:close", (event) => {
     trusted(event);
@@ -263,9 +328,6 @@ const main = async () => {
   window.on("enter-full-screen", publishState);
   window.on("leave-full-screen", publishState);
   window.on("resize", publishState);
-  window.on("unmaximize", () => {
-    if (!fallbackMaximized) publishState();
-  });
   window.webContents.on("before-input-event", (event, input) => {
     if (
       input.type === "keyDown" &&
@@ -273,7 +335,7 @@ const main = async () => {
       !input.isAutoRepeat
     ) {
       event.preventDefault();
-      if (window) window.setFullScreen(!window.isFullScreen());
+      if (window) setFullscreen(!window.isFullScreen());
     }
     if (
       input.type === "keyDown" &&
@@ -281,7 +343,7 @@ const main = async () => {
       window?.isFullScreen()
     ) {
       event.preventDefault();
-      window.setFullScreen(false);
+      setFullscreen(false);
     }
   });
   window.once("closed", () => {

@@ -1,14 +1,7 @@
-export interface Repository {
-  id: string;
-  owner: string;
-  name: string;
-  upstream_url: string;
-  origin_url: string | null;
-  base_branch: string;
-  path: string;
-  last_fetched: string | null;
-  created_at: string;
-}
+import type { Repository, Settings } from "../../backend/domain";
+export type { Repository, Settings, StageConfig } from "../../backend/domain";
+export type Detection =
+  import("../../backend/execution/providers/contracts").ProviderDetection;
 export interface Task {
   id: string;
   repo_id: string;
@@ -26,25 +19,17 @@ export interface Task {
   created_at: string;
   updated_at: string;
   status: string;
+  archived?: boolean;
   stage: number;
   error: string | null;
-}
-export interface StageConfig {
-  model: string;
-  effort: string;
-  timeout_secs: number;
-}
-export interface Settings {
-  concurrency: number;
-  antigravity: StageConfig;
-  codex_plan: StageConfig;
-  codex_implementation: StageConfig;
 }
 export interface Snapshot {
   repositories: Repository[];
   tasks: Task[];
   settings: Settings;
   root: string;
+  migration?: { old_root: string; new_root: string } | null;
+  repository_index?: import("../../backend/workspace/discovery").RepositoryIndexSnapshot;
   github?: {
     status: import("../../backend/github/contracts").GitHubStatus | null;
     last_sync: string | null;
@@ -84,6 +69,8 @@ export interface AgentEvent {
   stream: string;
 }
 export interface Message {
+  status?: string;
+  run_id?: string | null;
   id: string;
   role: string;
   content: string;
@@ -115,17 +102,8 @@ export interface Detail {
   messages: Message[];
   artifacts: Artifact[];
   tests: TestRun[];
+  usage?: import("../../backend/execution/usage").UsageRecord[];
   activity?: { id: number; kind: string; data: string; timestamp: string }[];
-}
-export interface Detection {
-  provider: string;
-  installed: boolean;
-  version: string;
-  authentication: string;
-  models: string[];
-  efforts: string[];
-  capabilities: string[];
-  error: string | null;
 }
 export interface DiffFile {
   path: string;

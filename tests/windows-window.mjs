@@ -140,6 +140,97 @@ public static void Run(int localX,int localY,bool drag){SetProcessDPIAware();Int
     (await p.evaluate(() => window.electronWindow.getState())).maximized,
     true,
   );
+  await p.getByLabel("Restore window").click();
+  await p.getByLabel("Maximize window").waitFor();
+  const displays = await app.evaluate(({ screen }) =>
+    screen.getAllDisplays().map((d) => ({
+      id: d.id,
+      bounds: d.bounds,
+      workArea: d.workArea,
+      scaleFactor: d.scaleFactor,
+    })),
+  );
+  const transitions = [];
+  for (const display of displays) {
+    await app.evaluate(({ BrowserWindow }, area) => {
+      const w = BrowserWindow.getAllWindows()[0];
+      const width = Math.min(1000, area.width - 80),
+        height = Math.min(650, area.height - 80);
+      w.setBounds({
+        x: area.x + Math.round((area.width - width) / 2),
+        y: area.y + Math.round((area.height - height) / 2),
+        width,
+        height,
+      });
+      w.focus();
+    }, display.workArea);
+    await p.waitForTimeout(300);
+    const before = await bounds();
+    const start = Date.now();
+    await p.getByLabel("Maximize window").click();
+    await p.getByLabel("Restore window").waitFor();
+    const maximizeMs = Date.now() - start;
+    await p.waitForTimeout(500);
+    assert.equal(
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].isMaximized(),
+      ),
+      true,
+      "Windows must remain natively maximized",
+    );
+    const maximizedContent = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].getContentBounds(),
+    );
+    for (const key of ["x", "y", "width", "height"])
+      assert.ok(
+        Math.abs(maximizedContent[key] - display.workArea[key]) <= 2,
+        `Maximize must fit display ${display.id}: ${key}`,
+      );
+    await p.locator("main").click({ position: { x: 300, y: 300 } });
+    const fullscreenStart = Date.now();
+    await p.keyboard.press("F11");
+    await p.getByLabel("Exit fullscreen").waitFor();
+    const fullscreenMs = Date.now() - fullscreenStart;
+    await p.waitForTimeout(300);
+    const fullscreenContent = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].getContentBounds(),
+    );
+    for (const key of ["x", "y", "width", "height"])
+      assert.ok(
+        Math.abs(fullscreenContent[key] - display.bounds[key]) <= 2,
+        `Fullscreen must fit display ${display.id}: ${key}`,
+      );
+    const viewport = await p.evaluate(() => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      scale: window.devicePixelRatio,
+    }));
+    assert.ok(Math.abs(viewport.width - fullscreenContent.width) <= 2);
+    assert.ok(Math.abs(viewport.height - fullscreenContent.height) <= 2);
+    await p.screenshot({
+      path: join(
+        dirname(fileURLToPath(import.meta.url)),
+        `fullscreen-${display.id}.png`,
+      ),
+    });
+    await p.keyboard.press("Escape");
+    await p.getByLabel("Restore window").waitFor();
+    await p.getByLabel("Restore window").click();
+    await p.getByLabel("Maximize window").waitFor();
+    const restored = await bounds();
+    for (const key of ["x", "y", "width", "height"])
+      assert.ok(
+        Math.abs(restored[key] - before[key]) <= 2,
+        `Restore must retain display ${display.id}: ${key}`,
+      );
+    transitions.push({
+      display: display.id,
+      scaleFactor: display.scaleFactor,
+      maximizeMs,
+      fullscreenMs,
+      viewport,
+    });
+  }
   const info = await p.evaluate(() => window.vibestar.desktopSettings());
   assert.equal(info.native_windows, true);
   assert.equal(info.config.data_home, home + "/ade");
@@ -155,6 +246,7 @@ public static void Run(int localX,int localY,bool drag){SetProcessDPIAware();Int
         native_drag: true,
         native_double_click: true,
         wsl_data_home: info.config.data_home,
+        transitions,
       },
       null,
       2,

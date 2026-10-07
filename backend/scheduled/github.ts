@@ -1,6 +1,10 @@
 import { GitHubClient } from "../github/client";
 import { AdeError } from "../domain";
-import { parsePullRequest, type PullRequestState } from "./contracts";
+import {
+  parsePullRequest,
+  type PullRequestState,
+  type DiscussionEntry,
+} from "./contracts";
 import { object } from "../execution/providers/contracts";
 export class GitHubMonitor {
   constructor(private readonly cwd: string) {}
@@ -68,16 +72,23 @@ export class GitHubMonitor {
       );
     };
     const base = `repos/${ref.owner}/${ref.repo}`;
-    const [comments, reviews, inline] = await Promise.all([
+    const [comments, reviews, inline, viewer] = await Promise.all([
       pages(`${base}/issues/${ref.number}/comments`),
       pages(`${base}/pulls/${ref.number}/reviews`),
       pages(`${base}/pulls/${ref.number}/comments`),
+      new GitHubClient(this.cwd).api<{ login: string }>("user", signal),
     ]);
     const threads: NonNullable<PullRequestState["threads"]> = [];
     let cursor: string | null = null;
     let baseRefOid = "";
+    let threadPages = 0;
     do {
-      const query = `query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefOid reviewThreads(first:100,after:$cursor){nodes{id isResolved path comments(last:1){nodes{body}}} pageInfo{hasNextPage endCursor}}}}}`;
+      if (++threadPages > 100)
+        throw new AdeError(
+          "github",
+          "Review thread pagination exceeded its safety limit",
+        );
+      const query = `query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefOid reviewThreads(first:100,after:$cursor){nodes{id isResolved path comments(first:100){nodes{id body} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}`;
       const result = JSON.parse(
         await this.gh(
           [
@@ -103,24 +114,94 @@ export class GitHubMonitor {
         );
       baseRefOid = result.data.repository.pullRequest.baseRefOid;
       const page = result.data.repository.pullRequest.reviewThreads;
-      threads.push(
-        ...page.nodes.map(
-          (t: {
-            id: string;
-            isResolved: boolean;
-            path: string;
-            comments: { nodes: { body: string }[] };
-          }) => ({
-            id: t.id,
-            resolved: t.isResolved,
-            path: t.path,
-            body: t.comments.nodes[0]?.body || "",
-          }),
-        ),
-      );
+      for (const t of page.nodes as {
+        id: string;
+        isResolved: boolean;
+        path: string;
+        comments: {
+          nodes: { id: string; body: string }[];
+          pageInfo: { hasNextPage: boolean; endCursor: string };
+        };
+      }[]) {
+        const nodes = [...t.comments.nodes];
+        let info = t.comments.pageInfo;
+        let count = 0;
+        while (info.hasNextPage) {
+          if (++count > 100)
+            throw new AdeError(
+              "github",
+              "Thread history exceeds the inspection safety limit",
+            );
+          const part = JSON.parse(
+            await this.gh(
+              [
+                "api",
+                "graphql",
+                "-f",
+                "query=query($id:ID!,$cursor:String!){node(id:$id){... on PullRequestReviewThread{comments(first:100,after:$cursor){nodes{id body} pageInfo{hasNextPage endCursor}}}}}",
+                "-f",
+                `id=${t.id}`,
+                "-f",
+                `cursor=${info.endCursor}`,
+              ],
+              signal,
+            ),
+          );
+          if (part.errors)
+            throw new AdeError(
+              "github",
+              "Thread history inspection failed; snapshot was not advanced",
+            );
+          nodes.push(...part.data.node.comments.nodes);
+          info = part.data.node.comments.pageInfo;
+        }
+        threads.push({
+          id: t.id,
+          resolved: t.isResolved,
+          path: t.path,
+          body: nodes.at(-1)?.body || "",
+          commentIds: nodes.map((c) => c.id),
+        });
+      }
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     } while (cursor);
+    const entry = (
+      c: Record<string, unknown>,
+      type: DiscussionEntry["type"],
+    ): DiscussionEntry => {
+      const id = String(c.node_id || c.id);
+      const thread = threads.find((t) => t.commentIds?.includes(id));
+      const user = object(c.user);
+      const createdAt = String(c.created_at || c.submitted_at || "");
+      return {
+        id,
+        type,
+        author: String(user.login || "unknown"),
+        body: String(c.body || ""),
+        createdAt,
+        updatedAt: String(c.updated_at || c.submitted_at || createdAt),
+        authorAssociation: String(c.author_association || ""),
+        bot: user.type === "Bot",
+        ...(c.path ? { path: String(c.path) } : {}),
+        ...(typeof c.line === "number" ? { line: c.line } : {}),
+        ...(type === "review" ? { reviewState: String(c.state) } : {}),
+        ...(c.pull_request_review_id || type === "review"
+          ? { reviewId: String(c.pull_request_review_id || c.id) }
+          : {}),
+        ...(thread ? { threadId: thread.id, resolved: thread.resolved } : {}),
+      };
+    };
+    const discussion = [
+      ...comments.map((c) => entry(c, "issue_comment")),
+      ...inline.map((c) => entry(c, "review_comment")),
+      ...reviews.map((r) => entry(r, "review")),
+    ].sort(
+      (a, b) =>
+        a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+    );
     return {
+      authenticatedUser: viewer.login,
+      discussion,
       threads,
       author: String(object(pr.author).login || ""),
       baseRefOid,
@@ -144,6 +225,7 @@ export class GitHubMonitor {
           body: String(r.body || ""),
           state: String(r.state),
           submitted_at: String(r.submitted_at || ""),
+          author: String(object(r.user).login || ""),
         }))
         .sort((a, b) => a.id.localeCompare(b.id)),
       checks: (Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : [])
@@ -152,6 +234,8 @@ export class GitHubMonitor {
           name: String(c.name || c.context || "CI"),
           state: String(c.conclusion || c.state || c.status).toUpperCase(),
           url: String(c.detailsUrl || c.targetUrl || ""),
+          completedAt: String(c.completedAt || ""),
+          startedAt: String(c.startedAt || ""),
         }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     };

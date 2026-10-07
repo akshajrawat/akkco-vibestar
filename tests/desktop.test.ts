@@ -152,9 +152,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
         await page.getByLabel("Restore window").waitFor();
         await page.getByLabel("Restore window").click();
       }
-      await page
-        .getByRole("button", { name: "Scheduled", exact: true })
-        .click();
+      await page.getByRole("button", { name: "PR watch", exact: true }).click();
       await page
         .getByRole("heading", { name: "Pull requests", exact: true })
         .waitFor();
@@ -303,6 +301,48 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.getByLabel("Toggle utility dock").click();
       await page.getByRole("button", { name: "Start task terminal" }).click();
       await page.getByRole("button", { name: "Close shell" }).waitFor();
+      const composer = page.getByLabel("Task follow-up");
+      const location = page.url();
+      let navigations = 0;
+      page.on("framenavigated", () => {
+        navigations++;
+      });
+      await composer.fill("Electron keyboard first line");
+      await composer.press("Shift+Enter");
+      await composer.pressSequentially("second line");
+      expect(await composer.inputValue()).toBe(
+        "Electron keyboard first line\nsecond line",
+      );
+      const beforeMessages = await page.evaluate(
+        async (id) =>
+          (
+            await window.vibestar.rpc<import("../src/lib/types").Detail>(
+              "task.detail",
+              { id },
+            )
+          ).messages.length,
+        a.id,
+      );
+      await composer.press("Enter");
+      await expect.poll(() => composer.inputValue()).toBe("");
+      const afterSend = await page.evaluate(
+        async (id) =>
+          (
+            await window.vibestar.rpc<import("../src/lib/types").Detail>(
+              "task.detail",
+              { id },
+            )
+          ).messages,
+        a.id,
+      );
+      expect(afterSend).toHaveLength(beforeMessages + 1);
+      expect(afterSend.at(-1)).toMatchObject({
+        content: "Electron keyboard first line\nsecond line",
+        status: "draft",
+      });
+      expect(page.url()).toBe(location);
+      expect(navigations).toBe(0);
+      await composer.fill("Preserve task A draft");
       await page
         .locator(".xterm-helper-textarea")
         .pressSequentially("printf 'DESKTOP_'; printf 'PTY_OK\\n'");

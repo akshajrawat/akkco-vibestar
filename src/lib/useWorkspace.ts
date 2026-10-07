@@ -68,14 +68,30 @@ export const useDetail = (id: string | null, revision: number) => {
   }, [id, revision]);
   return { detail, error };
 };
+let detectedProviders: Detection[] = [];
+let detectedAt = 0;
+let detecting: Promise<Detection[]> | undefined;
 export const useProviders = () => {
   const [providers, setProviders] = useState<Detection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = true) => {
     setLoading(true);
     try {
-      setProviders(await rpc<Detection[]>("providers.detect"));
+      if (!force && Date.now() - detectedAt < 60000)
+        setProviders(detectedProviders);
+      else {
+        detecting ||= rpc<Detection[]>("providers.detect")
+          .then((result) => {
+            detectedProviders = result;
+            detectedAt = Date.now();
+            return result;
+          })
+          .finally(() => {
+            detecting = undefined;
+          });
+        setProviders(await detecting);
+      }
       setError("");
     } catch (e) {
       setError(errorMessage(e));
@@ -84,7 +100,7 @@ export const useProviders = () => {
     }
   }, []);
   useEffect(() => {
-    void refresh();
+    void refresh(false);
   }, [refresh]);
   return { providers, loading, error, refresh };
 };
