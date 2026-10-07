@@ -14,16 +14,34 @@ export class AuthSessions {
         ? "codex"
         : provider === "antigravity"
           ? "agy"
-          : null;
+          : provider === "github"
+            ? "gh"
+            : null;
     if (!program) throw new AdeError("invalid_input", "Unknown provider");
     const id = randomUUID();
-    const pty = spawn(program, program === "codex" ? ["login"] : [], {
-      cwd: this.cwd,
-      env: cleanEnvironment() as Record<string, string>,
-      name: "xterm-256color",
-      cols: 110,
-      rows: 28,
-    });
+    const pty = spawn(
+      program,
+      program === "codex"
+        ? ["login"]
+        : program === "gh"
+          ? [
+              "auth",
+              "login",
+              "--hostname",
+              "github.com",
+              "--web",
+              "--git-protocol",
+              "https",
+            ]
+          : [],
+      {
+        cwd: this.cwd,
+        env: cleanEnvironment() as Record<string, string>,
+        name: "xterm-256color",
+        cols: 110,
+        rows: 28,
+      },
+    );
     this.sessions.set(id, pty);
     pty.onData((text) =>
       this.emit({ event: "auth.output", session_id: id, text: redact(text) }),

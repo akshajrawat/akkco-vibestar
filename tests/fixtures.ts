@@ -84,8 +84,18 @@ export class FixtureProvider extends CodexProvider {
     };
   };
   invocation = (r: AgentRunRequest) => {
-    const result =
-      r.stage === 1
+    const result = (r.schema.properties as Record<string, unknown>)
+      ?.manualActionRequired
+      ? {
+          manualActionRequired: true,
+          severity: "action_required",
+          summary: "Add test",
+          reason: "Review feedback",
+          newActivity: ["Add coverage"],
+          recommendedNextAction: "Add coverage",
+          affectedFiles: ["source.txt"],
+        }
+      : r.stage === 1
         ? plan1
         : r.stage === 2
           ? plan2

@@ -8,11 +8,12 @@ import { checked } from "./process";
 export const sandboxInvocation = async (
   root: string,
   db: Database,
-  task: Task,
+  task: Task | null,
   invocation: { program: string; args: string[]; input?: string },
   readOnly: boolean,
   schemaPath?: string,
   provider?: string,
+  analysisWorkspace?: string,
 ) => {
   if (process.platform !== "linux")
     throw new AdeError(
@@ -20,9 +21,16 @@ export const sandboxInvocation = async (
       "The execution core must run inside Linux/WSL.",
     );
   const home = await realpath(homedir());
-  const cwd = await taskRoot(root, task);
-  const repo = await realpath(db.repository(task.repo_id).path);
-  if (!inside(join(root, "repos"), repo))
+  const cwd = task
+    ? await taskRoot(root, task)
+    : await realpath(analysisWorkspace || "");
+  if (!task && !inside(join(root, "pr-analysis"), cwd))
+    throw new AdeError(
+      "isolation",
+      "PR analysis workspace is outside the managed root",
+    );
+  const repo = task ? await realpath(db.repository(task.repo_id).path) : null;
+  if (repo && !inside(join(root, "repos"), repo))
     throw new AdeError(
       "isolation",
       "Managed clone is outside the repository root",
@@ -78,14 +86,8 @@ export const sandboxInvocation = async (
   // Native tools installed in the user's bin directory remain available read-only.
   const localBin = join(home, ".local", "bin");
   if (await exists(localBin)) args.push("--ro-bind", localBin, localBin);
-  args.push(
-    "--ro-bind",
-    repo,
-    repo,
-    readOnly ? "--ro-bind" : "--bind",
-    cwd,
-    cwd,
-  );
+  if (repo) args.push("--ro-bind", repo, repo);
+  args.push(readOnly ? "--ro-bind" : "--bind", cwd, cwd);
   if (schemaPath) {
     const schema = await realpath(schemaPath);
     if (!inside(join(root, "artifacts"), schema))

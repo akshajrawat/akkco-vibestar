@@ -1,6 +1,6 @@
 # akkco vibestar
 
-A local Electron Agent Development Environment for independent open-source contribution tasks. An issue can have multiple claimed scopes; each task owns its own pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. Nothing is automatically pushed, posted or merged.
+A local Electron Agent Development Environment for independent open-source contribution tasks. The task conversation is the workspace: each whole issue or claimed subtask owns its pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. GitHub repository discovery and an automatic PR inbox use the official GitHub CLI. Nothing is automatically pushed, posted or merged.
 
 The application uses React, TypeScript, Vite, Tailwind, shadcn-style components, Monaco and xterm.js. The Node/TypeScript execution core owns SQLite, Git, processes and scheduling inside Linux/WSL. There is no Rust or Tauri dependency.
 
@@ -15,7 +15,7 @@ The application uses React, TypeScript, Vite, Tailwind, shadcn-style components,
 Ubuntu 24.04/26.04 example system dependencies:
 
 ```bash
-sudo apt install git gh bubblewrap build-essential python3 libgtk-3-0t64 libnss3 libgbm1 libasound2t64
+sudo apt install git gh bubblewrap build-essential python3 unzip libgtk-3-0t64 libnss3 libgbm1 libasound2t64
 node --version
 npm --version
 codex --version
@@ -32,7 +32,7 @@ npm ci
 npm run dev
 ```
 
-If this machine still has npm 9, use `npx --yes npm@11 ci` for dependency installation. Development starts Vite and Electron, and builds the local Node core first. Close the application to stop the core and its active processes.
+If this machine still has npm 9, use `npx --yes npm@11 ci` for dependency installation. Development builds the local Node core and starts Vite and Electron. When launched from WSL on Windows, it downloads/caches the matching official Windows Electron runtime and runs the GUI natively; the core, data and provider accounts stay in the current WSL distro. Windows Node is not required. Backend/Electron changes rebuild and restart the desktop; renderer changes use Vite HMR. Close the application to stop the core and its active processes. `VIBESTAR_DEV_HOST=linux npm run dev` explicitly selects the WSLg host for diagnostics.
 
 To run the production build locally:
 
@@ -83,9 +83,11 @@ Linux/WSLg builds execute directly in their current distro. The desktop process 
 
 Open **Providers** to inspect installation, authentication, current Antigravity model discovery and supported effort values.
 
-**Codex:** Connect opens the official `codex login` flow in a PTY. Detection uses `codex login status`. Subscription runs explicitly require ChatGPT authentication and remove API-key environment overrides. No API credit purchase or API key is needed for supported subscription operations.
+**GitHub:** Status uses `gh auth status` and the authenticated account identity. Connect/Reconnect opens the official `gh auth login --hostname github.com --web --git-protocol https` flow in a temporary login dialog. Repository and authored upstream PR discovery starts after connection. Vibestar never extracts or stores OAuth tokens.
 
-**Antigravity:** Connect opens the installed official interactive `agy` flow in a PTY. Version 1.2.17 does not advertise a separate login subcommand, so Vibestar does not invent one. Account detection is limited to the safe CLI interfaces; it never examines the keyring. If account status is unavailable, authenticate in the official flow and let a run report any authentication failure.
+**Codex:** Connect opens the official `codex login` flow in a temporary PTY dialog that closes when success is detected. Detection uses `codex login status`. Subscription runs explicitly require ChatGPT authentication and remove API-key environment overrides. No API credit purchase or API key is needed for supported subscription operations.
+
+**Antigravity:** Connect opens the installed official interactive `agy` flow in a temporary login dialog; select Done after authentication. The Providers page itself contains no persistent terminal. Version 1.2.17 does not advertise a separate login subcommand, so Vibestar does not invent one. Account detection is limited to the safe CLI interfaces; it never examines the keyring. If account status is unavailable, authenticate in the official flow and let a run report any authentication failure.
 
 In **Settings**, configure **three independent** models, effort values and deadlines. Empty model uses the official CLI default deliberately. Antigravity models come from `agy models`; a model with an effort suffix must match its selected effort. Codex accepts an explicit configured slug and reports provider rejection without silently substituting another model or effort.
 
@@ -93,38 +95,47 @@ Codex uses its verified `exec` structured-output interface, read-only planning a
 
 ## Repository and task setup
 
-1. **Repositories → Add repository**: set original upstream URL, optional fork/origin URL and actual upstream base branch, such as `develop` for a project that uses it.
-2. **New task**: paste `https://github.com/oppia/oppia/issues/26831`, claimed scope `check-improvements-tab.spec.ts`, and optional notes limiting the scope.
-3. Preview owner/repository, issue, scope, base and branch, then **Create & Run**.
+**Repositories** is a searchable GitHub catalog with Recent, Owned, Forks, Organizations and All views. Catalog entries are metadata; browsing them does not clone anything. **Use locally** prepares a managed clone only for the selected repository. Manual remotes remain available under Advanced.
 
-Every new task fetches upstream under a repository lock, resolves the configured remote branch's exact SHA, saves it and creates a worktree from that SHA. It never uses your personal checkout or the managed clone's currently checked-out branch. Existing tasks stay pinned. Duplicate branches receive deterministic suffixes.
+1. Select **New task** and paste an issue URL, such as `https://github.com/oppia/oppia/issues/26831`. Vibestar fetches its title, requirements, comments, labels and repository metadata.
+2. Choose **Entire issue** to include all requirements unless your notes explicitly exclude them, or **Specific part / claimed subtask** and enter a required claimed scope, such as `check-improvements-tab.spec.ts`.
+3. Add optional instructions. Expand **Agent configuration** to change the three independent stage settings, then **Start task**. The task opens immediately while its repository is prepared.
 
-GitHub issue retrieval tries authenticated `gh issue view` first, then the documented public REST API for public issues. For private issues, reliable rate limits, and PR scheduling, authenticate gh inside WSL:
+The SQLite migration preserves existing V1 tasks as partial tasks. Whole issue tasks have explicit `scope_mode: "whole_issue"` and an empty claimed scope; all three prompts receive whole issue semantics. No misleading claimed-scope string substitutes for this distinction.
 
-```bash
-gh auth login
-gh auth status
-```
+GitHub supplies the upstream default branch and proves fork relationships through parent metadata. For the Oppia example, an existing `akshajrawat/oppia` fork of `oppia/oppia` becomes origin, upstream stays `oppia/oppia`, and the default branch is `develop`. An unrelated same-name repository is never inferred as a fork. Advanced allows explicit overrides.
 
-Inspect plans, live events, prompts, raw logs and tests from Chat / Plan / Changes / Tests / Terminal / Logs. Ctrl+Shift+P opens the command palette. Resize the sidebar, stage pane or terminal dock by dragging their separators. Task drafts, tabs and diff preferences remain available when switching tasks. Composer model/effort changes apply only to that task and are explicitly saved. Retry Stage retains earlier successful results. Resume explicitly retries an interrupted stage. Restart Pipeline reuses the same worktree and pinned base and reruns planning; it does not discard your changes.
+Every new task fetches upstream under a repository lock, saves the exact base SHA and creates a fresh isolated branch/worktree. Personal checkouts are not used. Duplicate branches receive deterministic suffixes; existing task bases remain pinned.
+
+## Task workspace
+
+The compact IDE shell has a collapsible, resizable repository/task tree, a dominant conversation, optional resizable Changes/pipeline context, and a bottom **Problems / Tests / Terminal / Logs** dock. **Chat / Plan / Changes** are views of the same task. There is no global Diffs destination or dashboard Overview. Ctrl+Shift+P opens commands; Ctrl+B toggles the sidebar.
+
+Chat shows actual preparation commands, Antigravity planning, Codex refinement, Codex implementation and validation in one continuous conversation. Structured provider streams become collapsible read/search/command/edit/test events. Prose and structured results render as readable content; raw events stay in Logs. Live Git changes appear in Chat and Changes, and file links open the corresponding Monaco diff beside Chat.
+
+The composer sends follow-up messages through the selected Codex or Antigravity headless adapter in the same worktree. Provider, model and effort apply to the next follow-up; historical run metadata and autonomous pipeline settings remain unchanged. During execution, Stop cancels the current run and a draft stays local until submitted afterward. Text is never silently injected into a running process. Each task keeps separate drafts, events, plans, diffs, view preferences and PTY sessions.
+
+Retry Stage retains successful earlier results. Resume explicitly retries an interrupted stage. Restart Pipeline reuses the same pinned worktree and reruns Antigravity → Codex → Codex; it does not discard changes.
 
 The **Changes** tab includes a directory tree, filtering, rename metadata, per-file statistics, staged/working indicators, Monaco side-by-side and inline modes, unified patches, expanded/collapsed context and read-only file inspection. F7 / Shift-F7 navigate hunks; Alt-Down / Alt-Up navigate files. Final diff compares saved base to the entire current worktree, including uncommitted and untracked content. Discard file/all restores the saved base only after confirmation. **Review** saves local notes on selected lines with version hashes. **Send feedback to Codex** explicitly starts a task-local implementation continuation; notes are never posted on GitHub.
 
-The **Terminal** tab and bottom dock provide a real xterm.js PTY shell restricted to the task worktree. Close its shell before starting another agent execution in that same task; other tasks can continue. Switching views preserves the process and replays a bounded transcript. Terminal sessions are reconciled after a crash and are not silently restarted.
+The optional **Terminal** utility dock provide a real xterm.js PTY shell restricted to the task worktree. Close its shell before starting another agent execution in that same task; other tasks can continue. Switching views preserves the process and replays a bounded transcript. Terminal sessions are reconciled after a crash and are not silently restarted.
 
 Manual commands are explicit argv JSON arrays, for example `["npm","test","--","specific.spec.ts"]`. No shell is implicitly invoked. The assigned working directory remains visible. Results include stdout, stderr, duration, exit code and Passed/Failed status; provider-reported skipped tests are separate.
 
-## Scheduled PR monitoring
+## Automatic PR monitoring
 
-**Scheduled** is owned by Vibestar, not a provider. Discover your open authored PRs in a registered repository through `gh`, or track a specific HTTPS GitHub PR URL. Choose every 1 hour, 2 hours, or a custom interval from 5 minutes to 7 days.
+**PR watch** is an inbox with **Needs attention**, **Watching**, **Paused** and **Recently completed** lists. Connecting GitHub discovers all currently open PRs authored by the account, including fork branches targeting other owners’ upstream repositories. Repository catalog, PR metadata and watches persist locally. Sync runs at startup and every five minutes while open; known PRs are confirmed closed/merged before archival.
 
-Link a prepared task worktree to enable safe analysis; tracking without one still produces notifications. Optional Codex verification uses its independent planning settings after Antigravity. The first successful check establishes a baseline. Subsequent checks detect new/edited discussion and inline comments, reviews, requested changes, CI failures, merge conflicts, and merged/closed state.
+Every discovered open PR receives one watch by default. Pause survives sync; Resume and Check now are row actions. Toolbar settings control automatic watching, the default interval (1 hour, 2 hours or custom) and optional Codex verification. Manual URL tracking stays under Advanced.
 
-**Unchanged snapshots never call a model.** Actionable open-PR changes use read-only analysis and appear under **Needs Attention**. Merged/closed notifications do not invoke a model. Saved task plans remain unchanged. Pipelines have priority over scheduled analysis, and an active worktree is never used by two runs at once. A model error or interrupted analysis needs an explicit retry; it does not automatically spend quota again.
+Cheap GitHub inspections run first: conversation and inline comments, review submissions/decisions, unresolved threads, CI status transitions/failures, merge conflicts, head/base commits and merged/closed state. The initial baseline can flag existing failures, conflicts and requested changes. **Unchanged snapshots never invoke a model.** Approvals, own comments, bot messages and routine CI progress use deterministic decisions.
 
-Automatic implementation is **OFF**, with no background implementation path. **Fix with Codex** is an explicit user action using the linked task's follow-up pipeline, scope and sandbox. Both planning stages must already have succeeded. All changes remain local for review.
+Ambiguous new feedback invokes configured Antigravity analysis and optional Codex verification, returning a strict action decision: `manualActionRequired`, `severity`, `summary`, `reason`, `newActivity`, `recommendedNextAction` and `affectedFiles`. An unlinked PR uses an empty, read-only analysis workspace with GitHub context; it does not clone a repository or create a task. A safely linked task supplies its worktree for deeper inspection. All inference shares task concurrency limits; pipelines take priority, and worktree leases prevent concurrent access. Failed/interrupted inference requires an explicit retry.
 
-Jobs, due times and snapshots survive application restarts. Monitoring runs **while Vibestar is open**; it is not an installed background OS service. After reopening, overdue cheap inspections run once, without a burst of catch-up model calls. The linked worktree can differ from the PR head; prompts explicitly expose both and require analysis to identify that mismatch rather than silently checking out another branch.
+Task/PR linking requires a unique match of upstream repository, head fork and branch. **Open task** opens that conversation. Explicit follow-ups include saved review context so “fix the reviewer feedback” can be acted on within the task scope. Reviewer feedback is never implemented automatically. No GitHub write is performed.
+
+Watches, snapshots and attention survive restarts. Monitoring runs **while Vibestar is open**, rather than through an OS service. A linked worktree may differ from the PR head; analysis is told to identify that mismatch instead of silently checking out a different branch.
 
 ## Security boundaries
 
@@ -136,7 +147,7 @@ Jobs, due times and snapshots survive application restarts. Monitoring runs **wh
 - SQLite and logs store task context and **redacted** events, not provider OAuth tokens. Authentication PTY output is ephemeral. Raw logs are redacted too.
 - Remote access is limited to issue/PR reads, upstream Git fetch, and official inference/authentication. Vibestar never automatically pushes, comments, creates PRs, merges, assigns or closes issues. Model instructions prohibit remote writes; official provider tooling and its auth directory remain trusted.
 
-The window is frameless with a dark 34px React titlebar, draggable region and non-draggable controls. Minimize, maximize/restore and close invoke Electron through preload; the application menu is removed. WSLg tests confirm maximize/restore and close. This automation session's compositor does not report minimized state after Electron's native minimize call; native Windows minimization still requires verification on Windows.
+The window keeps its dark frameless titlebar and native resizing, and its initial size fits the current display. Maximize checks the current display’s work area and retains restore bounds for a geometry fallback. State events drive the icon; titlebar double-click toggles maximize, F11 enters actual fullscreen, and Escape exits it. Fullscreen and maximize/restore are also available through Ctrl+Shift+P. Native Windows keeps native titlebar dragging and avoids WSLg's frameless maximize shadow offset. `npm run test:windows` tests Windows DPI-aware client bounds, restore, fullscreen, resize and real mouse dragging/double-click through the running host; it requires the dev Vite server. The optional WSLg path retains a pointer-driven drag fallback.
 
 ## Verification
 
@@ -152,7 +163,7 @@ npm run test:desktop
 npm run desktop:build
 ```
 
-`npm run test:live` is opt-in and uses your authenticated real provider subscriptions against a small isolated local fixture. It consumes model quota. Normal tests use injectable **test-only** provider fixtures; production has no mock-provider selection. The live slice verified Antigravity planning, Codex refinement, Codex implementation, relevant validation, final diff and Ready for Review with the official CLIs. PR monitoring cannot be live-verified until gh is authenticated.
+`npm run test:live` is opt-in and uses your authenticated real provider subscriptions against a small isolated local fixture. It consumes model quota. Normal tests use injectable **test-only** provider fixtures; production has no mock-provider selection. The live slice verified Antigravity planning, Codex refinement, Codex implementation, relevant validation, final diff and Ready for Review with the official CLIs. Live GitHub verification detected the authenticated account, discovered 26 repositories and 5 open authored PRs, inspected watch snapshots and exercised pause/resume. The Oppia issue and proven fork/default-branch inference were verified without executing its migration.
 
 [Verification results](docs/VERIFICATION.md) record the real provider run, tests and packaged-app checks. `docs/screenshots/` holds actual Electron smoke-test captures when that test is run. `ARCHITECTURE.md` explains implementation boundaries. `AGENTS.md` was copied from the local akkco-code instructions.
 
@@ -160,6 +171,4 @@ npm run desktop:build
 
 No automatic upstream rebase, push, PR creation, GitHub comments, merges or issue administration. Updating a pinned base is reserved for a deliberate later action. Provider model slugs and errors remain provider-owned. Binary or larger-than-4-MiB files remain in the changed-file list but are not rendered as editable text. Live event inspection keeps the latest 2,000 events in the UI; raw-log inspection reads the last 1 MiB directly from the complete redacted logs on disk. Application-closed monitoring, signed Windows release distribution, and execution of Windows installer tests require the corresponding external environment or credentials.
 
-UI work also applies the requested [frontend-design skill](https://github.com/anthropics/skills/tree/main/skills/frontend-design), with screenshot-based critique and the existing compact IDE direction.
-
-Interaction references: [T3 Code](https://github.com/pingdotgg/t3code), especially its diff tree, collapsed context and local review patterns. Vibestar keeps its own issue/scope/pinned-worktree orchestration and official CLI integrations; it does not adopt remote-account services or provider credential extraction.
+Interaction references include Codex, Antigravity, Cursor and T3 Code. This milestone copies no proprietary source/assets or third-party IDE components. Vibestar keeps its own issue/scope/pinned-worktree orchestration and official CLI integrations; it does not adopt remote-account services or provider credential extraction.

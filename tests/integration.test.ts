@@ -327,7 +327,7 @@ it("scheduled planning reuses isolation and shared slots without changing task p
       true,
     );
     expect(result?.analysis).toHaveProperty("summary");
-    expect(result?.refinement).toHaveProperty("goal");
+    expect(result?.refinement).toHaveProperty("manualActionRequired");
     expect(await engine.git.fingerprint(engine.db.task(task.id))).toBe(before);
     expect(engine.db.detail(task.id).artifacts).toEqual(artifacts);
     expect(engine.db.task(task.id).status).toBe("ready_for_review");

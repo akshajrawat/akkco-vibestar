@@ -19,13 +19,29 @@ const api: DesktopApi = {
 contextBridge.exposeInMainWorld("vibestar", api);
 
 const windowApi: ElectronWindowApi = {
+  manualDragging: process.platform === "linux" && !!process.env.WSL_DISTRO_NAME,
+  beginDrag: (point) => ipcRenderer.invoke("window:drag-start", point),
+  drag: (point) => ipcRenderer.invoke("window:drag", point),
+  endDrag: () => ipcRenderer.invoke("window:drag-end"),
+  fullscreen: () => ipcRenderer.invoke("window:fullscreen"),
+  getState: () => ipcRenderer.invoke("window:get-state"),
+  onStateChanged: (callback) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      state: Parameters<typeof callback>[0],
+    ) => callback(state);
+    ipcRenderer.on("window:state", listener);
+    return () => ipcRenderer.removeListener("window:state", listener);
+  },
   minimize: () => ipcRenderer.invoke("window:minimize"),
   maximize: () => ipcRenderer.invoke("window:maximize"),
   close: () => ipcRenderer.invoke("window:close"),
   isMaximized: () => ipcRenderer.invoke("window:is-maximized"),
   onMaximizedChanged: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) =>
-      callback(maximized);
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      state: { maximized: boolean },
+    ) => callback(state.maximized);
     ipcRenderer.on("window:state", listener);
     return () => ipcRenderer.removeListener("window:state", listener);
   },

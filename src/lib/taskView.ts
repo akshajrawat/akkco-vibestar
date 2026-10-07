@@ -8,6 +8,11 @@ interface TaskView {
   fullContext: boolean;
   openFile: boolean;
   terminalDock: boolean;
+  dockTab: string;
+  contextPane: "none" | "pipeline" | "changes";
+  followupProvider: "codex" | "antigravity";
+  followupModel: string | null;
+  followupEffort: string | null;
 }
 const views = new Map<string, TaskView>();
 const listeners = new Set<() => void>();
@@ -23,6 +28,11 @@ const state = (id: string) => {
       fullContext: false,
       openFile: false,
       terminalDock: false,
+      dockTab: "Terminal",
+      contextPane: "none",
+      followupProvider: "codex",
+      followupModel: null,
+      followupEffort: null,
     };
     views.set(id, value);
   }

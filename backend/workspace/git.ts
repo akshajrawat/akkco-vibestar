@@ -36,12 +36,13 @@ export class GitWorkspace {
       await release();
     }
   };
-  clone = async (url: string, path: string) => {
+  clone = async (url: string, path: string, signal?: AbortSignal) => {
     await mkdir(dirname(path), { recursive: true });
     await checked(
       "git",
       ["clone", "--filter=blob:none", "--origin", "upstream", "--", url, path],
       dirname(path),
+      signal,
     );
   };
   fetch = async (repo: Repository, signal?: AbortSignal) => {
@@ -76,7 +77,7 @@ export class GitWorkspace {
       repo.last_fetched = now();
       await checked(
         "git",
-        ["check-ref-format", "--branch", repo.base_branch],
+        ["check-ref-format", "--branch", t.base_branch],
         repo.path,
         signal,
       );
@@ -85,7 +86,7 @@ export class GitWorkspace {
         [
           "rev-parse",
           "--verify",
-          `refs/remotes/upstream/${repo.base_branch}^{commit}`,
+          `refs/remotes/upstream/${t.base_branch}^{commit}`,
         ],
         repo.path,
         signal,
@@ -93,12 +94,16 @@ export class GitWorkspace {
       if (!/^[a-f0-9]{40,64}$/.test(base))
         throw new AdeError("git_base", "Invalid base commit SHA");
       for (let suffix = 0; suffix < 10000; suffix++) {
-        const branch = branchName(t.issue_number, t.claimed_scope, suffix);
+        const branch = branchName(
+          t.issue_number,
+          t.scope_mode === "whole_issue" ? "whole-issue" : t.claimed_scope,
+          suffix,
+        );
         const path = worktreePath(
           this.root,
           repo.id,
           t.issue_number,
-          t.claimed_scope,
+          t.scope_mode === "whole_issue" ? "whole-issue" : t.claimed_scope,
           suffix,
         );
         const existing = await capture(

@@ -19,8 +19,8 @@ it("shows an agent's actual structured summary without dumping JSON into the con
     />,
   );
   expect(screen.getByText("Inspect the claimed spec")).toBeTruthy();
-  expect(screen.getByText("View structured result")).toBeTruthy();
-  expect(screen.getByText(/relevantFiles/)).toBeTruthy();
+  expect(screen.getByText("View result details")).toBeTruthy();
+  expect(screen.getByText(/relevant Files/)).toBeTruthy();
 });
 it("keeps implementation config independent of planning", () => {
   const changed = vi.fn();
@@ -56,32 +56,66 @@ it("shows both locally persisted plans", () => {
   expect(screen.getByText("original proposal")).toBeTruthy();
   expect(screen.getByText("independent refinement")).toBeTruthy();
 });
-it("creates a concrete task preview before running", async () => {
-  const rpc = vi.fn().mockResolvedValue({
-    issue: { owner: "oppia", repo: "oppia", number: 26831 },
-    repository: { base_branch: "develop" },
-    branch_name: "akkco/26831-scope",
-  });
+it("resolves a pasted issue and sends distinct whole/partial scope semantics", async () => {
+  const created = vi.fn();
+  const preview = {
+    reference: { owner: "oppia", repo: "oppia", number: 26831 },
+    issue: {
+      title: "Migrate tests",
+      body: "All checklist items",
+      comments: [],
+    },
+    repository: null,
+    resolved: {
+      repository: {},
+      upstream_url: "https://github.com/oppia/oppia.git",
+      origin_url: "https://github.com/akshajrawat/oppia.git",
+      base_branch: "develop",
+    },
+  };
+  const rpc = vi
+    .fn()
+    .mockImplementation((method: string) =>
+      Promise.resolve(
+        method === "snapshot"
+          ? { settings: defaultSettings }
+          : method === "task.create"
+            ? { id: "task" }
+            : preview,
+      ),
+    );
   Object.defineProperty(window, "vibestar", {
     value: { rpc },
     configurable: true,
   });
-  render(<NewTask close={() => {}} created={() => {}} />);
-  fireEvent.change(
-    screen.getByPlaceholderText("https://github.com/oppia/oppia/issues/26831"),
-    { target: { value: "https://github.com/oppia/oppia/issues/26831" } },
-  );
-  fireEvent.change(
-    screen.getByPlaceholderText("check-improvements-tab.spec.ts"),
-    { target: { value: "scope" } },
-  );
-  fireEvent.click(screen.getByText("Preview task"));
-  expect(await screen.findByText("upstream/develop")).toBeTruthy();
-  expect(rpc).toHaveBeenCalledWith("task.preview", {
-    issue_url: "https://github.com/oppia/oppia/issues/26831",
-    claimed_scope: "scope",
+  render(<NewTask close={() => {}} created={created} />);
+  fireEvent.change(screen.getByLabelText("Issue URL"), {
+    target: { value: "https://github.com/oppia/oppia/issues/26831" },
   });
-  expect(screen.getByText("Create & Run")).toBeTruthy();
+  expect(await screen.findByText("Migrate tests")).toBeTruthy();
+  expect(
+    (screen.getByLabelText("Entire issue") as HTMLInputElement).checked,
+  ).toBe(true);
+  fireEvent.click(screen.getByText("Start task"));
+  await vi.waitFor(() => expect(created).toHaveBeenCalledWith("task"));
+  expect(rpc).toHaveBeenCalledWith(
+    "task.create",
+    expect.objectContaining({ scope_mode: "whole_issue", claimed_scope: "" }),
+  );
+  fireEvent.click(screen.getByLabelText("Specific part / claimed subtask"));
+  fireEvent.change(screen.getByLabelText("Claimed scope"), {
+    target: { value: "check-improvements-tab.spec.ts" },
+  });
+  fireEvent.click(screen.getByText("Start task"));
+  await vi.waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "task.create",
+      expect.objectContaining({
+        scope_mode: "partial",
+        claimed_scope: "check-improvements-tab.spec.ts",
+      }),
+    ),
+  );
 });
 it("validates argv input and renders structured text", () => {
   expect(parseArgv('["git","status"]')).toEqual(["git", "status"]);
@@ -94,6 +128,11 @@ it("uses typed preload window controls and reflects maximize state", async () =>
     minimize: vi.fn().mockResolvedValue(undefined),
     maximize: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
+    getState: vi
+      .fn()
+      .mockResolvedValue({ maximized: false, fullscreen: false }),
+    fullscreen: vi.fn().mockResolvedValue(undefined),
+    onStateChanged: vi.fn().mockReturnValue(() => {}),
     isMaximized: vi.fn().mockResolvedValue(false),
     onMaximizedChanged: vi.fn().mockReturnValue(() => {}),
   };
@@ -231,7 +270,7 @@ it("groups tool-call updates into expandable actual command results", async () =
       ]}
     />,
   );
-  expect(screen.getAllByText("Command finished")).toHaveLength(1);
+  expect(screen.getAllByText("Ran")).toHaveLength(1);
   expect(screen.queryByText("Running command")).toBeNull();
   expect(screen.getByText("4 tests passed")).toBeTruthy();
 });

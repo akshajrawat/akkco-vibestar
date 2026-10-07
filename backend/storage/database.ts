@@ -70,13 +70,14 @@ export class Database {
   };
   saveTask = (t: Task) =>
     this.run(
-      "INSERT INTO tasks VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,stage=excluded.stage,data=excluded.data",
+      "INSERT INTO tasks(id,repo_id,status,stage,data,created_at,scope_mode) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,stage=excluded.stage,data=excluded.data,scope_mode=excluded.scope_mode",
       t.id,
       t.repo_id,
       t.status,
       t.stage,
       JSON.stringify(t),
       t.created_at,
+      t.scope_mode || "partial",
     );
   settings = () => {
     const row = this.all<{ value: string }>(
@@ -104,6 +105,10 @@ export class Database {
     this.connection.transaction(() => {
       this.run(
         "UPDATE agent_runs SET status='interrupted',ended_at=?,error='Execution core stopped; explicit retry required' WHERE status='running'",
+        now(),
+      );
+      this.run(
+        "UPDATE scheduled_agent_runs SET status='interrupted',ended_at=?,error='Execution core stopped; explicit retry required' WHERE status='running'",
         now(),
       );
       this.run(
@@ -151,6 +156,10 @@ export class Database {
     ),
     artifacts: this.all(
       "SELECT * FROM task_artifacts WHERE task_id=? ORDER BY created_at",
+      id,
+    ),
+    activity: this.all(
+      "SELECT * FROM task_activity WHERE task_id=? ORDER BY id",
       id,
     ),
     tests: this.all(

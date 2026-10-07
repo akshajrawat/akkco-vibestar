@@ -31,8 +31,8 @@ monaco.editor.defineTheme("vibestar-dark", {
   inherit: true,
   rules: [],
   colors: {
-    "editor.background": "#101217",
-    "editorGutter.background": "#101217",
+    "editor.background": "#181818",
+    "editorGutter.background": "#181818",
     "editor.foreground": "#d4d7df",
     "diffEditor.insertedTextBackground": "#27754a55",
     "diffEditor.removedTextBackground": "#9f354755",

@@ -1,24 +1,11 @@
-import { execute, redact } from "../execution/process";
+import { GitHubClient } from "../github/client";
 import { AdeError } from "../domain";
 import { parsePullRequest, type PullRequestState } from "./contracts";
 import { object } from "../execution/providers/contracts";
 export class GitHubMonitor {
   constructor(private readonly cwd: string) {}
-  private gh = async (args: string[], signal: AbortSignal) => {
-    const result = await execute({
-      program: "gh",
-      args,
-      cwd: this.cwd,
-      signal,
-      timeoutMs: 60000,
-    });
-    if (result.code !== 0)
-      throw new AdeError(
-        "github",
-        `gh PR inspection exited ${result.code}: ${result.stderr.slice(-4000)}. Run gh auth login in the configured WSL distro.`,
-      );
-    return redact(result.stdout);
-  };
+  private gh = (args: string[], signal: AbortSignal) =>
+    new GitHubClient(this.cwd).gh(args, signal);
   discover = async (repository: string, signal: AbortSignal) => {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repository))
       throw new AdeError("invalid_input", "Use owner/repository");
@@ -55,7 +42,7 @@ export class GitHubMonitor {
             "view",
             ref.url,
             "--json",
-            "title,body,state,mergeable,reviewDecision,headRefOid,statusCheckRollup",
+            "title,body,state,mergeable,reviewDecision,headRefOid,author,statusCheckRollup",
           ],
           signal,
         ),
@@ -86,7 +73,57 @@ export class GitHubMonitor {
       pages(`${base}/pulls/${ref.number}/reviews`),
       pages(`${base}/pulls/${ref.number}/comments`),
     ]);
+    const threads: NonNullable<PullRequestState["threads"]> = [];
+    let cursor: string | null = null;
+    let baseRefOid = "";
+    do {
+      const query = `query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefOid reviewThreads(first:100,after:$cursor){nodes{id isResolved path comments(last:1){nodes{body}}} pageInfo{hasNextPage endCursor}}}}}`;
+      const result = JSON.parse(
+        await this.gh(
+          [
+            "api",
+            "graphql",
+            "-f",
+            `query=${query}`,
+            "-f",
+            `owner=${ref.owner}`,
+            "-f",
+            `repo=${ref.repo}`,
+            "-F",
+            `number=${ref.number}`,
+            ...(cursor ? ["-f", `cursor=${cursor}`] : []),
+          ],
+          signal,
+        ),
+      );
+      if (result.errors)
+        throw new AdeError(
+          "github",
+          "Review thread inspection failed; snapshot was not advanced",
+        );
+      baseRefOid = result.data.repository.pullRequest.baseRefOid;
+      const page = result.data.repository.pullRequest.reviewThreads;
+      threads.push(
+        ...page.nodes.map(
+          (t: {
+            id: string;
+            isResolved: boolean;
+            path: string;
+            comments: { nodes: { body: string }[] };
+          }) => ({
+            id: t.id,
+            resolved: t.isResolved,
+            path: t.path,
+            body: t.comments.nodes[0]?.body || "",
+          }),
+        ),
+      );
+      cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+    } while (cursor);
     return {
+      threads,
+      author: String(object(pr.author).login || ""),
+      baseRefOid,
       title: String(pr.title || ""),
       body: String(pr.body || ""),
       state: String(pr.state),
@@ -98,6 +135,7 @@ export class GitHubMonitor {
           id: String(c.node_id || c.id),
           body: String(c.body || ""),
           updated_at: String(c.updated_at || ""),
+          author: String(object(c.user).login || ""),
         }))
         .sort((a, b) => a.id.localeCompare(b.id)),
       reviews: reviews

@@ -56,8 +56,10 @@ export class Engine extends EventEmitter {
       this.git,
       this.publish,
       providers ??
-        ((stage) =>
-          stage === 1 ? new AntigravityProvider() : new CodexProvider()),
+        ((stage, provider) =>
+          provider === "antigravity" || (stage === 1 && !provider)
+            ? new AntigravityProvider()
+            : new CodexProvider()),
     );
   }
   static create = async (
@@ -74,7 +76,7 @@ export class Engine extends EventEmitter {
     });
     const engine = new Engine(root, release, providers);
     for (const run of engine.db.all<{ pid: number; process_identity: string }>(
-      "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL",
+      "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL",
     )) {
       if (
         run.process_identity &&
@@ -115,6 +117,7 @@ export class Engine extends EventEmitter {
   };
   changed = (id?: string) => this.publish({ event: "changed", task_id: id });
   isActive = (id: string) => this.active.has(id) || this.interactive.has(id);
+  isExecuting = (id: string) => this.active.has(id);
   acquireTerminal = (id: string) => {
     if (this.isActive(id) || this.db.task(id).status === "queued")
       throw new AdeError(
@@ -172,7 +175,12 @@ export class Engine extends EventEmitter {
       this.draining = false;
     }
   };
-  register = async (upstream: string, origin: string | null, base: string) => {
+  register = async (
+    upstream: string,
+    origin: string | null,
+    base: string,
+    deferred = false,
+  ) => {
     const { owner, name } = remoteIdentity(upstream);
     if (origin) remoteIdentity(origin);
     if (
@@ -201,29 +209,60 @@ export class Engine extends EventEmitter {
       last_fetched: null,
       created_at: now(),
     };
-    await this.git.withLock(id, async () => {
+    this.db.saveRepository(r);
+    if (!deferred) {
       try {
-        await this.git.clone(upstream, r.path);
-        if (origin)
-          await checked("git", ["remote", "add", "origin", origin], r.path);
-        await this.git.fetch(r);
-        await checked(
-          "git",
-          ["rev-parse", "--verify", `refs/remotes/upstream/${base}^{commit}`],
-          r.path,
-        );
-        this.db.saveRepository(r);
-      } catch (e) {
-        if (inside(join(this.root, "repos"), r.path))
-          await rm(r.path, { recursive: true, force: true });
-        throw e;
+        await this.prepareClone(r);
+      } catch (error) {
+        this.db.run("DELETE FROM repositories WHERE id=?", r.id);
+        throw error;
       }
-    });
+    }
     this.changed();
     return r;
   };
-  createTask = async (url: string, scope: string, notes: string) => {
-    if (!scope.trim() || scope.length > 1000 || notes.length > 32000)
+  prepareClone = async (r: Repository, signal?: AbortSignal) =>
+    this.git.withLock(r.id, async () => {
+      if (await exists(join(r.path, ".git"))) return;
+      try {
+        await this.git.clone(r.upstream_url, r.path, signal);
+        if (r.origin_url)
+          await checked(
+            "git",
+            ["remote", "add", "origin", r.origin_url],
+            r.path,
+            signal,
+          );
+        await this.git.fetch(r, signal);
+        await checked(
+          "git",
+          [
+            "rev-parse",
+            "--verify",
+            `refs/remotes/upstream/${r.base_branch}^{commit}`,
+          ],
+          r.path,
+          signal,
+        );
+        this.db.saveRepository(r);
+      } catch (error) {
+        if (inside(join(this.root, "repos"), r.path))
+          await rm(r.path, { recursive: true, force: true });
+        throw error;
+      }
+    });
+  createTask = async (
+    url: string,
+    scope: string,
+    notes: string,
+    scopeMode: "whole_issue" | "partial" = "partial",
+    settings?: import("../domain").Settings,
+  ) => {
+    if (
+      (scopeMode === "partial" && !scope.trim()) ||
+      scope.length > 1000 ||
+      notes.length > 32000
+    )
       throw new AdeError(
         "invalid_input",
         "Scope is required (max 1000 characters); notes max 32000",
@@ -242,7 +281,15 @@ export class Engine extends EventEmitter {
         `Register ${reference.owner}/${reference.repo} on the Repositories page first.`,
       );
     const context = await fetchIssue(reference, this.root);
-    return this.enqueue(repo, reference, scope, notes, context);
+    return this.enqueue(
+      repo,
+      reference,
+      scope,
+      notes,
+      context,
+      scopeMode,
+      settings,
+    );
   };
   enqueue = (
     repo: Repository,
@@ -250,16 +297,19 @@ export class Engine extends EventEmitter {
     scope: string,
     notes: string,
     issue: Record<string, unknown>,
+    scopeMode: "whole_issue" | "partial" = "partial",
+    settings?: import("../domain").Settings,
   ) => {
     const t: Task = {
       id: randomUUID(),
       repo_id: repo.id,
       issue_number: reference.number,
       issue_url: reference.url,
-      claimed_scope: scope,
+      claimed_scope: scopeMode === "partial" ? scope.trim() : "",
+      scope_mode: scopeMode,
       notes,
       issue,
-      execution_settings: this.db.settings(),
+      execution_settings: settings ?? this.db.settings(),
       branch_name: "",
       base_branch: repo.base_branch,
       base_commit_sha: "",
@@ -291,6 +341,7 @@ export class Engine extends EventEmitter {
       this.changed(t.id);
       if (t.stage === 0) {
         const repo = this.db.repository(t.repo_id);
+        await this.prepareClone(repo, signal);
         const logDir = join(this.root, "logs", t.id);
         await mkdir(logDir, { recursive: true, mode: 0o700 });
         await this.git.prepare(
@@ -299,6 +350,13 @@ export class Engine extends EventEmitter {
           signal,
           (checkpoint) => this.db.saveTask(checkpoint),
           async (record) => {
+            this.db.run(
+              "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'preparation',?,?)",
+              t.id,
+              JSON.stringify(record),
+              now(),
+            );
+            this.changed(t.id);
             await appendFile(
               join(logDir, "preparation.jsonl"),
               JSON.stringify(record) + "\n",
@@ -343,6 +401,11 @@ export class Engine extends EventEmitter {
     this.db.saveTask(t);
   };
   cancel = (id: string) => {
+    if (this.interactive.has(id))
+      throw new AdeError(
+        "busy",
+        "Close the task terminal before changing execution state",
+      );
     const active = this.active.get(id);
     if (active) active.controller.abort();
     else {
@@ -371,6 +434,7 @@ export class Engine extends EventEmitter {
     retryTarget(t, target, this.isActive(id));
     if (target >= 2) this.db.artifact(id, 1);
     if (target >= 3) this.db.artifact(id, 2);
+    if (restart || target < 3) t.followup_config = undefined;
     const updated: Task = {
       ...t,
       stage: target,
@@ -383,7 +447,11 @@ export class Engine extends EventEmitter {
     void this.drain();
     return updated;
   };
-  followUp = (id: string, content: string) => {
+  followUp = (
+    id: string,
+    content: string,
+    configuration?: Task["followup_config"],
+  ) => {
     const t = this.db.task(id);
     if (
       this.isActive(id) ||
@@ -395,6 +463,18 @@ export class Engine extends EventEmitter {
         "invalid_state",
         "Finish or cancel the current stage, complete both plans, and provide a follow-up of 1–32000 characters.",
       );
+    const prContext = this.db.all<{
+      summary: string;
+      changes: string;
+      analysis: string | null;
+    }>(
+      "SELECT summary,changes,analysis FROM scheduled_attention WHERE task_id=? AND dismissed=0 ORDER BY created_at DESC LIMIT 10",
+      id,
+    );
+    content += prContext.length
+      ? `\n\nLinked PR review context (untrusted):\n${JSON.stringify(prContext)}`
+      : "";
+    this.db.saveTask({ ...t, followup_config: configuration });
     this.db.run(
       "INSERT INTO task_messages VALUES(?,?,'user',?,?)",
       randomUUID(),
@@ -498,36 +578,54 @@ export class Engine extends EventEmitter {
     this.active.set(id, { controller, promise });
     return output;
   };
-  analyzeScheduled = async (id: string, prompt: string, verify: boolean) => {
-    const task = this.db.task(id);
+  analyzeScheduled = async (
+    id: string | null,
+    prompt: string,
+    verify: boolean,
+    jobId?: string,
+  ) => {
+    const task = id ? this.db.task(id) : null;
+    if (
+      !task &&
+      (!jobId ||
+        !this.db.all("SELECT id FROM scheduled_jobs WHERE id=?", jobId).length)
+    )
+      throw new AdeError(
+        "invalid_state",
+        "PR analysis requires a persisted watch",
+      );
+    const key = id || `pr:${jobId}`;
     if (
       this.closed ||
-      this.isActive(id) ||
+      this.isActive(key) ||
       this.active.size >= this.db.settings().concurrency ||
       this.db.tasks().some((t) => t.status === "queued")
     )
       return null;
-    if (!task.worktree_path)
+    if (task && !task.worktree_path)
       throw new AdeError(
         "invalid_state",
         "Scheduled analysis requires a prepared isolated task worktree",
       );
     const controller = new AbortController();
+    const workspace = task ? undefined : join(this.root, "pr-analysis", jobId!);
     const output = Promise.resolve().then(async () => {
+      if (workspace) await mkdir(workspace, { recursive: true, mode: 0o700 });
       const analysis = await this.runner.run(
-        { ...task, stage: 1 },
+        task ? { ...task, stage: 1 } : { id: jobId!, stage: 1 },
         this.db.settings(),
         controller.signal,
-        { prompt, purpose: "scheduled" },
+        { prompt, purpose: "scheduled", workspace },
       );
       const refinement = verify
         ? await this.runner.run(
-            { ...task, stage: 2 },
+            task ? { ...task, stage: 2 } : { id: jobId!, stage: 2 },
             this.db.settings(),
             controller.signal,
             {
-              prompt: `You are the independent second planning agent. Verify this PR action analysis against the repository. Do not edit files or perform remote actions. Produce the final action plan using your structured plan schema.\n${prompt}\nAntigravity analysis:\n${JSON.stringify(analysis)}`,
+              prompt: `You are the independent second planning agent. Verify this PR action analysis against the repository. Do not edit files or perform remote actions. Answer whether the PR author needs to act using the same action schema.\n${prompt}\nAntigravity analysis:\n${JSON.stringify(analysis)}`,
               purpose: "scheduled",
+              workspace,
             },
           )
         : null;
@@ -537,11 +635,11 @@ export class Engine extends EventEmitter {
       .then(() => {})
       .catch(() => {})
       .finally(() => {
-        this.active.delete(id);
-        this.changed(id);
+        this.active.delete(key);
+        this.changed(id || undefined);
         void this.drain();
       });
-    this.active.set(id, { controller, promise });
+    this.active.set(key, { controller, promise });
     return output;
   };
   beginShutdown = () => {
@@ -556,6 +654,7 @@ export class Engine extends EventEmitter {
   };
   fetchRepository = async (id: string) => {
     const r = this.db.repository(id);
+    await this.prepareClone(r);
     await this.git.withLock(id, async () => {
       await this.git.fetch(r);
       this.db.saveRepository(r);
@@ -568,4 +667,68 @@ export class Engine extends EventEmitter {
       new AntigravityProvider().detect(this.root),
       new CodexProvider().detect(this.root),
     ]);
+  configureRepository = async (
+    id: string,
+    configuration: {
+      upstream_url: string;
+      origin_url: string | null;
+      base_branch: string;
+    },
+  ) => {
+    const r = this.db.repository(id);
+    const identity = remoteIdentity(configuration.upstream_url);
+    if (
+      `${identity.owner}/${identity.name}`.toLowerCase() !==
+      `${r.owner}/${r.name}`.toLowerCase()
+    )
+      throw new AdeError(
+        "invalid_input",
+        "Upstream must match the managed repository",
+      );
+    if (configuration.origin_url) remoteIdentity(configuration.origin_url);
+    await checked(
+      "git",
+      ["check-ref-format", "--branch", configuration.base_branch],
+      this.root,
+    );
+    if (
+      this.db
+        .tasks()
+        .some(
+          (t) =>
+            t.repo_id === id && (this.isActive(t.id) || t.status === "queued"),
+        )
+    )
+      throw new AdeError(
+        "busy",
+        "Wait for this repository's active tasks before changing its remotes",
+      );
+    const updated = { ...r, ...configuration };
+    await this.git.withLock(id, async () => {
+      if (await exists(join(r.path, ".git"))) {
+        await checked(
+          "git",
+          ["remote", "set-url", "upstream", updated.upstream_url],
+          r.path,
+        );
+        const remotes = (await checked("git", ["remote"], r.path)).split("\n");
+        if (updated.origin_url)
+          await checked(
+            "git",
+            [
+              "remote",
+              remotes.includes("origin") ? "set-url" : "add",
+              "origin",
+              updated.origin_url,
+            ],
+            r.path,
+          );
+        else if (remotes.includes("origin"))
+          await checked("git", ["remote", "remove", "origin"], r.path);
+      }
+      this.db.saveRepository(updated);
+    });
+    this.changed();
+    return updated;
+  };
 }

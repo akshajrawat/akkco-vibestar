@@ -44,9 +44,9 @@ export const TaskTerminal = ({
       fontFamily: "Cascadia Code, Consolas, monospace",
       scrollback: 3000,
       theme: {
-        background: "#101217",
+        background: "#181818",
         foreground: "#d4d7df",
-        cursor: "#a6b6ff",
+        cursor: "#c9bba7",
       },
     });
     const fit = new FitAddon();
@@ -179,9 +179,8 @@ export const TaskTerminal = ({
       <div className="terminal-surface" ref={container} />
       <footer>
         {session
-          ? "Isolated interactive shell · close this shell before running agents in this task"
-          : "Start a real shell inside this task's sandboxed worktree"}{" "}
-        · PTY combines stdout and stderr
+          ? "Task worktree · close this shell before running an agent"
+          : "Start a shell inside this task's worktree"}
       </footer>
     </section>
   );

@@ -1,14 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
 import {
-  LayoutGrid,
-  Clock,
   ListTodo,
+  GitPullRequest,
   FolderGit2,
-  GitCompareArrows,
   Plug,
   Settings,
   Plus,
-  Workflow,
   X,
 } from "lucide-react";
 import type { Page } from "./lib/types";
@@ -28,53 +25,65 @@ import { useTaskView, updateTaskView } from "./lib/taskView";
 import { rpc, errorMessage } from "./lib/api";
 import { ScheduledPage } from "./components/ScheduledPage";
 import { TitleBar } from "./components/TitleBar";
-import { Status } from "./components/Status";
 const navigation = [
-  ["Overview", LayoutGrid],
   ["Tasks", ListTodo],
-  ["Scheduled", Clock],
+  ["Scheduled", GitPullRequest],
   ["Repositories", FolderGit2],
-  ["Diffs", GitCompareArrows],
   ["Providers", Plug],
   ["Settings", Settings],
 ] as const;
 export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
-  const [page, setPage] = useState<Page>("Overview");
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [page, setPage] = useState<Page>("Tasks");
+  const [taskId, setTaskId] = useState<string | null>(() =>
+    localStorage.getItem("vibestar.activeTask"),
+  );
   const [palette, setPalette] = useState(false);
+  const [newTask, setNewTask] = useState(false);
+  const [sidebar, setSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = usePaneSize(
     "sidebarWidth",
-    230,
+    238,
     180,
     380,
   );
   const activeView = useTaskView(taskId || "");
+  const { detail, error: detailError } = useDetail(taskId, revision);
+  const onError = useCallback((s: string) => setError(s), [setError]);
   useEffect(() => {
-    const key = (event: KeyboardEvent) => {
+    const key = (e: KeyboardEvent) => {
       if (
-        (event.ctrlKey || event.metaKey) &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "p"
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "p"
       ) {
-        event.preventDefault();
-        setPalette((value) => !value);
+        e.preventDefault();
+        setPalette((v) => !v);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setSidebar((v) => !v);
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
-  const [newTask, setNewTask] = useState(false);
-  const { detail, error: detailError } = useDetail(taskId, revision);
-  const onError = useCallback((s: string) => setError(s), [setError]);
+  useEffect(() => {
+    if (snapshot && taskId && !snapshot.tasks.some((t) => t.id === taskId)) {
+      setTaskId(null);
+      localStorage.removeItem("vibestar.activeTask");
+    }
+  }, [snapshot, taskId]);
   const open = (id: string) => {
     setTaskId(id);
     setPage("Tasks");
+    localStorage.setItem("vibestar.activeTask", id);
   };
   const navigate = (p: Page) => {
     setPage(p);
-    if (p !== "Diffs") setTaskId(null);
+    setTaskId(null);
   };
+  const count = snapshot?.attention?.length || 0;
   const content =
     page === "Scheduled" && snapshot ? (
       <ScheduledPage snapshot={snapshot} refresh={refresh} open={open} />
@@ -86,8 +95,10 @@ export const App = () => {
       />
     ) : page === "Providers" ? (
       <ProvidersPage />
+    ) : page === "Repositories" && snapshot ? (
+      <RepositoryPage snapshot={snapshot} refresh={refresh} />
     ) : taskId ? (
-      detail ? (
+      detail && detail.task.id === taskId ? (
         <TaskWorkspace
           key={taskId}
           detail={detail}
@@ -96,112 +107,105 @@ export const App = () => {
           )}
           revision={revision}
           onError={onError}
-          initialTab={page === "Diffs" ? "Changes" : "Chat"}
           back={() => setTaskId(null)}
         />
       ) : (
-        <div className="empty-row">{detailError || "Loading task…"}</div>
+        <p className="empty-row">{detailError || "Opening task…"}</p>
       )
     ) : snapshot ? (
-      page === "Repositories" ? (
-        <RepositoryPage
-          repositories={snapshot.repositories}
-          refresh={refresh}
-        />
-      ) : page === "Diffs" ? (
-        <div className="page">
-          <div className="page-title">
-            <h1>Task diffs</h1>
-          </div>
-          {snapshot.tasks
-            .filter((t) => t.worktree_path)
-            .map((t) => (
-              <button
-                className="task-card"
-                key={t.id}
-                onClick={() => setTaskId(t.id)}
-              >
-                <div>
-                  <strong>{t.claimed_scope}</strong>
-                  <code>{t.branch_name}</code>
-                </div>
-                <Status status={t.status} />
-              </button>
-            ))}
-        </div>
-      ) : (
-        <Overview
-          snapshot={snapshot}
-          refresh={refresh}
-          open={open}
-          all={page === "Tasks"}
-        />
-      )
+      <Overview
+        snapshot={snapshot}
+        refresh={refresh}
+        open={open}
+        newTask={() => setNewTask(true)}
+      />
     ) : (
       <div className="page">
-        <h1>Connect the local execution core</h1>
-        <p>
-          Open Settings to select your WSL distribution and install the helper.
-        </p>
-        <Button onClick={() => setPage("Settings")}>Open Settings</Button>
+        <h1>Connecting execution environment…</h1>
+        {error && (
+          <Button onClick={() => navigate("Settings")}>Open Settings</Button>
+        )}
       </div>
     );
   return (
     <div className="desktop-shell">
-      <TitleBar onPalette={() => setPalette(true)} />
+      <TitleBar
+        onPalette={() => setPalette(true)}
+        onSidebar={() => setSidebar((v) => !v)}
+        currentTask={
+          detail && detail.task.id === taskId
+            ? `#${detail.task.issue_number} · ${detail.task.claimed_scope || detail.task.issue.title}`
+            : undefined
+        }
+      />
       <div className="app-shell">
-        <aside className="sidebar" style={{ width: sidebarWidth }}>
-          <div className="brand">
-            <Workflow size={23} />
-            <div>
-              akkco <strong>vibestar</strong>
-              <small>AGENT DEVELOPMENT ENVIRONMENT</small>
-            </div>
-          </div>
-          <Button
-            className="new-task-button"
-            variant="default"
-            onClick={() => setNewTask(true)}
-            disabled={!snapshot}
-          >
-            <Plus size={15} />
-            New task
-          </Button>
-          <nav>
-            {navigation.map(([label, Icon]) => (
-              <button
-                className={page === label ? "selected" : ""}
-                key={label}
-                onClick={() => navigate(label)}
+        {sidebar && (
+          <>
+            <aside className="sidebar" style={{ width: sidebarWidth }}>
+              <div className="brand">
+                VIBESTAR <small>LOCAL</small>
+              </div>
+              <Button
+                className="new-task-button"
+                aria-label="New task"
+                onClick={() => setNewTask(true)}
+                disabled={!snapshot}
               >
-                <Icon size={16} />
-                {label}
-                {label === "Tasks" && (
-                  <small>{snapshot?.tasks.length || 0}</small>
-                )}
-              </button>
-            ))}
-          </nav>
-          <div className="sidebar-label">Open source</div>
-          <TaskNavigation
-            repositories={snapshot?.repositories || []}
-            tasks={snapshot?.tasks || []}
-            selected={taskId}
-            open={open}
-          />
-          <div className="sidebar-footer">
-            <span className="local-dot" />
-            Local · {snapshot?.settings.concurrency || 2} task slots
-            <small>{snapshot?.root || "Awaiting core"}</small>
-          </div>
-        </aside>
-        <ResizeHandle
-          label="Resize navigation pane"
-          value={sidebarWidth}
-          onChange={setSidebarWidth}
-          min={180}
-          max={380}
-        />
+                <Plus size={14} />
+                New task
+                <span className="spacer" />
+                <kbd>＋</kbd>
+              </Button>
+              <div className="sidebar-label">
+                <button onClick={() => navigate("Tasks")}>TASKS</button>
+                <small>{snapshot?.tasks.length || 0}</small>
+              </div>
+              <TaskNavigation
+                repositories={snapshot?.repositories || []}
+                tasks={snapshot?.tasks || []}
+                selected={taskId}
+                open={open}
+              />
+              <nav className="sidebar-tools">
+                {navigation
+                  .filter(([label]) => label !== "Tasks")
+                  .map(([label, Icon]) => (
+                    <button
+                      className={page === label ? "selected" : ""}
+                      key={label}
+                      aria-label={label}
+                      onClick={() => navigate(label)}
+                    >
+                      <Icon size={14} />
+                      {label === "Scheduled" ? "PR watch" : label}
+                      {label === "Scheduled" && (
+                        <small className={count ? "warning" : ""}>
+                          {count
+                            ? `${count} need attention`
+                            : snapshot?.scheduled?.filter((j) => j.enabled)
+                                .length || ""}
+                        </small>
+                      )}
+                    </button>
+                  ))}
+              </nav>
+              <div className="sidebar-footer">
+                <span className="local-dot" />
+                {snapshot?.github?.status?.connected
+                  ? `@${snapshot.github.status.username}`
+                  : "Local workspace"}
+                <small>{snapshot?.settings.concurrency || 2} agent slots</small>
+              </div>
+            </aside>
+            <ResizeHandle
+              label="Resize navigation pane"
+              value={sidebarWidth}
+              onChange={setSidebarWidth}
+              min={180}
+              max={380}
+            />
+          </>
+        )}
         <main className="main-area">
           {error && (
             <div className="global-error">
@@ -225,12 +229,12 @@ export const App = () => {
               {
                 id: "new-task",
                 label: "New task",
-                detail: "Issue + claimed scope",
+                detail: "GitHub issue",
                 run: () => setNewTask(true),
               },
               ...navigation.map(([label]) => ({
                 id: label,
-                label: `Go to ${label}`,
+                label: `Go to ${label === "Scheduled" ? "PR watch" : label}`,
                 run: () => navigate(label),
               })),
               {
@@ -238,9 +242,26 @@ export const App = () => {
                 label: "Refresh local workspace",
                 run: () => void refresh(),
               },
+              {
+                id: "window-fullscreen",
+                label: "Window: Toggle fullscreen",
+                detail: "F11 · Escape to exit",
+                run: () =>
+                  void window.electronWindow
+                    .fullscreen()
+                    .catch((e) => onError(errorMessage(e))),
+              },
+              {
+                id: "window-maximize",
+                label: "Window: Maximize / restore",
+                run: () =>
+                  void window.electronWindow
+                    .maximize()
+                    .catch((e) => onError(errorMessage(e))),
+              },
               ...(snapshot?.tasks || []).map((task) => ({
                 id: `task-${task.id}`,
-                label: `Open #${task.issue_number} · ${task.claimed_scope}`,
+                label: `Open #${task.issue_number} · ${task.claimed_scope || task.issue.title}`,
                 detail: task.branch_name,
                 run: () => open(task.id),
               })),
@@ -256,11 +277,17 @@ export const App = () => {
                     ].map((tab) => ({
                       id: `tab-${tab}`,
                       label: `Task: ${tab}`,
-                      run: () => updateTaskView(taskId, { tab }),
+                      run: () =>
+                        updateTaskView(
+                          taskId,
+                          ["Tests", "Terminal", "Logs"].includes(tab)
+                            ? { terminalDock: true, dockTab: tab }
+                            : { tab },
+                        ),
                     })),
                     {
                       id: "dock",
-                      label: "Toggle task terminal dock",
+                      label: "Toggle utility dock",
                       run: () =>
                         updateTaskView(taskId, {
                           terminalDock: !activeView.terminalDock,

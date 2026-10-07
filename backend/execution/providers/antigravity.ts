@@ -58,7 +58,7 @@ export class AntigravityProvider implements AgentProvider {
     program: "agy",
     args: [
       "--mode",
-      "plan",
+      r.stage === 3 ? "accept-edits" : "plan",
       "--sandbox",
       "--output-format",
       "stream-json",
@@ -112,7 +112,8 @@ export class AntigravityProvider implements AgentProvider {
           kind,
           data: {
             call_id: step.step_index,
-            text: step.text_delta ?? step.text ?? step.thinking,
+            text: step.text ?? step.thinking,
+            text_delta: step.text_delta,
             command: params.CommandLine,
             stdout: info.output,
             stderr: object(info.error).message,
@@ -123,6 +124,7 @@ export class AntigravityProvider implements AgentProvider {
               params.DirectoryPath,
             status: step.state === "ERROR" ? "failed" : step.state,
             tool: step.tool_name,
+            query: params.SearchString ?? params.Query ?? params.Pattern,
             duration_ms:
               typeof step.duration_seconds === "number"
                 ? step.duration_seconds * 1000

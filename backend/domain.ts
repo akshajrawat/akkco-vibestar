@@ -101,6 +101,8 @@ export interface Task {
   issue_number: number;
   issue_url: string;
   claimed_scope: string;
+  scope_mode?: "whole_issue" | "partial";
+  followup_config?: { provider: "codex" | "antigravity"; config: StageConfig };
   notes: string;
   issue: Record<string, unknown>;
   execution_settings?: Settings;

@@ -98,6 +98,9 @@ it("does not disable real Antigravity plan mode or bypass permissions", () => {
     schema: {},
   };
   const invocation = agy.invocation(request);
+  expect(agy.invocation({ ...request, stage: 3 }).args).toContain(
+    "accept-edits",
+  );
   expect(invocation.args).toContain("plan");
   expect(invocation.args).not.toContain("--disable-slash-commands");
   expect(invocation.args).not.toContain("--dangerously-skip-permissions");

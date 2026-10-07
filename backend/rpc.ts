@@ -1,3 +1,7 @@
+import { GitHubService } from "./github/service";
+import { GitHubClient } from "./github/client";
+import { fetchIssue } from "./workspace/issue";
+import { StageConfigSchema } from "./domain";
 import { TaskTerminals } from "./execution/task-terminals";
 import { readLogTail } from "./storage/logs";
 import { ReviewService } from "./review/service";
@@ -8,26 +12,25 @@ import { realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Engine } from "./execution/engine";
 import { AuthSessions } from "./execution/auth";
-import {
-  AdeError,
-  SettingsSchema,
-  branchName,
-  parseIssue,
-  now,
-} from "./domain";
+import { AdeError, SettingsSchema, parseIssue, now } from "./domain";
 import { capture, checked } from "./execution/process";
 import { inside, taskRoot } from "./workspace/paths";
 const idInput = z.object({ id: z.string().uuid() });
 export class Rpc {
   private readonly auth: AuthSessions;
   readonly scheduler: Scheduler;
+  readonly github: GitHubService;
   private readonly review: ReviewService;
   private readonly terminals: TaskTerminals;
   constructor(readonly engine: Engine) {
     this.scheduler = new Scheduler(engine);
+    this.github = new GitHubService(engine, this.scheduler);
     this.review = new ReviewService(engine);
     this.terminals = new TaskTerminals(engine);
-    this.auth = new AuthSessions(engine.root, engine.publish);
+    this.auth = new AuthSessions(engine.root, (event) => {
+      engine.publish(event);
+      if (event.event === "auth.closed") void this.github.sync();
+    });
   }
   call = async (method: string, input: unknown) => {
     const e = this.engine;
@@ -44,7 +47,22 @@ export class Rpc {
             .map((t) => t.id),
           scheduled: this.scheduler.jobs(),
           attention: this.scheduler.attention(),
+          github: this.github.snapshot(),
         };
+      case "github.status":
+        return this.github.client.detect();
+      case "github.sync":
+        return this.github.sync();
+      case "github.configure":
+        return this.github.configure(input);
+      case "github.resolve":
+        return this.github.resolve(
+          z.object({ repository: z.string().max(200) }).parse(input).repository,
+        );
+      case "github.use":
+        return this.github.useLocally(
+          z.object({ repository: z.string().max(200) }).parse(input).repository,
+        );
       case "terminal.status":
         return this.terminals.current(idInput.parse(input).id);
       case "terminal.open": {
@@ -162,6 +180,7 @@ export class Rpc {
               detail.task.execution_settings ?? e.db.settings(),
           },
           active: e.isActive(id),
+          executing: e.isExecuting(id),
         };
       }
       case "repository.add": {
@@ -235,35 +254,85 @@ export class Rpc {
         return null;
       }
       case "task.preview": {
-        const p = z
-          .object({
-            issue_url: z.string(),
-            claimed_scope: z.string().min(1).max(1000),
-          })
-          .parse(input);
-        const issue = parseIssue(p.issue_url);
+        const p = z.object({ issue_url: z.string() }).parse(input);
+        const reference = parseIssue(p.issue_url);
+        const [issue, resolved] = await Promise.all([
+          fetchIssue(reference, e.root),
+          this.github.resolve(`${reference.owner}/${reference.repo}`),
+        ]);
         return {
+          reference,
           issue,
+          resolved,
           repository:
             e.db
               .repositories()
               .find(
                 (r) =>
-                  r.owner.toLowerCase() === issue.owner.toLowerCase() &&
-                  r.name.toLowerCase() === issue.repo.toLowerCase(),
-              ) ?? null,
-          branch_name: branchName(issue.number, p.claimed_scope),
+                  `${r.owner}/${r.name}`.toLowerCase() ===
+                  `${reference.owner}/${reference.repo}`.toLowerCase(),
+              ) || null,
         };
       }
       case "task.create": {
         const p = z
           .object({
             issue_url: z.string(),
-            claimed_scope: z.string(),
-            notes: z.string().default(""),
+            scope_mode: z.enum(["whole_issue", "partial"]).default("partial"),
+            claimed_scope: z.string().max(1000).default(""),
+            notes: z.string().max(32000).default(""),
+            settings: SettingsSchema.optional(),
+            advanced: z
+              .object({
+                upstream_url: z.string(),
+                origin_url: z.string().nullable(),
+                base_branch: z.string(),
+              })
+              .optional(),
           })
           .parse(input);
-        return e.createTask(p.issue_url, p.claimed_scope, p.notes);
+        if (p.scope_mode === "partial" && !p.claimed_scope.trim())
+          throw new AdeError(
+            "invalid_input",
+            "Claimed scope is required for a partial task",
+          );
+        const ref = parseIssue(p.issue_url);
+        const existing = e.db
+          .repositories()
+          .find(
+            (r) =>
+              `${r.owner}/${r.name}`.toLowerCase() ===
+              `${ref.owner}/${ref.repo}`.toLowerCase(),
+          );
+        if (p.advanced) {
+          const identity = (await import("./domain")).remoteIdentity(
+            p.advanced.upstream_url,
+          );
+          if (
+            `${identity.owner}/${identity.name}`.toLowerCase() !==
+            `${ref.owner}/${ref.repo}`.toLowerCase()
+          )
+            throw new AdeError(
+              "invalid_input",
+              "Upstream must match the issue repository",
+            );
+          if (existing) await e.configureRepository(existing.id, p.advanced);
+          else
+            await e.register(
+              p.advanced.upstream_url,
+              p.advanced.origin_url,
+              p.advanced.base_branch,
+              true,
+            );
+        } else if (!existing)
+          await this.github.useLocally(`${ref.owner}/${ref.repo}`, true);
+        return e.createTask(
+          p.issue_url,
+          p.claimed_scope,
+          p.notes,
+          p.scope_mode,
+          p.settings,
+        );
       }
       case "task.cancel": {
         const id = idInput.parse(input).id;
@@ -281,8 +350,28 @@ export class Rpc {
         return e.retry(p.id, p.stage, p.restart);
       }
       case "task.followup": {
-        const p = idInput.extend({ content: z.string() }).parse(input);
-        return e.followUp(p.id, p.content);
+        const p = idInput
+          .extend({
+            content: z.string().max(32000),
+            configuration: z
+              .object({
+                provider: z.enum(["codex", "antigravity"]),
+                config: StageConfigSchema,
+              })
+              .optional(),
+          })
+          .parse(input);
+        if (p.configuration) {
+          const key =
+            p.configuration.provider === "codex"
+              ? "codex_implementation"
+              : "antigravity";
+          SettingsSchema.parse({
+            ...e.db.settings(),
+            [key]: p.configuration.config,
+          });
+        }
+        return e.followUp(p.id, p.content, p.configuration);
       }
       case "task.complete": {
         const t = e.db.task(idInput.parse(input).id);
@@ -330,12 +419,40 @@ export class Rpc {
         e.start();
         e.changed();
         return e.db.settings();
-      case "providers.detect":
-        return e.providers();
+      case "providers.detect": {
+        const [agents, github] = await Promise.all([
+          e.providers(),
+          new GitHubClient(e.root).detect(),
+        ]);
+        const ag = agents.find((p) => p.provider === "antigravity");
+        const success = e.db.all<{ ended_at: string }>(
+          "SELECT ended_at FROM agent_runs WHERE provider='antigravity' AND status='completed' ORDER BY ended_at DESC LIMIT 1",
+        )[0];
+        if (ag && success)
+          ag.authentication = `Connected · last successful run ${success.ended_at}`;
+        return [
+          ...agents,
+          {
+            provider: "github",
+            installed: github.installed,
+            version: github.version,
+            authentication: github.connected
+              ? `Connected as @${github.username}`
+              : "Not connected",
+            models: [],
+            efforts: [],
+            capabilities: github.installed
+              ? ["repository-discovery", "pr-watch"]
+              : [],
+            error: github.error,
+          },
+        ];
+      }
       case "auth.connect":
         return this.auth.connect(
-          z.object({ provider: z.enum(["codex", "antigravity"]) }).parse(input)
-            .provider,
+          z
+            .object({ provider: z.enum(["codex", "antigravity", "github"]) })
+            .parse(input).provider,
         );
       case "auth.input": {
         const p = z
@@ -369,6 +486,7 @@ export class Rpc {
   };
   close = async () => {
     this.auth.dispose();
+    await this.github.close();
     await this.scheduler.close();
     await this.terminals.dispose();
   };

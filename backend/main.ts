@@ -16,6 +16,7 @@ const main = async () => {
   );
   engine.start();
   rpc.scheduler.start();
+  rpc.github.start();
   let stopping = false;
   const stop = async () => {
     if (stopping) return;

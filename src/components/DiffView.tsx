@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
   ChevronUp,
@@ -53,6 +53,8 @@ export const DiffView = ({
     updateTaskView(task.id, { openFile });
   const [refresh, setRefresh] = useState(0);
   const editor = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
+  const instance = useId();
+  const loadedFile = useRef("");
   const index = useRef(-1);
   useEffect(() => {
     let alive = true;
@@ -63,7 +65,7 @@ export const DiffView = ({
           setSelected(
             (current) =>
               d.files.find(
-                (f) => f.path === (current?.path || view.diffPath),
+                (f) => f.path === (view.diffPath || current?.path),
               ) ||
               d.files[0] ||
               null,
@@ -77,7 +79,11 @@ export const DiffView = ({
   }, [task.id, revision, refresh, onError, view.diffPath]);
   useEffect(() => {
     let alive = true;
-    setContent(null);
+    const key = `${task.id}/${selected?.path || ""}`;
+    if (loadedFile.current !== key) {
+      setContent(null);
+      loadedFile.current = key;
+    }
     index.current = -1;
     if (selected)
       void rpc<FileDiff>("task.file", {
@@ -151,7 +157,7 @@ export const DiffView = ({
     >
       <div className="diff-toolbar">
         <strong title="Saved base commit → complete working tree, including staged and untracked files">
-          Final diff · <span>{diff?.files.length || 0} files changed</span>
+          Changes · <span>{diff?.files.length || 0} files changed</span>
         </strong>
         <span className="success">+{diff?.insertions || 0}</span>
         <span className="failure">−{diff?.deletions || 0}</span>
@@ -304,14 +310,30 @@ export const DiffView = ({
               />
             ) : (
               <DiffEditor
+                key={selected.path}
                 theme="vibestar-dark"
                 language={language(selected.path)}
                 original={content.original}
                 modified={content.modified}
-                originalModelPath={`base/${task.id}/${selected.path}`}
-                modifiedModelPath={`working/${task.id}/${selected.path}`}
+                originalModelPath={`base/${task.id}/${instance}/${selected.path}`}
+                modifiedModelPath={`working/${task.id}/${instance}/${selected.path}`}
+                keepCurrentOriginalModel
+                keepCurrentModifiedModel
                 onMount={(e) => {
                   editor.current = e;
+                  const models = e.getModel();
+                  // The React wrapper disposes models before the diff widget.
+                  // Monaco requires detaching the widget first. Own these models
+                  // per pane and release them after editor disposal completes.
+                  e.onDidDispose(() =>
+                    queueMicrotask(() => {
+                      if (editor.current === e) editor.current = null;
+                      if (!models?.original.isDisposed())
+                        models?.original.dispose();
+                      if (!models?.modified.isDisposed())
+                        models?.modified.dispose();
+                    }),
+                  );
                   e.getOriginalEditor().onDidChangeCursorSelection((event) =>
                     setSelection({
                       start: event.selection.startLineNumber,

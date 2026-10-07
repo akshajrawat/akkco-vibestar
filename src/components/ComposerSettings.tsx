@@ -1,119 +1,68 @@
-import { useEffect, useState } from "react";
-import type { Task, Settings, Detection } from "../lib/types";
-import { rpc, errorMessage } from "../lib/api";
-import { defaultSettings, modelEffortError } from "../../backend/domain";
-import { Button } from "./ui/button";
-export const ComposerSettings = ({
-  task,
-  active,
-  onError,
-}: {
-  task: Task;
-  active: boolean;
-  onError: (error: string) => void;
-}) => {
-  const [settings, setSettings] = useState<Settings>(
-    task.execution_settings || structuredClone(defaultSettings),
-  );
-  const [providers, setProviders] = useState<Detection[]>([]);
-  const [stage, setStage] = useState<
-    "antigravity" | "codex_plan" | "codex_implementation"
-  >("codex_implementation");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    void rpc<Detection[]>("providers.detect")
-      .then((value) => {
-        if (alive) setProviders(value);
-      })
-      .catch((e) => {
-        if (alive) onError(errorMessage(e));
-      });
-    return () => {
-      alive = false;
-    };
-  }, [onError]);
-  const config = settings[stage];
-  const provider = stage === "antigravity" ? "antigravity" : "codex";
-  const detected = providers.find((p) => p.provider === provider);
-  const error = modelEffortError(provider, config.model, config.effort);
-  const changed =
-    JSON.stringify(settings) !==
-    JSON.stringify(task.execution_settings || defaultSettings);
-  const save = async () => {
-    setBusy(true);
-    try {
-      await rpc("task.configure", { id: task.id, settings });
-    } catch (e) {
-      onError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+import type { Task, StageConfig } from "../lib/types";
+import { defaultSettings } from "../../backend/domain";
+import { useTaskView, updateTaskView } from "../lib/taskView";
+export const followupConfiguration = (
+  task: Task,
+  view: ReturnType<typeof useTaskView>,
+) => {
+  const defaults = task.execution_settings || defaultSettings;
+  const config =
+    view.followupProvider === "codex"
+      ? defaults.codex_implementation
+      : defaults.antigravity;
+  return {
+    provider: view.followupProvider,
+    config: {
+      ...config,
+      model: view.followupModel ?? config.model,
+      effort: view.followupEffort ?? config.effort,
+    },
   };
+};
+export const ComposerSettings = ({ task }: { task: Task }) => {
+  const view = useTaskView(task.id);
+  const { provider, config } = followupConfiguration(task, view);
+  const update = (value: Partial<StageConfig>) =>
+    updateTaskView(task.id, {
+      ...(value.model !== undefined ? { followupModel: value.model } : {}),
+      ...(value.effort !== undefined ? { followupEffort: value.effort } : {}),
+    });
   return (
     <div className="composer-settings">
       <select
-        aria-label="Provider and stage"
-        value={stage}
-        onChange={(e) => setStage(e.target.value as typeof stage)}
+        aria-label="Follow-up provider"
+        value={provider}
+        onChange={(e) =>
+          updateTaskView(task.id, {
+            followupProvider: e.target.value as typeof provider,
+            followupModel: null,
+            followupEffort: null,
+          })
+        }
       >
-        <option value="antigravity">Antigravity · Plan</option>
-        <option value="codex_plan">Codex · Refine plan</option>
-        <option value="codex_implementation">Codex · Implement</option>
+        <option value="codex">Codex</option>
+        <option value="antigravity">Antigravity</option>
       </select>
+      <span>·</span>
       <input
         aria-label="Task model"
-        list={`composer-models-${task.id}`}
-        value={config.model}
         placeholder="CLI default model"
-        disabled={active}
-        onChange={(e) =>
-          setSettings((s) => ({
-            ...s,
-            [stage]: { ...s[stage], model: e.target.value },
-          }))
-        }
+        value={config.model}
+        onChange={(e) => update({ model: e.target.value })}
       />
-      <datalist id={`composer-models-${task.id}`}>
-        {detected?.models.map((model) => (
-          <option key={model} value={model} />
-        ))}
-      </datalist>
+      <span>·</span>
       <select
         aria-label="Task reasoning effort"
         value={config.effort}
-        disabled={active}
-        onChange={(e) =>
-          setSettings((s) => ({
-            ...s,
-            [stage]: { ...s[stage], effort: e.target.value },
-          }))
-        }
+        onChange={(e) => update({ effort: e.target.value })}
       >
-        {(
-          detected?.efforts ||
-          (provider === "codex"
-            ? ["none", "minimal", "low", "medium", "high", "xhigh"]
-            : ["low", "medium", "high", "xhigh", "max"])
-        ).map((effort) => (
-          <option key={effort}>{effort}</option>
+        {(provider === "codex"
+          ? ["none", "minimal", "low", "medium", "high", "xhigh"]
+          : ["low", "medium", "high", "xhigh", "max"]
+        ).map((v) => (
+          <option key={v}>{v}</option>
         ))}
       </select>
-      {changed && (
-        <Button
-          size="sm"
-          disabled={active || busy || !!error}
-          onClick={() => void save()}
-        >
-          Save task models
-        </Button>
-      )}
-      {error && <span className="failure">{error}</span>}
-      <small>
-        {active
-          ? "Stop the active run or terminal to change task models"
-          : "Settings apply only to this task; stages remain independent"}
-      </small>
     </div>
   );
 };

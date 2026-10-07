@@ -37,7 +37,10 @@ export interface PullRequestState {
   mergeable: string;
   reviewDecision: string;
   headRefOid: string;
-  comments: { id: string; body: string; updated_at: string }[];
+  author?: string;
+  baseRefOid?: string;
+  threads?: { id: string; resolved: boolean; path: string; body: string }[];
+  comments: { id: string; body: string; updated_at: string; author?: string }[];
   reviews: { id: string; body: string; state: string; submitted_at: string }[];
   checks: { name: string; state: string; url: string }[];
 }
@@ -56,6 +59,12 @@ export interface ScheduleJob {
   pending_snapshot: PullRequestState | null;
   changes: string[];
   error: string | null;
+  archived?: boolean;
+  paused_before_archive?: boolean;
+  check_once?: boolean;
+  title?: string;
+  action?: import("./action").PullRequestAction;
+  attention_source?: "review" | "ci" | "conflict" | null;
 }
 export interface ScheduleAttention {
   id: string;
@@ -96,17 +105,8 @@ export const changedPullRequest = (
       changes.push(`Review ${review.state}: ${review.body}`);
   if (current.reviewDecision !== previous.reviewDecision)
     changes.push(`Review decision: ${current.reviewDecision || "pending"}`);
-  const failures = [
-    "FAILURE",
-    "ERROR",
-    "TIMED_OUT",
-    "CANCELLED",
-    "ACTION_REQUIRED",
-    "STARTUP_FAILURE",
-  ];
   for (const check of current.checks)
     if (
-      failures.includes(check.state) &&
       !previous.checks.some(
         (p) =>
           p.name === check.name &&
@@ -115,11 +115,28 @@ export const changedPullRequest = (
       )
     )
       changes.push(`CI ${check.name}: ${check.state} ${check.url}`);
-  if (
-    current.mergeable === "CONFLICTING" &&
-    previous.mergeable !== current.mergeable
-  )
-    changes.push("Merge conflicts detected");
+  for (const thread of current.threads || [])
+    if (
+      !previous.threads?.some(
+        (p) =>
+          p.id === thread.id &&
+          p.resolved === thread.resolved &&
+          p.body === thread.body,
+      )
+    )
+      changes.push(
+        `Review thread ${thread.resolved ? "resolved" : "unresolved"}: ${thread.path} ${thread.body}`,
+      );
+  if (previous.headRefOid !== current.headRefOid)
+    changes.push("PR branch has new commits");
+  if (previous.baseRefOid && current.baseRefOid !== previous.baseRefOid)
+    changes.push("Base branch updated");
+  if (previous.mergeable !== current.mergeable)
+    changes.push(
+      current.mergeable === "CONFLICTING"
+        ? "Merge conflicts detected"
+        : `Merge status: ${current.mergeable}`,
+    );
   if (current.state !== previous.state)
     changes.push(`PR state: ${current.state}`);
   return {

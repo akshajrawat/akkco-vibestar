@@ -24,36 +24,39 @@ export const TestsView = ({
         <span>All commands execute in</span>
         <code>{detail.task.worktree_path}</code>
       </div>
-      <form
-        className="command-form"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          try {
-            await rpc("task.command", {
-              id: detail.task.id,
-              argv: parseArgv(argv),
-            });
-          } catch (e) {
-            onError(errorMessage(e));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <label>
-          Manual command · executable and argv JSON
-          <input
-            className="mono"
-            value={argv}
-            onChange={(e) => setArgv(e.target.value)}
-          />
-        </label>
-        <Button type="submit" disabled={busy}>
-          <Play size={12} />
-          {busy ? "Running…" : "Run in worktree"}
-        </Button>
-      </form>
+      <details className="manual-command">
+        <summary>Run a validation command</summary>
+        <form
+          className="command-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              await rpc("task.command", {
+                id: detail.task.id,
+                argv: parseArgv(argv),
+              });
+            } catch (e) {
+              onError(errorMessage(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label>
+            Manual command · executable and argv JSON
+            <input
+              className="mono"
+              value={argv}
+              onChange={(e) => setArgv(e.target.value)}
+            />
+          </label>
+          <Button type="submit" disabled={busy}>
+            <Play size={12} />
+            {busy ? "Running…" : "Run in worktree"}
+          </Button>
+        </form>
+      </details>
       {report && (
         <div className="test-report">
           {(["testsPassed", "testsFailed", "testsSkipped"] as const).map(

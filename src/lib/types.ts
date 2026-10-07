@@ -15,6 +15,7 @@ export interface Task {
   issue_number: number;
   issue_url: string;
   claimed_scope: string;
+  scope_mode?: "whole_issue" | "partial";
   notes: string;
   issue: { title?: string; body?: string };
   execution_settings?: Settings;
@@ -44,6 +45,14 @@ export interface Snapshot {
   tasks: Task[];
   settings: Settings;
   root: string;
+  github?: {
+    status: import("../../backend/github/contracts").GitHubStatus | null;
+    last_sync: string | null;
+    error: string | null;
+    settings: import("../../backend/github/contracts").WatchSettings;
+    repositories: import("../../backend/github/contracts").GitHubRepository[];
+    pull_requests: import("../../backend/github/contracts").GitHubPullRequest[];
+  };
   scheduled?: import("../../backend/scheduled/contracts").ScheduleJob[];
   attention?: import("../../backend/scheduled/contracts").ScheduleAttention[];
 }
@@ -99,12 +108,14 @@ export interface TestRun {
 }
 export interface Detail {
   active?: boolean;
+  executing?: boolean;
   task: Task;
   runs: Run[];
   events: AgentEvent[];
   messages: Message[];
   artifacts: Artifact[];
   tests: TestRun[];
+  activity?: { id: number; kind: string; data: string; timestamp: string }[];
 }
 export interface Detection {
   provider: string;
@@ -149,13 +160,7 @@ export interface CoreEvent {
   data?: unknown;
 }
 export type Page =
-  | "Scheduled"
-  | "Overview"
-  | "Tasks"
-  | "Repositories"
-  | "Diffs"
-  | "Providers"
-  | "Settings";
+  "Scheduled" | "Tasks" | "Repositories" | "Providers" | "Settings";
 export const stages = [
   "Prepare workspace",
   "Antigravity plan",

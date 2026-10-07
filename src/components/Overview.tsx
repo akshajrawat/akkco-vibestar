@@ -1,123 +1,99 @@
-import { ArrowUpRight, GitBranch, FolderGit2 } from "lucide-react";
-import type { Snapshot, Task } from "../lib/types";
-import { activeStatuses, stages } from "../lib/types";
-import { duration } from "../lib/api";
-import { ScheduledAttention } from "./ScheduledPage";
+import { Plus, ArrowUpRight } from "lucide-react";
+import type { Snapshot } from "../lib/types";
+import { activeStatuses } from "../lib/types";
 import { Status } from "./Status";
+import { Button } from "./ui/button";
+import { ScheduledAttention } from "./ScheduledPage";
 export const Overview = ({
   snapshot,
   refresh,
   open,
-  all = false,
+  newTask,
 }: {
   snapshot: Snapshot;
   refresh: () => Promise<void>;
   open: (id: string) => void;
-  all?: boolean;
+  newTask: () => void;
 }) => {
-  const groups: [string, (t: Task) => boolean][] = [
-    [
-      "Running",
-      (t) => activeStatuses.includes(t.status) || t.status === "queued",
-    ],
-    [
-      "Needs attention",
-      (t) => t.status === "interrupted" || t.status === "cancelled",
-    ],
-    ["Ready for review", (t) => t.status === "ready_for_review"],
-    ["Failed", (t) => t.status === "failed"],
-    ["Completed", (t) => t.status === "completed"],
+  const groups = [
+    {
+      name: "Running agents",
+      tasks: snapshot.tasks.filter(
+        (t) => activeStatuses.includes(t.status) || t.status === "queued",
+      ),
+    },
+    {
+      name: "Recent tasks",
+      tasks: snapshot.tasks
+        .filter(
+          (t) => !activeStatuses.includes(t.status) && t.status !== "queued",
+        )
+        .slice(0, 30),
+    },
   ];
   return (
-    <div className="page">
+    <div className="page task-library">
       <div className="page-title">
-        <div>
-          <span className="eyebrow">LOCAL OPEN SOURCE WORKSPACE</span>
-          <h1>{all ? "Tasks" : "Overview"}</h1>
-        </div>
-        <span className="subtle">
-          {snapshot.tasks.length} tasks · concurrency{" "}
-          {snapshot.settings.concurrency}
-        </span>
+        <h1>Tasks</h1>
+        <Button onClick={newTask}>
+          <Plus size={13} />
+          New task
+        </Button>
       </div>
       {!!snapshot.attention?.length && (
         <ScheduledAttention snapshot={snapshot} refresh={refresh} open={open} />
       )}
-      {snapshot.tasks.length === 0 ? (
-        <div className="empty">
-          <FolderGit2 size={36} />
-          <h2>Your contribution workspace</h2>
+      {!snapshot.tasks.length && (
+        <div className="task-start">
+          <h2>Start from a GitHub issue</h2>
           <p>
-            Register an upstream repository, then create a task for one claimed
-            scope.
-            <br />
-            Each task gets its own branch, worktree, and three-stage agent
-            pipeline.
+            Vibestar prepares an isolated worktree, plans with Antigravity,
+            refines with Codex, and implements with Codex.
           </p>
+          <Button variant="default" onClick={newTask}>
+            New task
+            <ArrowUpRight size={13} />
+          </Button>
         </div>
-      ) : (
-        groups.map(([label, filter]) => {
-          const tasks = snapshot.tasks.filter(filter);
-          return (
-            <section className="task-group" key={label}>
-              <h2>
-                {label}
-                <span>{tasks.length}</span>
-              </h2>
-              {tasks.length === 0 ? (
-                <p className="empty-row">No tasks</p>
-              ) : (
-                <div className="task-list">
-                  {tasks.map((t) => {
-                    const r = snapshot.repositories.find(
-                      (r) => r.id === t.repo_id,
-                    );
-                    const config =
-                      t.stage === 1
-                        ? snapshot.settings.antigravity
-                        : t.stage === 2
-                          ? snapshot.settings.codex_plan
-                          : snapshot.settings.codex_implementation;
-                    return (
-                      <button
-                        className="task-card"
-                        key={t.id}
-                        onClick={() => open(t.id)}
-                      >
-                        <div>
-                          <span className="repo-label">
-                            {r?.owner}/{r?.name} <span>#{t.issue_number}</span>
-                          </span>
-                          <strong>{t.claimed_scope}</strong>
-                          <div className="mono subtle">
-                            <GitBranch size={12} />
-                            {t.branch_name || "Worktree queued"}
-                          </div>
-                        </div>
-                        <div className="task-meta">
-                          <Status status={t.status} />
-                          <span>{stages[t.stage]}</span>
-                          <small>
-                            {config.model || "CLI default"} ·{" "}
-                            {duration(
-                              t.created_at,
-                              t.status === "ready_for_review" ||
-                                t.status === "completed"
-                                ? t.updated_at
-                                : null,
-                            )}
-                          </small>
-                        </div>
-                        <ArrowUpRight size={15} />
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          );
-        })
       )}
+      {groups
+        .filter((g) => g.tasks.length)
+        .map((group) => (
+          <section className="task-group" key={group.name}>
+            <h2>
+              {group.name}
+              <small>{group.tasks.length}</small>
+            </h2>
+            <div className="task-list">
+              {group.tasks.map((task) => {
+                const repo = snapshot.repositories.find(
+                  (r) => r.id === task.repo_id,
+                );
+                return (
+                  <button
+                    className="task-card"
+                    key={task.id}
+                    onClick={() => open(task.id)}
+                  >
+                    <i className={`task-dot ${task.status}`} />
+                    <div>
+                      <strong>
+                        {task.claimed_scope ||
+                          task.issue.title ||
+                          "Entire issue"}
+                      </strong>
+                      <span className="subtle">
+                        {repo?.owner}/{repo?.name} #{task.issue_number}
+                      </span>
+                    </div>
+                    <Status status={task.status} />
+                    <ArrowUpRight size={13} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
     </div>
   );
 };

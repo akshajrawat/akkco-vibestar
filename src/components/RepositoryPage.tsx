@@ -1,94 +1,35 @@
 import { useState } from "react";
-import { FolderOpen, RefreshCw, Plus, Trash2 } from "lucide-react";
+import {
+  Search,
+  RefreshCw,
+  FolderOpen,
+  Trash2,
+  GitFork,
+  Lock,
+} from "lucide-react";
+import type { Snapshot } from "../lib/types";
 import { Button } from "./ui/button";
-import type { Repository } from "../lib/types";
 import { rpc, errorMessage } from "../lib/api";
-export const RepositoryForm = ({ done }: { done: () => void }) => {
+export const RepositoryPage = ({
+  snapshot,
+  refresh,
+}: {
+  snapshot: Snapshot;
+  refresh: () => Promise<void>;
+}) => {
+  const [query, setQuery] = useState("");
+  const [group, setGroup] = useState("Owned");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
   const [upstream, setUpstream] = useState("");
   const [origin, setOrigin] = useState("");
   const [base, setBase] = useState("main");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  return (
-    <form
-      className="form-panel"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        try {
-          await rpc("repository.add", {
-            upstream_url: upstream,
-            origin_url: origin || null,
-            base_branch: base,
-          });
-          done();
-        } catch (e) {
-          setError(errorMessage(e));
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <h2>Add managed repository</h2>
-      <p className="subtle">
-        One Linux clone per upstream. Task worktrees share its Git objects.
-      </p>
-      <label>
-        Upstream URL
-        <input
-          required
-          placeholder="https://github.com/oppia/oppia.git"
-          value={upstream}
-          onChange={(e) => setUpstream(e.target.value)}
-        />
-      </label>
-      <label>
-        Fork / origin URL <span className="subtle">optional</span>
-        <input
-          placeholder="git@github.com:your-name/oppia.git"
-          value={origin}
-          onChange={(e) => setOrigin(e.target.value)}
-        />
-      </label>
-      <label>
-        Base branch
-        <input
-          required
-          value={base}
-          onChange={(e) => setBase(e.target.value)}
-        />
-      </label>
-      {error && <div className="error-box">{error}</div>}
-      <Button type="submit" variant="default" disabled={busy}>
-        {busy ? "Cloning and fetching…" : "Register repository"}
-      </Button>
-    </form>
-  );
-};
-export const RepositoryPage = ({
-  repositories,
-  refresh,
-}: {
-  repositories: Repository[];
-  refresh: () => Promise<void>;
-}) => {
-  const [adding, setAdding] = useState(false);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState<
-    Record<string, { disk_usage: string; active_worktrees: number }>
-  >({});
-  const action = async (method: string, r: Repository) => {
-    setBusy(r.id);
+  const github = snapshot.github;
+  const action = async (method: string, params: unknown, key: string) => {
+    setBusy(key);
+    setError("");
     try {
-      if (
-        method === "repository.remove" &&
-        !window.confirm(
-          `Permanently remove the managed clone ${r.owner}/${r.name}? This removes all its task worktrees, changes, logs in the database, and task history.`,
-        )
-      )
-        return;
-      await rpc(method, { id: r.id, kind: "repository", confirmed: true });
+      await rpc(method, params);
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -96,98 +37,227 @@ export const RepositoryPage = ({
       setBusy("");
     }
   };
+  const rows = (github?.repositories || [])
+    .filter((r) =>
+      `${r.full_name} ${r.description || ""}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    )
+    .filter((r) =>
+      group === "Recent"
+        ? snapshot.repositories.some(
+            (local) => `${local.owner}/${local.name}` === r.full_name,
+          )
+        : group === "Owned"
+          ? r.owner.login === github?.status?.username && !r.fork
+          : group === "Forks"
+            ? r.fork
+            : group === "Organizations"
+              ? r.owner.type === "Organization"
+              : true,
+    );
   return (
-    <div className="page">
+    <div className="page repository-library">
       <div className="page-title">
-        <div>
-          <span className="eyebrow">HARNESS-MANAGED CLONES</span>
-          <h1>Repositories</h1>
-        </div>
-        <Button onClick={() => setAdding(!adding)}>
-          <Plus size={14} />
-          Add repository
+        <h1>Repositories</h1>
+        <Button
+          disabled={!!busy}
+          onClick={() => void action("github.sync", {}, "sync")}
+        >
+          <RefreshCw size={13} />
+          {busy === "sync" ? "Syncing…" : "Sync GitHub"}
         </Button>
       </div>
-      {error && <div className="error-box">{error}</div>}
-      {adding && (
-        <RepositoryForm
-          done={() => {
-            setAdding(false);
-            void refresh();
-          }}
+      <div className="library-search">
+        <Search size={14} />
+        <input
+          aria-label="Search repositories"
+          placeholder="Search repositories…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
         />
-      )}
-      {repositories.map((r) => (
-        <section className="repository-row" key={r.id}>
-          <div className="repo-heading">
-            <h2>
-              {r.owner}/{r.name}
-            </h2>
-            <code>upstream/{r.base_branch}</code>
-          </div>
-          <dl>
-            <dt>Upstream</dt>
-            <dd>{r.upstream_url}</dd>
-            <dt>Origin</dt>
-            <dd>{r.origin_url || "No fork configured"}</dd>
-            <dt>Managed path</dt>
-            <dd className="mono">{r.path}</dd>
-            <dt>Last fetched</dt>
-            <dd>
-              {r.last_fetched
-                ? new Date(r.last_fetched).toLocaleString()
-                : "Never"}
-            </dd>
-            {info[r.id] && (
-              <>
-                <dt>Storage / worktrees</dt>
-                <dd>
-                  {info[r.id].disk_usage} · {info[r.id].active_worktrees}{" "}
-                  worktrees
-                </dd>
-              </>
-            )}
-          </dl>
-          <div className="actions">
-            <Button
-              disabled={busy === r.id}
-              onClick={() => void action("repository.fetch", r)}
-            >
-              <RefreshCw size={13} />
-              Fetch upstream
-            </Button>
-            <Button onClick={() => void action("open.directory", r)}>
-              <FolderOpen size={13} />
-              Open directory
-            </Button>
-            <Button
-              onClick={() =>
-                void rpc<{ disk_usage: string; active_worktrees: number }>(
-                  "repository.info",
-                  { id: r.id },
-                )
-                  .then((v) => setInfo({ ...info, [r.id]: v }))
-                  .catch((e) => setError(errorMessage(e)))
-              }
-            >
-              Disk usage
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => void action("repository.remove", r)}
-            >
-              <Trash2 size={13} />
-              Remove
-            </Button>
-          </div>
-        </section>
-      ))}
-      {repositories.length === 0 && !adding && (
-        <p className="empty-row">
-          No registered repositories. Add your upstream and optional fork to
-          begin.
+      </div>
+      <div className="library-tabs">
+        {["Recent", "Owned", "Forks", "Organizations", "All"].map((g) => (
+          <button
+            className={g === group ? "selected" : ""}
+            key={g}
+            onClick={() => setGroup(g)}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
+      {error && (
+        <p className="error-box" role="alert">
+          {error}
         </p>
       )}
+      {!github?.status?.connected && (
+        <p className="empty-row">
+          Connect GitHub in Providers to browse your repositories.
+        </p>
+      )}
+      <div className="repo-catalog">
+        {rows.map((r) => {
+          const local = snapshot.repositories.find(
+            (l) =>
+              `${l.owner}/${l.name}` === r.full_name ||
+              l.origin_url?.replace(/\.git$/, "") ===
+                `https://github.com/${r.full_name}`,
+          );
+          return (
+            <div className="repo-catalog-row" key={r.id}>
+              <div>
+                <strong>{r.name}</strong>
+                <span>{r.full_name}</span>
+                <small>
+                  {r.default_branch} ·{" "}
+                  {r.private ? (
+                    <>
+                      <Lock size={10} /> private
+                    </>
+                  ) : (
+                    "public"
+                  )}{" "}
+                  ·{" "}
+                  {r.fork ? (
+                    <>
+                      <GitFork size={10} /> fork
+                    </>
+                  ) : (
+                    "original"
+                  )}
+                </small>
+              </div>
+              <div className="spacer" />
+              {local ? <span className="success">Managed locally</span> : null}
+              <Button
+                size="sm"
+                disabled={!!busy}
+                onClick={() =>
+                  void action(
+                    "github.use",
+                    { repository: r.full_name },
+                    String(r.id),
+                  )
+                }
+              >
+                {busy === String(r.id) ? "Preparing clone…" : "Use locally"}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+      {github?.status?.connected && !rows.length && (
+        <p className="empty-row">
+          {github.last_sync
+            ? "No repositories in this view."
+            : "Fetching your repository catalog…"}
+        </p>
+      )}
+      {!!snapshot.repositories.length && (
+        <section className="managed-repos">
+          <h2>Managed local clones</h2>
+          {snapshot.repositories.map((r) => (
+            <details key={r.id} className="managed-repo">
+              <summary>
+                <FolderOpen size={13} />
+                {r.owner}/{r.name}
+                <code>upstream/{r.base_branch}</code>
+              </summary>
+              <p className="mono">{r.path}</p>
+              <p className="subtle">
+                {r.upstream_url}
+                {r.origin_url ? ` · origin ${r.origin_url}` : ""}
+              </p>
+              <div className="actions">
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    void action("repository.fetch", { id: r.id }, r.id)
+                  }
+                  disabled={!!busy}
+                >
+                  Fetch upstream
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    void action(
+                      "open.directory",
+                      { id: r.id, kind: "repository" },
+                      r.id,
+                    )
+                  }
+                >
+                  Open directory
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Remove ${r.owner}/${r.name} and all its tasks and worktrees?`,
+                      )
+                    )
+                      void action(
+                        "repository.remove",
+                        { id: r.id, confirmed: true },
+                        r.id,
+                      );
+                  }}
+                >
+                  <Trash2 size={12} />
+                  Remove
+                </Button>
+              </div>
+            </details>
+          ))}
+        </section>
+      )}
+      <details className="advanced-repository">
+        <summary>Advanced · add by Git URL</summary>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void action(
+              "repository.add",
+              {
+                upstream_url: upstream,
+                origin_url: origin || null,
+                base_branch: base,
+              },
+              "manual",
+            );
+          }}
+        >
+          <label>
+            Upstream URL
+            <input
+              required
+              value={upstream}
+              onChange={(e) => setUpstream(e.target.value)}
+            />
+          </label>
+          <label>
+            Fork / origin URL
+            <input value={origin} onChange={(e) => setOrigin(e.target.value)} />
+          </label>
+          <label>
+            Base branch
+            <input
+              required
+              value={base}
+              onChange={(e) => setBase(e.target.value)}
+            />
+          </label>
+          <Button type="submit" disabled={!!busy}>
+            Prepare managed clone
+          </Button>
+        </form>
+      </details>
     </div>
   );
 };

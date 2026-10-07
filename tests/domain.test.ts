@@ -14,7 +14,67 @@ import {
 } from "../backend/domain";
 import { safeFile, worktreePath } from "../backend/workspace/paths";
 import { Database } from "../backend/storage/database";
+import BetterSqlite3 from "better-sqlite3";
+import { migrations } from "../backend/storage/migrations";
 describe("domain and persistence", () => {
+  it("upgrades V1 tasks to partial scope while preserving conversations and pipeline settings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-migrate-"));
+    const path = join(dir, "legacy.sqlite");
+    const old = new BetterSqlite3(path);
+    try {
+      for (const migration of migrations.filter((m) => m.version <= 5)) {
+        old.exec(migration.sql);
+        old
+          .prepare("INSERT OR IGNORE INTO schema_migrations VALUES(?,?)")
+          .run(migration.version, "before");
+      }
+      const task = {
+        id: "old-task",
+        repo_id: "old-repo",
+        claimed_scope: "specific.ts",
+        status: "ready_for_review",
+        stage: 5,
+        created_at: "before",
+      };
+      old
+        .prepare("INSERT INTO repositories VALUES(?,?,?,?)")
+        .run("old-repo", "owner", "repo", JSON.stringify({ id: "old-repo" }));
+      old
+        .prepare("INSERT INTO tasks VALUES(?,?,?,?,?,?)")
+        .run(
+          task.id,
+          task.repo_id,
+          task.status,
+          task.stage,
+          JSON.stringify(task),
+          task.created_at,
+        );
+      old
+        .prepare("INSERT INTO task_messages VALUES(?,?,?,?,?)")
+        .run("message", task.id, "user", "Saved discussion", "before");
+      old
+        .prepare("INSERT INTO settings VALUES(?,?)")
+        .run("pipeline", JSON.stringify(defaultSettings));
+    } finally {
+      old.close();
+    }
+    try {
+      const current = new Database(path);
+      expect(current.task("old-task")).toMatchObject({
+        scope_mode: "partial",
+        claimed_scope: "specific.ts",
+        stage: 5,
+      });
+      expect(current.all("SELECT scope_mode FROM tasks")).toEqual([
+        { scope_mode: "partial" },
+      ]);
+      expect(current.detail("old-task").messages).toHaveLength(1);
+      expect(current.settings()).toEqual(defaultSettings);
+      current.close();
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
   it("parses GitHub issue URLs and rejects unrelated input", () => {
     expect(
       parseIssue("https://github.com/oppia/oppia/issues/26831").number,
@@ -98,6 +158,8 @@ describe("domain and persistence", () => {
         { version: 3 },
         { version: 4 },
         { version: 5 },
+        { version: 6 },
+        { version: 7 },
       ]);
       db.close();
       const reopened = new Database(path);

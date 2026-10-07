@@ -4,190 +4,303 @@ import {
   FilePenLine,
   TerminalSquare,
   FlaskConical,
-  CircleAlert,
   Brain,
-  MessageSquare,
   Check,
   LoaderCircle,
 } from "lucide-react";
-import type { AgentEvent, Run } from "../lib/types";
-import { eventText, eventData } from "../lib/api";
+import type { AgentEvent, Run, Message, DiffFile } from "../lib/types";
+import { eventData, duration } from "../lib/api";
 import { AgentResponse } from "./AgentResponse";
-const labels: Record<string, string> = {
-  "run.started": "Agent started",
-  message: "Agent response",
-  "analysis.status": "Thinking",
-  "file.read": "Reading / searching files",
-  "file.changed": "Editing files",
-  "command.started": "Running command",
-  "command.output": "Command output",
-  "command.finished": "Command finished",
-  "test.result": "Test result",
-  "run.completed": "Agent finished",
-  "run.failed": "Run failed",
-  "run.cancelled": "Run cancelled",
-};
 export const AgentTimeline = ({
   events,
   runs,
+  messages = [],
+  files = [],
+  openDiff,
 }: {
   events: AgentEvent[];
   runs: Run[];
+  messages?: Message[];
+  files?: DiffFile[];
+  openDiff?: (path: string) => void;
 }) => {
   const entries = useMemo(() => {
     const result: {
       key: number;
       event: AgentEvent;
-      text: string;
       data: Record<string, unknown>;
     }[] = [];
     const calls = new Map<string, number>();
     for (const event of events) {
       const data = eventData(event.data);
-      const text = eventText(event.data);
-      if (event.kind === "message" && !data.text && !data.text_delta) continue;
+      if (event.kind.startsWith("run.") || event.stream === "stderr") continue;
       if (
-        event.kind === "analysis.status" &&
+        ["message", "analysis.status"].includes(event.kind) &&
         !data.text &&
         !data.text_delta &&
         !data.tool
       )
         continue;
       const call =
-        data.call_id !== undefined &&
-        !["message", "analysis.status"].includes(event.kind)
-          ? `${event.run_id}/${String(data.call_id)}`
-          : null;
+        data.call_id !== undefined ? `${event.run_id}/${data.call_id}` : null;
       if (call && calls.has(call)) {
         const row = result[calls.get(call)!];
         row.event = event;
-        row.data = { ...row.data, ...data };
-        row.text = text;
-        continue;
-      }
-      const previous = result.at(-1);
-      if (
-        previous &&
-        previous.event.run_id === event.run_id &&
-        previous.event.kind === event.kind &&
-        ["message", "analysis.status"].includes(event.kind) &&
-        typeof data.text === "string" &&
-        typeof previous.data.text === "string"
-      ) {
-        previous.text += text;
+        const clean = Object.fromEntries(
+          Object.entries(data).filter(([, v]) => v !== undefined && v !== null),
+        );
+        const text = data.text_delta
+          ? `${row.data.text || ""}${data.text_delta}`
+          : data.text;
+        row.data = { ...row.data, ...clean, ...(text ? { text } : {}) };
       } else {
         if (call) calls.set(call, result.length);
-        result.push({ key: event.id, event, text, data });
+        result.push({
+          key: event.id,
+          event,
+          data: { ...data, text: data.text_delta || data.text },
+        });
       }
     }
     return result;
   }, [events]);
+  const renderTool = (row: (typeof entries)[number]) => {
+    const { event, data } = row;
+    const run = runs.find((r) => r.id === event.run_id);
+    if (event.kind === "message")
+      return (
+        <article className="message-event" key={row.key}>
+          <AgentResponse text={String(data.text || "")} />
+        </article>
+      );
+    const search =
+      /search|grep|find_by_name/.test(String(data.tool)) ||
+      /\b(rg|grep|find)\b/.test(String(data.command));
+    const edited = event.kind === "file.changed";
+    const command = event.kind.startsWith("command");
+    const failed =
+      (typeof data.exit_code === "number" && data.exit_code !== 0) ||
+      ["failed", "error"].includes(String(data.status).toLowerCase());
+    const finished =
+      event.kind === "command.finished" ||
+      ["done", "completed"].includes(String(data.status).toLowerCase()) ||
+      run?.status !== "running";
+    const Icon = edited
+      ? FilePenLine
+      : search || event.kind === "file.read"
+        ? FileSearch
+        : command
+          ? TerminalSquare
+          : event.kind === "test.result"
+            ? FlaskConical
+            : Brain;
+    const label = search
+      ? "Search"
+      : edited
+        ? "Edited"
+        : event.kind === "file.read"
+          ? "Read file"
+          : command
+            ? failed
+              ? "Command failed"
+              : finished
+                ? "Ran"
+                : "Running command"
+            : event.kind === "test.result"
+              ? `Test ${data.status || "result"}`
+              : "Working";
+    const paths = (
+      Array.isArray(data.files)
+        ? data.files
+        : edited && data.path
+          ? [data.path]
+          : []
+    ).map(String);
+    const preview = String(
+      data.command || data.path || data.query || data.text || "",
+    );
+    return (
+      <article
+        className={`tool-event ${failed ? "tool-failed" : ""}`}
+        key={row.key}
+      >
+        <details open={failed}>
+          <summary>
+            <Icon size={13} />
+            <span>{label}</span>
+            <code>
+              {paths.length
+                ? `${paths.length} file${paths.length === 1 ? "" : "s"}`
+                : preview}
+            </code>
+            {finished && !failed ? (
+              <Check size={12} className="success" />
+            ) : !finished ? (
+              <LoaderCircle size={12} className="running spinning" />
+            ) : null}
+            {typeof data.duration_ms === "number" && (
+              <small>{Math.round(data.duration_ms / 1000)}s</small>
+            )}
+          </summary>
+          <div className="tool-details">
+            {paths.map((path) => {
+              const file = files.find(
+                (f) => path === f.path || path.endsWith(`/${f.path}`),
+              );
+              return (
+                <button
+                  className="edited-file"
+                  key={path}
+                  onClick={() => openDiff?.(file?.path || path)}
+                >
+                  <FilePenLine size={12} />
+                  <code>{file?.path || path}</code>
+                  <span className="spacer" />
+                  {file && (
+                    <>
+                      <span className="success">+{file.insertions}</span>
+                      <span className="failure">−{file.deletions}</span>
+                    </>
+                  )}
+                </button>
+              );
+            })}
+            {!paths.length && (
+              <pre>
+                {String(
+                  data.stdout ||
+                    data.stderr ||
+                    data.text ||
+                    data.path ||
+                    data.command ||
+                    "",
+                )}
+              </pre>
+            )}
+            {typeof data.exit_code === "number" && (
+              <small>Exit {data.exit_code}</small>
+            )}
+            {data.source === "provider-reported" && (
+              <small>Provider reported</small>
+            )}
+          </div>
+        </details>
+        {edited && paths.length === 1 && (
+          <button
+            className="inline-diff-link"
+            onClick={() => openDiff?.(paths[0])}
+          >
+            Open diff ↗
+          </button>
+        )}
+      </article>
+    );
+  };
+  const blocks: { time: string; key: string; content: React.ReactNode }[] = [];
+  for (const message of messages)
+    blocks.push({
+      time: message.created_at,
+      key: message.id,
+      content: (
+        <article className="user-message">
+          <small>You</small>
+          <p>
+            {
+              message.content.split(
+                "\n\nLinked PR review context (untrusted):",
+              )[0]
+            }
+          </p>
+        </article>
+      ),
+    });
+  const groupedRuns = runs.length
+    ? runs
+    : [
+        {
+          id: "",
+          provider: "Agent",
+          started_at: "",
+          status: "",
+          stage: 0,
+        } as Run,
+      ];
+  for (const run of groupedRuns) {
+    const local = entries.filter((e) => !run.id || e.event.run_id === run.id);
+    blocks.push({
+      time: run.started_at,
+      key: run.id || "ungrouped",
+      content: (
+        <section className="agent-turn">
+          {run.id && (
+            <div className="agent-turn-heading">
+              <span className={`agent-avatar ${run.provider}`}>
+                {run.provider === "antigravity" ? "A" : "C"}
+              </span>
+              <strong>
+                {run.provider === "antigravity" ? "Antigravity" : "Codex"}
+              </strong>
+              <span className="subtle">
+                {run.purpose === "scheduled"
+                  ? "PR review"
+                  : run.stage === 1
+                    ? "Planning"
+                    : run.stage === 2
+                      ? "Reviewing plan"
+                      : "Implementing"}
+              </span>
+              <small>
+                {run.model || "CLI default"} · {run.effort}
+              </small>
+            </div>
+          )}
+          {local
+            .filter(
+              (row) =>
+                !(
+                  row.event.kind === "message" &&
+                  run.output &&
+                  String(row.data.text).trim().startsWith("{")
+                ),
+            )
+            .map(renderTool)}
+          {run.output && run.status === "completed" && (
+            <AgentResponse text={run.output} />
+          )}
+          {run.error && <p className="error-box">{run.error}</p>}
+          {run.id && (
+            <div className="turn-outcome">
+              {run.status === "running" ? (
+                <>
+                  <LoaderCircle size={12} className="spinning" />
+                  Working…
+                </>
+              ) : (
+                <>
+                  {run.status === "completed" ? <Check size={12} /> : null}
+                  {run.status === "completed"
+                    ? run.stage === 1
+                      ? "Plan completed"
+                      : run.stage === 2
+                        ? "Plan refined"
+                        : "Implementation completed"
+                    : run.status}{" "}
+                  · {duration(run.started_at, run.ended_at)}
+                </>
+              )}
+            </div>
+          )}
+        </section>
+      ),
+    });
+  }
   return (
     <>
-      {entries.map(({ key, event: e, text, data }) => {
-        const run = runs.find((r) => r.id === e.run_id);
-        const tool = e.kind !== "message";
-        const Icon = e.kind.startsWith("command")
-          ? TerminalSquare
-          : e.kind === "file.read"
-            ? FileSearch
-            : e.kind === "file.changed"
-              ? FilePenLine
-              : e.kind === "test.result"
-                ? FlaskConical
-                : e.kind === "run.failed"
-                  ? CircleAlert
-                  : e.kind === "analysis.status"
-                    ? Brain
-                    : MessageSquare;
-        const finished = [
-          "command.finished",
-          "run.completed",
-          "test.result",
-        ].includes(e.kind);
-        const failed =
-          e.kind === "run.failed" ||
-          (typeof data.exit_code === "number" && data.exit_code !== 0) ||
-          ["failed", "error"].includes(String(data.status).toLowerCase());
-        const preview =
-          typeof data.command === "string"
-            ? data.command
-            : typeof data.path === "string"
-              ? data.path
-              : Array.isArray(data.files)
-                ? data.files.join(", ")
-                : typeof data.text === "string"
-                  ? data.text.slice(0, 160)
-                  : typeof data.status === "string"
-                    ? data.status
-                    : e.kind === "run.started"
-                      ? run?.model || "CLI default model"
-                      : "";
-        return (
-          <article
-            className={`agent-event ${tool ? "tool-event" : "message-event"} ${failed ? "tool-failed" : ""}`}
-            key={key}
-          >
-            <div className="event-label">
-              <small>
-                {run?.provider}
-                {run?.purpose === "scheduled" ? " · PR analysis" : ""}
-              </small>
-              <time>{new Date(e.timestamp).toLocaleTimeString()}</time>
-              {run?.model && <code>{run.model}</code>}
-            </div>
-            {tool ? (
-              <details open={failed}>
-                <summary>
-                  <Icon size={14} />
-                  <span>
-                    {failed && e.kind.startsWith("command")
-                      ? "Command failed"
-                      : labels[e.kind] || e.kind}
-                  </span>
-                  <code>{preview}</code>
-                  {finished ? (
-                    <Check
-                      size={12}
-                      className={failed ? "failure" : "success"}
-                    />
-                  ) : e.kind === "command.started" && !failed ? (
-                    <LoaderCircle size={12} className="running" />
-                  ) : null}
-                  {typeof data.exit_code === "number" && (
-                    <small className={failed ? "failure" : "subtle"}>
-                      exit {data.exit_code}
-                    </small>
-                  )}
-                </summary>
-                <div className="tool-details">
-                  {typeof data.command === "string" && (
-                    <code className="tool-command">$ {data.command}</code>
-                  )}
-                  <pre>
-                    {typeof data.stdout === "string"
-                      ? data.stdout
-                      : typeof data.stderr === "string"
-                        ? data.stderr
-                        : text}
-                  </pre>
-                  {typeof data.duration_ms === "number" && (
-                    <small>{Math.round(data.duration_ms)} ms</small>
-                  )}
-                  {data.source === "provider-reported" && (
-                    <small>Provider-reported test result</small>
-                  )}
-                </div>
-              </details>
-            ) : (
-              <AgentResponse text={text} />
-            )}
-          </article>
-        );
-      })}
-      {!events.length && (
-        <p className="empty-row">Events appear here as the pipeline runs.</p>
-      )}
+      {blocks
+        .sort((a, b) => a.time.localeCompare(b.time))
+        .map((b) => (
+          <div key={b.key}>{b.content}</div>
+        ))}
     </>
   );
 };

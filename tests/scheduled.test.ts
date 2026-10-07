@@ -59,8 +59,16 @@ it("persists snapshots, skips unchanged model calls, analyzes actionable changes
   const taskId = randomUUID(),
     repoId = randomUUID();
   const analyze = vi.fn().mockResolvedValue({
-    analysis: { summary: "Add test" },
-    refinement: { goal: "Verify fix" },
+    analysis: {
+      manualActionRequired: true,
+      severity: "action_required",
+      summary: "Add test",
+      reason: "Review",
+      newActivity: [],
+      recommendedNextAction: "Add test",
+      affectedFiles: [],
+    },
+    refinement: null,
   });
   const engine = {
     root: "/tmp",
@@ -118,6 +126,14 @@ it("persists snapshots, skips unchanged model calls, analyzes actionable changes
     await scheduler.tick();
     expect(analyze).not.toHaveBeenCalled();
     expect(inspect).toHaveBeenCalledTimes(2);
+    scheduler.setEnabled(job.id, false);
+    scheduler.runNow(job.id);
+    await scheduler.tick();
+    expect(scheduler.jobs()[0]).toMatchObject({
+      enabled: false,
+      check_once: false,
+    });
+    scheduler.setEnabled(job.id, true);
     const changed = {
       ...baseline,
       comments: [{ id: "review", body: "Add coverage", updated_at: "1" }],
@@ -126,6 +142,14 @@ it("persists snapshots, skips unchanged model calls, analyzes actionable changes
     scheduler.runNow(job.id);
     await scheduler.tick();
     expect(analyze).toHaveBeenCalledTimes(1);
+    inspect.mockResolvedValue({
+      ...changed,
+      checks: [{ name: "CI", state: "IN_PROGRESS", url: "" }],
+    });
+    scheduler.runNow(job.id);
+    await scheduler.tick();
+    expect(analyze).toHaveBeenCalledTimes(1);
+    expect(scheduler.attention()).toHaveLength(1);
     expect(analyze.mock.calls[0][0]).toBe(taskId);
     expect(analyze.mock.calls[0][1]).toContain("DO NOT edit files");
     expect(analyze.mock.calls[0][2]).toBe(true);
@@ -138,9 +162,9 @@ it("persists snapshots, skips unchanged model calls, analyzes actionable changes
     scheduler.runNow(job.id);
     await scheduler.tick();
     expect(analyze).toHaveBeenCalledTimes(1);
-    expect(scheduler.attention()).toHaveLength(2);
-    scheduler.dismiss(scheduler.attention()[0].id);
-    expect(scheduler.attention()).toHaveLength(1);
+    expect(scheduler.jobs()[0].archived).toBe(true);
+    expect(scheduler.attention()).toHaveLength(0);
+
     const reloaded = new Scheduler(engine, monitor);
     expect(reloaded.jobs()[0].last_snapshot?.state).toBe("CLOSED");
     await reloaded.close();
@@ -159,7 +183,18 @@ it("defers busy worktrees and recovers interrupted model jobs without automatica
     publish: vi.fn(),
     isActive: () => false,
     cancel: vi.fn(),
-    analyzeScheduled: vi.fn(),
+    analyzeScheduled: vi.fn().mockResolvedValue({
+      analysis: {
+        manualActionRequired: true,
+        severity: "action_required",
+        summary: "Feedback",
+        reason: "Review",
+        newActivity: [],
+        recommendedNextAction: "Read feedback",
+        affectedFiles: [],
+      },
+      refinement: null,
+    }),
   } as unknown as Engine;
   const id = randomUUID();
   const job = {
@@ -179,7 +214,10 @@ it("defers busy worktrees and recovers interrupted model jobs without automatica
   };
   db.run("INSERT INTO scheduled_jobs VALUES(?,?)", id, JSON.stringify(job));
   const monitor = new GitHubMonitor("/tmp");
-  const inspect = vi.spyOn(monitor, "inspect");
+  const inspect = vi.spyOn(monitor, "inspect").mockResolvedValue({
+    ...baseline,
+    comments: [{ id: "new", body: "Please add a test", updated_at: "now" }],
+  });
   const scheduler = new Scheduler(engine, monitor);
   try {
     scheduler.start();
@@ -189,7 +227,8 @@ it("defers busy worktrees and recovers interrupted model jobs without automatica
     expect(engine.analyzeScheduled).not.toHaveBeenCalled();
     scheduler.runNow(id, true);
     await scheduler.tick();
-    expect(scheduler.attention()[0].error).toContain("Link a prepared task");
+    expect(scheduler.attention()[0].error).toBeNull();
+    expect(engine.analyzeScheduled).toHaveBeenCalledTimes(1);
   } finally {
     await scheduler.close();
     db.close();

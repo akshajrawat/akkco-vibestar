@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { ActionSchema } from "../scheduled/action";
 import { sandboxInvocation } from "./sandbox";
 import { mkdir, open, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -26,22 +28,34 @@ export class AgentRunner {
     private readonly db: Database,
     private readonly git: GitWorkspace,
     private readonly emit: (e: CoreEvent) => void,
-    private readonly providers: (stage: number) => AgentProvider,
+    private readonly providers: (
+      stage: number,
+      provider?: "codex" | "antigravity",
+    ) => AgentProvider,
   ) {}
   run = async (
-    t: Task,
+    t: Task | { id: string; stage: 1 | 2 },
     settings: Settings,
     signal: AbortSignal,
-    options?: { prompt: string; purpose: string },
+    options?: { prompt: string; purpose: string; workspace?: string },
   ) => {
-    const cwd = await this.git.assertTask(t);
-    const provider = this.providers(t.stage);
+    const task = "repo_id" in t ? t : null;
+    if (!task && (!options?.workspace || options.purpose !== "scheduled"))
+      throw new AdeError(
+        "invalid_state",
+        "Detached analysis requires a managed PR workspace",
+      );
+    const cwd = task ? await this.git.assertTask(task) : options!.workspace!;
+    const table = task ? "agent_runs" : "scheduled_agent_runs";
+    const followup = t.stage === 3 ? task?.followup_config : undefined;
+    const provider = this.providers(t.stage, followup?.provider);
     const config =
-      t.stage === 1
+      followup?.config ??
+      (t.stage === 1
         ? settings.antigravity
         : t.stage === 2
           ? settings.codex_plan
-          : settings.codex_implementation;
+          : settings.codex_implementation);
     const detection = await provider.detect(this.root, signal);
     if (!detection.installed || !detection.capabilities.length)
       throw new AdeError(
@@ -66,11 +80,14 @@ export class AgentRunner {
         `Antigravity model '${config.model}' is not listed by agy models. Refresh model discovery.`,
       );
     const id = randomUUID();
-    const prompt = options?.prompt ?? buildPrompt(this.db, t);
-    const dir = join(this.root, "logs", t.id);
+    const prompt = options?.prompt ?? buildPrompt(this.db, task!);
+    const dir = join(this.root, "logs", task ? t.id : `pr-watch-${t.id}`);
     await mkdir(dir, { recursive: true });
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
-    const schema = schemaFor(t.stage);
+    const schema =
+      options?.purpose === "scheduled"
+        ? z.toJSONSchema(ActionSchema)
+        : schemaFor(t.stage);
     await writeFile(schemaPath, JSON.stringify(schema), { mode: 0o600 });
     const directInvocation = provider.invocation({
       runId: id,
@@ -84,14 +101,15 @@ export class AgentRunner {
     const invocation = await sandboxInvocation(
       this.root,
       this.db,
-      t,
+      task,
       directInvocation,
       t.stage < 3,
       schemaPath,
       provider.name === "antigravity" ? "antigravity" : "codex",
+      options?.workspace,
     );
     this.db.run(
-      "INSERT INTO agent_runs(id,task_id,stage,provider,model,effort,prompt,status,started_at) VALUES(?,?,?,?,?,?,?,'running',?)",
+      `INSERT INTO ${table}(id,${task ? "task_id" : "job_id"},stage,provider,model,effort,prompt,status,started_at) VALUES(?,?,?,?,?,?,?,'running',?)`,
       id,
       t.id,
       t.stage,
@@ -103,18 +121,18 @@ export class AgentRunner {
     );
     if (options)
       this.db.run(
-        "UPDATE agent_runs SET purpose=? WHERE id=?",
+        `UPDATE ${table} SET purpose=? WHERE id=?`,
         options.purpose,
         id,
       );
     const stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
     const stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
-    const before = await this.git.fingerprint(t);
+    const before = task ? await this.git.fingerprint(task) : null;
     let writes = Promise.resolve();
     let final: unknown;
     let failure: unknown;
     let code: number | null = null;
-    this.emit({ event: "changed", task_id: t.id });
+    this.emit({ event: "changed", task_id: task?.id });
     try {
       const output = await execute({
         ...invocation,
@@ -123,7 +141,7 @@ export class AgentRunner {
         timeoutMs: config.timeout_secs * 1000,
         onSpawn: (pid, identity) => {
           this.db.run(
-            "UPDATE agent_runs SET pid=?,process_identity=? WHERE id=?",
+            `UPDATE ${table} SET pid=?,process_identity=? WHERE id=?`,
             pid,
             identity,
             id,
@@ -142,7 +160,7 @@ export class AgentRunner {
           const conversationId = provider.conversationId(raw);
           if (conversationId)
             this.db.run(
-              "UPDATE agent_runs SET conversation_id=? WHERE id=?",
+              `UPDATE ${table} SET conversation_id=? WHERE id=?`,
               conversationId,
               id,
             );
@@ -152,6 +170,7 @@ export class AgentRunner {
             ? [{ kind: "command.output" as const, data: { stderr: line } }]
             : provider.normalize(raw)) {
             if (event.kind === "run.failed") failure = event.data;
+            if (!task) continue;
             this.db.run(
               "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,?,?,?,?)",
               id,
@@ -178,8 +197,11 @@ export class AgentRunner {
           `${provider.name} / ${stageStatus(t.stage)} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Check subscription quota, authentication and requested model/effort. Retry this stage after resolving the provider error.`,
           { provider: provider.name, stage: t.stage, code },
         );
-      const result = validatePlan(t.stage, final);
-      if (t.stage < 3 && before !== (await this.git.fingerprint(t)))
+      const result =
+        options?.purpose === "scheduled"
+          ? ActionSchema.parse(final)
+          : validatePlan(t.stage, final);
+      if (task && t.stage < 3 && before !== (await this.git.fingerprint(task)))
         throw new AdeError(
           "planning_violation",
           "Planning modified the worktree. Pipeline stopped. Review and discard changes before retrying.",
@@ -214,7 +236,7 @@ export class AgentRunner {
       }
       await writes;
       this.db.run(
-        "UPDATE agent_runs SET status='completed',ended_at=?,exit_code=?,output=? WHERE id=?",
+        `UPDATE ${table} SET status='completed',ended_at=?,exit_code=?,output=? WHERE id=?`,
         now(),
         code,
         JSON.stringify(result),
@@ -233,7 +255,7 @@ export class AgentRunner {
     } catch (e) {
       const status = signal.aborted ? "cancelled" : "failed";
       this.db.run(
-        "UPDATE agent_runs SET status=?,ended_at=?,exit_code=?,output=?,error=? WHERE id=?",
+        `UPDATE ${table} SET status=?,ended_at=?,exit_code=?,output=?,error=? WHERE id=?`,
         status,
         now(),
         code,
@@ -243,7 +265,7 @@ export class AgentRunner {
       );
       this.emit({
         event: "agent.event",
-        task_id: t.id,
+        task_id: task?.id,
         run_id: id,
         kind: signal.aborted ? "run.cancelled" : "run.failed",
         data: { message: String(e) },

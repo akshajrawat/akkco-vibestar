@@ -19,7 +19,18 @@ export interface DesktopApi {
   openExternal: (url: string) => Promise<void>;
 }
 
+export interface WindowState {
+  maximized: boolean;
+  fullscreen: boolean;
+}
 export interface ElectronWindowApi {
+  manualDragging: boolean;
+  beginDrag: (point: { x: number; y: number }) => Promise<void>;
+  drag: (point: { x: number; y: number }) => Promise<void>;
+  endDrag: () => Promise<void>;
+  fullscreen: () => Promise<void>;
+  getState: () => Promise<WindowState>;
+  onStateChanged: (callback: (state: WindowState) => void) => () => void;
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
