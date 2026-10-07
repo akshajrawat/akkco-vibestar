@@ -233,6 +233,23 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
             true,
           );
         }
+        const localRepository = await page.evaluate(async () => {
+          const verified = await window.vibestar.rpc<{
+            verification_id: string;
+          }>("repository.verifyLocal", {
+            environment: "wsl",
+            path: "/home/aksha/oppia",
+          });
+          return window.vibestar.rpc<{ id: string }>(
+            "repository.connectLocal",
+            {
+              verification_id: verified.verification_id,
+              upstream_remote: "upstream",
+              origin_remote: "origin",
+              base_branch: "develop",
+            },
+          );
+        });
         await page
           .getByRole("button", { name: "New task", exact: true })
           .click();
@@ -244,15 +261,18 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
         await page
           .getByLabel("Claimed scope")
           .fill("check-improvements-tab.spec.ts");
-        const resolved = await page.evaluate(() =>
-          window.vibestar.rpc<{
-            resolved: { origin_url: string; base_branch: string };
-          }>("task.preview", {
-            issue_url: "https://github.com/oppia/oppia/issues/26831",
-          }),
+        const resolved = await page.evaluate(
+          (repository_id) =>
+            window.vibestar.rpc<{
+              repository: { origin_url: string; base_branch: string };
+            }>("task.preview", {
+              repository_id,
+              issue_url: "https://github.com/oppia/oppia/issues/26831",
+            }),
+          localRepository.id,
         );
-        expect(resolved.resolved.base_branch).toBe("develop");
-        expect(resolved.resolved.origin_url).toBe(
+        expect(resolved.repository.base_branch).toBe("develop");
+        expect(resolved.repository.origin_url).toBe(
           "https://github.com/akshajrawat/oppia.git",
         );
         await page.getByLabel("Entire issue").check();

@@ -5,6 +5,46 @@ import { AdeError, now, remoteIdentity } from "../domain";
 import type { Database } from "../storage/database";
 import { capture, checked, redact } from "../execution/process";
 import { inside } from "./paths";
+import { z } from "zod";
+
+export const LocalRepositoryInput = z
+  .object({
+    environment: z.enum(["wsl", "windows"]),
+    path: z
+      .string()
+      .max(2000)
+      .regex(/^[^\x00-\x1f]+$/)
+      .trim()
+      .min(1),
+  })
+  .strict();
+export const ConnectLocalInput = z
+  .object({
+    verification_id: z.string().uuid(),
+    upstream_remote: z.string().min(1).max(200),
+    origin_remote: z.string().min(1).max(200).nullable(),
+    base_branch: z.string().min(1).max(200),
+  })
+  .strict();
+export interface VerifiedLocalRepository {
+  verification_id: string;
+  path: string;
+  environment: "wsl" | "windows";
+  distro: string;
+  windows_path?: string;
+  branch: string;
+  dirty: boolean;
+  remotes: {
+    name: string;
+    url: string;
+    identity: string | null;
+    default_branch: string | null;
+  }[];
+  branches: string[];
+  upstream_remote: string | null;
+  origin_remote: string | null;
+  base_branch: string | null;
+}
 
 export interface LocalRepository {
   path: string;
@@ -99,14 +139,128 @@ export class RepositoryIndex {
       ...(metadata ? JSON.parse(metadata.value) : {}),
     };
   };
+  verifyLocal = async (
+    input: z.infer<typeof LocalRepositoryInput>,
+    allowManaged = false,
+  ) => {
+    const p = LocalRepositoryInput.parse(input);
+    let executionPath = p.path;
+    if (p.environment === "windows") {
+      if (!/^[a-z]:[\\/].+/i.test(p.path) || /^[a-z]:[\\/]+$/i.test(p.path))
+        throw new AdeError(
+          "invalid_input",
+          "Enter a Windows repository path such as D:\\projects\\my-repo, not a drive root.",
+        );
+      executionPath = await checked("wslpath", ["-u", p.path], this.root);
+      if (!isAbsolute(executionPath))
+        throw new AdeError(
+          "invalid_input",
+          "Windows path conversion did not produce an absolute execution path.",
+        );
+    } else if (!p.path.startsWith("/") && !p.path.startsWith("~/")) {
+      throw new AdeError(
+        "invalid_input",
+        "Enter an absolute WSL path or a path starting with ~/.",
+      );
+    }
+    const path = await realpath(discoveryRoot(executionPath));
+    if (discoveryRoot(path) !== path)
+      throw new AdeError("invalid_input", "Invalid repository location.");
+    const local = await this.inspect(path, undefined, allowManaged);
+    if (local.path !== path)
+      throw new AdeError(
+        "invalid_input",
+        `Choose the repository root: ${local.path}`,
+      );
+    const git = (args: string[]) =>
+      capture("git", ["-c", "core.fsmonitor=false", ...args], path);
+    const status = await git([
+      "--no-optional-locks",
+      "status",
+      "--porcelain=v1",
+      "--untracked-files=normal",
+    ]);
+    if (status.code !== 0)
+      throw new AdeError("git_verify", "Couldn't read repository status.", {
+        details: status.stderr,
+      });
+    const names = await checked("git", ["remote"], path);
+    const remotes = await Promise.all(
+      names
+        .split("\n")
+        .filter(Boolean)
+        .map(async (name) => {
+          const [url, head] = await Promise.all([
+            git(["remote", "get-url", name]),
+            git(["symbolic-ref", "--short", `refs/remotes/${name}/HEAD`]),
+          ]);
+          const cleanUrl =
+            indexedRemote(url.code === 0 ? url.stdout.trim() : null) || "";
+          let identity: string | null = null;
+          try {
+            const r = remoteIdentity(cleanUrl);
+            identity = `${r.owner}/${r.name}`;
+          } catch {
+            /* Non-GitHub remotes remain visible but cannot be an issue upstream. */
+          }
+          return {
+            name,
+            url: cleanUrl,
+            identity,
+            default_branch:
+              head.code === 0
+                ? head.stdout.trim().slice(name.length + 1)
+                : null,
+          };
+        }),
+    );
+    const refs = await checked(
+      "git",
+      ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
+      path,
+    );
+    const branches = [
+      ...new Set(
+        refs
+          .split("\n")
+          .filter(Boolean)
+          .filter((ref) => !ref.endsWith("/HEAD"))
+          .map((ref) =>
+            ref
+              .replace(/^refs\/heads\//, "")
+              .replace(/^refs\/remotes\/[^/]+\//, ""),
+          ),
+      ),
+    ];
+    const github = remotes.filter((remote) => remote.identity);
+    const upstream =
+      github.find((remote) => remote.name === "upstream") ||
+      (github.length === 1 ? github[0] : null);
+    const origin = github.find(
+      (remote) => remote.name === "origin" && remote.name !== upstream?.name,
+    );
+    return {
+      ...local,
+      environment: p.environment,
+      distro: process.env.WSL_DISTRO_NAME || "Linux",
+      ...(p.environment === "windows" ? { windows_path: p.path } : {}),
+      dirty: !!status.stdout.trim(),
+      remotes,
+      branches,
+      upstream_remote: upstream?.name || null,
+      origin_remote: origin?.name || null,
+      base_branch: upstream?.default_branch || null,
+    };
+  };
   inspect = async (
     path: string,
     signal?: AbortSignal,
+    allowManaged = false,
   ): Promise<LocalRepository> => {
     const top = await realpath(
       await checked("git", ["rev-parse", "--show-toplevel"], path, signal),
     );
-    if (inside(this.root, top) || top === this.root)
+    if (!allowManaged && (inside(this.root, top) || top === this.root))
       throw new AdeError(
         "isolation",
         "Vibestar-managed directories cannot be imported.",
@@ -123,7 +277,7 @@ export class RepositoryIndex {
     const [rawOrigin, rawUpstream, branch, defaultRef] = await Promise.all([
       git(["remote", "get-url", "origin"]),
       git(["remote", "get-url", "upstream"]),
-      git(["symbolic-ref", "--short", "HEAD"]),
+      git(["branch", "--show-current"]),
       git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
     ]);
     const origin = indexedRemote(rawOrigin),

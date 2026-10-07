@@ -183,7 +183,14 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
       body: "All checklist items",
       comments: [],
     },
-    repository: null,
+    repository: {
+      id: "selected-local",
+      owner: "oppia",
+      name: "oppia",
+      path: "/home/aksha/oppia",
+      base_branch: "develop",
+      source: "imported",
+    },
     resolved: {
       repository: {},
       upstream_url: "https://github.com/oppia/oppia.git",
@@ -191,17 +198,19 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
       base_branch: "develop",
     },
   };
-  const rpc = vi
-    .fn()
-    .mockImplementation((method: string) =>
-      Promise.resolve(
-        method === "snapshot"
-          ? { settings: defaultSettings }
-          : method === "task.create"
-            ? { id: "task" }
-            : preview,
-      ),
-    );
+  const rpc = vi.fn().mockImplementation((method: string) =>
+    Promise.resolve(
+      method === "snapshot"
+        ? {
+            settings: defaultSettings,
+            root: "/home/aksha/.akkco-vibestar",
+            repositories: [preview.repository],
+          }
+        : method === "task.create"
+          ? { id: "task" }
+          : preview,
+    ),
+  );
   Object.defineProperty(window, "vibestar", {
     value: { rpc },
     configurable: true,
@@ -218,7 +227,11 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
   await vi.waitFor(() => expect(created).toHaveBeenCalledWith("task"));
   expect(rpc).toHaveBeenCalledWith(
     "task.create",
-    expect.objectContaining({ scope_mode: "whole_issue", claimed_scope: "" }),
+    expect.objectContaining({
+      repository_id: "selected-local",
+      scope_mode: "whole_issue",
+      claimed_scope: "",
+    }),
   );
   fireEvent.click(screen.getByLabelText("Specific part / claimed subtask"));
   fireEvent.change(screen.getByLabelText("Claimed scope"), {
@@ -522,4 +535,302 @@ it("normalizes legacy transport errors and structured errors without discarding 
       context: { task_id: "one" },
     }),
   ).toBe("Task terminal is open");
+});
+
+it("shows active connections and an All GitHub catalog without legacy filters or advanced URL forms", async () => {
+  const { RepositoryPage } = await import("../src/components/RepositoryPage");
+  const rpc = vi.fn().mockResolvedValue({});
+  Object.defineProperty(window, "vibestar", {
+    value: { rpc },
+    configurable: true,
+  });
+  render(
+    <RepositoryPage
+      snapshot={{
+        root: "/data",
+        settings: defaultSettings,
+        repositories: [],
+        tasks: [],
+        execution_environment: { distro: "Ubuntu" },
+        repository_index: {
+          repositories: [
+            {
+              path: "/home/aksha/oppia",
+              origin: "https://github.com/me/oppia.git",
+              upstream: "https://github.com/oppia/oppia.git",
+              identities: ["oppia/oppia"],
+              branch: "personal",
+              default_branch: "develop",
+              environment: "wsl",
+              indexed_at: "now",
+            },
+          ],
+          scanning: false,
+          last_scan: null,
+          duration_ms: null,
+          warnings: [],
+        },
+      }}
+      refresh={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("No active repositories")).toBeTruthy();
+  expect(
+    screen.getByText("Discovered, not connected", { exact: false }),
+  ).toBeTruthy();
+  for (const label of [
+    "Recent",
+    "Owned",
+    "Forks",
+    "Organizations",
+    "Advanced · add by Git URL",
+  ])
+    expect(screen.queryByText(label)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+  expect((screen.getByLabelText("Path") as HTMLInputElement).value).toBe(
+    "/home/aksha/oppia",
+  );
+  expect(rpc).not.toHaveBeenCalled();
+});
+
+it("verifies a manually entered checkout before connecting and invalidates preview on path changes", async () => {
+  const { ConnectLocalRepository } =
+    await import("../src/components/ConnectLocalRepository");
+  const verified = {
+    verification_id: "verified",
+    path: "/home/aksha/oppia",
+    environment: "wsl",
+    distro: "Ubuntu",
+    branch: "my-feature",
+    dirty: true,
+    remotes: [
+      {
+        name: "origin",
+        identity: "akshajrawat/oppia",
+        url: "https://github.com/akshajrawat/oppia.git",
+        default_branch: "develop",
+      },
+      {
+        name: "upstream",
+        identity: "oppia/oppia",
+        url: "https://github.com/oppia/oppia.git",
+        default_branch: "develop",
+      },
+    ],
+    branches: ["develop", "my-feature"],
+    upstream_remote: "upstream",
+    origin_remote: "origin",
+    base_branch: "develop",
+  };
+  const rpc = vi.fn().mockResolvedValue(verified);
+  const connected = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(window, "vibestar", {
+    value: { rpc },
+    configurable: true,
+  });
+  render(
+    <ConnectLocalRepository
+      distro="Ubuntu"
+      close={vi.fn()}
+      connected={connected}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Path"), {
+    target: { value: "/home/aksha/oppia" },
+  });
+  expect(
+    screen.queryByRole("button", { name: "Connect repository" }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Verify repository" }));
+  await screen.findByText("Repository verified");
+  expect(rpc).toHaveBeenCalledWith("repository.verifyLocal", {
+    environment: "wsl",
+    path: "/home/aksha/oppia",
+  });
+  expect(
+    (screen.getByLabelText("Upstream repository") as HTMLSelectElement).value,
+  ).toBe("upstream");
+  expect(
+    (screen.getByLabelText("Base branch") as HTMLSelectElement).value,
+  ).toBe("develop");
+  fireEvent.click(screen.getByRole("button", { name: "Connect repository" }));
+  await vi.waitFor(() => expect(connected).toHaveBeenCalled());
+  expect(rpc).toHaveBeenCalledWith("repository.connectLocal", {
+    verification_id: "verified",
+    upstream_remote: "upstream",
+    origin_remote: "origin",
+    base_branch: "develop",
+  });
+  fireEvent.change(screen.getByLabelText("Path"), {
+    target: { value: "/home/aksha/other" },
+  });
+  expect(
+    screen.queryByRole("button", { name: "Connect repository" }),
+  ).toBeNull();
+});
+
+it("shows only active repositories, visibly matches a pasted issue, and blocks a user's mismatched selection", async () => {
+  const oppia = {
+    id: "oppia-local",
+    owner: "oppia",
+    name: "oppia",
+    upstream_url: "https://github.com/oppia/oppia.git",
+    origin_url: "https://github.com/akshajrawat/oppia.git",
+    base_branch: "develop",
+    path: "/home/aksha/oppia",
+    source: "imported",
+    connected: true,
+  };
+  const react = {
+    ...oppia,
+    id: "react-local",
+    owner: "facebook",
+    name: "react",
+    path: "/home/aksha/react",
+  };
+  const disconnected = {
+    ...oppia,
+    id: "old",
+    path: "/old-checkout",
+    connected: false,
+  };
+  const rpc = vi.fn().mockImplementation((method: string) =>
+    Promise.resolve(
+      method === "snapshot"
+        ? {
+            root: "/home/aksha/.akkco-vibestar",
+            settings: defaultSettings,
+            repositories: [react, oppia, disconnected],
+          }
+        : method === "task.preview"
+          ? {
+              reference: { owner: "oppia", repo: "oppia", number: 26831 },
+              issue: { title: "Oppia issue", body: "Requirements" },
+              repository: oppia,
+            }
+          : [],
+    ),
+  );
+  Object.defineProperty(window, "vibestar", {
+    value: { rpc },
+    configurable: true,
+  });
+  render(<NewTask close={vi.fn()} created={vi.fn()} />);
+  await screen.findByText("facebook/react · /home/aksha/react");
+  expect(screen.queryByRole("option", { name: /old-checkout/ })).toBeNull();
+  fireEvent.change(screen.getByLabelText("Issue URL"), {
+    target: { value: "https://github.com/oppia/oppia/issues/26831" },
+  });
+  await screen.findByText("Oppia issue");
+  expect((screen.getByLabelText("Repository") as HTMLSelectElement).value).toBe(
+    oppia.id,
+  );
+  expect(screen.getByText(/Matched from issue URL/)).toBeTruthy();
+  expect(
+    screen.getByText(
+      "/home/aksha/.akkco-vibestar/worktrees/oppia-local/26831-…",
+    ),
+  ).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Repository"), {
+    target: { value: react.id },
+  });
+  expect(await screen.findByText("Repository mismatch")).toBeTruthy();
+  expect(
+    (
+      screen.getByRole("button", {
+        name: /Start task/,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(rpc).not.toHaveBeenCalledWith("task.create", expect.anything());
+  fireEvent.click(
+    screen.getByRole("button", { name: "Switch to oppia/oppia" }),
+  );
+  expect((screen.getByLabelText("Repository") as HTMLSelectElement).value).toBe(
+    oppia.id,
+  );
+});
+
+it("keeps finalization explicit and shows source/worktree metadata without moving the user's checkout", async () => {
+  const { TaskWorkspace } = await import("../src/components/TaskWorkspace");
+  const rpc = vi.fn(async (method: string) =>
+    method === "providers.detect"
+      ? []
+      : method === "task.diff"
+        ? {
+            files: [{ path: "source.txt" }],
+            insertions: 1,
+            deletions: 1,
+            base: "sha",
+          }
+        : null,
+  );
+  Object.defineProperty(window, "vibestar", {
+    value: { rpc },
+    configurable: true,
+  });
+  render(
+    <TaskWorkspace
+      detail={{
+        task: {
+          id: "finalize-test",
+          repo_id: "source",
+          issue_number: 26831,
+          issue_url: "https://github.com/oppia/oppia/issues/26831",
+          claimed_scope: "Task A",
+          notes: "",
+          issue: { title: "Task" },
+          branch_name: "akkco/26831-task-a",
+          base_branch: "develop",
+          base_commit_sha: "sha",
+          worktree_path: "/data/worktrees/source/task",
+          created_at: "now",
+          updated_at: "now",
+          status: "ready_for_review",
+          stage: 5,
+          error: null,
+        },
+        runs: [],
+        events: [],
+        messages: [],
+        artifacts: [],
+        tests: [],
+      }}
+      repository={{
+        id: "source",
+        owner: "oppia",
+        name: "oppia",
+        path: "/home/aksha/oppia",
+        upstream_url: "https://github.com/oppia/oppia.git",
+        origin_url: null,
+        source: "imported",
+        base_branch: "develop",
+        last_fetched: null,
+        created_at: "now",
+      }}
+      revision={0}
+      onError={vi.fn()}
+      back={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Finalize…" }));
+  expect(screen.getByRole("dialog", { name: "Finalize task" })).toBeTruthy();
+  expect(
+    screen.getByText(
+      /Marking this task complete preserves its branch and worktree/,
+    ),
+  ).toBeTruthy();
+  expect(rpc).not.toHaveBeenCalledWith("task.complete", expect.anything());
+  fireEvent.click(
+    screen.getByRole("button", { name: "Keep task in worktree" }),
+  );
+  expect(screen.queryByRole("dialog", { name: "Finalize task" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Finalize…" }));
+  fireEvent.click(screen.getByRole("button", { name: "Mark complete" }));
+  await vi.waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith("task.complete", { id: "finalize-test" }),
+  );
+  expect(
+    rpc.mock.calls.some(([method]) => /commit|checkout|remove/.test(method)),
+  ).toBe(false);
 });

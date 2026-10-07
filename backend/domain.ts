@@ -146,6 +146,13 @@ export interface Repository {
   last_fetched: string | null;
   created_at: string;
   source?: "managed" | "imported";
+  connected?: boolean;
+  selection?: "explicit";
+  environment?: "wsl" | "windows";
+  distro?: string;
+  windows_path?: string;
+  upstream_remote?: string;
+  origin_remote?: string | null;
 }
 export interface Task {
   id: string;
@@ -295,3 +302,9 @@ export const remoteIdentity = (input: string) => {
   return { owner: m[1], name: m[2] };
 };
 export const now = () => new Date().toISOString();
+export const repositoryMatchesIssue = (
+  repository: Repository,
+  reference: IssueRef,
+) =>
+  `${repository.owner}/${repository.name}`.toLowerCase() ===
+  `${reference.owner}/${reference.repo}`.toLowerCase();

@@ -28,6 +28,7 @@ export interface Snapshot {
   tasks: Task[];
   settings: Settings;
   root: string;
+  execution_environment?: { distro: string };
   migration?: { old_root: string; new_root: string } | null;
   repository_index?: import("../../backend/workspace/discovery").RepositoryIndexSnapshot;
   github?: {

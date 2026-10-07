@@ -9,6 +9,7 @@ import {
   now,
   parseIssue,
   remoteIdentity,
+  repositoryMatchesIssue,
   retryTarget,
   stageStatus,
   type Task,
@@ -32,7 +33,12 @@ import { AgentRunner } from "./agent-runner";
 import { CodexProvider } from "./providers/codex";
 import { AntigravityProvider } from "./providers/antigravity";
 import type { AgentProvider } from "./providers/contracts";
-import { RepositoryIndex } from "../workspace/discovery";
+import {
+  RepositoryIndex,
+  ConnectLocalInput,
+  type LocalRepositoryInput,
+} from "../workspace/discovery";
+import type { z } from "zod";
 import { UtilityAI, type UtilityRequest } from "./utility-ai";
 import { ActionSchema } from "../scheduled/action";
 import { parsePullRequest } from "../scheduled/contracts";
@@ -63,6 +69,14 @@ export class Engine extends EventEmitter {
   >();
   private readonly repositoryOperations = new Map<Promise<unknown>, string>();
   private readonly repositoryController = new AbortController();
+  private readonly localVerifications = new Map<
+    string,
+    {
+      input: z.infer<typeof LocalRepositoryInput>;
+      result: Awaited<ReturnType<RepositoryIndex["verifyLocal"]>>;
+      expires: number;
+    }
+  >();
   private repositoryOperation = <T>(
     operation: () => Promise<T>,
     label = "Repository preparation is running",
@@ -382,11 +396,13 @@ export class Engine extends EventEmitter {
     base: string,
     deferred = false,
     localPath?: string,
+    discover = true,
   ) => {
     this.assertAvailable();
     const { owner, name } = remoteIdentity(upstream);
     if (origin) remoteIdentity(origin);
     if (
+      discover &&
       this.db
         .repositories()
         .some(
@@ -400,10 +416,12 @@ export class Engine extends EventEmitter {
         "Repository is already registered",
       );
     await checked("git", ["check-ref-format", "--branch", base], this.root);
-    await this.repositoryIndex.scan();
+    if (discover && !localPath) await this.repositoryIndex.scan();
     const candidate = localPath
       ? await this.repositoryIndex.inspect(localPath)
-      : this.repositoryIndex.matches(`${owner}/${name}`)[0];
+      : discover
+        ? this.repositoryIndex.matches(`${owner}/${name}`)[0]
+        : undefined;
     if (
       candidate &&
       !candidate.identities.includes(`${owner}/${name}`.toLowerCase())
@@ -422,6 +440,8 @@ export class Engine extends EventEmitter {
       base_branch: base,
       path: candidate?.path || join(this.root, "repos", id),
       source: candidate ? "imported" : "managed",
+      connected: true,
+      ...(!discover ? { selection: "explicit" as const } : {}),
       last_fetched: null,
       created_at: now(),
     };
@@ -456,10 +476,12 @@ export class Engine extends EventEmitter {
           return;
         }
         if (await exists(join(r.path, ".git"))) return;
-        await this.repositoryIndex.scan();
+        if (r.selection !== "explicit") await this.repositoryIndex.scan();
         const existing = localPath
           ? await this.repositoryIndex.inspect(localPath)
-          : this.repositoryIndex.matches(`${r.owner}/${r.name}`)[0];
+          : r.selection !== "explicit"
+            ? this.repositoryIndex.matches(`${r.owner}/${r.name}`)[0]
+            : undefined;
         if (existing) {
           if (
             !existing.identities.includes(`${r.owner}/${r.name}`.toLowerCase())
@@ -509,6 +531,7 @@ export class Engine extends EventEmitter {
       }),
     );
   createTask = async (
+    repositoryId: string,
     url: string,
     scope: string,
     notes: string,
@@ -525,19 +548,13 @@ export class Engine extends EventEmitter {
         "Scope is required (max 1000 characters); notes max 32000",
       );
     const reference = parseIssue(url);
-    const repo = this.db
-      .repositories()
-      .find(
-        (r) =>
-          r.owner.toLowerCase() === reference.owner.toLowerCase() &&
-          r.name.toLowerCase() === reference.repo.toLowerCase(),
-      );
-    if (!repo)
-      throw new AdeError(
-        "repository_missing",
-        `Register ${reference.owner}/${reference.repo} on the Repositories page first.`,
-      );
+    this.taskRepository(repositoryId, reference);
     const context = await fetchIssue(reference, this.root);
+    const repo = {
+      ...this.taskRepository(repositoryId, reference),
+      selection: "explicit" as const,
+    };
+    this.db.saveRepository(repo);
     return this.enqueue(
       repo,
       reference,
@@ -548,6 +565,176 @@ export class Engine extends EventEmitter {
       settings,
     );
   };
+  taskRepository = (id: string, reference: IssueRef) => {
+    const repo = this.db.repository(id);
+    if (repo.connected === false)
+      throw new AdeError(
+        "repository_missing",
+        "Reconnect this repository before creating a task.",
+      );
+    if (!repositoryMatchesIssue(repo, reference))
+      throw new AdeError(
+        "repository_mismatch",
+        `Repository mismatch: this issue belongs to ${reference.owner}/${reference.repo}. Selected repository: ${repo.owner}/${repo.name}.`,
+      );
+    return repo;
+  };
+  verifyLocalRepository = (input: z.infer<typeof LocalRepositoryInput>) =>
+    this.repositoryOperation(async () => {
+      const result = await this.repositoryIndex.verifyLocal(input);
+      for (const [id, verification] of this.localVerifications) {
+        if (verification.expires < Date.now())
+          this.localVerifications.delete(id);
+      }
+      if (this.localVerifications.size >= 100)
+        this.localVerifications.delete(
+          this.localVerifications.keys().next().value!,
+        );
+      const verification_id = randomUUID();
+      this.localVerifications.set(verification_id, {
+        input,
+        result,
+        expires: Date.now() + 10 * 60 * 1000,
+      });
+      return { ...result, verification_id };
+    }, "Local repository verification is running");
+  connectLocalRepository = (input: z.infer<typeof ConnectLocalInput>) =>
+    this.repositoryOperation(async () => {
+      const p = ConnectLocalInput.parse(input);
+      const verification = this.localVerifications.get(p.verification_id);
+      if (!verification || verification.expires < Date.now())
+        throw new AdeError(
+          "invalid_input",
+          "Verification expired. Verify the repository again before connecting.",
+        );
+      const current = await this.repositoryIndex.verifyLocal(
+        verification.input,
+      );
+      if (
+        current.path !== verification.result.path ||
+        JSON.stringify(current.remotes) !==
+          JSON.stringify(verification.result.remotes)
+      )
+        throw new AdeError(
+          "repository_changed",
+          "Repository location or remotes changed. Verify again before connecting.",
+        );
+      const upstream = current.remotes.find(
+        (r) => r.name === p.upstream_remote && r.identity,
+      );
+      const origin = p.origin_remote
+        ? current.remotes.find((r) => r.name === p.origin_remote && r.identity)
+        : null;
+      if (!upstream || (p.origin_remote && !origin))
+        throw new AdeError(
+          "invalid_input",
+          "Choose verified GitHub remotes for upstream and origin.",
+        );
+      if (origin?.name === upstream.name)
+        throw new AdeError(
+          "invalid_input",
+          "Upstream and fork must use different remotes. Choose None if there is no fork.",
+        );
+      await checked(
+        "git",
+        ["check-ref-format", "--branch", p.base_branch],
+        current.path,
+      );
+      if (!current.branches.includes(p.base_branch))
+        throw new AdeError(
+          "invalid_input",
+          "Choose a base branch found in this repository.",
+        );
+      const { owner, name } = remoteIdentity(upstream.url);
+      const existing = this.db
+        .repositories()
+        .find(
+          (r) =>
+            r.path === current.path &&
+            `${r.owner}/${r.name}`.toLowerCase() ===
+              `${owner}/${name}`.toLowerCase(),
+        );
+      if (
+        existing &&
+        this.db
+          .tasks()
+          .some(
+            (t) =>
+              t.repo_id === existing.id &&
+              (this.isActive(t.id) || (t.status === "queued" && !t.archived)),
+          )
+      )
+        throw new AdeError(
+          "busy",
+          "Stop this repository's tasks before reconnecting.",
+        );
+      const repo: Repository = {
+        id: existing?.id || randomUUID(),
+        owner,
+        name,
+        path: current.path,
+        upstream_url: upstream.url,
+        origin_url: origin?.url || null,
+        upstream_remote: upstream.name,
+        origin_remote: origin?.name || null,
+        base_branch: p.base_branch,
+        source: "imported",
+        connected: true,
+        selection: "explicit",
+        environment: current.environment,
+        distro: current.distro,
+        ...(current.windows_path ? { windows_path: current.windows_path } : {}),
+        last_fetched: existing?.last_fetched || null,
+        created_at: existing?.created_at || now(),
+      };
+      this.db.saveRepository(repo);
+      this.localVerifications.delete(p.verification_id);
+      this.changed();
+      return repo;
+    }, "Local repository connection is running");
+  disconnectRepository = (id: string) =>
+    this.repositoryOperation(async () => {
+      const repo = this.db.repository(id);
+      const taskIds = this.db
+        .tasks()
+        .filter((t) => t.repo_id === id)
+        .map((t) => t.id);
+      const blockers = this.cleanupBlockers().filter(
+        (blocker) => blocker.task_id && taskIds.includes(blocker.task_id),
+      );
+      if (blockers.length)
+        throw new AdeError(
+          "busy",
+          "Stop this repository's active tasks and terminals before disconnecting.",
+          { blockers },
+        );
+      this.db.saveRepository({ ...repo, connected: false });
+      this.changed();
+      return null;
+    }, "Repository disconnection is running");
+  reconnectRepository = (id: string) =>
+    this.repositoryOperation(async () => {
+      const repo = this.db.repository(id);
+      if (repo.source === "imported")
+        throw new AdeError(
+          "invalid_input",
+          "Verify the local checkout before reconnecting it.",
+        );
+      repo.selection = "explicit";
+      await this.prepareClone(repo);
+      repo.connected = true;
+      this.db.saveRepository(repo);
+      this.changed();
+      return repo;
+    }, "Managed repository reconnection is running");
+  verifyRepository = (id: string) =>
+    this.repositoryOperation(async () => {
+      const repo = this.db.repository(id);
+      return this.repositoryIndex.verifyLocal(
+        { environment: "wsl", path: repo.path },
+        repo.source !== "imported",
+      );
+    }, "Repository verification is running");
   enqueue = (
     repo: Repository,
     reference: IssueRef,
@@ -693,6 +880,11 @@ export class Engine extends EventEmitter {
     if (this.taskMaintenance.has(id))
       throw new AdeError("busy", "Task data cleanup is running");
     const t = this.db.task(id);
+    if (this.db.repository(t.repo_id).connected === false)
+      throw new AdeError(
+        "repository_missing",
+        "Reconnect the source repository before resuming this task.",
+      );
     if (t.stage === 0 && t.worktree_path && !this.isActive(id)) {
       if (await exists(t.worktree_path)) {
         await this.git.assertTask(t);
@@ -771,7 +963,8 @@ export class Engine extends EventEmitter {
         saveOnly ||
         this.interactive.has(id) ||
         this.maintenance ||
-        this.taskMaintenance.has(id)
+        this.taskMaintenance.has(id) ||
+        this.db.repository(t.repo_id).connected === false
           ? "draft"
           : this.isExecuting(id)
             ? "queued"

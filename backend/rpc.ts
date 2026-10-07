@@ -11,12 +11,12 @@ import { Scheduler } from "./scheduled/scheduler";
 import { GitHubMonitor } from "./scheduled/github";
 import { z } from "zod";
 import { realpath } from "node:fs/promises";
-import { join } from "node:path";
 import { Engine } from "./execution/engine";
 import { AuthSessions } from "./execution/auth";
 import { AdeError, SettingsSchema, parseIssue, now } from "./domain";
 import { capture, checked } from "./execution/process";
-import { taskRoot, exists } from "./workspace/paths";
+import { taskRoot } from "./workspace/paths";
+import { LocalRepositoryInput, ConnectLocalInput } from "./workspace/discovery";
 const idInput = z.object({ id: z.string().uuid() });
 export class Rpc {
   private readonly auth: AuthSessions;
@@ -45,6 +45,9 @@ export class Rpc {
           tasks: e.db.tasks(),
           settings: e.db.settings(),
           root: e.root,
+          execution_environment: {
+            distro: process.env.WSL_DISTRO_NAME || "Linux",
+          },
           repository_index: e.repositoryIndex.snapshot(),
           active_tasks: e.db
             .tasks()
@@ -73,6 +76,28 @@ export class Rpc {
           .parse(input);
         return this.github.useLocally(p.repository, false, p.local_path);
       }
+      case "github.clone": {
+        const p = z
+          .object({ repository: z.string().min(1).max(200) })
+          .strict()
+          .parse(input);
+        return this.github.useLocally(p.repository, false, undefined, true);
+      }
+      case "repository.verifyLocal":
+        return e.verifyLocalRepository(LocalRepositoryInput.parse(input));
+      case "repository.connectLocal":
+        return e.connectLocalRepository(ConnectLocalInput.parse(input));
+      case "repository.disconnect": {
+        const p = idInput
+          .extend({ confirmed: z.literal(true) })
+          .strict()
+          .parse(input);
+        return e.disconnectRepository(p.id);
+      }
+      case "repository.reconnectManaged":
+        return e.reconnectRepository(idInput.strict().parse(input).id);
+      case "repository.verify":
+        return e.verifyRepository(idInput.strict().parse(input).id);
       case "repositories.scan": {
         e.assertAvailable();
         const result = await e.repositoryIndex.scan();
@@ -85,28 +110,22 @@ export class Rpc {
         e.assertAvailable();
         const p = z.object({ repository: z.string().max(200) }).parse(input);
         const metadata = await this.github.client.repository(p.repository);
-        const resolved = await this.github.resolve(
-          metadata.fork && metadata.parent
-            ? metadata.parent.full_name
-            : p.repository,
-        );
         await e.repositoryIndex.scan();
         e.changed();
-        const registered = e.db
-          .repositories()
-          .find(
-            (r) =>
-              `${r.owner}/${r.name}`.toLowerCase() ===
-              resolved.repository.full_name.toLowerCase(),
-          );
+        const matches = [metadata.full_name, metadata.parent?.full_name]
+          .filter((name) => !!name)
+          .flatMap((name) => e.repositoryIndex.matches(name!));
         return {
-          resolved,
-          candidates:
-            registered &&
-            (registered.source === "imported" ||
-              (await exists(join(registered.path, ".git"))))
-              ? []
-              : e.repositoryIndex.matches(resolved.repository.full_name),
+          candidates: [
+            ...new Map(matches.map((r) => [r.path, r])).values(),
+          ].filter(
+            (candidate) =>
+              !e.db
+                .repositories()
+                .some(
+                  (r) => r.connected !== false && r.path === candidate.path,
+                ),
+          ),
         };
       }
       case "usage.list": {
@@ -381,79 +400,41 @@ export class Rpc {
         return this.storage.removeRepository(p.id);
       }
       case "task.preview": {
-        const p = z.object({ issue_url: z.string() }).parse(input);
+        const p = z
+          .object({
+            repository_id: z.string().uuid(),
+            issue_url: z.string().max(2000),
+          })
+          .strict()
+          .parse(input);
         const reference = parseIssue(p.issue_url);
-        const [issue, resolved] = await Promise.all([
-          fetchIssue(reference, e.root),
-          this.github.resolve(`${reference.owner}/${reference.repo}`),
-        ]);
+        const repository = e.taskRepository(p.repository_id, reference);
+        const issue = await fetchIssue(reference, e.root);
         return {
           reference,
           issue,
-          resolved,
-          repository:
-            e.db
-              .repositories()
-              .find(
-                (r) =>
-                  `${r.owner}/${r.name}`.toLowerCase() ===
-                  `${reference.owner}/${reference.repo}`.toLowerCase(),
-              ) || null,
+          repository,
         };
       }
       case "task.create": {
         const p = z
           .object({
+            repository_id: z.string().uuid(),
             issue_url: z.string(),
             scope_mode: z.enum(["whole_issue", "partial"]).default("partial"),
             claimed_scope: z.string().max(1000).default(""),
             notes: z.string().max(32000).default(""),
             settings: SettingsSchema.optional(),
-            advanced: z
-              .object({
-                upstream_url: z.string(),
-                origin_url: z.string().nullable(),
-                base_branch: z.string(),
-              })
-              .optional(),
           })
+          .strict()
           .parse(input);
         if (p.scope_mode === "partial" && !p.claimed_scope.trim())
           throw new AdeError(
             "invalid_input",
             "Claimed scope is required for a partial task",
           );
-        const ref = parseIssue(p.issue_url);
-        const existing = e.db
-          .repositories()
-          .find(
-            (r) =>
-              `${r.owner}/${r.name}`.toLowerCase() ===
-              `${ref.owner}/${ref.repo}`.toLowerCase(),
-          );
-        if (p.advanced) {
-          const identity = (await import("./domain")).remoteIdentity(
-            p.advanced.upstream_url,
-          );
-          if (
-            `${identity.owner}/${identity.name}`.toLowerCase() !==
-            `${ref.owner}/${ref.repo}`.toLowerCase()
-          )
-            throw new AdeError(
-              "invalid_input",
-              "Upstream must match the issue repository",
-            );
-          if (existing) await e.configureRepository(existing.id, p.advanced);
-          else
-            await e.register(
-              p.advanced.upstream_url,
-              p.advanced.origin_url,
-              p.advanced.base_branch,
-              true,
-            );
-        } else if (!existing)
-          await this.github.useLocally(`${ref.owner}/${ref.repo}`, true);
         return e.createTask(
+          p.repository_id,
           p.issue_url,
           p.claimed_scope,
           p.notes,

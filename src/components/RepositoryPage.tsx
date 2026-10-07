@@ -1,16 +1,12 @@
 import { useState } from "react";
-import {
-  Search,
-  RefreshCw,
-  FolderOpen,
-  Trash2,
-  GitFork,
-  Lock,
-} from "lucide-react";
+import { Search, RefreshCw, Plus } from "lucide-react";
 import type { Snapshot } from "../lib/types";
+import type { LocalRepository } from "../../backend/workspace/discovery";
 import { Button } from "./ui/button";
 import { rpc, errorMessage } from "../lib/api";
-import type { LocalRepository } from "../../backend/workspace/discovery";
+import { ConnectLocalRepository } from "./ConnectLocalRepository";
+import { remoteIdentity } from "../../backend/domain";
+
 export const RepositoryPage = ({
   snapshot,
   refresh,
@@ -19,72 +15,89 @@ export const RepositoryPage = ({
   refresh: () => Promise<void>;
 }) => {
   const [query, setQuery] = useState("");
-  const [group, setGroup] = useState("Owned");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [upstream, setUpstream] = useState("");
-  const [origin, setOrigin] = useState("");
-  const [base, setBase] = useState("main");
-  const [choice, setChoice] = useState<{
+  const [verified, setVerified] = useState<Record<string, string>>({});
+  const [connection, setConnection] = useState<{ path: string }>();
+  const [candidates, setCandidates] = useState<{
     repository: string;
     candidates: LocalRepository[];
   }>();
-  const github = snapshot.github;
+  const active = snapshot.repositories.filter((r) => r.connected !== false);
+  const visible = (text: string) =>
+    text.toLowerCase().includes(query.toLowerCase());
+  const discovered = (snapshot.repository_index?.repositories || []).filter(
+    (r) =>
+      !active.some((a) => a.path === r.path) &&
+      visible(r.path + " " + r.identities.join(" ")),
+  );
+  const rows = (snapshot.github?.repositories || []).filter((r) =>
+    visible(r.full_name + " " + (r.description || "")),
+  );
   const action = async (method: string, params: unknown, key: string) => {
     setBusy(key);
     setError("");
     try {
       await rpc(method, params);
       await refresh();
-      return true;
     } catch (e) {
       setError(errorMessage(e));
-      return false;
     } finally {
       setBusy("");
     }
   };
-  const rows = (github?.repositories || [])
-    .filter((r) =>
-      `${r.full_name} ${r.description || ""}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-    )
-    .filter((r) =>
-      group === "Recent"
-        ? snapshot.repositories.some(
-            (local) => `${local.owner}/${local.name}` === r.full_name,
-          )
-        : group === "Owned"
-          ? r.owner.login === github?.status?.username && !r.fork
-          : group === "Forks"
-            ? r.fork
-            : group === "Organizations"
-              ? r.owner.type === "Organization"
-              : true,
-    );
-  const prepare = async (repository: string, key: string) => {
-    setBusy(key);
+  const find = async (repository: string) => {
+    setBusy(repository);
     setError("");
     try {
       const result = await rpc<{ candidates: LocalRepository[] }>(
         "repositories.candidates",
         { repository },
       );
-      if (result.candidates.length) {
-        setChoice({ repository, candidates: result.candidates });
-        await refresh();
-      } else await action("github.use", { repository }, key);
+      setCandidates({ repository, candidates: result.candidates });
+      await refresh();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setBusy("");
     }
   };
+  const verify = async (id: string) => {
+    setBusy(id);
+    setError("");
+    try {
+      const result = await rpc<{ branch: string; dirty: boolean }>(
+        "repository.verify",
+        { id },
+      );
+      setVerified((previous) => ({
+        ...previous,
+        [id]: `Verified · current branch ${result.branch}${result.dirty ? " · local changes preserved" : " · clean checkout"}`,
+      }));
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy("");
+    }
+  };
+  const originLabel = (url: string | null) => {
+    if (!url) return "None";
+    try {
+      const identity = remoteIdentity(url);
+      return `${identity.owner}/${identity.name}`;
+    } catch {
+      return url;
+    }
+  };
   return (
     <div className="page repository-library">
       <div className="page-title">
         <h1>Repositories</h1>
+        <div className="spacer" />
+        <Button variant="default" onClick={() => setConnection({ path: "" })}>
+          <Plus size={14} />
+          Connect local repository
+        </Button>
         <Button
           disabled={!!busy}
           onClick={() => void action("repositories.scan", {}, "scan")}
@@ -108,117 +121,77 @@ export const RepositoryPage = ({
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
-      <div className="library-tabs">
-        {["Recent", "Owned", "Forks", "Organizations", "All"].map((g) => (
-          <button
-            className={g === group ? "selected" : ""}
-            key={g}
-            onClick={() => setGroup(g)}
-          >
-            {g}
-          </button>
-        ))}
-      </div>
       {error && (
         <p className="error-box" role="alert">
           {error}
         </p>
       )}
-      {!github?.status?.connected && (
-        <p className="empty-row">
-          Connect GitHub in Providers to browse your repositories.
-        </p>
-      )}
-      <div className="repo-catalog">
-        {rows.map((r) => {
-          const local = snapshot.repositories.find(
-            (l) =>
-              `${l.owner}/${l.name}` === r.full_name ||
-              l.origin_url?.replace(/\.git$/, "") ===
-                `https://github.com/${r.full_name}`,
-          );
-          return (
-            <div className="repo-catalog-row" key={r.id}>
-              <div>
-                <strong>{r.name}</strong>
-                <span>{r.full_name}</span>
-                <small>
-                  {r.default_branch} ·{" "}
-                  {r.private ? (
-                    <>
-                      <Lock size={10} /> private
-                    </>
-                  ) : (
-                    "public"
-                  )}{" "}
-                  ·{" "}
-                  {r.fork ? (
-                    <>
-                      <GitFork size={10} /> fork
-                    </>
-                  ) : (
-                    "original"
-                  )}
-                </small>
-              </div>
-              <div className="spacer" />
-              {local ? (
-                <span className="success">
-                  {local.source === "imported"
-                    ? "Existing checkout"
-                    : "Managed locally"}
-                </span>
-              ) : null}
+      <section aria-labelledby="active-repositories-title">
+        <h2 id="active-repositories-title" className="repository-section-title">
+          Active repositories <small>{active.length}</small>
+        </h2>
+        {!active.length && (
+          <div className="repository-empty">
+            <strong>No active repositories</strong>
+            <p>
+              Connect a local Git repository to start working with Vibestar.
+            </p>
+            <div className="actions">
               <Button
-                size="sm"
-                disabled={!!busy}
-                onClick={() => void prepare(r.full_name, String(r.id))}
+                variant="default"
+                onClick={() => setConnection({ path: "" })}
               >
-                {busy === String(r.id)
-                  ? "Finding local checkout…"
-                  : "Use locally"}
+                Connect local repository
+              </Button>
+              <Button
+                disabled={!!busy}
+                onClick={() => void action("repositories.scan", {}, "scan")}
+              >
+                Scan for repositories
               </Button>
             </div>
-          );
-        })}
-      </div>
-      {github?.status?.connected && !rows.length && (
-        <p className="empty-row">
-          {github.last_sync
-            ? "No repositories in this view."
-            : "Fetching your repository catalog…"}
-        </p>
-      )}
-      {!!snapshot.repositories.length && (
-        <section className="managed-repos">
-          <h2>Local repositories</h2>
-          {snapshot.repositories.map((r) => (
-            <details key={r.id} className="managed-repo">
-              <summary>
-                <FolderOpen size={13} />
-                {r.owner}/{r.name}
-                <code>upstream/{r.base_branch}</code>
-              </summary>
-              <p className="mono">{r.path}</p>
+          </div>
+        )}
+        {active
+          .filter((r) => visible(r.owner + "/" + r.name + " " + r.path))
+          .map((r) => (
+            <div className="active-repository-row" key={r.id}>
+              <div className="active-repository-heading">
+                <strong>
+                  {r.owner}/{r.name}
+                </strong>
+                <span className="status-chip success">Active</span>
+                <span className="subtle">
+                  {r.source === "imported"
+                    ? "User-owned checkout"
+                    : "Vibestar-managed clone"}
+                </span>
+              </div>
               <p className="subtle">
-                {r.source === "imported"
-                  ? "Existing checkout · source files remain under your control"
-                  : "Vibestar-managed clone"}
+                {r.environment === "windows" || r.path.startsWith("/mnt/")
+                  ? "Windows"
+                  : "WSL"}{" "}
+                ·{" "}
+                {r.distro ||
+                  snapshot.execution_environment?.distro ||
+                  "Configured environment"}
               </p>
-              <p className="subtle">
-                {r.upstream_url}
-                {r.origin_url ? ` · origin ${r.origin_url}` : ""}
-              </p>
+              <code className="repository-path">{r.path}</code>
+              {r.windows_path && (
+                <p className="subtle">Windows: {r.windows_path}</p>
+              )}
+              <dl className="repository-facts">
+                <dt>Upstream</dt>
+                <dd>
+                  {r.owner}/{r.name}{" "}
+                  <small>{r.upstream_remote || "upstream"}</small>
+                </dd>
+                <dt>Origin / fork</dt>
+                <dd>{originLabel(r.origin_url)}</dd>
+                <dt>Base</dt>
+                <dd>{r.base_branch}</dd>
+              </dl>
               <div className="actions">
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    void action("repository.fetch", { id: r.id }, r.id)
-                  }
-                  disabled={!!busy}
-                >
-                  Fetch upstream
-                </Button>
                 <Button
                   size="sm"
                   onClick={() =>
@@ -229,121 +202,218 @@ export const RepositoryPage = ({
                     )
                   }
                 >
-                  Open directory
+                  Open
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!!busy}
+                  onClick={() =>
+                    void action("repository.fetch", { id: r.id }, r.id)
+                  }
+                >
+                  Fetch
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!!busy}
+                  onClick={() => void verify(r.id)}
+                >
+                  Verify
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
+                  disabled={!!busy}
                   onClick={() => {
                     if (
                       window.confirm(
-                        `Remove ${r.owner}/${r.name} and its stopped tasks and Vibestar worktrees? ${r.source === "imported" ? "Your source checkout will be preserved." : "The managed clone will be deleted."}`,
+                        "Disconnect " +
+                          r.owner +
+                          "/" +
+                          r.name +
+                          "? It will leave the active list. Source files, branches, task history and existing worktrees will be kept. Reconnect this checkout to create new tasks.",
                       )
                     )
                       void action(
-                        "repository.remove",
+                        "repository.disconnect",
                         { id: r.id, confirmed: true },
                         r.id,
                       );
                   }}
                 >
-                  <Trash2 size={12} />
-                  Remove
+                  Disconnect
                 </Button>
               </div>
-            </details>
+              {verified[r.id] && (
+                <p className="success" role="status">
+                  {verified[r.id]}
+                </p>
+              )}
+            </div>
+          ))}
+      </section>
+      {!!discovered.length && (
+        <section aria-labelledby="discovered-repositories-title">
+          <h2
+            id="discovered-repositories-title"
+            className="repository-section-title"
+          >
+            Discovered local <small>{discovered.length}</small>
+          </h2>
+          {discovered.map((r) => (
+            <div className="repo-catalog-row" key={r.path}>
+              <div>
+                <strong>{r.identities.join(" · ") || "Git repository"}</strong>
+                <small>{r.path}</small>
+                <small>
+                  {r.environment === "windows"
+                    ? "Windows checkout"
+                    : "WSL checkout"}{" "}
+                  · Discovered, not connected
+                </small>
+              </div>
+              <div className="spacer" />
+              <Button size="sm" onClick={() => setConnection({ path: r.path })}>
+                Connect
+              </Button>
+            </div>
           ))}
         </section>
       )}
-      <details className="advanced-repository">
-        <summary>Advanced · add by Git URL</summary>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void action(
-              "repository.add",
-              {
-                upstream_url: upstream,
-                origin_url: origin || null,
-                base_branch: base,
-              },
-              "manual",
-            );
-          }}
-        >
-          <label>
-            Upstream URL
-            <input
-              required
-              value={upstream}
-              onChange={(e) => setUpstream(e.target.value)}
-            />
-          </label>
-          <label>
-            Fork / origin URL
-            <input value={origin} onChange={(e) => setOrigin(e.target.value)} />
-          </label>
-          <label>
-            Base branch
-            <input
-              required
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
-            />
-          </label>
-          <Button type="submit" disabled={!!busy}>
-            Use repository
-          </Button>
-        </form>
-      </details>
-      {choice && (
+      <section aria-labelledby="github-repositories-title">
+        <h2 id="github-repositories-title" className="repository-section-title">
+          GitHub repositories <small>All</small>
+        </h2>
+        {!snapshot.github?.status?.connected && (
+          <p className="empty-row">
+            Connect GitHub in Providers to browse your repositories.
+          </p>
+        )}
+        {rows.map((r) => {
+          const managed = snapshot.repositories.find(
+            (local) =>
+              local.source !== "imported" &&
+              `${local.owner}/${local.name}`.toLowerCase() ===
+                r.full_name.toLowerCase(),
+          );
+          return (
+            <div className="repo-catalog-row" key={r.id}>
+              <div>
+                <strong>{r.full_name}</strong>
+                <small>
+                  {r.default_branch} · {r.private ? "private" : "public"}
+                </small>
+              </div>
+              <div className="spacer" />
+              <Button
+                size="sm"
+                disabled={!!busy}
+                onClick={() =>
+                  managed?.connected === false
+                    ? void action(
+                        "repository.reconnectManaged",
+                        { id: managed.id },
+                        managed.id,
+                      )
+                    : void find(r.full_name)
+                }
+              >
+                {busy === r.full_name
+                  ? "Finding…"
+                  : managed?.connected === false
+                    ? "Reconnect managed clone"
+                    : "Find local checkout"}
+              </Button>
+            </div>
+          );
+        })}
+        {!rows.length && snapshot.github?.status?.connected && (
+          <p className="empty-row">
+            {query
+              ? "No GitHub repositories match your search."
+              : "Sync GitHub to load your repository catalog."}
+          </p>
+        )}
+      </section>
+      {connection && (
+        <ConnectLocalRepository
+          distro={
+            snapshot.execution_environment?.distro ||
+            "Configured WSL distribution"
+          }
+          initialPath={connection.path}
+          close={() => setConnection(undefined)}
+          connected={refresh}
+        />
+      )}
+      {candidates && (
         <div className="modal-backdrop">
           <section
             className="modal compact-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Existing local checkout found"
+            aria-label="Local checkout search"
           >
-            <h2>Existing local checkout found</h2>
-            <p>{choice.repository}</p>
-            {choice.candidates.map((candidate, i) => (
-              <div className="checkout-candidate" key={candidate.path}>
-                <code>{candidate.path}</code>
-                <small>
-                  {candidate.environment === "wsl"
-                    ? "WSL checkout"
-                    : "Windows checkout"}{" "}
-                  — {i === 0 ? "Recommended" : "Available"}
-                </small>
-                <p className="subtle">
-                  {candidate.upstream || candidate.origin}
-                </p>
-                <Button
-                  disabled={!!busy}
-                  variant={i === 0 ? "default" : "secondary"}
-                  onClick={async () => {
-                    const success = await action(
-                      "github.use",
-                      {
-                        repository: choice.repository,
-                        local_path: candidate.path,
-                      },
-                      candidate.path,
-                    );
-                    if (success) setChoice(undefined);
-                  }}
-                >
-                  Use existing
-                </Button>
-              </div>
-            ))}
-            <p className="subtle">
-              Tasks use isolated worktrees under Vibestar's data directory. Your
-              checkout's files and current branch stay in place.
-            </p>
-            <Button disabled={!!busy} onClick={() => setChoice(undefined)}>
-              Cancel
-            </Button>
+            <h2>{candidates.repository}</h2>
+            {candidates.candidates.length ? (
+              candidates.candidates.map((c) => (
+                <div className="checkout-candidate" key={c.path}>
+                  <code>{c.path}</code>
+                  <small>
+                    {c.environment === "wsl"
+                      ? "WSL checkout"
+                      : "Windows checkout"}
+                  </small>
+                  <Button
+                    onClick={() => {
+                      setCandidates(undefined);
+                      setConnection({ path: c.path });
+                    }}
+                  >
+                    Connect checkout
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <p>
+                No unconnected local checkout was found. You can connect a path
+                manually or create a separate Vibestar-managed clone.
+              </p>
+            )}
+            <div className="actions">
+              <Button
+                onClick={() => {
+                  setCandidates(undefined);
+                  setConnection({ path: "" });
+                }}
+              >
+                Enter local path
+              </Button>
+              <Button
+                disabled={!!busy}
+                onClick={async () => {
+                  if (
+                    !window.confirm(
+                      "Create a Vibestar-managed clone under " +
+                        snapshot.root +
+                        "/repos? This downloads a separate checkout.",
+                    )
+                  )
+                    return;
+                  await action(
+                    "github.clone",
+                    { repository: candidates.repository },
+                    "clone",
+                  );
+                  setCandidates(undefined);
+                }}
+              >
+                Create Vibestar-managed clone
+              </Button>
+              <Button variant="ghost" onClick={() => setCandidates(undefined)}>
+                Cancel
+              </Button>
+            </div>
           </section>
         </div>
       )}

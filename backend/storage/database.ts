@@ -25,14 +25,25 @@ export class Database {
           .prepare("SELECT version FROM schema_migrations WHERE version=?")
           .get(migration.version)
       ) {
-        this.connection.transaction(() => {
-          this.connection.exec(migration.sql);
-          this.run(
-            "INSERT OR IGNORE INTO schema_migrations VALUES(?,?)",
-            migration.version,
-            now(),
-          );
-        })();
+        const rebuild =
+          "foreign_keys_off" in migration && migration.foreign_keys_off;
+        if (rebuild) this.connection.pragma("foreign_keys = OFF");
+        try {
+          this.connection.transaction(() => {
+            this.connection.exec(migration.sql);
+            this.run(
+              "INSERT OR IGNORE INTO schema_migrations VALUES(?,?)",
+              migration.version,
+              now(),
+            );
+            if (rebuild && this.all("PRAGMA foreign_key_check").length)
+              throw new Error(
+                "Repository migration failed foreign key verification",
+              );
+          })();
+        } finally {
+          if (rebuild) this.connection.pragma("foreign_keys = ON");
+        }
       }
     }
   }

@@ -88,4 +88,15 @@ UPDATE scheduled_jobs SET data=json_insert(data,'$.action.conversationState','ne
 UPDATE scheduled_jobs SET data=json_insert(data,'$.conversation_action.conversationState','neutral','$.conversation_action.outstandingRequests',json('[]'),'$.conversation_action.alreadyAddressed',json('[]'),'$.conversation_action.newActivity',json('[]')) WHERE json_type(data,'$.conversation_action')='object';
 `,
   },
+  {
+    version: 12,
+    foreign_keys_off: true,
+    sql: `
+CREATE TABLE repositories_new(id TEXT PRIMARY KEY,owner TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL);
+INSERT INTO repositories_new SELECT id,owner,name,json_insert(data,'$.connected',json('true')) FROM repositories;
+DROP TABLE repositories;
+ALTER TABLE repositories_new RENAME TO repositories;
+CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),json_extract(data,'$.path'));
+`,
+  },
 ];

@@ -7,7 +7,7 @@ Verification used Ubuntu 26.04 in WSL2, Node 22.22.1, Electron 41.10.7, Git 2.53
 ## Automated checks
 
 - `npm run format`, `npm run lint`, `npm run typecheck`, `npm test` and `npm run build` passed.
-- Normal suite: 107 tests passed. Four desktop/live tests are opt-in and were excluded from the normal run.
+- Normal suite: 117 tests passed. Five desktop/live tests are opt-in and were excluded from the normal run.
 - `npm run test:tui` passed both real PTY tests, including sandboxed task shells, worktree leases, saved chat drafts and interrupted terminal recovery.
 - Provider tests verify authenticated/unavailable Antigravity, discovered Codex efforts, unsupported configurations and explicit capabilities for unknown models.
 - Conversation tests cover chronological requests, later author replies, acknowledgments, second requests, bots, approval, CI, independently addressed threads, resolved review summaries, ambiguous discussion, unchanged activity and bounded prompts retaining full stored history.
@@ -82,6 +82,22 @@ The neutral charcoal surfaces, semantic PR chips, compact rows, collapsed explan
 Native Windows window checks were repeated successfully on both monitors. Secondary 150% scaling: maximize acknowledgment 60 ms, fullscreen 24 ms. Primary 125% scaling: maximize 54 ms, fullscreen 28 ms. The isolated execution root was `/home/aksha/tmp/vibestar-windows-dLQ7BZ/ade`. The user also confirmed maximizing was working. No further window geometry changes were made for this refinement.
 
 Earlier attempts at the Linux/WSLg polish check intermittently failed while navigating to Providers; the final complete check passed. Those attempts also exposed a disabled task-delete button with an idle open terminal, which was corrected so the named-blocker dialog remains accessible. WSLg automation stability is not established by a single successful repeat.
+
+## Explicit active local repositories
+
+Format, lint, typecheck, all 117 normal tests, the two PTY tests and the production build passed after this change. Migration 12 preserves existing repository IDs, historical task references and foreign-key enforcement while allowing different checkout paths for the same upstream. Connection state survives restart; disconnect retains the source, branches, history and worktrees.
+
+Focused tests verify manual path input without scanning or cloning, all configured remote identities, ambiguous upstream/base selection, expired or changed verification, Windows conversion through `wslpath`, invalid/non-Git paths, issue/upstream mismatch, and authoritative selected IDs. Two fixture tasks run planning, refinement and implementation with their provider working directories set to separate imported-repository worktrees. The task branches belong to that source Git repository; dirty source content, source branch and Git configuration remain unchanged. Missing legacy managed clones cannot silently substitute a discovered checkout. Renderer tests cover the simplified All catalog, discovery versus connection, visible issue matching, mismatch blocking and explicit isolated finalization.
+
+The real Electron acceptance check passed twice, most recently in 9.76 seconds:
+
+```sh
+VIBESTAR_REPOSITORIES_TEST=1 VIBESTAR_KEEP_EVIDENCE=1 npm test -- tests/desktop-local-repositories.test.ts
+```
+
+It manually connected `/home/aksha/oppia` in Ubuntu, recognized upstream `oppia/oppia`, origin `akshajrawat/oppia` and base `develop`, and displayed the source in New Task. It fetched the real #26831 issue preview, showed the matched selection and future worktree directory, blocked a React issue mismatch, verified the active connection again and disconnected it safely. No scan or clone ran. Before/after comparisons confirmed identical source branch (`migrate-view-the-blog-to-playwright`), Git status, working diff and remote configuration. There were no renderer errors.
+
+The connection dialog, active repository page, issue preview and mismatch screen were visually inspected. A selector overflow found in the first screenshots was fixed and checked in the second run. Final evidence is at `/home/aksha/tmp/vibestar-desktop-repositories-bYBFnl/data/artifacts/verification/`. This used an isolated Vibestar registry and did not change the user's existing app database or run AI against Oppia. Full pipeline isolation was exercised with injected fixture providers; the earlier official authenticated pipeline evidence remains recorded above. Windows path conversion was tested at the process boundary; a native folder picker was not added.
 
 ## Practical limits
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { now } from "../domain";
+import { AdeError, now } from "../domain";
 import type { Engine } from "../execution/engine";
 import type { Scheduler } from "../scheduled/scheduler";
 import { parsePullRequest } from "../scheduled/contracts";
@@ -120,7 +120,12 @@ export class GitHubService {
       base_branch: repository.default_branch,
     };
   };
-  useLocally = async (name: string, deferred = false, localPath?: string) => {
+  useLocally = async (
+    name: string,
+    deferred = false,
+    localPath?: string,
+    managed = false,
+  ) => {
     let metadata = await this.client.repository(name, this.controller.signal);
     if (metadata.fork && metadata.parent)
       metadata = await this.client.repository(
@@ -131,10 +136,16 @@ export class GitHubService {
       .repositories()
       .find(
         (r) =>
+          (!managed || r.source !== "imported") &&
           `${r.owner}/${r.name}`.toLowerCase() ===
-          metadata.full_name.toLowerCase(),
+            metadata.full_name.toLowerCase(),
       );
     if (existing) {
+      if (managed)
+        throw new AdeError(
+          "repository_exists",
+          `This repository is already registered from ${existing.path}. Connect that checkout explicitly.`,
+        );
       if (!deferred)
         await this.engine.prepareClone(existing, undefined, localPath);
       return existing;
@@ -146,6 +157,7 @@ export class GitHubService {
       resolved.base_branch,
       deferred,
       localPath,
+      !managed,
     );
   };
   sync = () => {

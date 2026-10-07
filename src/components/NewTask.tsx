@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { X, ArrowUpRight } from "lucide-react";
 import { rpc, errorMessage } from "../lib/api";
 import type { Repository, Task, Settings, Snapshot } from "../lib/types";
-import type { GitHubRepository } from "../../backend/github/contracts";
+import { parseIssue, repositoryMatchesIssue } from "../../backend/domain";
 import { StageSettings } from "./StageSettings";
 import { Button } from "./ui/button";
 interface Preview {
@@ -13,13 +13,7 @@ interface Preview {
     labels?: { name: string }[];
     comments?: unknown[];
   };
-  repository: Repository | null;
-  resolved: {
-    repository: GitHubRepository;
-    upstream_url: string;
-    origin_url: string | null;
-    base_branch: string;
-  };
+  repository: Repository;
 }
 export const NewTask = ({
   close,
@@ -34,22 +28,60 @@ export const NewTask = ({
   const [notes, setNotes] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [settings, setSettings] = useState<Settings>();
-  const [advanced, setAdvanced] = useState<Preview["resolved"]>();
-  const [override, setOverride] = useState(false);
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [repositoryId, setRepositoryId] = useState("");
+  const [root, setRoot] = useState("");
+  const [manualSelection, setManualSelection] = useState(false);
+  const [matched, setMatched] = useState(false);
   const [error, setError] = useState("");
   const [resolving, setResolving] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     void rpc<Snapshot>("snapshot")
-      .then((s) => setSettings(s.settings))
+      .then((s) => {
+        setSettings(s.settings);
+        const active = s.repositories.filter((r) => r.connected !== false);
+        setRepositories(active);
+        setRepositoryId(active[0]?.id || "");
+        setRoot(s.root);
+      })
       .catch((e) => setError(errorMessage(e)));
   }, []);
+  const selected = repositories.find((r) => r.id === repositoryId);
+  let reference: ReturnType<typeof parseIssue> | undefined;
+  try {
+    reference = parseIssue(url);
+  } catch {
+    /* The URL field may still be incomplete. */
+  }
+  const mismatch =
+    !!reference && !!selected && !repositoryMatchesIssue(selected, reference);
+  const matching = reference
+    ? repositories.filter((r) => repositoryMatchesIssue(r, reference!))
+    : [];
+  useEffect(() => {
+    if (manualSelection) return;
+    let issue: ReturnType<typeof parseIssue>;
+    try {
+      issue = parseIssue(url);
+    } catch {
+      setMatched(false);
+      return;
+    }
+    const matches = repositories.filter((r) =>
+      repositoryMatchesIssue(r, issue),
+    );
+    if (matches.length === 1) {
+      setRepositoryId(matches[0].id);
+      setMatched(true);
+    } else setMatched(false);
+  }, [url, repositories, manualSelection]);
   useEffect(() => {
     let alive = true;
     setPreview(null);
     setError("");
-    setOverride(false);
     setResolving(false);
+    if (!selected || mismatch) return;
     if (
       !/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+\/?$/.test(
         url.trim(),
@@ -59,11 +91,13 @@ export const NewTask = ({
     setResolving(true);
     const timer = setTimeout(
       () =>
-        void rpc<Preview>("task.preview", { issue_url: url.trim() })
+        void rpc<Preview>("task.preview", {
+          repository_id: repositoryId,
+          issue_url: url.trim(),
+        })
           .then((p) => {
             if (alive) {
               setPreview(p);
-              setAdvanced(p.resolved);
             }
           })
           .catch((e) => {
@@ -78,7 +112,7 @@ export const NewTask = ({
       alive = false;
       clearTimeout(timer);
     };
-  }, [url]);
+  }, [url, repositoryId, mismatch, selected]);
   return (
     <div
       className="modal-backdrop"
@@ -109,25 +143,23 @@ export const NewTask = ({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            if (!preview) return;
+            if (
+              !preview ||
+              !selected ||
+              mismatch ||
+              preview.repository.id !== selected.id
+            )
+              return;
             setBusy(true);
             setError("");
             try {
               const task = await rpc<Task>("task.create", {
+                repository_id: selected.id,
                 issue_url: url.trim(),
                 scope_mode: mode,
                 claimed_scope: mode === "partial" ? scope : "",
                 notes,
                 settings,
-                ...(override && advanced
-                  ? {
-                      advanced: {
-                        upstream_url: advanced.upstream_url,
-                        origin_url: advanced.origin_url,
-                        base_branch: advanced.base_branch,
-                      },
-                    }
-                  : {}),
               });
               created(task.id);
               close();
@@ -139,6 +171,47 @@ export const NewTask = ({
           }}
         >
           <label>
+            Repository
+            <select
+              required
+              aria-label="Repository"
+              value={repositoryId}
+              onChange={(e) => {
+                setRepositoryId(e.target.value);
+                setManualSelection(true);
+                setMatched(false);
+              }}
+            >
+              {!repositories.length && (
+                <option value="">No active repositories</option>
+              )}
+              {repositories.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.owner}/{r.name} · {r.path}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!repositories.length && (
+            <p className="empty-row">
+              Connect a local repository on the Repositories page before
+              starting a task.
+            </p>
+          )}
+          {selected && (
+            <p className="selected-repository-meta">
+              <code>{selected.path}</code>
+              <small>
+                {selected.environment === "windows" ||
+                selected.path.startsWith("/mnt/")
+                  ? "Windows"
+                  : "WSL"}{" "}
+                · {selected.base_branch}
+                {matched ? " · ✓ Matched from issue URL" : ""}
+              </small>
+            </p>
+          )}
+          <label>
             Issue URL
             <input
               autoFocus
@@ -149,8 +222,27 @@ export const NewTask = ({
               onChange={(e) => setUrl(e.target.value)}
             />
           </label>
-          {resolving && (
-            <p className="subtle">Fetching issue and repository…</p>
+          {resolving && <p className="subtle">Fetching issue preview…</p>}
+          {mismatch && reference && selected && (
+            <div role="alert" className="error-box">
+              <strong>Repository mismatch</strong>
+              <p>
+                This issue belongs to: {reference.owner}/{reference.repo}
+                <br />
+                Selected repository: {selected.owner}/{selected.name}
+              </p>
+              {matching.length === 1 && (
+                <Button
+                  onClick={() => {
+                    setRepositoryId(matching[0].id);
+                    setManualSelection(true);
+                    setMatched(false);
+                  }}
+                >
+                  Switch to {matching[0].owner}/{matching[0].name}
+                </Button>
+              )}
+            </div>
           )}
           {preview && (
             <>
@@ -219,69 +311,37 @@ export const NewTask = ({
               <StageSettings settings={settings} onChange={setSettings} />
             )}
           </details>
-          {preview && (
-            <details className="task-configuration">
-              <summary>Advanced · repository</summary>
+          {selected && (
+            <details className="task-configuration" open>
+              <summary>Repository source &amp; task workspace</summary>
+              <dl className="repository-facts">
+                <dt>Source</dt>
+                <dd>
+                  <code>{selected.path}</code>
+                </dd>
+                <dt>Ownership</dt>
+                <dd>
+                  {selected.source === "imported"
+                    ? "User-owned checkout"
+                    : "Vibestar-managed clone"}
+                </dd>
+                <dt>Task workspace</dt>
+                <dd>
+                  Will be created under:
+                  <code>
+                    {root}/worktrees/{selected.id}/
+                    {reference ? reference.number + "-…" : "…"}
+                  </code>
+                </dd>
+                <dt>Base</dt>
+                <dd>
+                  {selected.upstream_remote || "upstream"}/
+                  {selected.base_branch}
+                </dd>
+              </dl>
               <p className="subtle">
-                {preview.repository
-                  ? "Uses your managed clone"
-                  : "Managed clone will be prepared when the task starts"}{" "}
-                · base {preview.resolved.base_branch}
+                All agent changes remain in the task worktree.
               </p>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={override}
-                  onChange={(e) => setOverride(e.target.checked)}
-                />
-                Override inferred remotes
-              </label>
-              {override && preview.repository && (
-                <small>
-                  Updates this managed repository for future tasks. Existing
-                  worktrees stay pinned.
-                </small>
-              )}
-              {override && advanced && (
-                <>
-                  <label>
-                    Upstream URL
-                    <input
-                      value={advanced.upstream_url}
-                      onChange={(e) =>
-                        setAdvanced({
-                          ...advanced,
-                          upstream_url: e.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Fork / origin URL
-                    <input
-                      value={advanced.origin_url || ""}
-                      onChange={(e) =>
-                        setAdvanced({
-                          ...advanced,
-                          origin_url: e.target.value || null,
-                        })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Base branch
-                    <input
-                      value={advanced.base_branch}
-                      onChange={(e) =>
-                        setAdvanced({
-                          ...advanced,
-                          base_branch: e.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                </>
-              )}
             </details>
           )}
           {error && (
@@ -298,6 +358,8 @@ export const NewTask = ({
                 busy ||
                 resolving ||
                 !preview ||
+                !selected ||
+                mismatch ||
                 (mode === "partial" && !scope.trim())
               }
             >

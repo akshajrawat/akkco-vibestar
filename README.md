@@ -93,7 +93,7 @@ Open **Providers** to inspect installation, authentication, current Antigravity 
 
 Settings has separate Agents, GitHub & PR Watch, Repositories, Storage, Usage and Execution sections. Utility AI is independent of the coding pipeline and is used only for ambiguous PR conversation semantics. Every model run is recorded locally, with token counts only when reported by the provider. Codex subscription windows are displayed when its official CLI exposes them; unavailable allowance information is labeled explicitly.
 
-Local repository discovery searches configured roots with bounded depth before cloning. Add a specific Windows location through its `/mnt/c/Users/...` path to include it. Imported checkouts remain references; tasks use isolated worktrees under the data root. Storage cleanup never deletes an imported source repository. Existing `~/.akkco-ade` data presents Migrate, Use old location or Start fresh; migration preserves the old root and repairs copied worktree metadata.
+Connect a local repository explicitly by WSL path or Windows drive path; Windows paths are converted with `wslpath` inside the configured distro. Optional discovery searches configured roots with bounded depth and offers candidates to connect. Imported checkouts remain references; tasks use isolated worktrees under the data root. Storage cleanup never deletes an imported source repository. Existing `~/.akkco-ade` data presents Migrate, Use old location or Start fresh; migration preserves the old root and repairs copied worktree metadata.
 
 In **Settings**, configure **three independent** models, effort values and deadlines. Empty model uses the official CLI default deliberately. Antigravity models come from `agy models`; a model with an effort suffix must match its selected effort. Codex accepts an explicit configured slug and reports provider rejection without silently substituting another model or effort.
 
@@ -101,17 +101,19 @@ Codex uses its verified `exec` structured-output interface, read-only planning a
 
 ## Repository and task setup
 
-**Repositories** is a searchable GitHub catalog with Recent, Owned, Forks, Organizations and All views. Catalog entries are metadata; browsing them does not clone anything. **Use locally** prepares a managed clone only for the selected repository. Manual remotes remain available under Advanced.
+**Repositories** shows active local connections first, discovered candidates second, and a searchable GitHub **All** catalog. There are no Recent/Owned/Forks tabs or advanced Git URL form. Discovery is optional and never activates a repository automatically.
 
-1. Select **New task** and paste an issue URL, such as `https://github.com/oppia/oppia/issues/26831`. Vibestar fetches its title, requirements, comments, labels and repository metadata.
-2. Choose **Entire issue** to include all requirements unless your notes explicitly exclude them, or **Specific part / claimed subtask** and enter a required claimed scope, such as `check-improvements-tab.spec.ts`.
-3. Add optional instructions. Expand **Agent configuration** to change the three independent stage settings, then **Start task**. The task opens immediately while its repository is prepared.
+1. Choose **Connect local repository**, select **WSL** or **Windows**, and enter the checkout path (for example `/home/aksha/oppia` or `D:\projects\my-repo`). **Verify repository** shows the canonical execution path, remotes, GitHub identities, current branch and available base branches. Confirm the upstream, fork and base, then **Connect repository**. No scan, clone or fetch is needed for this connection.
+2. Choose **New task** and select an active **Repository**. Paste an issue URL, such as `https://github.com/oppia/oppia/issues/26831`. A unique matching active checkout is visibly suggested; an explicit mismatched selection blocks creation. Vibestar fetches the issue preview from GitHub using the selected repository ID.
+3. Choose **Entire issue** or **Specific part / claimed subtask**, add any instructions, and inspect the source path, future worktree location and base. Expand **Agent configuration** if needed, then **Start task**.
+
+GitHub catalog entries offer **Find local checkout**. If no candidate is found, **Create Vibestar-managed clone** explicitly confirms a download under the data root. Imported and managed ownership are labeled. **Disconnect** removes a repository from the active selector but keeps source files, branches, task history and worktrees. Verify/reconnect an imported checkout to use its existing ID again.
 
 The SQLite migration preserves existing V1 tasks as partial tasks. Whole issue tasks have explicit `scope_mode: "whole_issue"` and an empty claimed scope; all three prompts receive whole issue semantics. No misleading claimed-scope string substitutes for this distinction.
 
-GitHub supplies the upstream default branch and proves fork relationships through parent metadata. For the Oppia example, an existing `akshajrawat/oppia` fork of `oppia/oppia` becomes origin, upstream stays `oppia/oppia`, and the default branch is `develop`. An unrelated same-name repository is never inferred as a fork. Advanced allows explicit overrides.
+For an imported Oppia checkout, verification reads `origin` as `akshajrawat/oppia`, `upstream` as `oppia/oppia`, and the remote HEAD as `develop`. The source checkout can remain on its own feature branch. Multiple checkout paths for the same upstream have separate registry IDs; task creation uses exactly the selected ID.
 
-Every new task fetches upstream under a repository lock, saves the exact base SHA and creates a fresh isolated branch/worktree. Personal checkouts are not used. Duplicate branches receive deterministic suffixes; existing task bases remain pinned.
+Every new task fetches upstream under a repository lock, saves the exact base SHA and creates a fresh isolated branch/worktree. Imported checkouts supply Git object storage; agents execute only in their task worktree, never in the source directory. At Ready for Review, **Finalize…** offers Review changes, Open worktree, Mark complete or Keep task in worktree. It never automatically commits, switches or modifies the source checkout. Duplicate branches receive deterministic suffixes; existing task bases remain pinned.
 
 ## Task workspace
 

@@ -55,6 +55,7 @@ export const TaskWorkspace = ({
   const [contextText, setContextText] = useState("");
   const [selectedRun, setSelectedRun] = useState<string>();
   const [cleanup, setCleanup] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
   const [sent, setSent] = useState<Message[]>([]);
   const sending = useRef(false);
   const [diff, setDiff] = useState<Diff | null>(null);
@@ -218,10 +219,10 @@ export const TaskWorkspace = ({
             <Button
               size="sm"
               disabled={occupied || busy}
-              onClick={() => void action("task.complete")}
+              onClick={() => setFinalizing(true)}
             >
               <Check size={12} />
-              Complete
+              Finalize…
             </Button>
           ) : t.status !== "completed" ? (
             <Button
@@ -235,6 +236,96 @@ export const TaskWorkspace = ({
           ) : null}
         </div>
       </header>
+      <details className="workspace-repository-context">
+        <summary>
+          Repository source · {repository?.path || "Unavailable"}
+        </summary>
+        <dl className="repository-facts">
+          <dt>Source</dt>
+          <dd>
+            <code>{repository?.path}</code> ·{" "}
+            {repository?.source === "imported"
+              ? "User-owned checkout"
+              : "Vibestar-managed clone"}
+          </dd>
+          <dt>Worktree</dt>
+          <dd>
+            <code>{t.worktree_path || "Created when preparation starts"}</code>
+          </dd>
+          <dt>Branch</dt>
+          <dd>
+            <code>{t.branch_name || "Created during preparation"}</code>
+          </dd>
+          <dt>Base</dt>
+          <dd>
+            {repository?.upstream_remote || "upstream"}/{t.base_branch}{" "}
+            <code>{t.base_commit_sha}</code>
+          </dd>
+        </dl>
+      </details>
+      {finalizing && (
+        <div className="modal-backdrop">
+          <section
+            className="modal compact-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finalize-task-title"
+          >
+            <h2 id="finalize-task-title">Finalize task</h2>
+            <dl className="repository-facts">
+              <dt>Source repository</dt>
+              <dd>
+                <code>{repository?.path}</code>
+              </dd>
+              <dt>Task worktree</dt>
+              <dd>
+                <code>{t.worktree_path}</code>
+              </dd>
+              <dt>Task branch</dt>
+              <dd>
+                <code>{t.branch_name}</code>
+              </dd>
+              <dt>Changed files</dt>
+              <dd>{diff?.files.length ?? "Open Changes to inspect"}</dd>
+            </dl>
+            <p>
+              Changes stay in the task worktree. Marking this task complete
+              preserves its branch and worktree. It does not commit changes or
+              switch the source checkout.
+            </p>
+            <div className="actions">
+              <Button
+                onClick={() => {
+                  setFinalizing(false);
+                  updateTaskView(t.id, { tab: "Changes" });
+                }}
+              >
+                Review changes
+              </Button>
+              <Button
+                onClick={() =>
+                  void action("open.directory", { id: t.id, kind: "task" })
+                }
+              >
+                Open worktree
+              </Button>
+              <Button
+                variant="default"
+                disabled={busy || occupied}
+                onClick={async () => {
+                  await action("task.complete");
+                  setFinalizing(false);
+                }}
+              >
+                Mark complete
+              </Button>
+              <Button variant="ghost" onClick={() => setFinalizing(false)}>
+                Keep task in worktree
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
       {cleanup && (
         <TaskCleanup
           id={t.id}
@@ -683,6 +774,9 @@ export const TaskWorkspace = ({
                   })}
                   <details className="task-metadata">
                     <summary>Worktree</summary>
+                    <p>
+                      Source: <code>{repository?.path}</code>
+                    </p>
                     <code>{t.worktree_path}</code>
                     <p>
                       Base {t.base_commit_sha} · {t.base_branch}
