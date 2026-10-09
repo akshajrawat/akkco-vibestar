@@ -1,9 +1,9 @@
 import { lstat, readdir, realpath, rm, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { AdeError, now } from "../domain";
+import { AdeError, now, type Task, type Repository } from "../domain";
 import type { Engine } from "../execution/engine";
-import { checked } from "../execution/process";
-import { inside, exists } from "../workspace/paths";
+import { capture, checked } from "../execution/process";
+import { inside, exists, taskRoot } from "../workspace/paths";
 
 const directorySize = async (path: string): Promise<number> => {
   try {
@@ -101,6 +101,183 @@ export class StorageService {
     this.engine.withTaskMaintenance(id, () =>
       this.cleanupTaskData(id, options),
     );
+  private removeTaskWorkspace = async (task: Task, repo: Repository) => {
+    const e = this.engine;
+    await e.git.withLock(repo.id, async () => {
+      if (!task.branch_name && !task.worktree_path) return;
+      if (
+        !task.branch_name.startsWith("akkco/") ||
+        [task.base_branch, repo.base_branch].includes(task.branch_name)
+      )
+        throw new AdeError("isolation", "Task branch is not owned by Vibestar");
+      const branch = await capture(
+        "git",
+        ["show-ref", "--verify", "--quiet", `refs/heads/${task.branch_name}`],
+        repo.path,
+      );
+      if (![0, 1].includes(branch.code))
+        throw new AdeError("git_cleanup", "Could not verify the task branch");
+      const worktrees = await checked(
+        "git",
+        ["worktree", "list", "--porcelain"],
+        repo.path,
+      );
+      if (
+        branch.code === 1 &&
+        (!task.worktree_path || !(await exists(task.worktree_path))) &&
+        !worktrees.split("\n").includes(`worktree ${task.worktree_path}`)
+      )
+        return;
+      const marker = await capture(
+        "git",
+        [
+          "config",
+          "--local",
+          "--get",
+          `branch.${task.branch_name}.vibestarTask`,
+        ],
+        repo.path,
+      );
+      const legacyRecord =
+        marker.code === 1 &&
+        !task.branch_owned &&
+        e.db
+          .all<{ data: string }>(
+            "SELECT data FROM task_activity WHERE task_id=? AND kind='preparation'",
+            task.id,
+          )
+          .map((row) => JSON.parse(row.data))
+          .find((data) => {
+            return (
+              data.code === 0 &&
+              Array.isArray(data.argv) &&
+              data.argv.slice(0, 4).join(" ") === "git worktree add -b" &&
+              data.argv[4] === task.branch_name &&
+              data.argv[6] === task.base_commit_sha
+            );
+          });
+      let legacyCreation = !!legacyRecord && branch.code === 1;
+      if (legacyRecord && branch.code === 0) {
+        const reflog = await capture(
+          "git",
+          [
+            "reflog",
+            "show",
+            "--date=raw",
+            "--format=%gD%x00%gs",
+            `refs/heads/${task.branch_name}`,
+          ],
+          repo.path,
+        );
+        const first = reflog.stdout.trim().split("\n").at(-1) ?? "";
+        const [selector, message] = first.split("\0");
+        const created = Number(selector.match(/@\{(\d+) /)?.[1]);
+        const started = Date.parse(legacyRecord.started_at) / 1000;
+        legacyCreation =
+          reflog.code === 0 &&
+          message === `branch: Created from ${task.base_commit_sha}` &&
+          created >= Math.floor(started) &&
+          created <= Math.ceil(started + legacyRecord.duration_ms / 1000);
+      }
+      if (
+        !(marker.code === 0 && marker.stdout.trim() === task.id) &&
+        !legacyCreation &&
+        !(branch.code === 1 && task.branch_owned)
+      )
+        throw new AdeError(
+          "isolation",
+          "No verified Vibestar ownership record for this branch. Task history was retained.",
+        );
+      for (const entry of worktrees.split("\n\n")) {
+        const lines = entry.split("\n");
+        if (!lines.includes(`branch refs/heads/${task.branch_name}`)) continue;
+        const path = lines
+          .find((line) => line.startsWith("worktree "))
+          ?.slice(9);
+        if (!path || !task.worktree_path || path !== task.worktree_path)
+          throw new AdeError(
+            "busy",
+            "The task branch is checked out outside its assigned worktree. Task history was retained.",
+          );
+      }
+      if (task.worktree_path && (await exists(task.worktree_path))) {
+        const path = await taskRoot(e.root, task);
+        const [taskGit, repoGit] = await Promise.all([
+          checked(
+            "git",
+            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            path,
+          ),
+          checked(
+            "git",
+            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            repo.path,
+          ),
+        ]);
+        if ((await realpath(taskGit)) !== (await realpath(repoGit)))
+          throw new AdeError(
+            "isolation",
+            "Task worktree belongs to a different repository",
+          );
+        const current = await capture(
+          "git",
+          ["symbolic-ref", "--quiet", "--short", "HEAD"],
+          path,
+        );
+        if (
+          (current.code === 0 && current.stdout.trim() !== task.branch_name) ||
+          ![0, 1].includes(current.code)
+        )
+          throw new AdeError(
+            "isolation",
+            "Task worktree has a different branch; it was preserved",
+          );
+        await checked(
+          "git",
+          [
+            "-c",
+            "core.hooksPath=/dev/null",
+            "worktree",
+            "remove",
+            "--force",
+            "--",
+            path,
+          ],
+          repo.path,
+        );
+      } else if (
+        task.worktree_path &&
+        worktrees.split("\n").includes(`worktree ${task.worktree_path}`)
+      ) {
+        if (!inside(join(e.root, "worktrees", repo.id), task.worktree_path))
+          throw new AdeError(
+            "isolation",
+            "Task worktree is outside its managed repository boundary",
+          );
+        // Remove only this missing registration; pruning all worktrees could
+        // affect unrelated checkouts sharing the same Git metadata.
+        await checked(
+          "git",
+          [
+            "-c",
+            "core.hooksPath=/dev/null",
+            "worktree",
+            "remove",
+            "--force",
+            "--",
+            task.worktree_path,
+          ],
+          repo.path,
+        );
+      }
+      if (branch.code === 0)
+        await checked(
+          "git",
+          ["branch", "-D", "--", task.branch_name],
+          repo.path,
+        );
+    });
+  };
   private cleanupTaskData = async (
     id: string,
     options: {
@@ -118,37 +295,14 @@ export class StorageService {
         "Stop or dequeue this task before deleting its data.",
       );
     const repo = e.db.repository(task.repo_id);
-    if (options.worktree && task.worktree_path) {
-      await e.git.withLock(repo.id, async () => {
-        if (await exists(task.worktree_path)) {
-          const path = await e.git.assertTask(task);
-          if (!task.branch_name.startsWith("akkco/"))
-            throw new AdeError(
-              "isolation",
-              "Task branch is not owned by Vibestar",
-            );
-          await checked(
-            "git",
-            [
-              "-c",
-              "core.hooksPath=/dev/null",
-              "worktree",
-              "remove",
-              "--force",
-              "--",
-              path,
-            ],
-            repo.path,
-          );
-          // Git refuses deletion if another checkout has this branch checked out.
-          await checked(
-            "git",
-            ["branch", "-D", "--", task.branch_name],
-            repo.path,
-          );
-        }
-      });
-      task = { ...task, worktree_path: "" };
+    if (options.worktree || options.history) {
+      await this.removeTaskWorkspace(task, repo);
+      task = {
+        ...task,
+        worktree_path: "",
+        branch_name: "",
+        branch_owned: false,
+      };
     }
     if (options.logs) await this.remove(join("logs", id));
     if (options.artifacts) {
@@ -164,6 +318,8 @@ export class StorageService {
           "test_runs",
           "terminal_sessions",
           "task_review_notes",
+          "task_reviewed_files",
+          "code_questions",
           "task_activity",
         ])
           e.db.run(`DELETE FROM ${table} WHERE task_id=?`, id);
@@ -255,7 +411,9 @@ export class StorageService {
     for (const task of this.engine.db
       .tasks()
       .filter(
-        (t) => ["completed", "cancelled"].includes(t.status) && t.worktree_path,
+        (t) =>
+          ["completed", "cancelled"].includes(t.status) &&
+          (t.worktree_path || t.branch_name),
       )) {
       await this.cleanupTaskData(task.id, {
         worktree: true,
@@ -283,7 +441,7 @@ export class StorageService {
   reset = () => this.engine.withStorageMaintenance(this.resetData);
   private resetData = async () => {
     for (const task of this.engine.db.tasks()) {
-      if (!task.worktree_path) continue;
+      if (!task.worktree_path && !task.branch_name) continue;
       this.engine.db.saveTask({ ...task, status: "cancelled" });
       await this.cleanupTaskData(task.id, {
         worktree: true,
@@ -317,6 +475,8 @@ export class StorageService {
         "task_artifacts",
         "test_runs",
         "task_review_notes",
+        "task_reviewed_files",
+        "code_questions",
         "task_activity",
         "terminal_sessions",
         "scheduled_attention",

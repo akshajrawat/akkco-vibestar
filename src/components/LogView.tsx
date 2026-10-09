@@ -2,19 +2,24 @@ import { useEffect, useState } from "react";
 import type { Run, AgentEvent } from "../lib/types";
 import { duration, rpc, errorMessage } from "../lib/api";
 import { Status } from "./Status";
+import { RunError } from "./RunError";
+import { AgentTimeline } from "./AgentTimeline";
+import { AgentResponse } from "./AgentResponse";
 export const LogView = ({
   taskId,
   runs,
   events,
   selectedRun,
+  liveOutput = false,
 }: {
   taskId: string;
   runs: Run[];
   events: AgentEvent[];
   selectedRun?: string;
+  liveOutput?: boolean;
 }) => {
   const [selection, setSelection] = useState("");
-  const [view, setView] = useState("response");
+  const [view, setView] = useState(liveOutput ? "activity" : "response");
   const run =
     runs.find((r) => r.id === (selection || selectedRun)) || runs.at(-1);
   const [log, setLog] = useState<{ text: string; truncated: boolean }>({
@@ -25,8 +30,9 @@ export const LogView = ({
   const preparation = (selection || selectedRun) === "preparation";
   useEffect(() => {
     let alive = true;
-    if (preparation || ["raw events", "stderr"].includes(view))
-      void rpc<{ text: string; truncated: boolean }>("task.logs", {
+    if (!preparation && !["raw events", "stderr"].includes(view)) return;
+    const refresh = () =>
+      rpc<{ text: string; truncated: boolean }>("task.logs", {
         id: taskId,
         run_id: preparation ? null : run?.id || null,
         stream: view === "stderr" ? "stderr" : "stdout",
@@ -40,10 +46,16 @@ export const LogView = ({
         .catch((e) => {
           if (alive) setError(errorMessage(e));
         });
+    void refresh();
+    const timer =
+      run?.status === "running"
+        ? setInterval(() => void refresh(), 1000)
+        : undefined;
     return () => {
       alive = false;
+      if (timer) clearInterval(timer);
     };
-  }, [taskId, preparation, run?.id, view, events.length]);
+  }, [taskId, preparation, run?.id, view, events.length, run?.status]);
   return (
     <div className="logs-panel">
       <div className="logs-toolbar">
@@ -61,13 +73,13 @@ export const LogView = ({
             </option>
           ))}
         </select>
-        {["prompt", "response", "raw events", "stderr"].map((v) => (
+        {["activity", "prompt", "response", "raw events", "stderr"].map((v) => (
           <button
             className={view === v ? "selected" : ""}
             key={v}
             onClick={() => setView(v)}
           >
-            {v}
+            {v === "raw events" ? "Raw stdout" : v}
           </button>
         ))}
       </div>
@@ -93,14 +105,26 @@ export const LogView = ({
               <span className="mono">conversation {run.conversation_id}</span>
             )}
           </div>
-          {run.error && <div className="error-box">{run.error}</div>}
-          <pre className="raw-log">
-            {view === "prompt"
-              ? run.prompt
-              : view === "response"
-                ? run.output || "No final result saved yet"
-                : log.text}
-          </pre>
+          {run.error && <RunError error={run.error} run={run} />}
+          {view === "activity" ? (
+            <div className="readable-log">
+              <AgentTimeline
+                runs={[run]}
+                events={events.filter((event) => event.run_id === run.id)}
+              />
+            </div>
+          ) : view === "response" ? (
+            <div className="readable-log">
+              <AgentResponse
+                expanded
+                text={run.output || "No final result saved yet"}
+              />
+            </div>
+          ) : (
+            <pre className="raw-log">
+              {view === "prompt" ? run.prompt : log.text}
+            </pre>
+          )}
         </>
       ) : (
         <p className="empty-row">No provider run has started.</p>

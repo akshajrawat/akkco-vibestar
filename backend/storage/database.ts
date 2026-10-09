@@ -1,4 +1,6 @@
 import { migrations } from "./migrations";
+import { CommandExecutions } from "../execution/command-executions";
+import type { NormalizedEvent } from "../domain";
 import BetterSqlite3 from "better-sqlite3";
 import {
   defaultSettings,
@@ -36,6 +38,31 @@ export class Database {
               migration.version,
               now(),
             );
+            if (migration.version === 16) {
+              const commands = new CommandExecutions(this);
+              for (const event of this.all<{
+                task_id: string;
+                run_id: string;
+                kind: NormalizedEvent["kind"];
+                data: string;
+                timestamp: string;
+              }>(
+                "SELECT task_id,run_id,kind,data,timestamp FROM agent_events WHERE kind LIKE 'command.%' ORDER BY id",
+              ))
+                commands.observe(
+                  event.task_id,
+                  event.run_id,
+                  {
+                    kind: event.kind,
+                    data: JSON.parse(event.data),
+                  },
+                  event.timestamp,
+                );
+              for (const run of this.all<{ id: string; ended_at: string }>(
+                "SELECT id,ended_at FROM agent_runs WHERE status!='running'",
+              ))
+                commands.finish(run.id, run.ended_at || now());
+            }
             if (rebuild && this.all("PRAGMA foreign_key_check").length)
               throw new Error(
                 "Repository migration failed foreign key verification",
@@ -108,7 +135,7 @@ export class Database {
     );
   artifact = (taskId: string, stage: number) => {
     const row = this.all<{ content: string }>(
-      "SELECT content FROM task_artifacts WHERE task_id=? AND stage=? ORDER BY created_at DESC,rowid DESC LIMIT 1",
+      "SELECT content FROM task_artifacts WHERE task_id=? AND stage=? AND kind='plan' ORDER BY created_at DESC,rowid DESC LIMIT 1",
       taskId,
       stage,
     )[0];
@@ -128,6 +155,9 @@ export class Database {
       this.run(
         "UPDATE utility_runs SET status='interrupted',ended_at=? WHERE status='running'",
         now(),
+      );
+      this.run(
+        "UPDATE code_questions SET status='interrupted',error='Execution interrupted. Ask again to retry.' WHERE status='running'",
       );
       this.run(
         "UPDATE ai_usage SET status='interrupted',ended_at=?,duration_ms=CAST((julianday(?) - julianday(started_at))*86400000 AS INTEGER) WHERE status='running'",
@@ -150,6 +180,7 @@ export class Database {
             "planning_codex",
             "implementing",
             "validating",
+            "reviewing_antigravity",
           ].includes(t.status)
         ) {
           this.saveTask({
@@ -190,7 +221,7 @@ export class Database {
       id,
     ),
     tests: this.all(
-      "SELECT * FROM test_runs WHERE task_id=? ORDER BY started_at",
+      "SELECT * FROM test_runs WHERE task_id=? ORDER BY started_at,rowid",
       id,
     ),
   });

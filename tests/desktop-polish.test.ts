@@ -7,7 +7,11 @@ import { join, resolve } from "node:path";
 import { Engine } from "../backend/execution/engine";
 import { defaultSettings, parseIssue, now } from "../backend/domain";
 import { ActionSchema } from "../backend/scheduled/action";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 import type { Detection, Snapshot } from "../src/lib/types";
 const require = createRequire(import.meta.url);
 

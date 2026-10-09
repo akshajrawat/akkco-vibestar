@@ -13,7 +13,11 @@ import { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { parseIssue } from "../backend/domain";
 import * as processes from "../backend/execution/process";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 import BetterSqlite3 from "better-sqlite3";
 import { migrations } from "../backend/storage/migrations";
 import { Database } from "../backend/storage/database";
@@ -305,13 +309,26 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
         ),
       ).toContain(current.branch_name);
       const runs = engine.db.detail(task.id).runs;
-      expect(runs.map((r) => r.stage)).toEqual([1, 2, 3]);
+      expect(runs.map((r) => r.stage)).toEqual([1, 2, 3, 5]);
       expect(
         workspaces
           .filter((r) => r.cwd === current.worktree_path)
           .map((r) => r.stage),
-      ).toEqual([1, 2, 3]);
+      ).toEqual([1, 2, 3, 5]);
       expect(current.branch_name).toMatch(/^akkco\//);
+      expect(current.branch_owned).toBe(true);
+      expect(
+        await processes.checked(
+          "git",
+          [
+            "config",
+            "--local",
+            "--get",
+            `branch.${current.branch_name}.vibestarTask`,
+          ],
+          path,
+        ),
+      ).toBe(current.id);
     }
     expect(engine.db.task(a.id).worktree_path).not.toBe(
       engine.db.task(b.id).worktree_path,
@@ -319,9 +336,17 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
     expect(await readFile(join(path, "source.txt"), "utf8")).toBe(
       "source stays dirty\n",
     );
-    expect(await readFile(join(path, ".git", "config"), "utf8")).toBe(
-      originalConfig,
-    );
+    // Only the two task ownership markers may extend shared Git metadata.
+    // Existing source settings and remotes must remain byte-for-byte intact.
+    let config = await readFile(join(path, ".git", "config"), "utf8");
+    for (const task of [a, b]) {
+      const current = engine.db.task(task.id);
+      config = config.replace(
+        `[branch "${current.branch_name}"]\n\tvibestarTask = ${current.id}\n`,
+        "",
+      );
+    }
+    expect(config).toBe(originalConfig);
     expect(
       await processes.checked("git", ["branch", "--show-current"], path),
     ).toBe("my-personal-branch");
@@ -526,6 +551,7 @@ it("keeps an explicitly selected legacy managed repository authoritative when it
       repo.upstream_url,
       repo.path,
       expect.any(AbortSignal),
+      undefined,
     );
   } finally {
     vi.restoreAllMocks();

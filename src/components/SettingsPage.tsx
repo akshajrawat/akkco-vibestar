@@ -23,6 +23,7 @@ export const SettingsPage = ({
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [installLog, setLog] = useState("");
+  const [editors, setEditors] = useState<{ id: string; label: string }[]>([]);
   const [section, setSection] = useState("Agents");
   const [watch, setWatch] =
     useState<import("../../backend/github/contracts").WatchSettings>();
@@ -39,6 +40,11 @@ export const SettingsPage = ({
     return () => {
       void subscription.then((fn) => fn());
     };
+  }, []);
+  useEffect(() => {
+    void rpc<{ editors: typeof editors }>("editors.list")
+      .then((r) => setEditors(r.editors))
+      .catch((e) => setError(errorMessage(e)));
   }, []);
   useEffect(() => {
     setValue(settings);
@@ -212,6 +218,38 @@ export const SettingsPage = ({
             <>
               {section === "General" && (
                 <section className="settings-section">
+                  <h2>Editor</h2>
+                  <label>
+                    Default editor
+                    <select
+                      aria-label="Default editor"
+                      value={value.default_editor}
+                      onChange={(e) =>
+                        setValue({
+                          ...value,
+                          default_editor: e.target
+                            .value as Settings["default_editor"],
+                        })
+                      }
+                    >
+                      <option value="">Choose when opening</option>
+                      {editors.map((editor) => (
+                        <option key={editor.id} value={editor.id}>
+                          {editor.label}
+                        </option>
+                      ))}
+                      {!!value.default_editor &&
+                        !editors.some((e) => e.id === value.default_editor) && (
+                          <option value={value.default_editor}>
+                            {value.default_editor} (unavailable)
+                          </option>
+                        )}
+                    </select>
+                  </label>
+                  <p className="subtle">
+                    Task actions open the isolated worktree. Repository actions
+                    open the source checkout.
+                  </p>
                   <h2>Concurrency</h2>
                   <label>
                     Simultaneous tasks
@@ -244,6 +282,71 @@ export const SettingsPage = ({
                     onChange={setValue}
                     providers={providers}
                   />
+                  <h2>Review / explain AI</h2>
+                  <p className="subtle">
+                    Read-only questions about selected code. Each query appears
+                    in task and global Usage.
+                  </p>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={!!value.review_ai}
+                      onChange={(e) =>
+                        setValue({
+                          ...value,
+                          review_ai: e.target.checked
+                            ? { ...value.utility_ai }
+                            : null,
+                        })
+                      }
+                    />
+                    Use a separate review model
+                  </label>
+                  {value.review_ai ? (
+                    <>
+                      <label>
+                        Review provider
+                        <select
+                          value={value.review_ai.provider}
+                          onChange={(e) =>
+                            setValue({
+                              ...value,
+                              review_ai: {
+                                ...value.review_ai!,
+                                provider: e.target.value as
+                                  "codex" | "antigravity",
+                                model: "",
+                              },
+                            })
+                          }
+                        >
+                          <option value="antigravity">Antigravity</option>
+                          <option value="codex">Codex</option>
+                        </select>
+                      </label>
+                      <AgentConfiguration
+                        id="review-ai"
+                        label="REVIEW / EXPLAIN AI"
+                        provider={value.review_ai.provider}
+                        providers={providers}
+                        config={value.review_ai}
+                        onChange={(config) =>
+                          setValue({
+                            ...value,
+                            review_ai: {
+                              ...config,
+                              provider: value.review_ai!.provider,
+                            },
+                          })
+                        }
+                      />
+                    </>
+                  ) : (
+                    <p className="subtle">
+                      Uses Utility AI settings. Individual questions can
+                      override provider, model and effort.
+                    </p>
+                  )}
                   <h2>Utility AI</h2>
                   <p className="subtle">
                     PR discussion reasoning and miscellaneous Vibestar

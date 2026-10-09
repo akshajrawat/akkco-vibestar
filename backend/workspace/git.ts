@@ -16,7 +16,7 @@ import {
   type Repository,
   type Task,
 } from "../domain";
-import { capture, checked } from "../execution/process";
+import { capture, checked, execute } from "../execution/process";
 import { exists, safeFile, taskRoot, worktreePath } from "./paths";
 export class GitWorkspace {
   constructor(private readonly root: string) {}
@@ -36,14 +36,36 @@ export class GitWorkspace {
       await release();
     }
   };
-  clone = async (url: string, path: string, signal?: AbortSignal) => {
+  clone = async (
+    url: string,
+    path: string,
+    signal?: AbortSignal,
+    onProgress?: (line: string) => void,
+  ) => {
     await mkdir(dirname(path), { recursive: true });
-    await checked(
-      "git",
-      ["clone", "--filter=blob:none", "--origin", "upstream", "--", url, path],
-      dirname(path),
+    const result = await execute({
+      program: "git",
+      args: [
+        "clone",
+        "--progress",
+        "--filter=blob:none",
+        "--origin",
+        "upstream",
+        "--",
+        url,
+        path,
+      ],
+      cwd: dirname(path),
       signal,
-    );
+      timeoutMs: 1800000,
+      progressLines: true,
+      onLine: (_, line) => onProgress?.(line),
+    });
+    if (result.code !== 0)
+      throw new AdeError(
+        "clone_failed",
+        `Couldn't clone repository. ${result.stderr.slice(-4000)}`,
+      );
   };
   fetch = async (repo: Repository, signal?: AbortSignal) => {
     await checked(
@@ -147,15 +169,24 @@ export class GitWorkspace {
         if (existing.code === 0 || (await exists(path))) continue;
         await mkdir(dirname(path), { recursive: true });
         t.branch_name = branch;
+        t.branch_owned = false;
         t.base_commit_sha = base;
         t.base_branch = repo.base_branch;
         t.worktree_path = path;
         checkpoint?.(t);
         await command(["worktree", "add", "-b", branch, path, base]);
+        await command([
+          "config",
+          "--local",
+          `branch.${branch}.vibestarTask`,
+          t.id,
+        ]);
         t.branch_name = branch;
+        t.branch_owned = true;
         t.base_commit_sha = base;
         t.base_branch = repo.base_branch;
         t.worktree_path = await realpath(path);
+        checkpoint?.(t);
         return;
       }
       throw new AdeError(

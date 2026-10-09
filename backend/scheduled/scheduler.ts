@@ -157,6 +157,7 @@ export class Scheduler {
       throw new AdeError("invalid_state", "This PR is archived");
     if (retry && job.pending_snapshot) job.status = "pending";
     else if (["error", "interrupted"].includes(job.status)) job.status = "idle";
+    job.error = null;
     job.next_run_at = now();
     job.check_once = !job.enabled;
     this.save(job);
@@ -193,7 +194,7 @@ export class Scheduler {
       } else if (job.status === "analyzing") {
         job.status = "interrupted";
         job.error =
-          "Analysis interrupted. Explicit retry required; no model was automatically restarted.";
+          "The execution core restarted before PR analysis finished. The previous decision is preserved. Retry explicitly to run analysis again.";
         this.save(job);
       }
     }

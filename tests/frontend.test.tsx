@@ -142,13 +142,32 @@ it("shows an agent's actual structured summary without dumping JSON into the con
 });
 it("keeps implementation config independent of planning", () => {
   const changed = vi.fn();
-  render(<StageSettings settings={defaultSettings} onChange={changed} />);
-  const models = screen.getAllByPlaceholderText("Official CLI default");
+  render(
+    <StageSettings
+      settings={defaultSettings}
+      onChange={changed}
+      providers={[
+        {
+          provider: "codex",
+          installed: true,
+          connected: true,
+          version: "fixture",
+          models: [{ id: "requested-plan-model", supportedEfforts: ["high"] }],
+          efforts: ["high"],
+          capabilities: [],
+          error: null,
+        },
+      ]}
+    />,
+  );
+  const models = screen
+    .getAllByRole("combobox")
+    .filter((e) => e.id.endsWith("-models"));
   fireEvent.change(models[1], { target: { value: "requested-plan-model" } });
   const settings = changed.mock.calls[0][0];
   expect(settings.codex_plan.model).toBe("requested-plan-model");
   expect(settings.codex_implementation.model).toBe("");
-  expect(screen.getAllByText(/discovering…/)).toHaveLength(3);
+  expect(screen.getAllByText(/models not loaded/)).toHaveLength(1);
 });
 it("shows both locally persisted plans", () => {
   render(

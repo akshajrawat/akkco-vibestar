@@ -49,13 +49,18 @@ export const TaskCleanup = ({
             ["worktree", "Remove Vibestar worktree and owned branch"],
             ["logs", "Remove raw logs"],
             ["artifacts", "Remove saved plans and artifacts"],
-            ["history", "Remove conversation and run history"],
+            ["history", "Remove task history, worktree and owned local branch"],
           ] as const
         ).map(([key, label]) => (
           <label className="checkbox-label" key={key}>
             <input
               type="checkbox"
-              checked={options[key]}
+              checked={
+                key === "worktree"
+                  ? options.worktree || options.history
+                  : options[key]
+              }
+              disabled={key === "worktree" && options.history}
               onChange={(e) =>
                 setOptions({ ...options, [key]: e.target.checked })
               }
@@ -63,6 +68,12 @@ export const TaskCleanup = ({
             {label}
           </label>
         ))}
+        {options.history && (
+          <p className="subtle">
+            Deleting task history also deletes its Vibestar worktree and local
+            branch. Other local branches are preserved.
+          </p>
+        )}
         {!!error && (
           <CleanupError
             error={error}

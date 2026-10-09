@@ -8,6 +8,8 @@ export interface ProcessRequest {
   cwd: string;
   input?: string;
   timeoutMs?: number;
+  progressLines?: boolean;
+  wslInterop?: boolean;
   signal?: AbortSignal;
   onLine?: (stream: "stdout" | "stderr", line: string) => void;
   onSpawn?: (pid: number, identity: string) => void;
@@ -77,7 +79,12 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     const start = Date.now();
     const child = spawn(r.program, r.args, {
       cwd,
-      env: cleanEnvironment(),
+      env: {
+        ...cleanEnvironment(),
+        ...(r.wslInterop && process.env.WSL_INTEROP
+          ? { WSL_INTEROP: process.env.WSL_INTEROP }
+          : {}),
+      },
       shell: false,
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
@@ -112,7 +119,11 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         return;
       }
       let i;
-      while ((i = buffers[stream].indexOf("\n")) >= 0) {
+      while (
+        (i = r.progressLines
+          ? buffers[stream].search(/[\r\n]/)
+          : buffers[stream].indexOf("\n")) >= 0
+      ) {
         line(stream, buffers[stream].slice(0, i).replace(/\r$/, ""));
         buffers[stream] = buffers[stream].slice(i + 1);
       }

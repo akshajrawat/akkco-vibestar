@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { Engine } from "../backend/execution/engine";
 import { TaskTerminals } from "../backend/execution/task-terminals";
 import { parseIssue } from "../backend/domain";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 it("runs a real task-scoped PTY, retains the session and excludes simultaneous agents in that worktree", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-task-terminal-"));
   const engine = await Engine.create(

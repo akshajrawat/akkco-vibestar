@@ -103,14 +103,22 @@ export class FixtureProvider extends CodexProvider {
         ? plan1
         : r.stage === 2
           ? plan2
-          : {
-              summary: "Implemented by TEST fixture",
-              filesChanged: ["source.txt"],
-              testsPassed: [],
-              testsFailed: [],
-              testsSkipped: ["fixture"],
-              remainingRisks: [],
-            };
+          : r.stage === 5
+            ? {
+                approval: "approved",
+                summary: "Fixture final review",
+                findings: [],
+                testsRun: ["fixture inspection"],
+                testsNotRun: ["remote CI"],
+              }
+            : {
+                summary: "Implemented by TEST fixture",
+                filesChanged: ["source.txt"],
+                testsPassed: [],
+                testsFailed: [],
+                testsSkipped: ["fixture"],
+                remainingRisks: [],
+              };
     let action = "";
     if (r.stage === 3)
       action = `await require('node:fs/promises').writeFile('source.txt',${JSON.stringify(r.prompt.includes("Task A") ? "A\n" : "B\n")});`;
@@ -152,3 +160,43 @@ export const waitForTask = (
     engine.on("event", check);
     check();
   });
+
+// Existing integration scenarios explicitly simulate the user's approvals.
+// Gate-specific tests use waitForTask directly and assert no autonomous progress.
+export const finishFixtureTask = async (
+  engine: Engine,
+  id: string,
+  predicate: (status: string) => boolean,
+) => {
+  let approving = false;
+  let failure: unknown;
+  const approve = () => {
+    const task = engine.db.task(id);
+    if (
+      task.status !== "awaiting_approval" ||
+      predicate(task.status) ||
+      engine.isActive(id) ||
+      approving ||
+      failure
+    )
+      return;
+    approving = true;
+    void engine
+      .approveStage(id)
+      .catch((error) => {
+        failure = error;
+      })
+      .finally(() => {
+        approving = false;
+      });
+  };
+  engine.on("event", approve);
+  const timer = setInterval(approve, 20);
+  try {
+    await waitForTask(engine, id, (status) => !!failure || predicate(status));
+    if (failure) throw failure;
+  } finally {
+    clearInterval(timer);
+    engine.off("event", approve);
+  }
+};

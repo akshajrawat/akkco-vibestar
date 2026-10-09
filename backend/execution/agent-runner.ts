@@ -1,6 +1,9 @@
 import { z } from "zod";
+import { StreamedPlan } from "./streamed-plan";
+import { CommandExecutions } from "./command-executions";
 import { ActionSchema } from "../scheduled/action";
 import { Usage } from "./usage";
+import { discoverCodexModels } from "./providers/codex-models";
 import { sandboxInvocation } from "./sandbox";
 import { mkdir, open, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -50,6 +53,7 @@ export class AgentRunner {
       jobId?: string;
       telemetryTaskId?: string;
       telemetryRepository?: string;
+      questionId?: string;
     },
   ) => {
     const task = "repo_id" in t ? t : null;
@@ -69,12 +73,14 @@ export class AgentRunner {
         : undefined;
     const provider = this.providers(
       t.stage,
-      options?.provider || followup?.provider,
+      options?.provider ||
+        followup?.provider ||
+        (t.stage === 5 ? "antigravity" : undefined),
     );
     const config =
       options?.config ??
       followup?.config ??
-      (t.stage === 1
+      (t.stage === 1 || t.stage === 5
         ? settings.antigravity
         : t.stage === 2
           ? settings.codex_plan
@@ -90,14 +96,15 @@ export class AgentRunner {
         : null;
     const purpose =
       options?.purpose ||
-      (task?.continuation === "implementation"
+      (t.stage === 3 && task?.continuation === "implementation"
         ? "Chat Follow-up"
         : [
             "",
             "Antigravity Plan",
             "Codex Plan Refinement",
             "Codex Implementation",
-          ][t.stage]);
+          ][t.stage] ||
+          (t.stage === 5 ? "Antigravity Final Review" : "Pipeline"));
     usage.start(id, {
       task_id: task?.id || options?.telemetryTaskId || null,
       job_id:
@@ -110,6 +117,10 @@ export class AgentRunner {
       provider: provider.name,
       model: config.model,
       effort: config.effort,
+    });
+    this.emit({
+      event: "usage.changed",
+      task_id: task?.id || options?.telemetryTaskId,
     });
     const parent = task
       ? "task_id"
@@ -128,6 +139,20 @@ export class AgentRunner {
       now(),
       purpose,
     );
+    if (task && options?.questionId) {
+      this.db.run(
+        "UPDATE code_questions SET run_id=? WHERE id=? AND task_id=?",
+        id,
+        options.questionId,
+        task.id,
+      );
+      this.db.run(
+        "UPDATE task_messages SET run_id=? WHERE id=? AND task_id=?",
+        id,
+        options.questionId,
+        task.id,
+      );
+    }
     if (task && !options)
       this.db.run(
         "UPDATE task_messages SET run_id=? WHERE task_id=? AND status='delivered' AND run_id IS NULL",
@@ -139,13 +164,21 @@ export class AgentRunner {
     let stdout: Awaited<ReturnType<typeof open>> | undefined;
     let stderr: Awaited<ReturnType<typeof open>> | undefined;
     let writes = Promise.resolve();
+    const draft = new StreamedPlan(t.stage);
+    const commands = new CommandExecutions(this.db);
+    let savedDraft = "";
+    const draftId = randomUUID();
     let final: unknown;
     let failure: unknown;
     let code: number | null = null;
+    let invoked = false;
+    let officialCodex = false;
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
       cwd = task ? await this.git.assertTask(task) : options!.workspace!;
       const detection = await provider.detect(this.root, signal);
+      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
+      officialCodex = detection.provider === "codex";
       usage.recordLimits(id, detection.subscriptionLimits);
       if (!detection.installed || !detection.capabilities.length)
         throw new AdeError(
@@ -201,7 +234,7 @@ export class AgentRunner {
         this.db,
         task,
         directInvocation,
-        t.stage < 3,
+        t.stage !== 3,
         schemaPath,
         provider.name === "antigravity" ? "antigravity" : "codex",
         options?.workspace,
@@ -210,6 +243,7 @@ export class AgentRunner {
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
       const before = task ? await this.git.fingerprint(task) : null;
       this.emit({ event: "changed", task_id: task?.id });
+      invoked = true;
       const output = await execute({
         ...invocation,
         cwd,
@@ -234,20 +268,60 @@ export class AgentRunner {
             raw = { unparsed: line };
           }
           const conversationId = provider.conversationId(raw);
-          if (stream === "stdout") usage.observe(id, raw);
-          if (conversationId)
+          if (stream === "stdout") {
+            usage.observe(id, raw);
+            const reportedModel = object(raw.init).model || raw.model;
+            if (typeof reportedModel === "string" && reportedModel)
+              this.db.run(
+                `UPDATE ${table} SET model=? WHERE id=? AND model=''`,
+                reportedModel,
+                id,
+              );
+          }
+          this.emit({
+            event: "usage.changed",
+            task_id: task?.id || options?.telemetryTaskId,
+          });
+          if (conversationId) {
+            this.db.run(
+              "UPDATE ai_usage SET provider_session_id=? WHERE id=?",
+              conversationId,
+              id,
+            );
             this.db.run(
               `UPDATE ${table} SET conversation_id=? WHERE id=?`,
               conversationId,
               id,
             );
+          }
           const result = provider.result(raw);
           if (result !== undefined) final = result;
           for (const event of stream === "stderr"
             ? [{ kind: "command.output" as const, data: { stderr: line } }]
             : provider.normalize(raw)) {
             if (event.kind === "run.failed") failure = event.data;
+            if (
+              task &&
+              !options &&
+              [1, 2].includes(t.stage) &&
+              event.kind === "message"
+            ) {
+              const plan = draft.observe(event.data);
+              if (plan && JSON.stringify(plan) !== savedDraft) {
+                savedDraft = JSON.stringify(plan);
+                this.db.run(
+                  "INSERT INTO task_artifacts VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,created_at=excluded.created_at",
+                  draftId,
+                  t.id,
+                  t.stage,
+                  `draft:${id}`,
+                  JSON.stringify({ plan, source_hash: before }),
+                  now(),
+                );
+              }
+            }
             if (!task) continue;
+            commands.observe(t.id, id, event);
             this.db.run(
               "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,?,?,?,?)",
               id,
@@ -282,10 +356,14 @@ export class AgentRunner {
         : options?.purpose === "scheduled"
           ? ActionSchema.parse(value)
           : validatePlan(t.stage, value);
-      if (task && t.stage < 3 && before !== (await this.git.fingerprint(task)))
+      if (
+        task &&
+        t.stage !== 3 &&
+        before !== (await this.git.fingerprint(task))
+      )
         throw new AdeError(
           "planning_violation",
-          "Planning modified the worktree. Pipeline stopped. Review and discard changes before retrying.",
+          "A read-only planning or review run modified the worktree. Pipeline stopped. Review the changes before retrying.",
         );
       if (task && t.stage === 3) {
         const implementation = object(result);
@@ -360,12 +438,23 @@ export class AgentRunner {
       });
       throw e;
     } finally {
+      commands.finish(id);
       try {
         await writes;
       } finally {
         await stdout?.close();
         await stderr?.close();
         await unlink(schemaPath).catch(() => {});
+        // Discovery reads official allowance only; it never starts a model turn.
+        // A fresh signal permits an after-snapshot even when the run was cancelled.
+        if (invoked && officialCodex) {
+          const after = await discoverCodexModels(this.root).catch(() => null);
+          usage.recordLimits(id, after?.subscriptionLimits, true);
+        }
+        this.emit({
+          event: "usage.changed",
+          task_id: task?.id || options?.telemetryTaskId,
+        });
       }
     }
   };

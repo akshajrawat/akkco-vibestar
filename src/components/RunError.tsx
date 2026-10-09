@@ -19,7 +19,7 @@ export const RunError = ({
   const cancelled =
     run?.status === "cancelled" || /cancelled|stopped|interrupt/i.test(error);
   const provider =
-    run?.provider === "antigravity" || (!run && stage === 1)
+    run?.provider === "antigravity" || (!run && [1, 5].includes(stage))
       ? "Antigravity"
       : run?.provider === "codex" || (!run && [2, 3].includes(stage))
         ? "Codex"
@@ -27,15 +27,19 @@ export const RunError = ({
           ? "Repository"
           : "Task";
   const stageName =
-    stage === 1
-      ? "planning"
-      : stage === 2
-        ? "plan refinement"
-        : stage === 3
-          ? "implementation"
-          : stage === 0
-            ? "preparation"
-            : "validation";
+    run?.purpose === "Code Review Ask AI"
+      ? "code review"
+      : stage === 5
+        ? "final review"
+        : stage === 1
+          ? "planning"
+          : stage === 2
+            ? "plan refinement"
+            : stage === 3
+              ? "implementation"
+              : stage === 0
+                ? "preparation"
+                : "validation";
   if (dismissed) return null;
   return (
     <section

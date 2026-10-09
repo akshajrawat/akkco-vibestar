@@ -110,6 +110,15 @@ export const planSchemas = {
       remainingRisks: list,
     })
     .strict(),
+  5: z
+    .object({
+      approval: z.enum(["approved", "changes_requested", "blocked"]),
+      summary: z.string(),
+      findings: list,
+      testsRun: list,
+      testsNotRun: list,
+    })
+    .strict(),
 };
 export const schemaFor = (stage: number) => {
   const schema = planSchemas[stage as keyof typeof planSchemas];

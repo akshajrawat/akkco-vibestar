@@ -3,6 +3,7 @@ import { X, ArrowUpRight } from "lucide-react";
 import { rpc, errorMessage } from "../lib/api";
 import type { Repository, Task, Settings, Snapshot } from "../lib/types";
 import { parseIssue, repositoryMatchesIssue } from "../../backend/domain";
+import { useProviders } from "../lib/useWorkspace";
 import { StageSettings } from "./StageSettings";
 import { Button } from "./ui/button";
 interface Preview {
@@ -22,6 +23,7 @@ export const NewTask = ({
   close: () => void;
   created: (id: string) => void;
 }) => {
+  const models = useProviders();
   const [url, setUrl] = useState("");
   const [scope, setScope] = useState("");
   const [mode, setMode] = useState<"whole_issue" | "partial">("whole_issue");
@@ -307,8 +309,26 @@ export const NewTask = ({
           </label>
           <details className="task-configuration">
             <summary>Agent configuration</summary>
+            <p className="subtle">
+              Models and efforts come from the installed CLI; discovery does not
+              run AI.
+            </p>
+            {models.loading && <small>Loading provider models…</small>}
+            {models.error && <p className="failure">{models.error}</p>}
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={models.loading}
+              onClick={() => void models.refresh()}
+            >
+              Refresh models
+            </Button>
             {settings && (
-              <StageSettings settings={settings} onChange={setSettings} />
+              <StageSettings
+                settings={settings}
+                onChange={setSettings}
+                providers={models.providers}
+              />
             )}
           </details>
           {selected && (
@@ -350,7 +370,10 @@ export const NewTask = ({
             </p>
           )}
           <div className="modal-actions">
-            <small>Antigravity plan → Codex plan → Codex implementation</small>
+            <small>
+              Review each plan → Implement → Review changes → Antigravity review
+              & tests
+            </small>
             <Button
               variant="default"
               type="submit"

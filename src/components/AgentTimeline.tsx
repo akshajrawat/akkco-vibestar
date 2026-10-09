@@ -1,3 +1,4 @@
+import { RunPrompt } from "./RunPrompt";
 import { useMemo } from "react";
 import {
   FileSearch,
@@ -7,6 +8,7 @@ import {
   Brain,
   Check,
   LoaderCircle,
+  CircleMinus,
 } from "lucide-react";
 import type { AgentEvent, Run, Message, DiffFile } from "../lib/types";
 import { eventData, duration } from "../lib/api";
@@ -91,6 +93,9 @@ export const AgentTimeline = ({
       event.kind === "command.finished" ||
       ["done", "completed"].includes(String(data.status).toLowerCase()) ||
       run?.status !== "running";
+    const skipped =
+      event.kind === "test.result" &&
+      ["skipped", "not_run"].includes(String(data.status));
     const Icon = edited
       ? FilePenLine
       : search || event.kind === "file.read"
@@ -125,9 +130,12 @@ export const AgentTimeline = ({
     const preview = String(
       data.command || data.path || data.query || data.text || "",
     );
+    const sandboxDropped = String(data.stderr || data.stdout || "").includes(
+      "connecting to sandbox server",
+    );
     return (
       <article
-        className={`tool-event ${failed ? "tool-failed" : ""}`}
+        className={`tool-event ${failed ? "tool-failed" : skipped ? "tool-skipped" : ""}`}
         key={row.key}
       >
         <details>
@@ -142,7 +150,9 @@ export const AgentTimeline = ({
                 ? `${paths.length} file${paths.length === 1 ? "" : "s"}`
                 : preview}
             </code>
-            {finished && !failed ? (
+            {skipped ? (
+              <CircleMinus size={12} className="warning" />
+            ) : finished && !failed ? (
               <Check size={12} className="success" />
             ) : !finished ? (
               <LoaderCircle size={12} className="running spinning" />
@@ -152,15 +162,25 @@ export const AgentTimeline = ({
             )}
           </summary>
           <div className="tool-details">
+            {sandboxDropped && (
+              <p className="warning">
+                Antigravity's command sandbox connection dropped. This command
+                did not complete; file reads use a separate tool. A later
+                successful command does not change this failed attempt.
+              </p>
+            )}
             {paths.map((path) => {
               const file = files.find(
                 (f) => path === f.path || path.endsWith(`/${f.path}`),
               );
+              const Entry = openDiff ? "button" : "div";
               return (
-                <button
+                <Entry
                   className="edited-file"
                   key={path}
-                  onClick={() => openDiff?.(file?.path || path)}
+                  onClick={
+                    openDiff ? () => openDiff(file?.path || path) : undefined
+                  }
                 >
                   <FilePenLine size={12} />
                   <code>{file?.path || path}</code>
@@ -171,20 +191,26 @@ export const AgentTimeline = ({
                       <span className="failure">−{file.deletions}</span>
                     </>
                   )}
-                </button>
+                </Entry>
               );
             })}
             {!paths.length && (
-              <pre>
-                {String(
-                  data.stdout ||
-                    data.stderr ||
-                    data.text ||
-                    data.path ||
-                    data.command ||
-                    "",
+              <>
+                {data.stdout || data.stderr ? (
+                  <>
+                    {typeof data.stdout === "string" && (
+                      <pre>{data.stdout}</pre>
+                    )}
+                    {typeof data.stderr === "string" && (
+                      <pre className="warning">{data.stderr}</pre>
+                    )}
+                  </>
+                ) : (
+                  <pre>
+                    {String(data.text || data.path || data.command || "")}
+                  </pre>
                 )}
-              </pre>
+              </>
             )}
             {typeof data.exit_code === "number" && (
               <small>Exit {data.exit_code}</small>
@@ -194,12 +220,12 @@ export const AgentTimeline = ({
             )}
           </div>
         </details>
-        {edited && paths.length === 1 && (
+        {edited && paths.length === 1 && openDiff && (
           <button
             className="inline-diff-link"
             onClick={() => openDiff?.(paths[0])}
           >
-            Open diff ↗
+            Open in editor ↗
           </button>
         )}
       </article>
@@ -240,7 +266,7 @@ export const AgentTimeline = ({
             >
               Copy
             </Button>
-            {retryMessage && (
+            {retryMessage && message.status !== "review_question" && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -249,7 +275,7 @@ export const AgentTimeline = ({
                 Retry
               </Button>
             )}
-            {editMessage && (
+            {editMessage && message.status !== "review_question" && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -289,19 +315,24 @@ export const AgentTimeline = ({
                 {run.provider === "antigravity" ? "Antigravity" : "Codex"}
               </strong>
               <span className="subtle">
-                {run.purpose === "scheduled"
-                  ? "PR review"
-                  : run.stage === 1
-                    ? "Planning"
-                    : run.stage === 2
-                      ? "Reviewing plan"
-                      : "Implementing"}
+                {run.purpose === "Code Review Ask AI"
+                  ? "Code review · read-only"
+                  : run.purpose === "scheduled"
+                    ? "PR review"
+                    : run.stage === 1
+                      ? "Planning"
+                      : run.stage === 2
+                        ? "Reviewing plan"
+                        : run.stage === 5
+                          ? "Reviewing changes & tests"
+                          : "Implementing"}
               </span>
               <small>
                 {run.model || "CLI default"} · {run.effort}
               </small>
             </div>
           )}
+          {run.id && <RunPrompt run={run} />}
           {local
             .filter(
               (row) =>
@@ -313,7 +344,7 @@ export const AgentTimeline = ({
             )
             .map(renderTool)}
           {run.output && run.status === "completed" && (
-            <AgentResponse text={run.output} />
+            <AgentResponse text={run.output} expanded />
           )}
           {run.error && <RunError error={run.error} run={run} />}
           {run.id && (
@@ -331,7 +362,9 @@ export const AgentTimeline = ({
                       ? "Plan completed"
                       : run.stage === 2
                         ? "Plan refined"
-                        : "Implementation completed"
+                        : run.stage === 5
+                          ? "Final review completed"
+                          : "Implementation completed"
                     : run.status}{" "}
                   · {duration(run.started_at, run.ended_at)}
                 </>

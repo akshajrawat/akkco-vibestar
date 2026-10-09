@@ -22,7 +22,11 @@ import { dataRootChoice, chooseDataRoot } from "../backend/storage/bootstrap";
 import { checked } from "../backend/execution/process";
 import { discoveryRoot } from "../backend/workspace/discovery";
 import { createLayout } from "../backend/workspace/paths";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 
 it.each([1, 2])(
   "persists instructions before execution and resumes cancelled planning stage %i",
@@ -57,6 +61,15 @@ it.each([1, 2])(
         "",
         {},
       );
+      if (stage === 2) {
+        await waitForTask(
+          engine,
+          task.id,
+          (status) => status === "awaiting_approval",
+        );
+        await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
+        await engine.approveStage(task.id);
+      }
       await entered;
       expect(
         engine.followUp(task.id, "Include regression coverage"),
@@ -91,7 +104,7 @@ it.each([1, 2])(
   30000,
 );
 
-it("keeps the autonomous provider sequence when a different chat provider is queued during planning", async () => {
+it("keeps the provider sequence after explicitly reviewed planning feedback when a different chat provider is queued during planning", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-queued-planning-"));
   let release = () => {};
   let notify = () => {};
@@ -134,8 +147,10 @@ it("keeps the autonomous provider sequence when a different chat provider is que
     expect(engine.db.task(task.id).status).toBe("ready_for_review");
     expect(providers).toEqual([
       { stage: 1, name: undefined },
+      { stage: 1, name: undefined },
       { stage: 2, name: undefined },
       { stage: 3, name: undefined },
+      { stage: 5, name: "antigravity" },
     ]);
     expect(
       engine.db.detail(task.id).runs.find((r) => r.stage === 2)?.prompt,
@@ -180,7 +195,7 @@ it("keeps a user message when the selected model fails validation, and records e
       "Keep this message after failure",
     );
     const usage = new Usage(engine.db).list(task.id);
-    expect(usage).toHaveLength(4);
+    expect(usage).toHaveLength(5);
     expect(usage[0]).toMatchObject({
       provider: "codex",
       model: "unknown",
@@ -559,7 +574,7 @@ it("offers legacy data migration and repairs copied Git worktree pointers withou
       expect(
         await readFile(join(task.worktree_path, "source.txt"), "utf8"),
       ).toBe("A\n");
-      expect(migrated.db.detail(taskId).usage).toHaveLength(3);
+      expect(migrated.db.detail(taskId).usage).toHaveLength(4);
       expect(await readFile(join(oldWorktree, "source.txt"), "utf8")).toBe(
         "A\n",
       );

@@ -6,7 +6,11 @@ import { Engine } from "../backend/execution/engine";
 import { parseIssue } from "../backend/domain";
 import { sandboxInvocation } from "../backend/execution/sandbox";
 import { execute } from "../backend/execution/process";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 it("mounts planning worktrees read-only and hides unrelated directories and ADE state", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-sandbox-"));
   const engine = await Engine.create(

@@ -1,6 +1,12 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-export const AgentResponse = ({ text }: { text: string }) => {
+export const AgentResponse = ({
+  text,
+  expanded = false,
+}: {
+  text: string;
+  expanded?: boolean;
+}) => {
   let fields: Record<string, unknown> | undefined;
   try {
     const value: unknown = JSON.parse(text);
@@ -15,7 +21,7 @@ export const AgentResponse = ({ text }: { text: string }) => {
     return (
       <div className="agent-response markdown">
         <Markdown remarkPlugins={[remarkGfm]}>{summary}</Markdown>
-        <details>
+        <details open={expanded || undefined}>
           <summary>View result details</summary>
           {Object.entries(fields)
             .filter(([key]) => !["summary", "goal"].includes(key))

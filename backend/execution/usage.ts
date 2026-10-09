@@ -22,8 +22,14 @@ export interface UsageRecord {
   total_tokens: number | null;
   error: string | null;
   subscription_limits: string | null;
+  subscription_limits_after: string | null;
+  provider_session_id: string | null;
 }
 export class Usage {
+  private readonly steps = new Map<
+    string,
+    Map<number, Record<string, unknown>>
+  >();
   constructor(private readonly db: Database) {}
   start = (
     id: string,
@@ -52,7 +58,31 @@ export class Usage {
     );
   observe = (id: string, raw: Record<string, unknown>) => {
     const result = object(raw.result);
-    const usage = object(raw.usage || result.usage);
+    const step = object(raw.step_update);
+    const stepUsage = object(step.usage);
+    let usage = object(raw.usage || result.usage);
+    // Official agy stream emits per-step usage and a final aggregate. Keep step
+    // updates idempotent; sum only reported fields, then use the final aggregate.
+    if (
+      raw.event === "step_update" &&
+      typeof step.step_index === "number" &&
+      Object.keys(stepUsage).length
+    ) {
+      const steps =
+        this.steps.get(id) || new Map<number, Record<string, unknown>>();
+      if (steps.size < 10000 || steps.has(step.step_index))
+        steps.set(step.step_index, stepUsage);
+      this.steps.set(id, steps);
+      usage = {};
+      for (const value of steps.values())
+        for (const [field, count] of Object.entries(value))
+          if (
+            typeof count === "number" &&
+            Number.isSafeInteger(count) &&
+            count >= 0
+          )
+            usage[field] = Number(usage[field] || 0) + count;
+    } else if (Object.keys(usage).length) this.steps.delete(id);
     const details = object(usage.output_tokens_details);
     const input = object(usage.input_tokens_details);
     const values = {
@@ -87,10 +117,11 @@ export class Usage {
   recordLimits = (
     id: string,
     limits: ProviderDetection["subscriptionLimits"],
+    after = false,
   ) => {
     if (limits)
       this.db.run(
-        "UPDATE ai_usage SET subscription_limits=? WHERE id=?",
+        `UPDATE ai_usage SET ${after ? "subscription_limits_after" : "subscription_limits"}=? WHERE id=?`,
         JSON.stringify(limits),
         id,
       );
@@ -100,8 +131,9 @@ export class Usage {
     start: number,
     status: string,
     error: string | null = null,
-  ) =>
-    this.db.run(
+  ) => {
+    this.steps.delete(id);
+    return this.db.run(
       "UPDATE ai_usage SET ended_at=?,duration_ms=?,status=?,error=? WHERE id=?",
       now(),
       Date.now() - start,
@@ -109,6 +141,7 @@ export class Usage {
       error,
       id,
     );
+  };
   list = (taskId?: string, days?: number) =>
     this.db.all<UsageRecord>(
       `SELECT * FROM ai_usage WHERE (? IS NULL OR task_id=?) AND (? IS NULL OR started_at>=?) ORDER BY started_at DESC`,

@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { open } from "node:fs/promises";
+import { join } from "node:path";
+import { redact } from "../execution/process";
 import { z } from "zod";
 import { AdeError, now } from "../domain";
 import type { Engine } from "../execution/engine";
@@ -14,7 +18,162 @@ const watchSchema = z.object({
   interval_minutes: z.number().int().min(5).max(10080),
   verify_codex: z.boolean(),
 });
+export interface CloneActivity {
+  id: string;
+  repository: string;
+  repository_id?: string;
+  destination?: string;
+  upstream?: string;
+  origin?: string | null;
+  status: "resolving" | "cloning" | "completed" | "cancelled" | "failed";
+  phase: string;
+  percent?: number;
+  error?: string;
+  started_at: string;
+}
 export class GitHubService {
+  private clones = new Map<
+    string,
+    {
+      activity: CloneActivity;
+      controller: AbortController;
+      promise: Promise<void>;
+    }
+  >();
+  cloneActivities = () => [...this.clones.values()].map((c) => c.activity);
+  cancelClone = async (id: string) => {
+    const clone = this.clones.get(id);
+    if (!clone) throw new AdeError("not_found", "Clone activity not found.");
+    clone.controller.abort();
+    await clone.promise;
+  };
+  startClone = (name: string) => {
+    this.engine.assertAvailable();
+    if (
+      [...this.clones.values()].some(
+        (c) =>
+          c.activity.repository.toLowerCase() === name.toLowerCase() &&
+          ["resolving", "cloning"].includes(c.activity.status),
+      )
+    )
+      throw new AdeError("busy", "This repository is already being cloned.");
+    const id = randomUUID();
+    const controller = new AbortController();
+    const activity: CloneActivity = {
+      id,
+      repository: name,
+      status: "resolving",
+      phase: "Resolving repository…",
+      started_at: now(),
+    };
+    let repositoryId = "";
+    let release = () => {};
+    const promise = Promise.resolve()
+      .then(async () => {
+        const log = await open(
+          join(this.engine.root, "logs", `clone-${id}.log`),
+          "a",
+          0o600,
+        );
+        let writes = Promise.resolve();
+        const progress = (line: string) => {
+          const safe = redact(line.replace(/\x1b\[[0-9;]*m/g, ""));
+          writes = writes.then(async () => {
+            await log.write(safe + "\n");
+          });
+          const percent = safe.match(
+            /(?:Receiving objects|Resolving deltas|Counting objects|Compressing objects):\s*(\d+)%/,
+          );
+          activity.phase = safe.slice(0, 500) || activity.phase;
+          activity.percent = percent ? Number(percent[1]) : undefined;
+          this.engine.changed();
+        };
+        try {
+          const repo = await this.useLocally(
+            name,
+            true,
+            undefined,
+            true,
+            controller.signal,
+          );
+          repositoryId = repo.id;
+          repo.connected = false;
+          repo.clone_status = "cloning";
+          this.engine.db.saveRepository(repo);
+          Object.assign(activity, {
+            repository_id: repo.id,
+            destination: repo.path,
+            upstream: `${repo.owner}/${repo.name}`,
+            origin: repo.origin_url,
+            status: "cloning",
+          });
+          progress(
+            `Cloning upstream ${repo.owner}/${repo.name}; origin ${repo.origin_url || "not configured"}`,
+          );
+          await this.engine.prepareClone(
+            repo,
+            controller.signal,
+            undefined,
+            progress,
+          );
+          if (controller.signal.aborted)
+            throw new AdeError("cancelled", "Clone cancelled");
+          repo.connected = true;
+          this.engine.db.saveRepository(repo);
+          activity.status = "completed";
+          activity.phase = "Ready";
+          activity.percent = 100;
+        } catch (error) {
+          activity.status = controller.signal.aborted ? "cancelled" : "failed";
+          activity.error = redact(
+            error instanceof Error ? error.message : String(error),
+          );
+          activity.phase = controller.signal.aborted
+            ? "Clone cancelled · incomplete managed checkout removed"
+            : "Clone failed";
+          if (
+            repositoryId &&
+            !this.engine.db.tasks().some((t) => t.repo_id === repositoryId)
+          )
+            this.engine.db.run(
+              "DELETE FROM repositories WHERE id=?",
+              repositoryId,
+            );
+        } finally {
+          try {
+            await writes;
+          } finally {
+            await log.close();
+            release();
+            this.engine.changed();
+          }
+        }
+      })
+      .catch((error) => {
+        activity.status = "failed";
+        activity.error = String(error);
+        release();
+        this.engine.changed();
+      });
+    release = this.engine.trackActivity(
+      {
+        id: `clone:${id}`,
+        kind: "repository",
+        label: `Cloning ${name}`,
+        stoppable: true,
+      },
+      () => this.cancelClone(id),
+    );
+    this.clones.set(id, { activity, controller, promise });
+    for (const [key, clone] of this.clones)
+      if (
+        this.clones.size > 20 &&
+        !["resolving", "cloning"].includes(clone.activity.status)
+      )
+        this.clones.delete(key);
+    this.engine.changed();
+    return activity;
+  };
   private timer: ReturnType<typeof setTimeout> | undefined;
   private controller = new AbortController();
   private running: Promise<unknown> | undefined;
@@ -60,6 +219,7 @@ export class GitHubService {
     return value;
   };
   snapshot = () => ({
+    clones: this.cloneActivities(),
     status: this.status,
     last_sync: this.lastSync,
     error: this.error,
@@ -67,14 +227,10 @@ export class GitHubService {
     repositories: this.catalog(),
     pull_requests: this.prs(),
   });
-  resolve = async (name: string) => {
-    const repository = await this.client.repository(
-      name,
-      this.controller.signal,
-    );
+  resolve = async (name: string, signal = this.controller.signal) => {
+    const repository = await this.client.repository(name, signal);
     let fork: GitHubRepository | undefined;
-    const status =
-      this.status || (await this.client.detect(this.controller.signal));
+    const status = this.status || (await this.client.detect(signal));
     if (status.connected) {
       const candidates = this.catalog().filter(
         (r) =>
@@ -83,10 +239,7 @@ export class GitHubService {
           r.name === repository.name,
       );
       for (const candidate of candidates) {
-        const info = await this.client.repository(
-          candidate.full_name,
-          this.controller.signal,
-        );
+        const info = await this.client.repository(candidate.full_name, signal);
         if (
           info.parent?.full_name.toLowerCase() ===
           repository.full_name.toLowerCase()
@@ -100,7 +253,7 @@ export class GitHubService {
         try {
           const info = await this.client.repository(
             `${status.username}/${repository.name}`,
-            this.controller.signal,
+            signal,
           );
           if (
             info.fork &&
@@ -125,12 +278,15 @@ export class GitHubService {
     deferred = false,
     localPath?: string,
     managed = false,
+    signal = this.controller.signal,
   ) => {
-    let metadata = await this.client.repository(name, this.controller.signal);
+    let metadata = await this.client.repository(name, signal);
+    const selectedFork =
+      metadata.fork && metadata.parent ? metadata.clone_url : null;
     if (metadata.fork && metadata.parent)
       metadata = await this.client.repository(
         metadata.parent.full_name,
-        this.controller.signal,
+        signal,
       );
     const existing = this.engine.db
       .repositories()
@@ -141,6 +297,14 @@ export class GitHubService {
             metadata.full_name.toLowerCase(),
       );
     if (existing) {
+      if (
+        managed &&
+        existing.clone_status === "cloning" &&
+        !this.cloneActivities().some(
+          (a) => a.repository_id === existing.id && a.status === "cloning",
+        )
+      )
+        return existing;
       if (managed)
         throw new AdeError(
           "repository_exists",
@@ -150,7 +314,8 @@ export class GitHubService {
         await this.engine.prepareClone(existing, undefined, localPath);
       return existing;
     }
-    const resolved = await this.resolve(metadata.full_name);
+    const resolved = await this.resolve(metadata.full_name, signal);
+    if (selectedFork) resolved.origin_url = selectedFork;
     return this.engine.register(
       resolved.upstream_url,
       resolved.origin_url,
@@ -319,6 +484,8 @@ export class GitHubService {
   close = async () => {
     this.closed = true;
     this.controller.abort();
+    for (const clone of this.clones.values()) clone.controller.abort();
+    await Promise.all([...this.clones.values()].map((c) => c.promise));
     if (this.timer) clearTimeout(this.timer);
     await this.running;
   };

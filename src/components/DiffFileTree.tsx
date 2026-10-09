@@ -17,10 +17,12 @@ export const DiffFileTree = ({
   files,
   selected,
   onSelect,
+  reviews = [],
 }: {
   files: DiffFile[];
   selected: string | undefined;
   onSelect: (file: DiffFile) => void;
+  reviews?: { path: string; reviewed: boolean; notes: number }[];
 }) => {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -67,7 +69,18 @@ export const DiffFileTree = ({
             title={`${child.path}${child.file.old_path ? ` (renamed from ${child.file.old_path})` : ""}\n${child.file.staged ? "Staged changes" : ""}${child.file.untracked ? "Untracked" : child.file.unstaged ? " · Working changes" : ""}`}
             aria-current={selected === child.path ? "true" : undefined}
           >
-            <FileCode2 size={13} />
+            {reviews.find((r) => r.path === child.path)?.reviewed ? (
+              <span className="success" title="Reviewed">
+                ✓
+              </span>
+            ) : (
+              <FileCode2 size={13} />
+            )}
+            {!!reviews.find((r) => r.path === child.path)?.notes && (
+              <small title="Local review notes">
+                {reviews.find((r) => r.path === child.path)?.notes} ◇
+              </small>
+            )}
             <span className="file-basename mono">{child.name}</span>
             <span className="file-line-stats">
               <span className="success">+{child.file.insertions}</span>

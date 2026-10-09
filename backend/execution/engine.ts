@@ -1,3 +1,5 @@
+import { StreamedPlan } from "./streamed-plan";
+import { validatePlan, object } from "./providers/contracts";
 import { sandboxInvocation } from "./sandbox";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
@@ -22,6 +24,7 @@ import { Database } from "../storage/database";
 import { GitWorkspace } from "../workspace/git";
 import { createLayout, inside, taskRoot, exists } from "../workspace/paths";
 import { fetchIssue } from "../workspace/issue";
+import { taskRuntime } from "../workspace/runtime";
 import {
   checked,
   execute,
@@ -440,7 +443,8 @@ export class Engine extends EventEmitter {
       base_branch: base,
       path: candidate?.path || join(this.root, "repos", id),
       source: candidate ? "imported" : "managed",
-      connected: true,
+      connected: !(!discover && deferred),
+      ...(!discover && deferred ? { clone_status: "cloning" as const } : {}),
       ...(!discover ? { selection: "explicit" as const } : {}),
       last_fetched: null,
       created_at: now(),
@@ -461,6 +465,7 @@ export class Engine extends EventEmitter {
     r: Repository,
     signal = this.repositoryController.signal,
     localPath?: string,
+    onProgress?: (line: string) => void,
   ) =>
     this.repositoryOperation(() =>
       this.git.withLock(r.id, async () => {
@@ -474,6 +479,23 @@ export class Engine extends EventEmitter {
               "Imported checkout remotes no longer match this repository.",
             );
           return;
+        }
+        // A caller can wait behind the original clone's lock. Refresh its
+        // marker before deciding whether an incomplete destination is removable.
+        if (r.clone_status === "cloning") {
+          const current = this.db.repository(r.id);
+          if (current.clone_status === "ready") Object.assign(r, current);
+        }
+        if (r.clone_status === "cloning" && (await exists(r.path))) {
+          if (
+            !inside(join(this.root, "repos"), r.path) ||
+            this.db.tasks().some((t) => t.repo_id === r.id)
+          )
+            throw new AdeError(
+              "isolation",
+              "Cannot remove an incomplete clone with task history or external ownership.",
+            );
+          await rm(r.path, { recursive: true, force: true });
         }
         if (await exists(join(r.path, ".git"))) return;
         if (r.selection !== "explicit") await this.repositoryIndex.scan();
@@ -503,7 +525,8 @@ export class Engine extends EventEmitter {
           return;
         }
         try {
-          await this.git.clone(r.upstream_url, r.path, signal);
+          await this.git.clone(r.upstream_url, r.path, signal, onProgress);
+          onProgress?.("Configuring remotes…");
           if (r.origin_url)
             await checked(
               "git",
@@ -522,6 +545,7 @@ export class Engine extends EventEmitter {
             r.path,
             signal,
           );
+          r.clone_status = "ready";
           this.db.saveRepository(r);
         } catch (error) {
           if (inside(join(this.root, "repos"), r.path))
@@ -777,7 +801,7 @@ export class Engine extends EventEmitter {
     return t;
   };
   private pipeline = async (t: Task, signal: AbortSignal) => {
-    for (; t.stage < 5; t.stage++) {
+    for (; t.stage < 6; t.stage++) {
       if (signal.aborted) throw new AdeError("cancelled", "Task cancelled");
       t.status = stageStatus(t.stage);
       t.updated_at = now();
@@ -811,13 +835,33 @@ export class Engine extends EventEmitter {
         );
         this.db.saveRepository(repo);
         this.db.saveTask(t);
-      } else if (t.stage <= 3)
+      } else if (t.stage <= 3 || t.stage === 5) {
+        const runtime = await taskRuntime(
+          this.db.repository(t.repo_id).path,
+          t.worktree_path,
+          true,
+        );
+        t.runtime = {
+          python: runtime.python,
+          dependencies: runtime.dependencies,
+          warnings: runtime.warnings,
+        };
+        this.db.saveTask(t);
+        // Refresh authored context at each approved stage, never invoke a model to fetch it.
+        if (t.issue.context_fetched_at || t.issue.number === t.issue_number) {
+          t.issue = await fetchIssue(
+            parseIssue(t.issue_url),
+            this.root,
+            signal,
+          );
+          this.db.saveTask(t);
+        }
         await this.runner.run(
           t,
           t.execution_settings ?? this.db.settings(),
           signal,
         );
-      else {
+      } else {
         const output = await this.manual(
           t.id,
           ["git", "diff", "--check", t.base_commit_sha, "--"],
@@ -839,6 +883,7 @@ export class Engine extends EventEmitter {
             "Implementation reported failed tests. Review Tests and retry implementation.",
           );
       }
+      if (t.stage === 5) t.final_review_hash = await this.git.fingerprint(t);
       const queued = this.db.all<{ id: string; configuration: string | null }>(
         "SELECT id,configuration FROM task_messages WHERE task_id=? AND status='queued' ORDER BY created_at,rowid",
         t.id,
@@ -853,9 +898,44 @@ export class Engine extends EventEmitter {
         if (t.stage >= 3) {
           t.stage = 2;
           t.continuation = "implementation";
+        } else if (t.stage === 1) {
+          this.db.run(
+            "DELETE FROM task_artifacts WHERE task_id=? AND stage>=1",
+            t.id,
+          );
+          t.stage = 0;
+        } else if (t.stage === 2) {
+          this.db.run(
+            "DELETE FROM task_artifacts WHERE task_id=? AND stage>=2",
+            t.id,
+          );
+          t.stage = 1;
         }
       }
-      this.db.saveTask({ ...t, stage: t.stage + 1 });
+      const nextStage = t.stage + 1;
+      const approvalGate = queued.length
+        ? undefined
+        : t.stage === 1
+          ? "antigravity_plan"
+          : t.stage === 2
+            ? "codex_plan"
+            : t.stage === 4
+              ? "implementation"
+              : t.stage === 5
+                ? "final_review"
+                : undefined;
+      if (approvalGate) {
+        this.db.saveTask({
+          ...t,
+          stage: nextStage,
+          approval_gate: approvalGate,
+          status: "awaiting_approval",
+          updated_at: now(),
+        });
+        this.changed(t.id);
+        return;
+      }
+      this.db.saveTask({ ...t, stage: nextStage, approval_gate: undefined });
     }
     t.status = "ready_for_review";
     t.updated_at = now();
@@ -880,6 +960,11 @@ export class Engine extends EventEmitter {
     if (this.taskMaintenance.has(id))
       throw new AdeError("busy", "Task data cleanup is running");
     const t = this.db.task(id);
+    if (t.status === "awaiting_approval" && stage === undefined && !restart)
+      throw new AdeError(
+        "approval_required",
+        "Review and approve the saved stage before continuing.",
+      );
     if (this.db.repository(t.repo_id).connected === false)
       throw new AdeError(
         "repository_missing",
@@ -906,10 +991,26 @@ export class Engine extends EventEmitter {
       : (stage ??
         (pending.length
           ? continuationStage(this.db, t)
-          : Math.min(t.stage, 4)));
+          : Math.min(t.stage, 5)));
+    if (t.approval_gate && !restart) {
+      const completedStage =
+        t.approval_gate === "antigravity_plan"
+          ? 1
+          : t.approval_gate === "codex_plan"
+            ? 2
+            : t.approval_gate === "implementation"
+              ? 4
+              : 5;
+      if (target > completedStage)
+        throw new AdeError(
+          "approval_required",
+          "Approve the saved stage before starting a later stage.",
+        );
+    }
     retryTarget(t, target, this.isActive(id));
     if (target >= 2) this.db.artifact(id, 1);
     if (target >= 3) this.db.artifact(id, 2);
+    if (target === 5) this.db.artifact(id, 3);
     if (restart || target < 3) {
       t.followup_config = undefined;
       t.continuation = "planning";
@@ -923,7 +1024,7 @@ export class Engine extends EventEmitter {
       "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status IN ('queued','draft')",
       id,
     );
-    if (target < 3)
+    if (target <= 3 || target === 5)
       this.db.run(
         "DELETE FROM task_artifacts WHERE task_id=? AND stage>=?",
         id,
@@ -932,6 +1033,7 @@ export class Engine extends EventEmitter {
     const updated: Task = {
       ...t,
       archived: false,
+      approval_gate: undefined,
       stage: target,
       status: "queued",
       error: null,
@@ -941,6 +1043,191 @@ export class Engine extends EventEmitter {
     this.changed(id);
     void this.drain();
     return updated;
+  };
+  approveStage = async (id: string) => {
+    this.assertAvailable();
+    const task = this.db.task(id);
+    if (this.isActive(id) || this.taskMaintenance.has(id))
+      throw new AdeError(
+        "busy",
+        "Wait for task activity to finish before approving.",
+      );
+    if (this.db.repository(task.repo_id).connected === false)
+      throw new AdeError(
+        "repository_missing",
+        "Reconnect the source repository before continuing.",
+      );
+    if (task.status !== "awaiting_approval" || !task.approval_gate)
+      throw new AdeError(
+        "invalid_state",
+        "This task is not waiting for a pipeline approval.",
+      );
+    const target =
+      task.approval_gate === "antigravity_plan"
+        ? 2
+        : task.approval_gate === "codex_plan"
+          ? 3
+          : task.approval_gate === "implementation"
+            ? 5
+            : 6;
+    const completedStage =
+      task.approval_gate === "antigravity_plan"
+        ? 1
+        : task.approval_gate === "codex_plan"
+          ? 2
+          : task.approval_gate === "implementation"
+            ? 3
+            : 5;
+    const result = validatePlan(
+      completedStage,
+      this.db.artifact(id, completedStage),
+    );
+    if (completedStage === 5 && object(result).approval !== "approved")
+      throw new AdeError(
+        "review_required",
+        "Antigravity reported unresolved findings or blocked validation. Request changes or retry the review before completing.",
+      );
+    if (
+      completedStage === 5 &&
+      task.final_review_hash !== (await this.git.fingerprint(task))
+    )
+      throw new AdeError(
+        "stale_review",
+        "The worktree changed after Antigravity reviewed it. Run the final review again.",
+      );
+    const current = this.db.task(id);
+    if (
+      current.status !== "awaiting_approval" ||
+      current.approval_gate !== task.approval_gate ||
+      this.isActive(id)
+    )
+      throw new AdeError(
+        "invalid_state",
+        "The task changed while approving. Refresh and review its current state.",
+      );
+    this.db.saveTask({
+      ...task,
+      approval_gate: undefined,
+      stage: target,
+      status: target === 6 ? "ready_for_review" : "queued",
+      continuation: "pipeline",
+      updated_at: now(),
+    });
+    this.changed(id);
+    if (target < 6) void this.drain();
+    return this.db.task(id);
+  };
+  acceptDraft = async (id: string, runId: string) => {
+    this.assertAvailable();
+    const task = this.db.task(id);
+    const runs = this.db.all<{
+      id: string;
+      stage: number;
+      status: string;
+      purpose: string;
+    }>(
+      "SELECT id,stage,status,purpose FROM agent_runs WHERE task_id=? ORDER BY started_at,rowid",
+      id,
+    );
+    const run = runs.find((r) => r.id === runId);
+    if (
+      !run ||
+      ![1, 2].includes(run.stage) ||
+      run.status === "completed" ||
+      !["pipeline", "Antigravity Plan", "Codex Plan Refinement"].includes(
+        run.purpose,
+      ) ||
+      runs.at(-1)?.id !== runId ||
+      (task.approval_gate && task.status === "awaiting_approval")
+    )
+      throw new AdeError(
+        "invalid_state",
+        "Only the latest unfinished planning run can supply a draft.",
+      );
+    if (this.interactive.has(id) || this.taskMaintenance.has(id))
+      throw new AdeError(
+        "busy",
+        "Close task activity before using a planning draft.",
+      );
+    const stored = this.db.all<{ content: string }>(
+      "SELECT content FROM task_artifacts WHERE task_id=? AND kind=? ORDER BY created_at DESC LIMIT 1",
+      id,
+      `draft:${runId}`,
+    )[0];
+    const draft = stored ? object(JSON.parse(stored.content)) : null;
+    let plan: unknown = draft?.plan;
+    if (!plan) {
+      const stream = new StreamedPlan(run.stage);
+      for (const event of this.db.all<{ data: string }>(
+        "SELECT data FROM agent_events WHERE task_id=? AND run_id=? AND kind='message' ORDER BY id",
+        id,
+        runId,
+      ))
+        plan = stream.observe(JSON.parse(event.data)) || plan;
+    }
+    if (!plan)
+      throw new AdeError(
+        "missing_draft",
+        "This run has not emitted a complete, valid planning draft.",
+      );
+    const result = validatePlan(run.stage, plan);
+    const active = this.active.get(id);
+    if (active) {
+      active.controller.abort();
+      await active.promise;
+    }
+    if (
+      !["failed", "cancelled", "interrupted"].includes(this.db.task(id).status)
+    )
+      throw new AdeError(
+        "invalid_state",
+        "The planning stage finished or changed. Review its current result instead.",
+      );
+    await this.git.assertTask(task);
+    if (draft?.source_hash) {
+      if (draft.source_hash !== (await this.git.fingerprint(task)))
+        throw new AdeError(
+          "stale_plan",
+          "The worktree changed after this draft. Retry planning against current files.",
+        );
+    } else if (
+      run.stage !== 1 ||
+      (await checked(
+        "git",
+        ["status", "--porcelain=v1"],
+        task.worktree_path,
+      )) ||
+      (await checked("git", ["rev-parse", "HEAD"], task.worktree_path)) !==
+        task.base_commit_sha
+    ) {
+      throw new AdeError(
+        "stale_plan",
+        "This historical draft has no source fingerprint. Only an unchanged initial task worktree can recover it.",
+      );
+    }
+    this.db.run(
+      "DELETE FROM task_artifacts WHERE task_id=? AND stage>=? AND kind='plan'",
+      id,
+      run.stage,
+    );
+    this.db.run(
+      "INSERT INTO task_artifacts VALUES(?,?,?,'plan',?,?)",
+      randomUUID(),
+      id,
+      run.stage,
+      JSON.stringify(result),
+      now(),
+    );
+    this.db.saveTask({
+      ...task,
+      stage: run.stage + 1,
+      status: "awaiting_approval",
+      approval_gate: run.stage === 1 ? "antigravity_plan" : "codex_plan",
+      error: null,
+      updated_at: now(),
+    });
+    this.changed(id);
+    return this.db.task(id);
   };
   followUp = (
     id: string,
@@ -985,12 +1272,18 @@ export class Engine extends EventEmitter {
       return { message, disposition: message.status };
     const target = continuationStage(this.db, t);
     this.db.run(
+      "DELETE FROM task_artifacts WHERE task_id=? AND stage>=?",
+      id,
+      target,
+    );
+    this.db.run(
       "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status IN ('draft','queued')",
       id,
     );
     this.db.saveTask({
       ...t,
       followup_config: configuration,
+      approval_gate: undefined,
       archived: false,
       continuation: target >= 3 ? "implementation" : "planning",
       stage: target,
@@ -1034,6 +1327,7 @@ export class Engine extends EventEmitter {
       JSON.stringify(argv),
       now(),
     );
+    this.changed(id);
     try {
       const invocation = await sandboxInvocation(
         this.root,
@@ -1054,11 +1348,19 @@ export class Engine extends EventEmitter {
             identity,
             run,
           ),
-        onLine: (stream, text) =>
-          this.publish({ event: "command.output", task_id: id, stream, text }),
+        onLine: (stream, text) => {
+          const column = stream === "stdout" ? "stdout" : "stderr";
+          this.db.run(
+            `UPDATE test_runs SET ${column}=substr(${column}||?,-1048576),output_truncated=CASE WHEN length(${column})+length(?)>1048576 THEN 1 ELSE output_truncated END WHERE id=?`,
+            `${text}\n`,
+            `${text}\n`,
+            run,
+          );
+          this.publish({ event: "command.output", task_id: id, stream, text });
+        },
       });
       this.db.run(
-        "UPDATE test_runs SET status=?,ended_at=?,exit_code=?,duration_ms=?,stdout=?,stderr=? WHERE id=?",
+        "UPDATE test_runs SET status=?,ended_at=?,exit_code=?,duration_ms=?,stdout=?,stderr=?,output_truncated=0 WHERE id=?",
         output.code === 0 ? "passed" : "failed",
         now(),
         output.code,
@@ -1205,6 +1507,7 @@ export class Engine extends EventEmitter {
           schema: request.schema,
           jobId: request.context?.jobId,
           telemetryTaskId: request.context?.taskId,
+          questionId: request.context?.questionId,
           telemetryRepository: request.context?.repository,
           provider: config.provider,
           config,

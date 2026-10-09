@@ -97,7 +97,11 @@ export const App = () => {
     ) : page === "Providers" ? (
       <ProvidersPage />
     ) : page === "Repositories" && snapshot ? (
-      <RepositoryPage snapshot={snapshot} refresh={refresh} />
+      <RepositoryPage
+        snapshot={snapshot}
+        refresh={refresh}
+        createTask={() => setNewTask(true)}
+      />
     ) : taskId ? (
       detail && detail.task.id === taskId ? (
         <TaskWorkspace
@@ -211,6 +215,11 @@ export const App = () => {
           </>
         )}
         <main className="main-area">
+          {snapshot?.warning && (
+            <p className="helper-warning" role="alert">
+              {snapshot.warning}
+            </p>
+          )}
           {error && (
             <div className="global-error">
               <div>
@@ -280,7 +289,8 @@ export const App = () => {
                     ...[
                       "Chat",
                       "Plan",
-                      "Changes",
+                      "Usage",
+                      "Agent Output",
                       "Tests",
                       "Terminal",
                       "Logs",
@@ -290,7 +300,12 @@ export const App = () => {
                       run: () =>
                         updateTaskView(
                           taskId,
-                          ["Tests", "Terminal", "Logs"].includes(tab)
+                          [
+                            "Tests",
+                            "Terminal",
+                            "Logs",
+                            "Agent Output",
+                          ].includes(tab)
                             ? { terminalDock: true, dockTab: tab }
                             : { tab },
                         ),
@@ -320,9 +335,9 @@ export const App = () => {
         {newTask && (
           <NewTask
             close={() => setNewTask(false)}
-            created={(id) => {
+            created={async (id) => {
+              await refresh();
               open(id);
-              void refresh();
             }}
           />
         )}

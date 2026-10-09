@@ -6,38 +6,40 @@ import { rpc, duration, errorMessage, tokenUsage } from "../lib/api";
 import { Button } from "./ui/button";
 import { AgentResponse } from "./AgentResponse";
 export const prTone = (job: ScheduleJob) =>
-  job.status === "interrupted"
-    ? "warning"
-    : job.error
-      ? "failure"
-      : ["analyzing", "polling", "pending"].includes(job.status)
-        ? "running"
-        : job.action?.conversationState === "blocked"
-          ? "failure"
-          : job.action?.manualActionRequired
-            ? "warning"
-            : ["approved", "merged"].includes(
-                  job.action?.conversationState || "",
-                )
-              ? "success"
-              : ["waiting_for_ci", "waiting_for_reviewer"].includes(
+  ["analyzing", "polling", "pending"].includes(job.status)
+    ? "running"
+    : job.status === "interrupted"
+      ? "warning"
+      : job.error
+        ? "failure"
+        : ["analyzing", "polling", "pending"].includes(job.status)
+          ? "running"
+          : job.action?.conversationState === "blocked"
+            ? "failure"
+            : job.action?.manualActionRequired
+              ? "warning"
+              : ["approved", "merged"].includes(
                     job.action?.conversationState || "",
-                  ) || ["analyzing", "polling"].includes(job.status)
-                ? "running"
-                : "healthy";
+                  )
+                ? "success"
+                : ["waiting_for_ci", "waiting_for_reviewer"].includes(
+                      job.action?.conversationState || "",
+                    ) || ["analyzing", "polling"].includes(job.status)
+                  ? "running"
+                  : "healthy";
 export const PrState = ({ job }: { job: ScheduleJob }) => {
   const state = job.action?.conversationState;
   const label =
-    job.status === "interrupted"
-      ? "ANALYSIS INTERRUPTED"
-      : job.error
-        ? "INSPECTION FAILED"
-        : job.status === "analyzing"
-          ? "ANALYZING DISCUSSION"
-          : job.status === "polling"
-            ? "CHECKING PR"
-            : job.status === "pending"
-              ? "ANALYSIS QUEUED"
+    job.status === "analyzing"
+      ? "ANALYZING DISCUSSION"
+      : job.status === "polling"
+        ? "CHECKING PR"
+        : job.status === "pending"
+          ? "ANALYSIS QUEUED"
+          : job.status === "interrupted"
+            ? "ANALYSIS INTERRUPTED"
+            : job.error
+              ? "INSPECTION FAILED"
               : state === "blocked"
                 ? job.attention_source === "ci"
                   ? "CI FAILED"

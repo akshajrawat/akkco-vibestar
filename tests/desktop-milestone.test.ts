@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Engine } from "../backend/execution/engine";
 import { parseIssue, defaultSettings } from "../backend/domain";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 import type { Detail, Detection, Snapshot } from "../src/lib/types";
 const require = createRequire(import.meta.url);
 

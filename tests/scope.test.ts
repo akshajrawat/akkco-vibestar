@@ -6,8 +6,12 @@ import { Engine } from "../backend/execution/engine";
 import { Scheduler } from "../backend/scheduled/scheduler";
 import { buildPrompt } from "../backend/execution/prompt";
 import { parseIssue, defaultSettings } from "../backend/domain";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
-it("preserves whole vs partial scope through the exact three-stage pipeline and next-run provider configuration", async () => {
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
+it("preserves whole vs partial scope through the user-approved pipeline and next-run provider configuration", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-scope-"));
   const order: number[] = [];
   const engine = await Engine.create(join(dir, "ade"), (stage) => {
@@ -55,7 +59,7 @@ it("preserves whole vs partial scope through the exact three-stage pipeline and 
     expect(order.filter((s) => s === 1)).toHaveLength(2);
     for (const t of [whole, partial]) {
       const runs = engine.db.detail(t.id).runs;
-      expect(runs.map((r) => r.stage)).toEqual([1, 2, 3]);
+      expect(runs.map((r) => r.stage)).toEqual([1, 2, 3, 5]);
       for (const run of runs)
         expect(run.prompt).toContain(
           t.scope_mode === "whole_issue"
@@ -80,8 +84,13 @@ it("preserves whole vs partial scope through the exact three-stage pipeline and 
       partial.id,
       (s) => s === "ready_for_review" || s === "failed",
     );
-    expect(engine.db.detail(partial.id).runs.slice(0, 3)).toEqual(previous);
-    expect(engine.db.detail(partial.id).runs.at(-1)).toMatchObject({
+    expect(engine.db.detail(partial.id).runs.slice(0, 4)).toEqual(previous);
+    expect(
+      engine.db
+        .detail(partial.id)
+        .runs.filter((r) => r.stage === 3)
+        .at(-1),
+    ).toMatchObject({
       model: "next-model",
       effort: "low",
     });

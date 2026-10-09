@@ -6,7 +6,7 @@ export const Status = ({ status }: { status: string }) => {
       ? "success"
       : ["failed"].includes(status)
         ? "failure"
-        : ["interrupted", "cancelled"].includes(status)
+        : ["interrupted", "cancelled", "awaiting_approval"].includes(status)
           ? "warning"
           : "muted";
   return (
@@ -17,11 +17,13 @@ export const Status = ({ status }: { status: string }) => {
       <i />
       {activeStatuses.includes(status)
         ? "Running"
-        : status === "ready_for_review"
-          ? "Ready"
-          : status
-              .replaceAll("_", " ")
-              .replace(/^./, (letter) => letter.toUpperCase())}
+        : status === "awaiting_approval"
+          ? "Review needed"
+          : status === "ready_for_review"
+            ? "Ready"
+            : status
+                .replaceAll("_", " ")
+                .replace(/^./, (letter) => letter.toUpperCase())}
     </span>
   );
 };

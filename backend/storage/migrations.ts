@@ -99,4 +99,30 @@ ALTER TABLE repositories_new RENAME TO repositories;
 CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),json_extract(data,'$.path'));
 `,
   },
+  {
+    version: 13,
+    sql: `
+ALTER TABLE ai_usage ADD COLUMN subscription_limits_after TEXT;
+ALTER TABLE ai_usage ADD COLUMN provider_session_id TEXT;
+UPDATE ai_usage SET provider_session_id=COALESCE((SELECT conversation_id FROM agent_runs WHERE agent_runs.id=ai_usage.id),(SELECT conversation_id FROM scheduled_agent_runs WHERE scheduled_agent_runs.id=ai_usage.id),(SELECT conversation_id FROM utility_runs WHERE utility_runs.id=ai_usage.id));
+CREATE TABLE task_reviewed_files(task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,path TEXT NOT NULL,source_hash TEXT NOT NULL,reviewed_at TEXT NOT NULL,PRIMARY KEY(task_id,path));
+CREATE TABLE code_questions(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,path TEXT NOT NULL,old_path TEXT,side TEXT NOT NULL,line_start INTEGER NOT NULL,line_end INTEGER NOT NULL,selected_code TEXT NOT NULL,source_hash TEXT NOT NULL,question TEXT NOT NULL,answer TEXT,status TEXT NOT NULL,error TEXT,run_id TEXT,created_at TEXT NOT NULL);
+CREATE INDEX code_questions_task ON code_questions(task_id,created_at);
+`,
+  },
+  {
+    version: 14,
+    sql: `UPDATE tasks SET stage=6,data=json_set(data,'$.stage',6) WHERE stage=5 AND status IN ('ready_for_review','completed');`,
+  },
+  {
+    version: 15,
+    sql: `UPDATE tasks SET status='awaiting_approval',stage=5,data=json_set(data,'$.status','awaiting_approval','$.stage',5,'$.approval_gate','implementation') WHERE status='ready_for_review' AND NOT EXISTS(SELECT 1 FROM task_artifacts a WHERE a.task_id=tasks.id AND a.stage=5 AND a.kind='plan');`,
+  },
+  {
+    version: 16,
+    sql: `ALTER TABLE test_runs ADD COLUMN run_id TEXT;
+ALTER TABLE test_runs ADD COLUMN call_id TEXT;
+ALTER TABLE test_runs ADD COLUMN output_truncated INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX test_runs_provider_call ON test_runs(task_id,run_id,call_id);`,
+  },
 ];

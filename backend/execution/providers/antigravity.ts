@@ -223,6 +223,21 @@ export class AntigravityProvider implements AgentProvider {
     }
     return undefined;
   };
+  outputSchema = (schema: Record<string, unknown>) => ({
+    ...schema,
+    properties: {
+      toolAction: { type: "string" },
+      toolSummary: { type: "string" },
+      ...object(schema.properties),
+    },
+  });
+  parseStructuredOutput = (schema: Record<string, unknown>, value: unknown) => {
+    const plan = { ...object(value) };
+    const properties = object(schema.properties);
+    if (!("toolAction" in properties)) delete plan.toolAction;
+    if (!("toolSummary" in properties)) delete plan.toolSummary;
+    return plan;
+  };
   conversationId = (raw: Record<string, unknown>) =>
     typeof raw.session_id === "string"
       ? raw.session_id

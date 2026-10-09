@@ -4,10 +4,15 @@ interface TaskView {
   draft: string;
   diffMode: string;
   diffPath: string;
+  diffSelections: Record<
+    string,
+    { start: number; end: number; side: "base" | "working" }
+  >;
   diffReview: boolean;
   fullContext: boolean;
   openFile: boolean;
   terminalDock: boolean;
+  dockMaximized: boolean;
   dockTab: string;
   contextPane: "none" | "pipeline" | "changes";
   followupProvider: "codex" | "antigravity";
@@ -24,10 +29,12 @@ const state = (id: string) => {
       draft: localStorage.getItem(`vibestar.draft.${id}`) || "",
       diffMode: "side",
       diffPath: "",
+      diffSelections: {},
       diffReview: false,
       fullContext: false,
       openFile: false,
       terminalDock: false,
+      dockMaximized: false,
       dockTab: "Terminal",
       contextPane: "none",
       followupProvider: "codex",

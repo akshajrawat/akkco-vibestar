@@ -58,6 +58,14 @@ export const SettingsSchema = z
       effort: "medium",
       timeout_secs: 120,
     }),
+    default_editor: z
+      .enum(["", "code", "cursor", "windsurf", "codium"])
+      .default(""),
+    review_ai: StageConfigSchema.extend({
+      provider: z.enum(["antigravity", "codex"]),
+    })
+      .nullable()
+      .default(null),
     repository_discovery: z
       .object({
         roots: z.array(z.string().min(1).max(2000)).max(30),
@@ -82,6 +90,19 @@ export const SettingsSchema = z
         path: ["antigravity", "effort"],
         message: error,
       });
+    if (settings.review_ai) {
+      const reviewError = modelEffortError(
+        settings.review_ai.provider,
+        settings.review_ai.model,
+        settings.review_ai.effort,
+      );
+      if (reviewError)
+        context.addIssue({
+          code: "custom",
+          path: ["review_ai", "effort"],
+          message: reviewError,
+        });
+    }
     if (settings.utility_ai.provider === "antigravity") {
       const utilityError = modelEffortError(
         "antigravity",
@@ -100,6 +121,8 @@ export type Settings = z.infer<typeof SettingsSchema>;
 export type StageConfig = z.infer<typeof StageConfigSchema>;
 export const defaultSettings: Settings = {
   concurrency: 2,
+  default_editor: "",
+  review_ai: null,
   antigravity: { model: "", effort: "high", timeout_secs: 1800 },
   codex_plan: { model: "", effort: "high", timeout_secs: 1800 },
   codex_implementation: { model: "", effort: "high", timeout_secs: 3600 },
@@ -122,6 +145,8 @@ export const taskStatuses = [
   "planning_codex",
   "implementing",
   "validating",
+  "reviewing_antigravity",
+  "awaiting_approval",
   "ready_for_review",
   "failed",
   "cancelled",
@@ -147,6 +172,7 @@ export interface Repository {
   created_at: string;
   source?: "managed" | "imported";
   connected?: boolean;
+  clone_status?: "cloning" | "ready";
   selection?: "explicit";
   environment?: "wsl" | "windows";
   distro?: string;
@@ -155,6 +181,11 @@ export interface Repository {
   origin_remote?: string | null;
 }
 export interface Task {
+  runtime?: {
+    python: string | null;
+    dependencies: string[];
+    warnings: string[];
+  };
   id: string;
   repo_id: string;
   issue_number: number;
@@ -166,6 +197,7 @@ export interface Task {
   issue: Record<string, unknown>;
   execution_settings?: Settings;
   branch_name: string;
+  branch_owned?: boolean;
   base_branch: string;
   base_commit_sha: string;
   worktree_path: string;
@@ -176,6 +208,9 @@ export interface Task {
   error: string | null;
   archived?: boolean;
   continuation?: "pipeline" | "planning" | "implementation";
+  final_review_hash?: string;
+  approval_gate?:
+    "antigravity_plan" | "codex_plan" | "implementation" | "final_review";
 }
 export interface CoreEvent {
   event: string;
@@ -209,6 +244,7 @@ export const stageStatuses: TaskStatus[] = [
   "planning_codex",
   "implementing",
   "validating",
+  "reviewing_antigravity",
   "ready_for_review",
 ];
 export const stageStatus = (stage: number) => {
@@ -220,7 +256,7 @@ export const retryTarget = (task: Task, target: number, active: boolean) => {
   if (
     active ||
     target < 0 ||
-    target > 4 ||
+    target > 5 ||
     target > task.stage ||
     (target === 0 && !!task.worktree_path)
   )

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Play, SquareTerminal } from "lucide-react";
 import type { Detail } from "../lib/types";
-import { rpc, errorMessage, parseArgv, duration } from "../lib/api";
-import { Status } from "./Status";
+import { rpc, errorMessage, parseArgv } from "../lib/api";
+import { CommandRuns } from "./CommandRuns";
 import { Button } from "./ui/button";
 export const TestsView = ({
   detail,
@@ -13,7 +13,15 @@ export const TestsView = ({
 }) => {
   const [argv, setArgv] = useState('["git", "status", "--short"]');
   const [busy, setBusy] = useState(false);
-  const result = [...detail.artifacts].reverse().find((a) => a.stage === 3);
+  const result = [...detail.artifacts]
+    .reverse()
+    .find((a) => a.stage === 3 && a.kind === "plan");
+  const finalReview = [...detail.artifacts]
+    .reverse()
+    .find((a) => a.stage === 5 && a.kind === "plan");
+  const review = finalReview
+    ? (JSON.parse(finalReview.content) as Record<string, string[]>)
+    : null;
   const report = result
     ? (JSON.parse(result.content) as Record<string, string[]>)
     : null;
@@ -24,6 +32,31 @@ export const TestsView = ({
         <span>All commands execute in</span>
         <code>{detail.task.worktree_path}</code>
       </div>
+      {detail.task.runtime && (
+        <details
+          className="runtime-summary"
+          open={detail.task.runtime.warnings.length > 0 || undefined}
+        >
+          <summary>Task runtime</summary>
+          <p>
+            Python:{" "}
+            <code>{detail.task.runtime.python || "System interpreter"}</code>
+          </p>
+          <p>
+            Read-only source dependencies:{" "}
+            {detail.task.runtime.dependencies.join(", ") || "None connected"}
+          </p>
+          {detail.task.runtime.warnings.map((warning) => (
+            <p className="warning" key={warning}>
+              {warning}
+            </p>
+          ))}
+          <p className="subtle">
+            Skipped checks have not passed. Missing dependencies and blocked
+            commands remain unverified.
+          </p>
+        </details>
+      )}
       <details className="manual-command">
         <summary>Run a validation command</summary>
         <form
@@ -57,52 +90,50 @@ export const TestsView = ({
           </Button>
         </form>
       </details>
-      {report && (
-        <div className="test-report">
-          {(["testsPassed", "testsFailed", "testsSkipped"] as const).map(
-            (key) => (
+      <CommandRuns detail={detail} />
+      <details className="provider-test-reports">
+        <summary>Agent verification reports</summary>
+        {report && (
+          <div className="test-report">
+            {(["testsPassed", "testsFailed", "testsSkipped"] as const).map(
+              (key) => (
+                <section key={key}>
+                  <h3>
+                    {key === "testsPassed"
+                      ? "Passed"
+                      : key === "testsFailed"
+                        ? "Failed"
+                        : "Skipped"}{" "}
+                    <small>provider reported</small>
+                  </h3>
+                  {report[key]?.length ? (
+                    report[key].map((test, i) => <p key={i}>{test}</p>)
+                  ) : (
+                    <p className="subtle">None reported</p>
+                  )}
+                </section>
+              ),
+            )}
+          </div>
+        )}
+        {review && (
+          <div className="test-report">
+            {(["testsRun", "testsNotRun"] as const).map((key) => (
               <section key={key}>
                 <h3>
-                  {key === "testsPassed"
-                    ? "Passed"
-                    : key === "testsFailed"
-                      ? "Failed"
-                      : "Skipped"}{" "}
+                  Final review · {key === "testsRun" ? "Executed" : "Not run"}{" "}
                   <small>provider reported</small>
                 </h3>
-                {report[key]?.length ? (
-                  report[key].map((test, i) => <p key={i}>{test}</p>)
+                {review[key]?.length ? (
+                  review[key].map((test, i) => <p key={i}>{test}</p>)
                 ) : (
                   <p className="subtle">None reported</p>
                 )}
               </section>
-            ),
-          )}
-        </div>
-      )}
-      <h2>Recorded command executions</h2>
-      {detail.tests.map((t) => (
-        <details key={t.id} className="test-command">
-          <summary>
-            <Status status={t.status} />
-            <code>{t.command}</code>
-            <span>
-              exit {t.exit_code ?? "pending"} ·{" "}
-              {duration(t.started_at, t.ended_at)}
-            </span>
-          </summary>
-          <h3>stdout</h3>
-          <pre>{t.stdout || "(empty)"}</pre>
-          <h3>stderr</h3>
-          <pre>{t.stderr || "(empty)"}</pre>
-        </details>
-      ))}
-      {detail.tests.length === 0 && (
-        <p className="empty-row">
-          No recorded commands yet. Provider command events are also available
-          in Logs.
-        </p>
-      )}
+            ))}
+          </div>
+        )}
+      </details>
     </div>
   );
 };

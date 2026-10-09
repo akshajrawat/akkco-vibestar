@@ -8,7 +8,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { Engine } from "../backend/execution/engine";
 import { parseIssue } from "../backend/domain";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 const require = createRequire(import.meta.url);
 it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
   "verifies real desktop windows, GitHub discovery, issue preview and isolated task conversation/diff/dock workflows",

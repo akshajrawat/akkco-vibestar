@@ -63,10 +63,11 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
         variant="ghost"
         size="sm"
         aria-label="Choose chat model"
+        title="Provider for implementation follow-ups. Planning and final review use the saved stage configuration."
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        {provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
+        Follow-up: {provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
         {detected?.models.find((m) =>
           config.model ? m.id === config.model : m.isDefault,
         )?.label ||

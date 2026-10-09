@@ -1,3 +1,5 @@
+import { CodeAskAI } from "./CodeAskAI";
+import type { ReviewNote } from "../../backend/review/service";
 import { useState, useEffect, useRef, useId } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import {
@@ -10,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
+  X,
 } from "lucide-react";
 import { monaco, language } from "../lib/monaco";
 import { rpc, errorMessage } from "../lib/api";
@@ -28,9 +31,17 @@ export const DiffView = ({
   onError: (s: string) => void;
 }) => {
   const [diff, setDiff] = useState<Diff | null>(null);
+  const [reviews, setReviews] = useState<
+    { path: string; hash: string; reviewed: boolean; notes: number }[]
+  >([]);
+  const [notes, setNotes] = useState<ReviewNote[]>([]);
+  const [ask, setAsk] = useState(false);
+  const [editorRevision, setEditorRevision] = useState(0);
   const [selected, setSelected] = useState<DiffFile | null>(null);
   const [content, setContent] = useState<FileDiff | null>(null);
   const view = useTaskView(task.id);
+  const selections = useRef(view.diffSelections);
+  selections.current = view.diffSelections;
   const mode = view.diffMode,
     review = view.diffReview;
   const setMode = (diffMode: string) => updateTaskView(task.id, { diffMode });
@@ -85,7 +96,14 @@ export const DiffView = ({
       loadedFile.current = key;
     }
     index.current = -1;
-    if (selected)
+    if (selected) {
+      setSelection(
+        selections.current[selected.path] || {
+          start: 1,
+          end: 1,
+          side: "working",
+        },
+      );
       void rpc<FileDiff>("task.file", {
         id: task.id,
         path: selected.path,
@@ -95,10 +113,98 @@ export const DiffView = ({
           if (alive) setContent(c);
         })
         .catch((e) => onError(errorMessage(e)));
+    }
     return () => {
       alive = false;
     };
   }, [task.id, selected, revision, refresh, onError]);
+  useEffect(() => {
+    let alive = true;
+    if (!task.worktree_path) return;
+    void Promise.all([
+      rpc<typeof reviews>("review.files", { id: task.id }),
+      rpc<ReviewNote[]>("review.list", { id: task.id }),
+    ])
+      .then(([files, notes]) => {
+        if (alive) {
+          setReviews(files);
+          setNotes(notes);
+        }
+      })
+      .catch((e) => onError(errorMessage(e)));
+    return () => {
+      alive = false;
+    };
+  }, [task.id, task.worktree_path, revision, refresh, onError]);
+  useEffect(() => {
+    const e = editor.current;
+    if (!e || !selected) return;
+    const collections = (["base", "working"] as const).map((side) => {
+      const pane =
+        side === "base" ? e.getOriginalEditor() : e.getModifiedEditor();
+      const count = pane.getModel()?.getLineCount() || 1;
+      return pane.createDecorationsCollection(
+        notes
+          .filter(
+            (n) =>
+              n.side === side &&
+              (n.path === selected.path || n.path === selected.old_path),
+          )
+          .map((n) => ({
+            range: new monaco.Range(
+              Math.min(n.line_start, count),
+              1,
+              Math.min(n.line_end, count),
+              1,
+            ),
+            options: {
+              isWholeLine: true,
+              glyphMarginClassName: "review-note-marker",
+              className: "review-note-line",
+              glyphMarginHoverMessage: { value: n.content, isTrusted: false },
+            },
+          })),
+      );
+    });
+    return () => {
+      collections.forEach((c) => c.clear());
+    };
+  }, [notes, selected, content, editorRevision]);
+  const saveSelection = (value: typeof selection) => {
+    setSelection(value);
+    if (selected)
+      updateTaskView(task.id, {
+        diffSelections: { ...view.diffSelections, [selected.path]: value },
+      });
+  };
+  const selectRange = (range: monaco.Selection, side: "base" | "working") =>
+    saveSelection({
+      start: range.startLineNumber,
+      end: Math.max(
+        range.startLineNumber,
+        range.endLineNumber -
+          (range.endColumn === 1 && range.endLineNumber > range.startLineNumber
+            ? 1
+            : 0),
+      ),
+      side,
+    });
+  const currentReview = reviews.find((r) => r.path === selected?.path);
+  const markReviewed = async () => {
+    if (!selected || !currentReview) return;
+    try {
+      await rpc("review.reviewed", {
+        id: task.id,
+        path: selected.path,
+        old_path: selected.old_path,
+        expected_hash: currentReview.hash,
+        reviewed: !currentReview.reviewed,
+      });
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      onError(errorMessage(e));
+    }
+  };
   const discard = async (path?: string) => {
     if (
       !window.confirm(
@@ -164,6 +270,10 @@ export const DiffView = ({
         <span className="subtle mono">
           base {task.base_commit_sha.slice(0, 12)}
         </span>
+        <small className="subtle">
+          {reviews.filter((r) => r.reviewed).length} / {diff?.files.length || 0}{" "}
+          reviewed
+        </small>
         <div className="spacer" />
         <Button
           size="sm"
@@ -224,6 +334,30 @@ export const DiffView = ({
           <MessageSquare size={13} />
           Review
         </Button>
+        <Button
+          size="sm"
+          disabled={
+            !selected ||
+            !content ||
+            content.binary ||
+            (!openFile && mode === "unified")
+          }
+          onClick={() => setAsk(!ask)}
+        >
+          Ask AI
+        </Button>
+        <Button
+          size="sm"
+          aria-label="Copy diff"
+          disabled={!content}
+          onClick={() =>
+            void navigator.clipboard
+              .writeText(content?.unified || "")
+              .catch((e) => onError(errorMessage(e)))
+          }
+        >
+          Copy diff
+        </Button>
         <Button size="sm" variant="destructive" onClick={() => void discard()}>
           <Trash2 size={12} />
           Discard all
@@ -234,6 +368,7 @@ export const DiffView = ({
           files={diff?.files || []}
           selected={selected?.path}
           onSelect={selectFile}
+          reviews={reviews}
         />
         <div className="diff-editor">
           {selected && (
@@ -252,6 +387,33 @@ export const DiffView = ({
                     : ""}
               </span>
               <div className="spacer" />
+              <Button
+                size="sm"
+                aria-pressed={!!currentReview?.reviewed}
+                disabled={!currentReview || content?.binary}
+                onClick={() => void markReviewed()}
+              >
+                {currentReview?.reviewed ? "✓ Reviewed" : "Mark reviewed"}
+              </Button>
+              <Button
+                size="sm"
+                aria-label="Copy selected code"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(
+                      (selection.side === "base"
+                        ? content?.original
+                        : content?.modified
+                      )
+                        ?.split("\n")
+                        .slice(selection.start - 1, selection.end)
+                        .join("\n") || "",
+                    )
+                    .catch((e) => onError(errorMessage(e)))
+                }
+              >
+                Copy selection
+              </Button>
               <Button size="sm" onClick={() => setOpenFile(!openFile)}>
                 <FileCode2 size={12} />
                 {openFile ? "Back to diff" : "Open file"}
@@ -298,9 +460,27 @@ export const DiffView = ({
           ) : content && selected ? (
             openFile || mode === "unified" ? (
               <Editor
+                key={`${openFile ? "file" : "unified"}/${selected.path}`}
                 theme="vibestar-dark"
                 language={openFile ? language(selected.path) : "diff"}
                 value={openFile ? content.modified : content.unified}
+                onMount={(pane) => {
+                  if (!openFile) return;
+                  const saved = view.diffSelections[selected.path];
+                  if (saved?.side === "working")
+                    pane.setSelection(
+                      new monaco.Selection(saved.start, 1, saved.end, 100000),
+                    );
+                  pane.onDidChangeCursorSelection((event) =>
+                    selectRange(event.selection, "working"),
+                  );
+                  pane.addAction({
+                    id: "vibestar.ask-ai",
+                    label: "Ask AI about selected code",
+                    contextMenuGroupId: "navigation",
+                    run: () => setAsk(true),
+                  });
+                }}
                 options={{
                   readOnly: true,
                   minimap: { enabled: false },
@@ -321,6 +501,15 @@ export const DiffView = ({
                 keepCurrentModifiedModel
                 onMount={(e) => {
                   editor.current = e;
+                  setEditorRevision((n) => n + 1);
+                  const saved = view.diffSelections[selected.path];
+                  if (saved)
+                    (saved.side === "base"
+                      ? e.getOriginalEditor()
+                      : e.getModifiedEditor()
+                    ).setSelection(
+                      new monaco.Selection(saved.start, 1, saved.end, 100000),
+                    );
                   const models = e.getModel();
                   // The React wrapper disposes models before the diff widget.
                   // Monaco requires detaching the widget first. Own these models
@@ -335,19 +524,21 @@ export const DiffView = ({
                     }),
                   );
                   e.getOriginalEditor().onDidChangeCursorSelection((event) =>
-                    setSelection({
-                      start: event.selection.startLineNumber,
-                      end: event.selection.endLineNumber,
-                      side: "base",
-                    }),
+                    selectRange(event.selection, "base"),
                   );
                   e.getModifiedEditor().onDidChangeCursorSelection((event) =>
-                    setSelection({
-                      start: event.selection.startLineNumber,
-                      end: event.selection.endLineNumber,
-                      side: "working",
-                    }),
+                    selectRange(event.selection, "working"),
                   );
+                  for (const pane of [
+                    e.getOriginalEditor(),
+                    e.getModifiedEditor(),
+                  ])
+                    pane.addAction({
+                      id: "vibestar.ask-ai",
+                      label: "Ask AI about selected code",
+                      contextMenuGroupId: "navigation",
+                      run: () => setAsk(true),
+                    });
                   e.getModifiedEditor().addAction({
                     id: "vibestar.local-review",
                     label: "Add local review note",
@@ -364,6 +555,7 @@ export const DiffView = ({
                   automaticLayout: true,
                   scrollBeyondLastLine: false,
                   renderIndicators: true,
+                  glyphMargin: true,
                   hideUnchangedRegions: {
                     enabled: !fullContext,
                     contextLineCount: 3,
@@ -381,20 +573,57 @@ export const DiffView = ({
             )
           ) : (
             <div className="empty-row">
-              {selected ? "Loading file…" : "Select a changed file"}
+              {selected
+                ? "Loading file…"
+                : task.stage < 3
+                  ? "No changes yet. Planning is in progress or waiting to resume; changes appear when implementation begins."
+                  : task.status === "implementing"
+                    ? "Watching worktree for changes…"
+                    : "No changes against the saved base."}
             </div>
           )}
-          {review && selected && (
-            <DiffReview
-              taskId={task.id}
-              path={selected.path}
-              oldPath={selected.old_path}
-              selection={selection}
-              revision={revision}
-              onError={onError}
-            />
-          )}
         </div>
+        {(ask || review) && selected && (
+          <aside
+            className={`review-rail ${!ask ? "review-only" : ""}`}
+            aria-label="Code review sidebar"
+          >
+            <div className="review-rail-heading">
+              <strong>Code review</strong>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Close code review sidebar"
+                onClick={() => {
+                  setAsk(false);
+                  setReview(false);
+                }}
+              >
+                <X size={13} />
+              </Button>
+            </div>
+            {ask && (
+              <CodeAskAI
+                key={selected.path}
+                task={task}
+                path={selected.path}
+                oldPath={selected.old_path}
+                selection={selection}
+                revision={revision + refresh}
+              />
+            )}
+            {review && (
+              <DiffReview
+                taskId={task.id}
+                path={selected.path}
+                oldPath={selected.old_path}
+                selection={selection}
+                revision={revision}
+                onError={onError}
+              />
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );

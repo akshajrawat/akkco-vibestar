@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { Editors } from "./workspace/editors";
 import { GitHubService } from "./github/service";
 import { GitHubClient } from "./github/client";
 import { fetchIssue } from "./workspace/issue";
@@ -10,7 +12,7 @@ import { ReviewService } from "./review/service";
 import { Scheduler } from "./scheduled/scheduler";
 import { GitHubMonitor } from "./scheduled/github";
 import { z } from "zod";
-import { realpath } from "node:fs/promises";
+import { realpath, open } from "node:fs/promises";
 import { Engine } from "./execution/engine";
 import { AuthSessions } from "./execution/auth";
 import { AdeError, SettingsSchema, parseIssue, now } from "./domain";
@@ -39,6 +41,27 @@ export class Rpc {
   call = async (method: string, input: unknown) => {
     const e = this.engine;
     switch (method) {
+      case "editors.list":
+        return new Editors(e).list();
+      case "editors.open": {
+        const p = idInput
+          .extend({
+            kind: z.enum(["task", "repository"]),
+            editor: z.enum(["code", "cursor", "windsurf", "codium"]),
+          })
+          .strict()
+          .parse(input);
+        return new Editors(e).open(p.id, p.kind, p.editor);
+      }
+      case "usage.info":
+        return {
+          root: e.root,
+          database: join(e.root, "state", "vibestar.sqlite"),
+          schema: e.db.all(
+            "SELECT max(version) version FROM schema_migrations",
+          )[0],
+          runs: e.db.all("SELECT count(*) count FROM ai_usage")[0],
+        };
       case "snapshot":
         return {
           repositories: e.db.repositories(),
@@ -81,7 +104,31 @@ export class Rpc {
           .object({ repository: z.string().min(1).max(200) })
           .strict()
           .parse(input);
-        return this.github.useLocally(p.repository, false, undefined, true);
+        return this.github.startClone(p.repository);
+      }
+      case "github.clone.cancel":
+        return this.github.cancelClone(idInput.strict().parse(input).id);
+      case "github.clone.logs": {
+        const p = idInput.strict().parse(input);
+        if (!this.github.cloneActivities().some((c) => c.id === p.id))
+          throw new AdeError("not_found", "Clone activity not found");
+        const log = await open(join(e.root, "logs", `clone-${p.id}.log`), "r");
+        try {
+          const size = (await log.stat()).size;
+          const buffer = Buffer.alloc(Math.min(size, 1048576));
+          await log.read(
+            buffer,
+            0,
+            buffer.length,
+            Math.max(0, size - buffer.length),
+          );
+          return {
+            text: buffer.toString("utf8"),
+            truncated: size > buffer.length,
+          };
+        } finally {
+          await log.close();
+        }
       }
       case "repository.verifyLocal":
         return e.verifyLocalRepository(LocalRepositoryInput.parse(input));
@@ -317,6 +364,14 @@ export class Rpc {
           throw new AdeError("isolation", "Run does not belong to this task");
         return readLogTail(e.root, p.id, p.run_id, p.stream);
       }
+      case "review.files":
+        return this.review.files(idInput.strict().parse(input).id);
+      case "review.reviewed":
+        return this.review.reviewed(input);
+      case "review.questions":
+        return this.review.questions(idInput.strict().parse(input).id);
+      case "review.ask":
+        return this.review.ask(input);
       case "review.list":
         return this.review.list(idInput.parse(input).id);
       case "review.add":
@@ -451,11 +506,20 @@ export class Rpc {
       case "task.retry": {
         const p = idInput
           .extend({
-            stage: z.number().int().min(0).max(4).optional(),
+            stage: z.number().int().min(0).max(5).optional(),
             restart: z.boolean().optional(),
           })
           .parse(input);
         return e.retry(p.id, p.stage, p.restart);
+      }
+      case "task.approve":
+        return e.approveStage(idInput.strict().parse(input).id);
+      case "task.acceptDraft": {
+        const p = idInput
+          .extend({ run_id: z.string().uuid() })
+          .strict()
+          .parse(input);
+        return e.acceptDraft(p.id, p.run_id);
       }
       case "task.followup": {
         const p = idInput
@@ -478,6 +542,14 @@ export class Rpc {
           throw new AdeError(
             "invalid_state",
             "Only Ready for Review tasks can be completed",
+          );
+        if (
+          t.final_review_hash &&
+          t.final_review_hash !== (await e.git.fingerprint(t))
+        )
+          throw new AdeError(
+            "stale_review",
+            "The worktree changed after final review. Retry Antigravity review before completing.",
           );
         e.db.saveTask({ ...t, status: "completed", updated_at: now() });
         e.changed(t.id);

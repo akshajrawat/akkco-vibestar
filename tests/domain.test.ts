@@ -64,6 +64,8 @@ describe("domain and persistence", () => {
         scope_mode: "partial",
         claimed_scope: "specific.ts",
         stage: 5,
+        status: "awaiting_approval",
+        approval_gate: "implementation",
       });
       expect(current.all("SELECT scope_mode FROM tasks")).toEqual([
         { scope_mode: "partial" },
@@ -254,8 +256,9 @@ describe("domain and persistence", () => {
     ).toBe("max");
   });
   it("enforces sequential state and legal retry transitions", () => {
-    expect(stageStatus(5)).toBe("ready_for_review");
-    expect(() => stageStatus(6)).toThrow();
+    expect(stageStatus(5)).toBe("reviewing_antigravity");
+    expect(stageStatus(6)).toBe("ready_for_review");
+    expect(() => stageStatus(7)).toThrow();
     const t = { stage: 3, worktree_path: "/tmp/worktree" } as Task;
     expect(retryTarget(t, 2, false)).toBe(2);
     expect(() => retryTarget(t, 4, false)).toThrow();
@@ -299,6 +302,10 @@ describe("domain and persistence", () => {
         { version: 10 },
         { version: 11 },
         { version: 12 },
+        { version: 13 },
+        { version: 14 },
+        { version: 15 },
+        { version: 16 },
       ]);
       db.close();
       const reopened = new Database(path);

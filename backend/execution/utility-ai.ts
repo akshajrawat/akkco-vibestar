@@ -7,7 +7,13 @@ export interface UtilityRequest {
   prompt: string;
   schema?: z.ZodType;
   workspace?: string;
-  context?: { taskId?: string; jobId?: string; repository?: string };
+  configuration?: Settings["utility_ai"];
+  context?: {
+    taskId?: string;
+    jobId?: string;
+    repository?: string;
+    questionId?: string;
+  };
 }
 export class UtilityAI {
   constructor(
@@ -23,6 +29,6 @@ export class UtilityAI {
         ...request,
         schema: request.schema || z.object({ summary: z.string() }).strict(),
       },
-      this.db.settings().utility_ai,
+      request.configuration || this.db.settings().utility_ai,
     );
 }

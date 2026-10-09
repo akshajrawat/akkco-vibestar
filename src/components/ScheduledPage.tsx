@@ -29,26 +29,36 @@ const WatchRow = ({
   children: ReactNode;
 }) => {
   const state = job.action?.conversationState;
-  const summary = job.error
-    ? "Inspection unavailable. Retry to get a current decision."
-    : job.status === "analyzing"
+  const summary = ["analyzing", "polling", "pending"].includes(job.status)
+    ? job.status === "analyzing"
       ? "Assessing the review conversation."
       : job.status === "polling"
         ? "Checking the latest discussion and CI state."
-        : job.status === "pending"
-          ? "Discussion analysis is queued."
-          : state === "waiting_for_reviewer"
-            ? "No action required from you. Waiting for reviewer feedback."
-            : state === "approved"
-              ? "Approved. No action required."
-              : state === "waiting_for_ci"
-                ? "Checks are running. Waiting for CI."
-                : state === "merged"
-                  ? "Merged. No action required."
-                  : state === "closed"
-                    ? "Closed. No action required."
-                    : job.action?.summary ||
-                      "Waiting for the first inspection.";
+        : "Discussion analysis is queued."
+    : job.error
+      ? /restart|core stopped/i.test(job.error)
+        ? "The execution core restarted during analysis. Retry explicitly to continue."
+        : /cancel|interrupt/i.test(job.error)
+          ? "Analysis stopped before a decision was saved. Retry explicitly to continue."
+          : `Couldn't inspect this PR: ${errorMessage(job.error).slice(0, 200)}`
+      : job.status === "analyzing"
+        ? "Assessing the review conversation."
+        : job.status === "polling"
+          ? "Checking the latest discussion and CI state."
+          : job.status === "pending"
+            ? "Discussion analysis is queued."
+            : state === "waiting_for_reviewer"
+              ? "No action required from you. Waiting for reviewer feedback."
+              : state === "approved"
+                ? "Approved. No action required."
+                : state === "waiting_for_ci"
+                  ? "Checks are running. Waiting for CI."
+                  : state === "merged"
+                    ? "Merged. No action required."
+                    : state === "closed"
+                      ? "Closed. No action required."
+                      : job.action?.summary ||
+                        "Waiting for the first inspection.";
   const checks =
     job.pending_snapshot?.checks || job.last_snapshot?.checks || [];
   return (
@@ -63,6 +73,20 @@ const WatchRow = ({
             {job.url.replace("https://github.com/", "").replace("/pull/", " #")}
           </button>
           <PrState job={job} />
+          {job.analysis_method && (
+            <span
+              className="analysis-badge"
+              title={
+                job.analysis_method === "utility_ai"
+                  ? "A local Utility AI run helped determine the conversation state"
+                  : "GitHub inspection only; no model run"
+              }
+            >
+              {job.analysis_method === "utility_ai"
+                ? "AI used"
+                : "Deterministic"}
+            </span>
+          )}
         </div>
         <button
           type="button"

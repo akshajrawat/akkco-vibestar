@@ -28,19 +28,34 @@ export const AgentConfiguration = ({
       <h3>{label}</h3>
       <label>
         Model
-        <input
-          list={`${id}-models`}
+        <select
+          id={`${id}-models`}
           value={config.model}
-          placeholder="Official CLI default"
-          onChange={(e) => onChange({ ...config, model: e.target.value })}
-        />
-        <datalist id={`${id}-models`}>
+          onChange={(e) => {
+            const model = e.target.value;
+            const available = supportedEfforts(detected, model);
+            onChange({
+              ...config,
+              model,
+              effort: available.includes(config.effort)
+                ? config.effort
+                : available[0] || config.effort,
+            });
+          }}
+        >
+          <option value="">Official CLI default</option>
+          {config.model &&
+            !detected?.models.some((m) => m.id === config.model) && (
+              <option value={config.model}>
+                {config.model} · availability not confirmed
+              </option>
+            )}
           {detected?.models.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label || m.id}
             </option>
           ))}
-        </datalist>
+        </select>
       </label>
       <label>
         Reasoning / effort
@@ -51,7 +66,7 @@ export const AgentConfiguration = ({
           {!efforts.includes(config.effort) && (
             <option value={config.effort}>
               {config.effort}{" "}
-              {detected ? "(unsupported or unknown)" : "(discovering…)"}
+              {detected ? "(unsupported or unknown)" : "(models not loaded)"}
             </option>
           )}
           {efforts.map((e) => (
@@ -87,7 +102,7 @@ export const StageSettings = ({
   <div className="stage-settings">
     {(
       [
-        ["antigravity", "ANTIGRAVITY PLAN", "antigravity"],
+        ["antigravity", "ANTIGRAVITY PLAN & FINAL REVIEW", "antigravity"],
         ["codex_plan", "CODEX REVIEW PLAN", "codex"],
         ["codex_implementation", "CODEX IMPLEMENTATION", "codex"],
       ] as const

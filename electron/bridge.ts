@@ -1,12 +1,15 @@
+import { createHash, randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { DesktopSettings } from "./contracts";
 export class CoreBridge extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
+  private checking = Promise.resolve();
+  private warning: string | undefined;
+  private approvalsAvailable = false;
   private pending = new Map<
     string,
     {
@@ -80,6 +83,26 @@ export class CoreBridge extends EventEmitter {
       this.child = null;
       this.emit("event", { event: "core.closed" });
     });
+    this.checking = Promise.all([
+      readFile(join(this.coreDir, "core.cjs")),
+      this.sendRequest<{ build: string; pipeline_approvals?: boolean }>(
+        "core.info",
+        {},
+        15000,
+      ),
+    ])
+      .then(([bundle, info]) => {
+        this.approvalsAvailable = info.pipeline_approvals === true;
+        this.warning = !this.approvalsAvailable
+          ? "The running core cannot enforce plan review approvals. Restart the current dev build, or update the WSL helper in Settings → Execution. Task execution is blocked until updated."
+          : createHash("sha256").update(bundle).digest("hex") === info.build
+            ? undefined
+            : "The WSL helper differs from this desktop build. Settings → Execution → Install / update WSL helper, then restart. Usage and newer features may be incomplete until updated.";
+      })
+      .catch(() => {
+        this.warning =
+          "The execution helper could not confirm its build. Update the WSL helper in Settings → Execution and restart to ensure telemetry and review features are current.";
+      });
   };
   private rejectAll = (message: string) => {
     for (const p of this.pending.values()) {
@@ -88,7 +111,48 @@ export class CoreBridge extends EventEmitter {
     }
     this.pending.clear();
   };
-  request = <T>(method: string, params: unknown = {}): Promise<T> => {
+  request = async <T>(method: string, params: unknown = {}): Promise<T> => {
+    await this.checking;
+    if (
+      !this.approvalsAvailable &&
+      [
+        "task.create",
+        "task.retry",
+        "task.followup",
+        "task.message.retry",
+        "task.approve",
+        "task.acceptDraft",
+      ].includes(method)
+    )
+      throw new Error(
+        this.warning ||
+          "Restart the updated core before starting task execution.",
+      );
+    try {
+      const result = await this.sendRequest<T>(method, params);
+      if (
+        this.warning &&
+        ["snapshot", "usage.info"].includes(method) &&
+        result &&
+        typeof result === "object"
+      )
+        return { ...result, warning: this.warning };
+      return result;
+    } catch (error) {
+      if (
+        this.warning &&
+        error instanceof Error &&
+        error.message.includes("Unknown method")
+      )
+        throw new Error(this.warning);
+      throw error;
+    }
+  };
+  private sendRequest = <T>(
+    method: string,
+    params: unknown = {},
+    timeoutMs = 1900000,
+  ): Promise<T> => {
     const child = this.child;
     if (!child || child.exitCode !== null)
       return Promise.reject(
@@ -101,7 +165,7 @@ export class CoreBridge extends EventEmitter {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Core request timed out: ${method}`));
-      }, 1900000);
+      }, timeoutMs);
       timer.unref();
       this.pending.set(id, { resolve: (v) => resolve(v as T), reject, timer });
       child.stdin.write(

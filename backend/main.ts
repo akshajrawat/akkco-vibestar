@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 import { Engine } from "./execution/engine";
@@ -6,6 +8,9 @@ import { AdeError, defaultSettings } from "./domain";
 import { dataRootChoice, chooseDataRoot } from "./storage/bootstrap";
 import { redact } from "./execution/process";
 const main = async () => {
+  const build = createHash("sha256")
+    .update(await readFile(__filename))
+    .digest("hex");
   const bootstrap = await dataRootChoice();
   let engine: Engine | undefined;
   let rpc: Rpc | undefined;
@@ -52,7 +57,9 @@ const main = async () => {
       try {
         request = requestSchema.parse(JSON.parse(line));
         let result: unknown;
-        if (!rpc && request.method === "snapshot")
+        if (request.method === "core.info")
+          result = { build, protocol: 3, pipeline_approvals: true };
+        else if (!rpc && request.method === "snapshot")
           result = {
             repositories: [],
             tasks: [],

@@ -6,7 +6,11 @@ import { randomUUID } from "node:crypto";
 import { Engine } from "../backend/execution/engine";
 import { parseIssue, now } from "../backend/domain";
 import { checked } from "../backend/execution/process";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  fixtureRepository,
+  FixtureProvider,
+  finishFixtureTask as waitForTask,
+} from "./fixtures";
 it("creates two concurrently running worktrees, isolates same-file edits, and ignores personal branch switching", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-isolation-"));
   let release!: () => void;
@@ -381,7 +385,7 @@ it("persists local line review notes, rejects escaping paths and sends feedback 
     });
     expect(note.source_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(new ReviewService(engine).list(task.id)).toEqual([note]);
-    expect(engine.db.detail(task.id).runs).toHaveLength(3);
+    expect(engine.db.detail(task.id).runs).toHaveLength(4);
     await expect(
       review.add({
         id: task.id,
@@ -401,7 +405,7 @@ it("persists local line review notes, rejects escaping paths and sends feedback 
     expect(engine.db.detail(task.id).messages[0].content).toContain(
       "Use the established convention",
     );
-    expect(engine.db.detail(task.id).runs).toHaveLength(4);
+    expect(engine.db.detail(task.id).runs).toHaveLength(6);
     review.remove(note.id);
     expect(review.list(task.id)).toEqual([]);
   } finally {

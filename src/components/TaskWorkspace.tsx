@@ -1,4 +1,9 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
+import { RunPrompt } from "./RunPrompt";
+import { ChangesView } from "./ChangesView";
+import type { Run } from "../lib/types";
+import { CurrentRun } from "./CurrentRun";
+import { OpenInEditor } from "./OpenInEditor";
+import { useState, useRef, useEffect } from "react";
 import {
   GitBranch,
   FolderOpen,
@@ -7,14 +12,16 @@ import {
   RotateCcw,
   Check,
   PanelBottom,
-  PanelRight,
   X,
   Plus,
   ChevronRight,
+  PanelRight,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import type { Detail, Repository, Diff, Message } from "../lib/types";
 import { activeStatuses, stages } from "../lib/types";
-import { rpc, errorMessage } from "../lib/api";
+import { rpc, errorMessage, duration } from "../lib/api";
 import { Button } from "./ui/button";
 import { Status } from "./Status";
 import { ComposerSettings, followupConfiguration } from "./ComposerSettings";
@@ -30,9 +37,6 @@ import { TestsView } from "./TestsView";
 import { UsageView } from "./UsageView";
 import { RunError } from "./RunError";
 import { TaskCleanup } from "./TaskCleanup";
-const DiffView = lazy(() =>
-  import("./DiffView").then((m) => ({ default: m.DiffView })),
-);
 export const TaskWorkspace = ({
   detail,
   repository,
@@ -48,18 +52,22 @@ export const TaskWorkspace = ({
 }) => {
   const t = detail.task;
   const view = useTaskView(t.id);
-  const [paneWidth, setPaneWidth] = usePaneSize("contextWidth", 560, 240, 1000);
+  const tab = ["Chat", "Plan", "Usage"].includes(view.tab) ? view.tab : "Chat";
+  const [paneWidth, setPaneWidth] = usePaneSize("contextWidth", 360, 240, 1000);
   const [dockHeight, setDockHeight] = usePaneSize("dockHeight", 260, 120, 500);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [draftRun, setDraftRun] = useState<Run>();
   const [busy, setBusy] = useState(false);
   const [addingContext, setAddingContext] = useState(false);
   const [contextText, setContextText] = useState("");
   const [selectedRun, setSelectedRun] = useState<string>();
   const [cleanup, setCleanup] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [reviewSeen, setReviewSeen] = useState("");
+  const reviewKey = `${t.approval_gate}:${detail.artifacts.at(-1)?.created_at || t.updated_at}`;
   const [sent, setSent] = useState<Message[]>([]);
   const sending = useRef(false);
   const [diff, setDiff] = useState<Diff | null>(null);
-  const [liveRevision, setLiveRevision] = useState(0);
   const timeline = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const refreshDiff = useRef<(() => Promise<void>) | null>(null);
@@ -81,7 +89,6 @@ export const TaskWorkspace = ({
         const value = await rpc<Diff>("task.diff", { id: t.id });
         if (alive) {
           setDiff(value);
-          setLiveRevision((v) => v + 1);
         }
       } catch (e) {
         if (alive) onError(errorMessage(e));
@@ -115,22 +122,6 @@ export const TaskWorkspace = ({
   };
   const dock = (dockTab: string) =>
     updateTaskView(t.id, { terminalDock: true, dockTab });
-  const openDiff = (path: string) =>
-    updateTaskView(t.id, {
-      contextPane: "changes",
-      diffPath: path.replace(`${t.worktree_path}/`, ""),
-      diffMode: "inline",
-      openFile: false,
-    });
-  const changes = (
-    <Suspense fallback={<p className="empty-row">Loading changes…</p>}>
-      {t.worktree_path ? (
-        <DiffView task={t} revision={liveRevision} onError={onError} />
-      ) : (
-        <p className="empty-row">Preparing the worktree…</p>
-      )}
-    </Suspense>
-  );
   const submit = async () => {
     if (!view.draft.trim() || busy || sending.current) return;
     const configuration = followupConfiguration(t, view);
@@ -152,7 +143,14 @@ export const TaskWorkspace = ({
     }
   };
   return (
-    <div className="workspace">
+    <div
+      className={`workspace ${view.terminalDock && view.dockMaximized ? "dock-maximized" : ""}`}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && view.dockMaximized) {
+          updateTaskView(t.id, { dockMaximized: false });
+        }
+      }}
+    >
       <header className="workspace-header">
         <div className="workspace-heading">
           <button className="breadcrumb" onClick={back}>
@@ -172,6 +170,17 @@ export const TaskWorkspace = ({
           </strong>
           <div className="spacer" />
           <Status status={t.status} />
+          {active && (
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Stop agent"
+              onClick={() => void action("task.cancel")}
+            >
+              <Square size={12} />
+              Stop
+            </Button>
+          )}
           {!occupied && !active && (
             <Button
               size="sm"
@@ -199,6 +208,12 @@ export const TaskWorkspace = ({
               Delete task data
             </Button>
           )}
+          <OpenInEditor
+            id={t.id}
+            kind="task"
+            path={t.worktree_path}
+            disabled={!t.worktree_path}
+          />
           <Button
             variant="ghost"
             size="icon"
@@ -210,12 +225,8 @@ export const TaskWorkspace = ({
           >
             <FolderOpen size={14} />
           </Button>
-          {active ? (
-            <Button size="sm" onClick={() => void action("task.cancel")}>
-              <Square size={11} />
-              Stop
-            </Button>
-          ) : t.status === "ready_for_review" ? (
+          {active || t.status === "queued" ? null : t.status ===
+            "ready_for_review" ? (
             <Button
               size="sm"
               disabled={occupied || busy}
@@ -224,7 +235,7 @@ export const TaskWorkspace = ({
               <Check size={12} />
               Finalize…
             </Button>
-          ) : t.status !== "completed" ? (
+          ) : !["completed", "awaiting_approval"].includes(t.status) ? (
             <Button
               size="sm"
               disabled={busy || occupied}
@@ -236,33 +247,203 @@ export const TaskWorkspace = ({
           ) : null}
         </div>
       </header>
-      <details className="workspace-repository-context">
-        <summary>
-          Repository source · {repository?.path || "Unavailable"}
-        </summary>
-        <dl className="repository-facts">
-          <dt>Source</dt>
-          <dd>
-            <code>{repository?.path}</code> ·{" "}
-            {repository?.source === "imported"
-              ? "User-owned checkout"
-              : "Vibestar-managed clone"}
-          </dd>
-          <dt>Worktree</dt>
-          <dd>
-            <code>{t.worktree_path || "Created when preparation starts"}</code>
-          </dd>
-          <dt>Branch</dt>
-          <dd>
-            <code>{t.branch_name || "Created during preparation"}</code>
-          </dd>
-          <dt>Base</dt>
-          <dd>
-            {repository?.upstream_remote || "upstream"}/{t.base_branch}{" "}
-            <code>{t.base_commit_sha}</code>
-          </dd>
-        </dl>
-      </details>
+      {t.status === "awaiting_approval" && t.approval_gate && (
+        <section
+          className="pipeline-approval"
+          aria-label="Pipeline review required"
+        >
+          <div>
+            <strong>
+              {t.approval_gate === "antigravity_plan"
+                ? "Antigravity plan is ready"
+                : t.approval_gate === "codex_plan"
+                  ? "Refined Codex plan is ready"
+                  : t.approval_gate === "implementation"
+                    ? "Implementation is ready to review"
+                    : "Antigravity review & tests are ready"}
+            </strong>
+            <small>
+              {t.approval_gate.endsWith("plan")
+                ? "Review the saved plan or send feedback before continuing."
+                : t.approval_gate === "implementation"
+                  ? "Inspect the changes and tests, then authorize Antigravity's final review."
+                  : "Inspect findings and tests not run before finalizing. Unresolved findings require changes."}
+            </small>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              if (t.approval_gate?.endsWith("plan"))
+                updateTaskView(t.id, { tab: "Plan" });
+              else if (t.approval_gate === "implementation") dock("Tests");
+              else dock("Final review");
+            }}
+          >
+            View{" "}
+            {t.approval_gate.endsWith("plan")
+              ? "plan"
+              : t.approval_gate === "implementation"
+                ? "tests"
+                : "review"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              updateTaskView(t.id, { tab: "Chat" });
+            }}
+          >
+            Request changes
+          </Button>
+          <Button
+            size="sm"
+            variant="default"
+            disabled={
+              busy ||
+              occupied ||
+              (t.approval_gate === "final_review" &&
+                JSON.parse(
+                  [...detail.artifacts]
+                    .reverse()
+                    .find((a) => a.stage === 5 && a.kind === "plan")?.content ||
+                    "{}",
+                ).approval !== "approved")
+            }
+            onClick={() => void action("task.approve")}
+          >
+            {t.approval_gate === "antigravity_plan"
+              ? "Approve → Codex refinement"
+              : t.approval_gate === "codex_plan"
+                ? "Approve → Implement"
+                : t.approval_gate === "implementation"
+                  ? "Approve → Antigravity review & tests"
+                  : "Accept review"}
+          </Button>
+        </section>
+      )}
+      {t.status === "awaiting_approval" &&
+        t.approval_gate &&
+        reviewSeen !== reviewKey && (
+          <div className="modal-backdrop">
+            <section
+              className="modal compact-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Stage review required"
+            >
+              <h2>
+                {t.approval_gate === "antigravity_plan"
+                  ? "Review Antigravity's plan"
+                  : t.approval_gate === "codex_plan"
+                    ? "Review Codex's refined plan"
+                    : t.approval_gate === "implementation"
+                      ? "Review the implementation"
+                      : "Review Antigravity's final report"}
+              </h2>
+              <p>
+                The pipeline is paused.{" "}
+                {t.approval_gate.endsWith("plan")
+                  ? "Read the saved plan, request changes if needed, then explicitly approve the next stage."
+                  : "Review changes in VS Code and inspect the executed and skipped tests before approving."}{" "}
+                No next agent starts until you approve.
+              </p>
+              {!t.approval_gate.endsWith("plan") && (
+                <OpenInEditor
+                  id={t.id}
+                  kind="task"
+                  path={t.worktree_path}
+                  disabled={!t.worktree_path}
+                />
+              )}
+              <div className="actions">
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setReviewSeen(reviewKey);
+                    if (t.approval_gate?.endsWith("plan"))
+                      updateTaskView(t.id, { tab: "Plan" });
+                    else
+                      dock(
+                        t.approval_gate === "implementation"
+                          ? "Tests"
+                          : "Final review",
+                      );
+                  }}
+                >
+                  {t.approval_gate.endsWith("plan")
+                    ? "Review plan"
+                    : t.approval_gate === "implementation"
+                      ? "Review implementation"
+                      : "Review final report"}
+                </Button>
+                <Button onClick={() => setReviewSeen(reviewKey)}>Later</Button>
+              </div>
+            </section>
+          </div>
+        )}
+      {promptOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPromptOpen(false);
+          }}
+        >
+          <section
+            className="modal prompt-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Agent prompts"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setPromptOpen(false);
+            }}
+          >
+            <div className="modal-heading">
+              <h2>Agent prompts</h2>
+              <Button onClick={() => setPromptOpen(false)}>Close</Button>
+            </div>
+            {[...detail.runs].reverse().map((run) => (
+              <RunPrompt key={run.id} run={run} />
+            ))}
+          </section>
+        </div>
+      )}
+      {draftRun && (
+        <div className="modal-backdrop">
+          <section
+            className="modal compact-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Use streamed plan"
+          >
+            <h2>Use streamed plan</h2>
+            <p>
+              {draftRun.status === "running"
+                ? "This stops the current run. "
+                : ""}
+              The draft is checked against the plan schema and unchanged
+              worktree. The original run keeps its actual outcome. You will
+              review this plan before starting the next agent.
+            </p>
+            <div className="actions">
+              <Button
+                disabled={busy}
+                onClick={async () => {
+                  await action("task.acceptDraft", {
+                    id: t.id,
+                    run_id: draftRun.id,
+                  });
+                  setDraftRun(undefined);
+                }}
+              >
+                Use draft
+              </Button>
+              <Button disabled={busy} onClick={() => setDraftRun(undefined)}>
+                Cancel
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
       {finalizing && (
         <div className="modal-backdrop">
           <section
@@ -286,7 +467,7 @@ export const TaskWorkspace = ({
                 <code>{t.branch_name}</code>
               </dd>
               <dt>Changed files</dt>
-              <dd>{diff?.files.length ?? "Open Changes to inspect"}</dd>
+              <dd>{diff?.files.length ?? "Unavailable"}</dd>
             </dl>
             <p>
               Changes stay in the task worktree. Marking this task complete
@@ -294,14 +475,12 @@ export const TaskWorkspace = ({
               switch the source checkout.
             </p>
             <div className="actions">
-              <Button
-                onClick={() => {
-                  setFinalizing(false);
-                  updateTaskView(t.id, { tab: "Changes" });
-                }}
-              >
-                Review changes
-              </Button>
+              <OpenInEditor
+                id={t.id}
+                kind="task"
+                path={t.worktree_path}
+                disabled={!t.worktree_path}
+              />
               <Button
                 onClick={() =>
                   void action("open.directory", { id: t.id, kind: "task" })
@@ -337,7 +516,7 @@ export const TaskWorkspace = ({
         />
       )}
       <div className="workspace-tabs" role="tablist" aria-label="Task views">
-        {["Chat", "Plan", "Changes"].map((tab) => (
+        {["Chat", "Plan", "Usage"].map((tab) => (
           <button
             role="tab"
             aria-label={tab}
@@ -347,36 +526,19 @@ export const TaskWorkspace = ({
             onClick={() => updateTaskView(t.id, { tab })}
           >
             {tab}
-            {tab === "Changes" && !!diff?.files.length && (
-              <small>{diff.files.length}</small>
-            )}
           </button>
         ))}
         <div className="spacer" />
-        {diff && !!diff.files.length && (
-          <button
-            className="diff-stats"
-            onClick={() => updateTaskView(t.id, { tab: "Changes" })}
+        {["Changes", "Tests", "Agent Output"].map((name) => (
+          <Button
+            key={name}
+            size="sm"
+            variant="ghost"
+            onClick={() => dock(name)}
           >
-            <span className="success">+{diff.insertions}</span>
-            <span className="failure">−{diff.deletions}</span>
-          </button>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Split Changes beside chat"
-          aria-pressed={view.contextPane === "changes"}
-          onClick={() =>
-            updateTaskView(t.id, {
-              tab: "Chat",
-              contextPane: view.contextPane === "changes" ? "none" : "changes",
-              diffMode: "inline",
-            })
-          }
-        >
-          <PanelRight size={14} />
-        </Button>
+            {name}
+          </Button>
+        ))}
         <Button
           size="sm"
           variant="ghost"
@@ -389,7 +551,8 @@ export const TaskWorkspace = ({
             })
           }
         >
-          Pipeline
+          <PanelRight size={14} />
+          Run details
         </Button>
         <Button
           size="sm"
@@ -403,7 +566,7 @@ export const TaskWorkspace = ({
         </Button>
       </div>
       <div className="workspace-content">
-        {view.tab === "Chat" ? (
+        {tab === "Chat" ? (
           <div className="chat-main">
             <div
               className="event-timeline"
@@ -499,7 +662,10 @@ export const TaskWorkspace = ({
                     ?.focus();
                 }}
                 files={diff?.files}
-                openDiff={openDiff}
+                openDiff={(path) => {
+                  updateTaskView(t.id, { diffPath: path });
+                  dock("Changes");
+                }}
               />
               {t.error &&
                 !(
@@ -522,16 +688,19 @@ export const TaskWorkspace = ({
                     {diff.files.length === 1 ? "file" : "files"}
                   </summary>
                   {diff.files.map((file) => (
-                    <button
-                      className="edited-file"
-                      key={file.path}
-                      onClick={() => openDiff(file.path)}
-                    >
-                      <code>{file.path}</code>
+                    <div className="edited-file" key={file.path}>
+                      <button
+                        onClick={() => {
+                          updateTaskView(t.id, { diffPath: file.path });
+                          dock("Changes");
+                        }}
+                      >
+                        <code>{file.path}</code>
+                      </button>
                       <span className="spacer" />
                       <span className="success">+{file.insertions}</span>
                       <span className="failure">−{file.deletions}</span>
-                    </button>
+                    </div>
                   ))}
                 </details>
               )}
@@ -552,17 +721,14 @@ export const TaskWorkspace = ({
                 </section>
               )}
               {t.status === "ready_for_review" && (
-                <button
-                  className="ready-review"
-                  onClick={() => updateTaskView(t.id, { tab: "Changes" })}
-                >
+                <p className="ready-review">
                   <Check size={14} />
                   Ready for review
                   <span className="spacer" />
                   {diff?.files.length || 0}{" "}
                   {diff?.files.length === 1 ? "file" : "files"}
                   <ChevronRight size={14} />
-                </button>
+                </p>
               )}
             </div>
             <form
@@ -681,12 +847,18 @@ export const TaskWorkspace = ({
               )}
             </form>
           </div>
-        ) : view.tab === "Plan" ? (
-          <PlanView artifacts={detail.artifacts} />
-        ) : (
-          changes
-        )}
-        {view.contextPane !== "none" && view.tab !== "Changes" && (
+        ) : tab === "Usage" ? (
+          <UsageView taskId={t.id} records={detail.usage} />
+        ) : tab === "Plan" ? (
+          <PlanView
+            artifacts={detail.artifacts}
+            runs={detail.runs}
+            events={detail.events}
+            busy={busy || (occupied && !active)}
+            acceptDraft={setDraftRun}
+          />
+        ) : null}
+        {view.contextPane === "pipeline" && (
           <>
             <ResizeHandle
               label="Resize context pane"
@@ -701,9 +873,7 @@ export const TaskWorkspace = ({
               style={{ width: paneWidth, maxWidth: "60%" }}
             >
               <div className="context-heading">
-                <strong>
-                  {view.contextPane === "changes" ? "Changes" : "Task context"}
-                </strong>
+                <strong>Run details</strong>
                 <div className="spacer" />
                 <Button
                   variant="ghost"
@@ -714,15 +884,68 @@ export const TaskWorkspace = ({
                   <X size={13} />
                 </Button>
               </div>
-              {view.contextPane === "changes" ? (
-                changes
-              ) : (
+              <div className="run-details-scroll">
+                <CurrentRun
+                  detail={detail}
+                  prompt={() => setPromptOpen(true)}
+                  plan={() => updateTaskView(t.id, { tab: "Plan" })}
+                  output={() => {
+                    setSelectedRun(undefined);
+                    dock("Agent Output");
+                  }}
+                  stop={() => void action("task.cancel")}
+                />
+                {!!detail.runs.length && (
+                  <button
+                    className="workspace-prompt-link"
+                    onClick={() => setPromptOpen(true)}
+                  >
+                    View sent prompts
+                  </button>
+                )}
+                <details className="workspace-repository-context">
+                  <summary>
+                    Repository source · {repository?.path || "Unavailable"}
+                  </summary>
+                  <dl className="repository-facts">
+                    <dt>Source</dt>
+                    <dd>
+                      <code>{repository?.path}</code> ·{" "}
+                      {repository?.source === "imported"
+                        ? "User-owned checkout"
+                        : "Vibestar-managed clone"}
+                    </dd>
+                    <dt>Worktree</dt>
+                    <dd>
+                      <code>
+                        {t.worktree_path || "Created when preparation starts"}
+                      </code>
+                    </dd>
+                    <dt>Branch</dt>
+                    <dd>
+                      <code>
+                        {t.branch_name || "Created during preparation"}
+                      </code>
+                    </dd>
+                    <dt>Base</dt>
+                    <dd>
+                      {repository?.upstream_remote || "upstream"}/
+                      {t.base_branch} <code>{t.base_commit_sha}</code>
+                    </dd>
+                  </dl>
+                </details>
                 <div className="stage-rail">
                   <h3>Pipeline</h3>
                   {stages.map((s, i) => {
                     const run = [...detail.runs]
                       .reverse()
-                      .find((r) => r.stage === i && r.purpose !== "scheduled");
+                      .find(
+                        (r) =>
+                          r.stage === i &&
+                          !["scheduled", "Code Review Ask AI"].includes(
+                            r.purpose || "",
+                          ),
+                      );
                     return (
                       <div className="stage-row" key={s}>
                         <button
@@ -740,24 +963,29 @@ export const TaskWorkspace = ({
                             className={
                               i < t.stage
                                 ? "success"
-                                : i === t.stage
+                                : i === t.stage && active
                                   ? "running"
                                   : "subtle"
                             }
                           >
-                            {i < t.stage ? "✓" : i === t.stage ? "→" : "○"}
+                            {i < t.stage
+                              ? "✓"
+                              : i === t.stage && active
+                                ? "→"
+                                : "○"}
                           </span>
                           <div>
                             {s}
                             {run && (
                               <small>
                                 {run.model || "CLI default"} · {run.effort} ·{" "}
-                                {run.status}
+                                {run.status} ·{" "}
+                                {duration(run.started_at, run.ended_at)}
                               </small>
                             )}
                           </div>
                         </button>
-                        {i > 0 && i <= Math.min(t.stage, 4) && (
+                        {i > 0 && i <= Math.min(t.stage, 5) && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -793,25 +1021,39 @@ export const TaskWorkspace = ({
                     Restart pipeline
                   </Button>
                 </div>
-              )}
+              </div>
             </aside>
           </>
         )}
       </div>
       {view.terminalDock && (
         <>
-          <ResizeHandle
-            label="Resize utility dock"
-            value={dockHeight}
-            onChange={setDockHeight}
-            min={120}
-            max={500}
-            vertical
-            reverse
-          />
-          <div className="utility-dock" style={{ height: dockHeight }}>
+          {!view.dockMaximized && (
+            <ResizeHandle
+              label="Resize utility dock"
+              value={dockHeight}
+              onChange={setDockHeight}
+              min={120}
+              max={500}
+              vertical
+              reverse
+            />
+          )}
+          <div
+            className="utility-dock"
+            style={view.dockMaximized ? undefined : { height: dockHeight }}
+          >
             <div className="dock-tabs" role="tablist" aria-label="Utilities">
-              {["Problems", "Tests", "Terminal", "Logs", "Usage"].map((tab) => (
+              {[
+                "Changes",
+                "Problems",
+                "Tests",
+                "Final review",
+                "Terminal",
+                "Agent Output",
+                "Logs",
+                "Usage",
+              ].map((tab) => (
                 <button
                   role="tab"
                   aria-selected={view.dockTab === tab}
@@ -826,6 +1068,25 @@ export const TaskWorkspace = ({
               <Button
                 variant="ghost"
                 size="icon"
+                aria-label={
+                  view.dockMaximized
+                    ? "Restore utility dock"
+                    : "Maximize utility dock"
+                }
+                aria-pressed={view.dockMaximized}
+                onClick={() =>
+                  updateTaskView(t.id, { dockMaximized: !view.dockMaximized })
+                }
+              >
+                {view.dockMaximized ? (
+                  <Minimize2 size={13} />
+                ) : (
+                  <Maximize2 size={13} />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label="Hide utility dock"
                 onClick={() => updateTaskView(t.id, { terminalDock: false })}
               >
@@ -833,15 +1094,41 @@ export const TaskWorkspace = ({
               </Button>
             </div>
             <div className="dock-content">
-              {view.dockTab === "Terminal" ? (
+              {view.dockTab === "Changes" ? (
+                <ChangesView
+                  task={t}
+                  diff={diff}
+                  revision={revision}
+                  onError={onError}
+                />
+              ) : view.dockTab === "Terminal" ? (
                 <TaskTerminal task={t} onError={onError} />
               ) : view.dockTab === "Usage" ? (
                 <UsageView taskId={t.id} records={detail.usage} />
+              ) : view.dockTab === "Final review" ? (
+                <div className="final-review-panel">
+                  <AgentResponse
+                    expanded
+                    text={
+                      [...detail.artifacts]
+                        .reverse()
+                        .find((a) => a.stage === 5 && a.kind === "plan")
+                        ?.content || "Antigravity final review has not run yet."
+                    }
+                  />
+                  {detail.runs
+                    .filter((r) => r.stage === 5)
+                    .map((run) => (
+                      <RunPrompt key={run.id} run={run} />
+                    ))}
+                </div>
               ) : view.dockTab === "Tests" ? (
                 <TestsView detail={detail} onError={onError} />
-              ) : view.dockTab === "Logs" ? (
+              ) : view.dockTab === "Logs" || view.dockTab === "Agent Output" ? (
                 <LogView
+                  key={view.dockTab}
                   taskId={t.id}
+                  liveOutput={view.dockTab === "Agent Output"}
                   runs={detail.runs}
                   events={detail.events}
                   selectedRun={selectedRun}
@@ -877,7 +1164,9 @@ export const TaskWorkspace = ({
         <span>
           {["cancelled", "failed", "interrupted"].includes(t.status)
             ? t.status.replace(/^./, (letter) => letter.toUpperCase())
-            : stages[t.stage]}
+            : t.status === "awaiting_approval"
+              ? "Awaiting your review"
+              : stages[t.stage]}
         </span>
       </footer>
     </div>

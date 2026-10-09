@@ -4,7 +4,8 @@ import { realpath } from "node:fs/promises";
 import { AdeError, type Task } from "../domain";
 import { exists, taskRoot, inside } from "../workspace/paths";
 import type { Database } from "../storage/database";
-import { checked } from "./process";
+import { checked, cleanEnvironment } from "./process";
+import { taskRuntime } from "../workspace/runtime";
 export const sandboxInvocation = async (
   root: string,
   db: Database,
@@ -116,6 +117,23 @@ export const sandboxInvocation = async (
     );
   }
   args.push(readOnly ? "--ro-bind" : "--bind", cwd, cwd);
+  if (repo) {
+    const runtime = await taskRuntime(repo, cwd, true);
+    for (const mount of runtime.mounts)
+      args.push("--ro-bind", mount.source, mount.target);
+    if (runtime.python && runtime.pythonPrefix)
+      args.push(
+        "--setenv",
+        "PATH",
+        `${join(runtime.pythonPrefix, "bin")}:${cleanEnvironment().PATH}`,
+        "--setenv",
+        "VIRTUAL_ENV",
+        runtime.pythonPrefix,
+        "--setenv",
+        "PYTHONDONTWRITEBYTECODE",
+        "1",
+      );
+  }
   if (schemaPath) {
     const schema = await realpath(schemaPath);
     if (!inside(join(root, "artifacts"), schema))

@@ -22,7 +22,11 @@ export const useWorkspace = () => {
         setError(
           e.text || "Execution core stopped. Restart the app to recover tasks.",
         );
-      } else if (["changed", "agent.event"].includes(e.event)) {
+      } else if (
+        ["changed", "agent.event", "usage.changed", "command.output"].includes(
+          e.event,
+        )
+      ) {
         if (!timer)
           timer = setTimeout(() => {
             timer = undefined;

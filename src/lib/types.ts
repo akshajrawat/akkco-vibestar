@@ -3,6 +3,11 @@ export type { Repository, Settings, StageConfig } from "../../backend/domain";
 export type Detection =
   import("../../backend/execution/providers/contracts").ProviderDetection;
 export interface Task {
+  runtime?: {
+    python: string | null;
+    dependencies: string[];
+    warnings: string[];
+  };
   id: string;
   repo_id: string;
   issue_number: number;
@@ -20,10 +25,12 @@ export interface Task {
   updated_at: string;
   status: string;
   archived?: boolean;
+  approval_gate?: import("../../backend/domain").Task["approval_gate"];
   stage: number;
   error: string | null;
 }
 export interface Snapshot {
+  warning?: string;
   repositories: Repository[];
   tasks: Task[];
   settings: Settings;
@@ -32,6 +39,7 @@ export interface Snapshot {
   migration?: { old_root: string; new_root: string } | null;
   repository_index?: import("../../backend/workspace/discovery").RepositoryIndexSnapshot;
   github?: {
+    clones?: import("../../backend/github/service").CloneActivity[];
     status: import("../../backend/github/contracts").GitHubStatus | null;
     last_sync: string | null;
     error: string | null;
@@ -85,6 +93,9 @@ export interface Artifact {
   created_at: string;
 }
 export interface TestRun {
+  run_id?: string | null;
+  call_id?: string | null;
+  output_truncated?: number;
   id: string;
   command: string;
   status: string;
@@ -146,6 +157,7 @@ export const stages = [
   "Codex refine plan",
   "Codex implementation",
   "Validation",
+  "Antigravity review & tests",
   "Ready for review",
 ];
 export const activeStatuses = [
@@ -154,4 +166,5 @@ export const activeStatuses = [
   "planning_codex",
   "implementing",
   "validating",
+  "reviewing_antigravity",
 ];

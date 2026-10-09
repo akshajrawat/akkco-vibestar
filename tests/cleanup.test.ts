@@ -4,10 +4,308 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Engine } from "../backend/execution/engine";
 import { StorageService } from "../backend/storage/service";
-import { now, defaultSettings, type Task } from "../backend/domain";
+import {
+  now,
+  defaultSettings,
+  type Task,
+  type Repository,
+} from "../backend/domain";
+import { checked, capture } from "../backend/execution/process";
+import { exists } from "../backend/workspace/paths";
 import { fixtureRepository } from "./fixtures";
 import { Scheduler } from "../backend/scheduled/scheduler";
 import { GitHubMonitor } from "../backend/scheduled/github";
+
+const preparedTask = async (
+  engine: Engine,
+  repo: Repository,
+  id: string,
+  issue = 1,
+) => {
+  const task: Task = {
+    id,
+    repo_id: repo.id,
+    issue_number: issue,
+    issue_url: `https://github.com/fixture/fixture/issues/${issue}`,
+    claimed_scope: id,
+    notes: "",
+    issue: {},
+    branch_name: "",
+    base_branch: "main",
+    base_commit_sha: "",
+    worktree_path: "",
+    stage: 1,
+    status: "cancelled",
+    error: null,
+    created_at: now(),
+    updated_at: now(),
+  };
+  engine.db.saveTask(task);
+  await engine.git.prepare(
+    repo,
+    task,
+    undefined,
+    (value) => engine.db.saveTask(value),
+    async (record) => {
+      engine.db.run(
+        "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'preparation',?,?)",
+        task.id,
+        JSON.stringify(record),
+        now(),
+      );
+    },
+  );
+  engine.db.saveTask(task);
+  return task;
+};
+
+it("history deletion removes the owned branch and worktree even when worktree cleanup is deselected, preserving other branches", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-history-branch-"));
+  const engine = await Engine.create(join(dir, "data"));
+  try {
+    const { repo } = await fixtureRepository(engine, dir);
+    const task = await preparedTask(engine, repo, "history");
+    await checked("git", ["branch", "akkco/personal"], repo.path);
+    const before = await checked(
+      "git",
+      ["rev-parse", "main", "akkco/personal"],
+      repo.path,
+    );
+    await writeFile(join(task.worktree_path, "source.txt"), "task change\n");
+    await new StorageService(engine).cleanupTask(task.id, {
+      worktree: false,
+      logs: false,
+      artifacts: false,
+      history: true,
+    });
+    expect(await exists(task.worktree_path)).toBe(false);
+    expect(
+      (
+        await capture(
+          "git",
+          ["show-ref", "--verify", "--quiet", `refs/heads/${task.branch_name}`],
+          repo.path,
+        )
+      ).code,
+    ).toBe(1);
+    expect(
+      await checked("git", ["rev-parse", "main", "akkco/personal"], repo.path),
+    ).toBe(before);
+    expect(engine.db.task(task.id)).toMatchObject({
+      worktree_path: "",
+      branch_name: "",
+      branch_owned: false,
+      archived: true,
+    });
+  } finally {
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each(["unregistered", "missing", "detached"])(
+  "cleans owned task history when the worktree is %s",
+  async (kind) => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-orphan-branch-"));
+    const engine = await Engine.create(join(dir, "data"));
+    try {
+      const { repo } = await fixtureRepository(engine, dir);
+      const task = await preparedTask(engine, repo, kind);
+      if (kind === "unregistered") {
+        await checked(
+          "git",
+          ["worktree", "remove", "--", task.worktree_path],
+          repo.path,
+        );
+        engine.db.saveTask({ ...task, worktree_path: "" });
+      } else if (kind === "missing") {
+        await rm(task.worktree_path, { recursive: true, force: true });
+      } else {
+        await checked(
+          "git",
+          ["-c", "core.hooksPath=/dev/null", "checkout", "--detach"],
+          task.worktree_path,
+        );
+        await checked(
+          "git",
+          ["branch", "-D", "--", task.branch_name],
+          repo.path,
+        );
+      }
+      await new StorageService(engine).cleanupTask(task.id, {
+        worktree: false,
+        logs: false,
+        artifacts: true,
+        history: true,
+      });
+      expect(engine.db.tasks()).toEqual([]);
+      expect(
+        (
+          await capture(
+            "git",
+            [
+              "show-ref",
+              "--verify",
+              "--quiet",
+              `refs/heads/${task.branch_name}`,
+            ],
+            repo.path,
+          )
+        ).code,
+      ).toBe(1);
+      expect(await exists(task.worktree_path)).toBe(false);
+    } finally {
+      await engine.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it("does not delete an unowned namespaced branch, a recreated personal branch, or an external checkout", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-foreign-branch-"));
+  const engine = await Engine.create(join(dir, "data"));
+  try {
+    const { repo } = await fixtureRepository(engine, dir);
+    const task = await preparedTask(engine, repo, "owned");
+    const storage = new StorageService(engine);
+    await checked("git", ["branch", "akkco/personal"], repo.path);
+    const foreign = {
+      ...task,
+      id: "foreign",
+      branch_name: "akkco/personal",
+      branch_owned: false,
+      worktree_path: "",
+    };
+    engine.db.saveTask(foreign);
+    const options = {
+      worktree: false,
+      logs: false,
+      artifacts: true,
+      history: true,
+    };
+    await expect(storage.cleanupTask(foreign.id, options)).rejects.toThrow(
+      "ownership",
+    );
+    expect(engine.db.task(foreign.id).branch_name).toBe("akkco/personal");
+    expect(
+      await checked("git", ["rev-parse", "akkco/personal"], repo.path),
+    ).toBe(task.base_commit_sha);
+    await checked(
+      "git",
+      ["worktree", "remove", "--", task.worktree_path],
+      repo.path,
+    );
+    const external = join(dir, "external");
+    await checked(
+      "git",
+      ["worktree", "add", "--", external, task.branch_name],
+      repo.path,
+    );
+    await expect(storage.cleanupTask(task.id, options)).rejects.toThrow(
+      "outside its assigned worktree",
+    );
+    expect(await exists(join(external, "source.txt"))).toBe(true);
+    await checked("git", ["worktree", "remove", "--", external], repo.path);
+    await checked("git", ["branch", "-D", "--", task.branch_name], repo.path);
+    await checked("git", ["branch", task.branch_name], repo.path);
+    await expect(storage.cleanupTask(task.id, options)).rejects.toThrow(
+      "ownership",
+    );
+    expect(
+      await checked("git", ["rev-parse", task.branch_name], repo.path),
+    ).toBe(task.base_commit_sha);
+    expect(engine.db.task(task.id).branch_name).toBe(task.branch_name);
+  } finally {
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("deletes history after preparation left only a checkpoint and no Git resources", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-empty-preparation-"));
+  const engine = await Engine.create(join(dir, "data"));
+  try {
+    const { repo } = await fixtureRepository(engine, dir);
+    const task = await preparedTask(engine, repo, "checkpoint");
+    await checked(
+      "git",
+      ["worktree", "remove", "--", task.worktree_path],
+      repo.path,
+    );
+    await checked("git", ["branch", "-D", "--", task.branch_name], repo.path);
+    engine.db.run("DELETE FROM task_activity WHERE task_id=?", task.id);
+    engine.db.saveTask({ ...task, branch_owned: false });
+    const refs = await checked("git", ["show-ref"], repo.path);
+    await new StorageService(engine).cleanupTask(task.id, {
+      worktree: false,
+      logs: false,
+      artifacts: true,
+      history: true,
+    });
+    expect(engine.db.tasks()).toEqual([]);
+    expect(await checked("git", ["show-ref"], repo.path)).toBe(refs);
+  } finally {
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("accepts a successful legacy creation record but never treats the branch prefix alone as ownership", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-legacy-branch-"));
+  const engine = await Engine.create(join(dir, "data"));
+  try {
+    const { repo } = await fixtureRepository(engine, dir);
+    const task = await preparedTask(engine, repo, "legacy");
+    await checked(
+      "git",
+      ["config", "--unset", `branch.${task.branch_name}.vibestarTask`],
+      repo.path,
+    );
+    engine.db.saveTask({ ...task, branch_owned: undefined });
+    await new StorageService(engine).cleanupTask(task.id, {
+      worktree: false,
+      logs: false,
+      artifacts: true,
+      history: true,
+    });
+    expect(engine.db.tasks()).toEqual([]);
+  } finally {
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("preserves a personal branch recreated under a legacy task's branch name", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-legacy-recreated-"));
+  const engine = await Engine.create(join(dir, "data"));
+  try {
+    const { repo } = await fixtureRepository(engine, dir);
+    const task = await preparedTask(engine, repo, "legacy-recreated");
+    engine.db.saveTask({ ...task, branch_owned: undefined });
+    await checked(
+      "git",
+      ["worktree", "remove", "--", task.worktree_path],
+      repo.path,
+    );
+    await checked("git", ["branch", "-D", "--", task.branch_name], repo.path);
+    await checked("git", ["branch", task.branch_name, "main"], repo.path);
+    await expect(
+      new StorageService(engine).cleanupTask(task.id, {
+        worktree: false,
+        logs: false,
+        artifacts: true,
+        history: true,
+      }),
+    ).rejects.toThrow("ownership");
+    expect(
+      await checked("git", ["rev-parse", task.branch_name], repo.path),
+    ).toBe(task.base_commit_sha);
+    expect(engine.db.task(task.id).branch_name).toBe(task.branch_name);
+  } finally {
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 it("task deletion ignores unrelated scans but reports its own terminal and linked review activity", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-cleanup-scope-"));

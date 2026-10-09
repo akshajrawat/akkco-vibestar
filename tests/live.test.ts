@@ -50,17 +50,40 @@ it.skipIf(process.env.VIBESTAR_LIVE_TEST !== "1")(
         },
       );
       await new Promise<void>((resolve, reject) => {
+        let approving = false;
+        const poll = setInterval(() => void check(), 250);
         const timer = setTimeout(() => {
+          clearInterval(poll);
           engine.off("event", check);
           reject(new Error("Real pipeline exceeded 25 minutes"));
         }, 1500000);
-        const check = () => {
+        const check = async () => {
           const task = engine.db.task(t.id);
+          // This opt-in harness explicitly simulates the user's stage approvals.
+          if (
+            task.status === "awaiting_approval" &&
+            !engine.isActive(t.id) &&
+            !approving
+          ) {
+            approving = true;
+            try {
+              await engine.approveStage(t.id);
+            } catch (error) {
+              clearInterval(poll);
+              clearTimeout(timer);
+              engine.off("event", check);
+              reject(error);
+            } finally {
+              approving = false;
+            }
+            return;
+          }
           if (
             ["ready_for_review", "failed", "interrupted", "cancelled"].includes(
               task.status,
             )
           ) {
+            clearInterval(poll);
             clearTimeout(timer);
             engine.off("event", check);
             resolve();
@@ -81,7 +104,7 @@ it.skipIf(process.env.VIBESTAR_LIVE_TEST !== "1")(
       ).toBe("vibestar verified\n");
       const diff = await engine.git.diff(task);
       expect(diff.files.map((f) => f.path)).toEqual(["source.txt"]);
-      expect(engine.db.detail(t.id).runs).toHaveLength(3);
+      expect(engine.db.detail(t.id).runs).toHaveLength(4);
     } finally {
       await engine.close();
     }

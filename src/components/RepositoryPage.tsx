@@ -1,3 +1,5 @@
+import { CloneActivity } from "./CloneActivity";
+import { OpenInEditor } from "./OpenInEditor";
 import { useState } from "react";
 import { Search, RefreshCw, Plus } from "lucide-react";
 import type { Snapshot } from "../lib/types";
@@ -10,9 +12,11 @@ import { remoteIdentity } from "../../backend/domain";
 export const RepositoryPage = ({
   snapshot,
   refresh,
+  createTask,
 }: {
   snapshot: Snapshot;
   refresh: () => Promise<void>;
+  createTask?: () => void;
 }) => {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState("");
@@ -126,6 +130,18 @@ export const RepositoryPage = ({
           {error}
         </p>
       )}
+      {!!snapshot.github?.clones?.length && (
+        <section aria-label="Managed clone activity">
+          <h2 className="repository-section-title">Managed clones</h2>
+          {snapshot.github.clones.map((activity) => (
+            <CloneActivity
+              key={activity.id}
+              activity={activity}
+              createTask={createTask}
+            />
+          ))}
+        </section>
+      )}
       <section aria-labelledby="active-repositories-title">
         <h2 id="active-repositories-title" className="repository-section-title">
           Active repositories <small>{active.length}</small>
@@ -192,6 +208,7 @@ export const RepositoryPage = ({
                 <dd>{r.base_branch}</dd>
               </dl>
               <div className="actions">
+                <OpenInEditor id={r.id} kind="repository" path={r.path} />
                 <Button
                   size="sm"
                   onClick={() =>
@@ -296,6 +313,11 @@ export const RepositoryPage = ({
               `${local.owner}/${local.name}`.toLowerCase() ===
                 r.full_name.toLowerCase(),
           );
+          const cloning = snapshot.github?.clones?.some(
+            (c) =>
+              c.repository_id === managed?.id &&
+              ["resolving", "cloning"].includes(c.status),
+          );
           return (
             <div className="repo-catalog-row" key={r.id}>
               <div>
@@ -307,7 +329,7 @@ export const RepositoryPage = ({
               <div className="spacer" />
               <Button
                 size="sm"
-                disabled={!!busy}
+                disabled={!!busy || cloning}
                 onClick={() =>
                   managed?.connected === false
                     ? void action(
@@ -318,11 +340,13 @@ export const RepositoryPage = ({
                     : void find(r.full_name)
                 }
               >
-                {busy === r.full_name
-                  ? "Finding…"
-                  : managed?.connected === false
-                    ? "Reconnect managed clone"
-                    : "Find local checkout"}
+                {cloning
+                  ? "Cloning…"
+                  : busy === r.full_name
+                    ? "Finding…"
+                    : managed?.connected === false
+                      ? "Reconnect managed clone"
+                      : "Use repository"}
               </Button>
             </div>
           );
@@ -380,6 +404,11 @@ export const RepositoryPage = ({
                 manually or create a separate Vibestar-managed clone.
               </p>
             )}
+            <p className="subtle">
+              Clone destination: {snapshot.root}/repos/&lt;managed repository
+              ID&gt;. Vibestar owns the new clone; your existing checkouts
+              remain user-owned.
+            </p>
             <div className="actions">
               <Button
                 onClick={() => {
@@ -408,7 +437,7 @@ export const RepositoryPage = ({
                   setCandidates(undefined);
                 }}
               >
-                Create Vibestar-managed clone
+                Clone with Vibestar
               </Button>
               <Button variant="ghost" onClick={() => setCandidates(undefined)}>
                 Cancel
