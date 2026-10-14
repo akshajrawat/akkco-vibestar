@@ -1,5 +1,31 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+const resultValue = (value: unknown): React.ReactNode => {
+  if (typeof value === "string")
+    return <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>;
+  if (Array.isArray(value))
+    return value.length ? (
+      <ul>
+        {value.map((entry, i) => (
+          <li key={i}>{resultValue(entry)}</li>
+        ))}
+      </ul>
+    ) : (
+      <p className="subtle">None reported</p>
+    );
+  if (value && typeof value === "object")
+    return (
+      <dl className="result-fields">
+        {Object.entries(value).map(([key, entry]) => (
+          <div key={key}>
+            <dt>{key.replace(/([A-Z])/g, " $1")}</dt>
+            <dd>{resultValue(entry)}</dd>
+          </div>
+        ))}
+      </dl>
+    );
+  return <p>{value === null ? "Not reported" : String(value)}</p>;
+};
 export const AgentResponse = ({
   text,
   expanded = false,
@@ -16,27 +42,21 @@ export const AgentResponse = ({
     /* Prose and incomplete streams remain readable. */
   }
   if (fields) {
-    const summary = fields.summary ?? fields.goal ?? fields.understanding;
-    if (typeof summary !== "string") return null;
+    const summaryKey = ["summary", "goal", "understanding"].find(
+      (key) => typeof fields![key] === "string",
+    );
+    const summary = summaryKey ? String(fields[summaryKey]) : "Provider result";
     return (
       <div className="agent-response markdown">
         <Markdown remarkPlugins={[remarkGfm]}>{summary}</Markdown>
         <details open={expanded || undefined}>
           <summary>View result details</summary>
           {Object.entries(fields)
-            .filter(([key]) => !["summary", "goal"].includes(key))
+            .filter(([key]) => key !== summaryKey)
             .map(([key, value]) => (
               <section key={key}>
                 <h3>{key.replace(/([A-Z])/g, " $1")}</h3>
-                {Array.isArray(value) ? (
-                  <ul>
-                    {value.map((v, i) => (
-                      <li key={i}>{String(v)}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>{String(value)}</p>
-                )}
+                {resultValue(value)}
               </section>
             ))}
         </details>
@@ -45,7 +65,11 @@ export const AgentResponse = ({
   }
   // Never display provider envelopes or streaming schema fragments as chat.
   if (text.trim().startsWith("{"))
-    return <span className="subtle">Preparing response…</span>;
+    return (
+      <span className="subtle">
+        Receiving structured output · inspect Raw for emitted fields
+      </span>
+    );
   return (
     <div className="agent-response markdown">
       <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>

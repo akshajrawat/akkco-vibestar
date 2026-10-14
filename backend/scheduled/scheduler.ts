@@ -1,26 +1,33 @@
-import { assessActivity, ActionSchema, reviewPrompt } from "./action";
-import type { GitHubPullRequest, WatchSettings } from "../github/contracts";
+import { ActionSchema } from "./action";
+import type { GitHubPullRequest } from "../github/contracts";
 import { randomUUID } from "node:crypto";
 import { now, AdeError } from "../domain";
 import type { Engine } from "../execution/engine";
 import { redact } from "../execution/process";
+import { PRAnalysis } from "../review/pr/analysis";
+import type { PRAnalysisSession } from "../review/pr/contracts";
 import { GitHubMonitor } from "./github";
 import {
   ScheduleInput,
-  changedPullRequest,
   parsePullRequest,
   type ScheduleJob,
   type ScheduleAttention,
 } from "./contracts";
+
+// Legacy tracked records remain readable; only explicit operations execute.
 export class Scheduler {
-  private timer: ReturnType<typeof setTimeout> | undefined;
-  private controller = new AbortController();
-  private running: Promise<void> | undefined;
+  private readonly active = new Map<
+    string,
+    { controller: AbortController; promise: Promise<void> }
+  >();
   private stopped = false;
+  readonly analysis: PRAnalysis;
   constructor(
     private readonly engine: Engine,
     private readonly monitor = new GitHubMonitor(engine.root),
-  ) {}
+  ) {
+    this.analysis = new PRAnalysis(engine);
+  }
   jobs = () =>
     this.engine.db
       .all<{ data: string }>("SELECT data FROM scheduled_jobs ORDER BY rowid")
@@ -29,7 +36,7 @@ export class Scheduler {
         if (job.action) job.action = ActionSchema.parse(job.action);
         if (job.conversation_action)
           job.conversation_action = ActionSchema.parse(job.conversation_action);
-        return job;
+        return { ...job, enabled: false, check_once: false };
       });
   attention = () =>
     this.engine.db.all<ScheduleAttention>(
@@ -44,20 +51,21 @@ export class Scheduler {
     this.engine.db.run(
       "INSERT INTO scheduled_jobs VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
       job.id,
-      JSON.stringify(job),
+      JSON.stringify({ ...job, enabled: false, check_once: false }),
     );
     this.engine.changed();
   };
   private job = (id: string) => {
     const job = this.jobs().find((j) => j.id === id);
-    if (!job) throw new AdeError("not_found", "Scheduled job not found");
+    if (!job) throw new AdeError("not_found", "Tracked PR not found");
     return job;
   };
   add = (input: unknown) => {
+    this.engine.assertAvailable();
     const p = ScheduleInput.parse(input);
     const ref = parsePullRequest(p.url);
-    if (this.jobs().some((j) => j.url === ref.url))
-      throw new AdeError("duplicate", "This PR is already tracked");
+    const existing = this.jobs().find((j) => j.url === ref.url);
+    if (existing) return existing;
     if (p.task_id) {
       const repo = this.engine.db.repository(
         this.engine.db.task(p.task_id).repo_id,
@@ -68,14 +76,15 @@ export class Scheduler {
       )
         throw new AdeError(
           "invalid_input",
-          "PR and linked worktree must belong to the same upstream repository",
+          "PR and linked task must belong to the same upstream repository",
         );
     }
     const job: ScheduleJob = {
       ...p,
+      verify_codex: false,
       url: ref.url,
       id: randomUUID(),
-      enabled: true,
+      enabled: false,
       next_run_at: now(),
       status: "idle",
       last_checked_at: null,
@@ -85,83 +94,24 @@ export class Scheduler {
       error: null,
     };
     this.save(job);
-    this.wake();
     return job;
   };
-  discovered = (pr: GitHubPullRequest, settings: WatchSettings) => {
-    if (pr.task_id && !this.engine.db.tasks().some((t) => t.id === pr.task_id))
-      pr = { ...pr, task_id: null };
-    let job = this.jobs().find((j) => j.url === pr.url);
-    if (!job && pr.state === "OPEN" && settings.auto_watch)
-      job = this.add({
-        url: pr.url,
-        task_id: pr.task_id,
-        interval_minutes: settings.interval_minutes,
-        verify_codex: settings.verify_codex,
-      });
+  discovered = (pr: GitHubPullRequest) => {
+    const job = this.jobs().find((j) => j.url === pr.url);
     if (!job) return;
-    if (!job.task_id && pr.task_id) job.task_id = pr.task_id;
+    if (this.active.has(job.id)) return;
     job.title = pr.title;
-    if (pr.state === "OPEN" && job.archived) {
-      job.archived = false;
-      job.enabled = !job.paused_before_archive;
-      job.last_snapshot = null;
-      job.pending_snapshot = null;
-      job.status = "idle";
-      job.next_run_at = now();
-      job.action = undefined;
-    }
-    if (pr.state !== "OPEN") {
-      if (!job.archived) job.paused_before_archive = !job.enabled;
-      job.enabled = false;
-      job.archived = true;
-      job.check_once = false;
-      job.action = ActionSchema.parse({
-        conversationState: pr.state === "MERGED" ? "merged" : "closed",
-        manualActionRequired: false,
-        severity: "info",
-        summary: pr.state === "MERGED" ? "PR merged" : "PR closed",
-        reason: "",
-        newActivity: [],
-        recommendedNextAction: "",
-        affectedFiles: [],
-      });
-    }
-    if (job.archived)
-      this.engine.db.run(
-        "UPDATE scheduled_attention SET dismissed=1 WHERE job_id=?",
-        job.id,
-      );
+    job.archived = pr.state !== "OPEN";
+    if (!job.task_id && pr.task_id) job.task_id = pr.task_id;
     this.save(job);
-    this.wake();
   };
   setEnabled = (id: string, enabled: boolean) => {
-    const job = this.job(id);
-    if (["polling", "analyzing"].includes(job.status))
-      throw new AdeError("busy", "Wait for the current inspection to finish");
-    if (job.archived)
+    if (enabled)
       throw new AdeError(
-        "invalid_state",
-        "This PR is closed; its watch is archived",
+        "manual_policy",
+        "Automatic PR inspection is disabled. Use Analyze PR explicitly.",
       );
-    job.enabled = enabled;
-    if (!enabled) job.check_once = false;
-    this.save(job);
-    this.wake();
-  };
-  runNow = (id: string, retry = false) => {
-    const job = this.job(id);
-    if (["polling", "analyzing"].includes(job.status))
-      throw new AdeError("busy", "Inspection already running");
-    if (job.archived)
-      throw new AdeError("invalid_state", "This PR is archived");
-    if (retry && job.pending_snapshot) job.status = "pending";
-    else if (["error", "interrupted"].includes(job.status)) job.status = "idle";
-    job.error = null;
-    job.next_run_at = now();
-    job.check_once = !job.enabled;
-    this.save(job);
-    this.wake();
+    this.save(this.job(id));
   };
   dismiss = (id: string) => {
     this.engine.db.run(
@@ -170,288 +120,222 @@ export class Scheduler {
     );
     this.engine.changed();
   };
-  fix = async (id: string) => {
-    const item = this.attention().find((a) => a.id === id);
-    if (!item?.task_id)
-      throw new AdeError(
-        "invalid_state",
-        "Link an isolated task before requesting a fix",
-      );
-    const job = this.job(item.job_id);
-    if (["analyzing", "polling"].includes(job.status))
-      throw new AdeError("busy", "Wait for scheduled analysis to finish");
-    return this.engine.followUp(
-      item.task_id,
-      `Manually requested PR fix for ${job.url}. Review these changes and saved analysis critically. Implement only supporting changes within our claimed scope. Do not push, comment, create PRs or merge.\nChanges:\n${item.changes}\nAnalysis:\n${item.analysis || item.error}\nCodex refinement:\n${item.refinement || "Not requested"}`,
+  fix = () => {
+    throw new AdeError(
+      "repair_unavailable",
+      "The isolated PR-repair workflow is a later milestone. Review analysis cannot start an issue-task follow-up.",
     );
   };
   start = () => {
     for (const job of this.jobs()) {
-      if (job.status === "polling") {
-        job.status = "idle";
-        job.next_run_at = now();
-        this.save(job);
-      } else if (job.status === "analyzing") {
+      if (["polling", "pending", "analyzing"].includes(job.status)) {
         job.status = "interrupted";
         job.error =
-          "The execution core restarted before PR analysis finished. The previous decision is preserved. Retry explicitly to run analysis again.";
-        this.save(job);
+          "PR inspection was interrupted. Request analysis explicitly to continue.";
       }
+      this.save(job);
     }
-    this.wake();
   };
-  private wake = () => {
-    if (this.stopped || this.running) return;
-    if (this.timer) clearTimeout(this.timer);
-    const jobs = this.jobs().filter(
-      (j) =>
-        (j.enabled || j.check_once) &&
-        !["interrupted", "error"].includes(j.status),
-    );
-    if (!jobs.length) return;
-    const delay = Math.max(
-      0,
-      Math.min(...jobs.map((j) => Date.parse(j.next_run_at))) - Date.now(),
-    );
-    this.timer = setTimeout(
-      () => {
-        this.timer = undefined;
-        this.running = this.tick()
-          .catch((e) => {
-            this.engine.publish({ event: "changed", text: redact(String(e)) });
-          })
-          .finally(() => {
-            this.running = undefined;
-            this.wake();
-          });
+  // Older callers cannot restore timers or execute imported enabled records.
+  tick = async () => {};
+  runNow = (id: string) => this.launch(id, randomUUID(), false);
+  analyze = (id: string, requestId: string = randomUUID()) =>
+    this.launch(id, requestId, true);
+  cancel = async (id: string) => {
+    const active = this.active.get(id);
+    active?.controller.abort();
+    await active?.promise;
+  };
+  private launch = (id: string, requestId: string, semantic: boolean) => {
+    this.engine.assertAvailable();
+    const duplicate = this.engine.db.all<{ job_id: string }>(
+      "SELECT job_id FROM pr_analyses WHERE id=?",
+      requestId,
+    )[0];
+    if (duplicate) {
+      if (duplicate.job_id !== id)
+        throw new AdeError(
+          "isolation",
+          "Analysis request belongs to a different PR",
+        );
+      return { analysis_id: requestId };
+    }
+    if (this.stopped || this.active.has(id))
+      throw new AdeError(
+        "busy",
+        "PR inspection already running or the core is stopping",
+      );
+    const job = this.job(id);
+    const controller = new AbortController();
+    const session: PRAnalysisSession = {
+      id: requestId,
+      job_id: id,
+      status: "running",
+      started_at: now(),
+      ended_at: null,
+      phase: "Fetching complete GitHub context",
+      configuration: structuredClone(this.engine.db.settings().utility_ai),
+    };
+    let release = () => {};
+    release = this.engine.trackActivity(
+      {
+        id: `pr-watch:${id}`,
+        kind: "pr_watch",
+        task_id: job.task_id || undefined,
+        label: `Explicit PR inspection ${job.url}`,
+        stoppable: true,
       },
-      Math.min(delay, 2147483647),
+      () => this.cancel(id),
     );
-    this.timer.unref();
-  };
-  tick = async () => {
-    for (const candidate of this.jobs().filter(
-      (j) =>
-        (j.enabled || j.check_once) &&
-        Date.parse(j.next_run_at) <= Date.now() &&
-        !["interrupted", "error"].includes(j.status),
-    )) {
-      if (this.controller.signal.aborted) return;
-      const job = this.job(candidate.id);
-      if (job.archived || (!job.enabled && !job.check_once)) continue;
-      const controller = new AbortController();
-      const signal = AbortSignal.any([
-        this.controller.signal,
-        controller.signal,
-      ]);
-      let finish = () => {};
-      const finished = new Promise<void>((resolve) => {
-        finish = resolve;
-      });
-      let release: (() => void) | undefined;
-      try {
-        release = this.engine.trackActivity(
-          {
-            id: `pr-watch:${job.id}`,
-            kind: "pr_watch",
-            task_id: job.task_id || undefined,
-            label: `PR watch inspection ${job.url.replace("https://github.com/", "").replace("/pull/", " #")} is running`,
-            stoppable: true,
-          },
-          async () => {
-            job.enabled = false;
-            job.check_once = false;
-            this.save(job);
-            controller.abort();
-            if (this.engine.isExecuting(`utility:${job.id}`))
-              this.engine.cancel(`utility:${job.id}`);
-            await finished;
-          },
-        );
-        job.status = "polling";
-        this.save(job);
-        const current = await this.monitor.inspect(job.url, signal);
-        signal.throwIfAborted();
-        if (this.job(job.id).archived) continue;
-        job.last_checked_at = now();
-        job.title = current.title;
-        job.next_run_at = new Date(
-          Date.now() + job.interval_minutes * 60000,
-        ).toISOString();
-        job.error = null;
-        const previous = job.last_snapshot || {
-          ...current,
-          discussion: [],
-          comments: [],
-          reviews: [],
-          checks: [],
-          threads: [],
-          mergeable: "UNKNOWN",
-          reviewDecision: "",
-        };
-        const changes = job.last_snapshot
-          ? changedPullRequest(previous, current).changes
-          : ["Initial PR inspection"];
-        job.changes = changes;
-        const assessment = assessActivity(previous, current, changes);
-        if (!changes.length && !job.pending_snapshot) {
-          job.status = "idle";
-          job.check_once = false;
-          job.last_snapshot = current;
-          job.analysis_method = "deterministic";
-          this.save(job);
-          continue;
-        }
-        if (!assessment.analyze) {
-          if (
-            assessment.action.summary ===
-              "Review conversation is being assessed" &&
-            job.conversation_action
-          )
-            assessment.action = job.conversation_action;
-          job.action = assessment.action;
-          job.attention_source = assessment.source;
-          job.analysis_method = "deterministic";
-        } else {
-          job.pending_snapshot = current;
-          job.status = "analyzing";
-          this.save(job);
-          const result = await this.engine.analyzeScheduled(
-            job.task_id,
-            reviewPrompt(current, job.action, changes),
-            job.verify_codex,
-            job.id,
-            signal,
-          );
-          if (!result) {
-            job.status = "pending";
-            job.next_run_at = new Date(Date.now() + 60000).toISOString();
-            this.save(job);
-            continue;
-          }
-          if (this.job(job.id).archived) continue;
-          job.action = ActionSchema.parse(result.refinement || result.analysis);
-          job.action.severity = job.action.manualActionRequired
-            ? "action_required"
-            : job.action.severity === "action_required"
-              ? "info"
-              : job.action.severity;
-          if (
-            job.action.manualActionRequired &&
-            job.action.conversationState === "neutral"
-          )
-            job.action.conversationState = "waiting_for_me";
-          job.conversation_action = job.action;
-          job.attention_source = "review";
-          job.analysis_method = "utility_ai";
-          if (job.action.manualActionRequired)
-            this.record(
-              job,
-              result.analysis,
-              result.refinement,
-              null,
-              job.action.summary,
-            );
-        }
-        if (
-          !job.action?.manualActionRequired &&
-          assessment.ciPending &&
-          current.state === "OPEN"
-        )
-          job.action = {
-            ...job.action!,
-            conversationState: "waiting_for_ci",
-            summary: "CI running",
-            reason: job.action?.reason
-              ? `${job.action.reason} Waiting for checks to finish.`
-              : "Waiting for checks to finish",
-          };
-        if (!job.action?.manualActionRequired)
-          this.engine.db.run(
-            "UPDATE scheduled_attention SET dismissed=1 WHERE job_id=?",
-            job.id,
-          );
-        else if (!assessment.analyze)
-          this.record(job, null, null, null, job.action.summary);
-        job.last_snapshot = current;
-        job.pending_snapshot = null;
-        job.status = "idle";
-        job.check_once = false;
-        if (current.state !== "OPEN") {
-          job.paused_before_archive = !job.enabled;
-          job.enabled = false;
-          job.archived = true;
-        }
-        this.save(job);
-      } catch (error) {
-        job.check_once = false;
-        if (!release && error instanceof AdeError && error.kind === "busy") {
-          job.status = "pending";
+    const promise = Promise.resolve()
+      .then(async () => {
+        try {
+          controller.signal.throwIfAborted();
+          job.status = "polling";
           job.error = null;
-          job.next_run_at = new Date(Date.now() + 60000).toISOString();
           this.save(job);
-          continue;
-        }
-        job.error = redact(
-          error instanceof Error ? error.message : String(error),
-        );
-        if (job.pending_snapshot) {
-          job.status = signal.aborted ? "interrupted" : "error";
-          this.record(
-            job,
-            null,
-            null,
-            job.error,
-            "PR conversation analysis unavailable",
+          this.analysis.save(session);
+          const snapshot = await this.monitor.inspect(
+            job.url,
+            controller.signal,
           );
-        } else {
+          controller.signal.throwIfAborted();
+          session.snapshot = snapshot;
+          job.title = snapshot.title;
+          job.last_checked_at = now();
+          job.pending_snapshot = snapshot;
+          if (semantic) {
+            job.status = "analyzing";
+            this.save(job);
+            await this.analysis.analyze(
+              session,
+              snapshot,
+              job.url,
+              controller.signal,
+            );
+            job.last_analyzed_at = session.ended_at || now();
+          } else {
+            session.method = "deterministic";
+            session.phase = "GitHub inspection only · No AI usage";
+            session.status = snapshot.coverage?.complete
+              ? "completed"
+              : "partial";
+            session.ended_at = now();
+            this.analysis.save(session);
+          }
+          controller.signal.throwIfAborted();
+          job.last_snapshot = snapshot;
+          job.pending_snapshot = null;
           job.status = "idle";
-          if (signal.aborted) job.error = null;
-          job.next_run_at = new Date(
-            Date.now() + job.interval_minutes * 60000,
-          ).toISOString();
+          job.archived = snapshot.state !== "OPEN";
+          job.analysis_method =
+            session.method === "utility_ai" ? "utility_ai" : "deterministic";
+          if (session.report) {
+            const outstanding = session.report.actions.filter(
+              (a) =>
+                !["positive_feedback", "informational"].includes(
+                  a.classification,
+                ) &&
+                a.responseState !== "answered" &&
+                !a.reviewerAcknowledgmentIds.length,
+            );
+            job.action = ActionSchema.parse({
+              manualActionRequired:
+                !session.report.complete ||
+                (snapshot.reviewDecision === "CHANGES_REQUESTED" &&
+                  !session.report.actions.length) ||
+                outstanding.length > 0 ||
+                snapshot.checks.some((c) =>
+                  ["FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED"].includes(
+                    c.state,
+                  ),
+                ) ||
+                snapshot.mergeable === "CONFLICTING",
+              conversationState:
+                snapshot.state === "MERGED"
+                  ? "merged"
+                  : snapshot.state === "CLOSED"
+                    ? "closed"
+                    : outstanding.length
+                      ? "waiting_for_me"
+                      : "neutral",
+              severity: outstanding.length ? "action_required" : "info",
+              summary: session.report.summary,
+              reason: session.report.complete
+                ? "Source-linked review observations; code remains unverified."
+                : "Partial coverage; inspect warnings.",
+              outstandingRequests: outstanding.map((a) => ({
+                author: a.reviewer,
+                request: a.originalText,
+                sourceId: a.sourceId,
+              })),
+              alreadyAddressed: [],
+              recommendedNextAction:
+                "Inspect observations, unanswered questions and check evidence.",
+              affectedFiles: [
+                ...new Set(outstanding.flatMap((a) => a.affectedFiles)),
+              ],
+              newActivity: session.changes || [],
+            });
+            job.changes = session.changes || [];
+            this.engine.db.run(
+              "UPDATE scheduled_attention SET dismissed=1 WHERE job_id=?",
+              id,
+            );
+            if (job.action.manualActionRequired)
+              this.engine.db.run(
+                "INSERT INTO scheduled_attention(id,job_id,task_id,created_at,summary,changes,analysis) VALUES(?,?,?,?,?,?,?)",
+                randomUUID(),
+                id,
+                job.task_id,
+                now(),
+                session.report.summary,
+                JSON.stringify(job.changes),
+                JSON.stringify(session.report),
+              );
+          }
+        } catch (error) {
+          session.status = controller.signal.aborted
+            ? this.stopped
+              ? "interrupted"
+              : "cancelled"
+            : "failed";
+          session.error = redact(
+            error instanceof Error ? error.message : String(error),
+          );
+          session.phase = controller.signal.aborted
+            ? this.stopped
+              ? "Analysis interrupted — explicit retry required"
+              : "Analysis cancelled — no automatic retry"
+            : "Analysis failed — explicit retry required";
+          session.ended_at = now();
+          this.analysis.save(session);
+          job.status = controller.signal.aborted ? "interrupted" : "error";
+          job.error = session.error;
+        } finally {
+          try {
+            this.save(job);
+          } finally {
+            this.active.delete(id);
+            release();
+          }
         }
-        this.save(job);
-      } finally {
-        release?.();
-        finish();
-      }
-    }
-  };
-  private record = (
-    job: ScheduleJob,
-    analysis: unknown,
-    refinement: unknown,
-    error: string | null,
-    summary = "Actionable PR update",
-  ) => {
-    this.engine.db.run(
-      "UPDATE scheduled_attention SET dismissed=1 WHERE job_id=?",
-      job.id,
-    );
-    return this.engine.db.run(
-      "INSERT INTO scheduled_attention(id,job_id,task_id,created_at,summary,changes,analysis,refinement,error) VALUES(?,?,?,?,?,?,?,?,?)",
-      randomUUID(),
-      job.id,
-      job.task_id,
-      now(),
-      summary,
-      JSON.stringify(job.changes),
-      analysis ? JSON.stringify(analysis) : null,
-      refinement ? JSON.stringify(refinement) : null,
-      error,
-    );
+      })
+      .catch((error) =>
+        this.engine.publish({
+          event: "core.error",
+          text: redact(error instanceof Error ? error.message : String(error)),
+        }),
+      );
+    this.active.set(id, { controller, promise });
+    this.analysis.save(session);
+    return { analysis_id: requestId };
   };
   close = async () => {
     this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    this.controller.abort();
-    for (const job of this.jobs())
-      if (
-        job.status === "analyzing" &&
-        this.engine.isActive(`utility:${job.id}`)
-      )
-        this.engine.cancel(`utility:${job.id}`);
-    await this.running;
+    for (const operation of this.active.values()) operation.controller.abort();
+    await Promise.all(
+      [...this.active.values()].map((operation) => operation.promise),
+    );
   };
 }

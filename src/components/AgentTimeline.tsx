@@ -9,9 +9,11 @@ import {
   Check,
   LoaderCircle,
   CircleMinus,
+  CircleAlert,
 } from "lucide-react";
 import type { AgentEvent, Run, Message, DiffFile } from "../lib/types";
-import { eventData, duration } from "../lib/api";
+import { duration, eventData } from "../lib/api";
+import { agentEntries, toolState } from "../lib/agent-output/activity";
 import { AgentResponse } from "./AgentResponse";
 import { RunError } from "./RunError";
 import { Button } from "./ui/button";
@@ -23,6 +25,8 @@ export const AgentTimeline = ({
   openDiff,
   retryMessage,
   editMessage,
+  search = "",
+  filter = "all",
 }: {
   events: AgentEvent[];
   runs: Run[];
@@ -31,47 +35,10 @@ export const AgentTimeline = ({
   openDiff?: (path: string) => void;
   retryMessage?: (message: Message) => void;
   editMessage?: (message: Message) => void;
+  search?: string;
+  filter?: string;
 }) => {
-  const entries = useMemo(() => {
-    const result: {
-      key: number;
-      event: AgentEvent;
-      data: Record<string, unknown>;
-    }[] = [];
-    const calls = new Map<string, number>();
-    for (const event of events) {
-      const data = eventData(event.data);
-      if (event.kind.startsWith("run.") || event.stream === "stderr") continue;
-      if (
-        ["message", "analysis.status"].includes(event.kind) &&
-        !data.text &&
-        !data.text_delta &&
-        !data.tool
-      )
-        continue;
-      const call =
-        data.call_id !== undefined ? `${event.run_id}/${data.call_id}` : null;
-      if (call && calls.has(call)) {
-        const row = result[calls.get(call)!];
-        row.event = event;
-        const clean = Object.fromEntries(
-          Object.entries(data).filter(([, v]) => v !== undefined && v !== null),
-        );
-        const text = data.text_delta
-          ? `${row.data.text || ""}${data.text_delta}`
-          : data.text;
-        row.data = { ...row.data, ...clean, ...(text ? { text } : {}) };
-      } else {
-        if (call) calls.set(call, result.length);
-        result.push({
-          key: event.id,
-          event,
-          data: { ...data, text: data.text_delta || data.text },
-        });
-      }
-    }
-    return result;
-  }, [events]);
+  const entries = useMemo(() => agentEntries(events, search), [events, search]);
   const renderTool = (row: (typeof entries)[number]) => {
     const { event, data } = row;
     const run = runs.find((r) => r.id === event.run_id);
@@ -81,21 +48,76 @@ export const AgentTimeline = ({
           <AgentResponse text={String(data.text || "")} />
         </article>
       );
+    if (event.stream === "stderr")
+      return (
+        <article className="provider-diagnostic" key={row.key}>
+          <strong>Provider stderr</strong>
+          <pre>{String(data.stderr || data.text || "")}</pre>
+        </article>
+      );
+    if (typeof data.unparsed === "string")
+      return (
+        <article className="provider-diagnostic" key={row.key}>
+          <strong>Provider stdout</strong>
+          <pre>{data.unparsed}</pre>
+        </article>
+      );
+    if (
+      ["run.failed", "run.cancelled"].includes(event.kind) ||
+      (event.kind === "analysis.status" &&
+        typeof data.text === "string" &&
+        !data.tool)
+    ) {
+      const error = event.kind === "run.failed";
+      const message =
+        data.message ||
+        data.text ||
+        (data.error && typeof data.error === "object" && "message" in data.error
+          ? data.error.message
+          : data.error);
+      return (
+        <article
+          key={row.key}
+          className={`provider-diagnostic ${error ? "failure" : ""}`}
+          role="status"
+        >
+          <strong>
+            {error
+              ? "Provider error"
+              : event.kind === "run.cancelled"
+                ? "Run cancelled"
+                : "Provider status"}
+          </strong>
+          <AgentResponse
+            text={
+              typeof message === "string"
+                ? message
+                : JSON.stringify(data, null, 2)
+            }
+          />
+          <details>
+            <summary>Emitted event</summary>
+            <pre>{event.raw || JSON.stringify(data, null, 2)}</pre>
+          </details>
+        </article>
+      );
+    }
     const search =
       /search|grep|find_by_name/.test(String(data.tool)) ||
       /\b(rg|grep|find)\b/.test(String(data.command));
     const edited = event.kind === "file.changed";
     const command = event.kind.startsWith("command");
-    const failed =
-      (typeof data.exit_code === "number" && data.exit_code !== 0) ||
-      ["failed", "error"].includes(String(data.status).toLowerCase());
-    const finished =
-      event.kind === "command.finished" ||
-      ["done", "completed"].includes(String(data.status).toLowerCase()) ||
-      run?.status !== "running";
-    const skipped =
-      event.kind === "test.result" &&
-      ["skipped", "not_run"].includes(String(data.status));
+    const state = toolState(event, data, run);
+    const failed = state === "failed";
+    const interrupted = state === "interrupted";
+    const finished = state !== "running";
+    const observedDuration =
+      command &&
+      row.initial.kind === "command.started" &&
+      event.kind === "command.finished"
+        ? duration(row.initial.timestamp, event.timestamp)
+        : "";
+    const skipped = state === "skipped";
     const Icon = edited
       ? FilePenLine
       : search || event.kind === "file.read"
@@ -108,18 +130,34 @@ export const AgentTimeline = ({
     const label = search
       ? "Search"
       : edited
-        ? "Edited"
+        ? state === "running"
+          ? "Editing"
+          : interrupted
+            ? "Edit interrupted"
+            : failed
+              ? "Edit failed"
+              : "Edited"
         : event.kind === "file.read"
-          ? "Read file"
+          ? state === "running"
+            ? "Reading file"
+            : interrupted
+              ? "Read interrupted"
+              : failed
+                ? "Read failed"
+                : "Read file"
           : command
             ? failed
               ? "Command failed"
-              : finished
-                ? "Ran"
-                : "Running command"
+              : interrupted
+                ? "Command interrupted"
+                : finished
+                  ? "Ran"
+                  : "Running command"
             : event.kind === "test.result"
               ? `Test ${data.status || "result"}`
-              : "Working";
+              : data.tool
+                ? String(data.tool)
+                : "Provider event";
     const paths = (
       Array.isArray(data.files)
         ? data.files
@@ -135,7 +173,8 @@ export const AgentTimeline = ({
     );
     return (
       <article
-        className={`tool-event ${failed ? "tool-failed" : skipped ? "tool-skipped" : ""}`}
+        className={`tool-event ${failed ? "tool-failed" : interrupted ? "tool-interrupted" : skipped ? "tool-skipped" : ""}`}
+        data-state={state}
         key={row.key}
       >
         <details>
@@ -150,18 +189,68 @@ export const AgentTimeline = ({
                 ? `${paths.length} file${paths.length === 1 ? "" : "s"}`
                 : preview}
             </code>
-            {skipped ? (
+            <small className="tool-state">{state}</small>
+            {skipped || interrupted ? (
               <CircleMinus size={12} className="warning" />
+            ) : failed ? (
+              <CircleAlert size={12} className="failure" />
             ) : finished && !failed ? (
-              <Check size={12} className="success" />
+              command && data.exit_code !== 0 ? (
+                <CircleMinus size={12} className="subtle" />
+              ) : (
+                <Check size={12} className="success" />
+              )
             ) : !finished ? (
               <LoaderCircle size={12} className="running spinning" />
             ) : null}
             {typeof data.duration_ms === "number" && (
               <small>{Math.round(data.duration_ms / 1000)}s</small>
             )}
+            {typeof data.duration_ms !== "number" && observedDuration && (
+              <small title="Time between reported tool start and finish">
+                Observed {observedDuration}
+              </small>
+            )}
           </summary>
           <div className="tool-details">
+            <dl className="tool-facts">
+              <dt>Tool</dt>
+              <dd>
+                <code>
+                  {String(
+                    data.tool || (command ? "command_execution" : event.kind),
+                  )}
+                </code>
+              </dd>
+              {data.arguments != null && (
+                <>
+                  <dt>Arguments</dt>
+                  <dd>
+                    <pre>
+                      {typeof data.arguments === "string"
+                        ? data.arguments
+                        : JSON.stringify(data.arguments, null, 2)}
+                    </pre>
+                  </dd>
+                </>
+              )}
+              {data.command != null && (
+                <>
+                  <dt>Command</dt>
+                  <dd>
+                    <code>{String(data.command)}</code>
+                  </dd>
+                </>
+              )}
+              {data.path != null && (
+                <>
+                  <dt>Path</dt>
+                  <dd>
+                    <code>{String(data.path)}</code>
+                  </dd>
+                </>
+              )}
+            </dl>
             {sandboxDropped && (
               <p className="warning">
                 Antigravity's command sandbox connection dropped. This command
@@ -194,15 +283,27 @@ export const AgentTimeline = ({
                 </Entry>
               );
             })}
-            {!paths.length && (
+            {
               <>
                 {data.stdout || data.stderr ? (
                   <>
                     {typeof data.stdout === "string" && (
-                      <pre>{data.stdout}</pre>
+                      <section className="tool-stream">
+                        <strong>
+                          {data.output_source === "aggregate"
+                            ? "Command output · provider aggregate"
+                            : data.output_source === "provider"
+                              ? "Provider tool output"
+                              : "stdout"}
+                        </strong>
+                        <pre>{data.stdout}</pre>
+                      </section>
                     )}
                     {typeof data.stderr === "string" && (
-                      <pre className="warning">{data.stderr}</pre>
+                      <section className="tool-stream">
+                        <strong>stderr</strong>
+                        <pre className="warning">{data.stderr}</pre>
+                      </section>
                     )}
                   </>
                 ) : (
@@ -211,10 +312,44 @@ export const AgentTimeline = ({
                   </pre>
                 )}
               </>
-            )}
+            }
             {typeof data.exit_code === "number" && (
               <small>Exit {data.exit_code}</small>
             )}
+            {command && typeof data.exit_code !== "number" && (
+              <small>Exit status not reported</small>
+            )}
+            {typeof data.duration_ms !== "number" && !observedDuration && (
+              <small>Duration not reported</small>
+            )}
+            <details className="tool-technical">
+              <summary>Technical details · emitted event</summary>
+              <pre>
+                {JSON.stringify(
+                  row.initial.id !== event.id
+                    ? {
+                        initial: eventData(row.initial.raw || row.initial.data),
+                        latest: eventData(event.raw || event.data),
+                      }
+                    : event.raw
+                      ? eventData(event.raw)
+                      : data,
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(JSON.stringify(data, null, 2))
+                  .catch(() => {})
+              }
+            >
+              Copy tool details
+            </Button>
             {data.source === "provider-reported" && (
               <small>Provider reported</small>
             )}
@@ -300,7 +435,30 @@ export const AgentTimeline = ({
         } as Run,
       ];
   for (const run of groupedRuns) {
-    const local = entries.filter((e) => !run.id || e.event.run_id === run.id);
+    const local = entries.filter(
+      (e) =>
+        (!run.id || e.event.run_id === run.id) &&
+        (!search ||
+          e.matches ||
+          JSON.stringify(e.data)
+            .toLowerCase()
+            .includes(search.toLowerCase())) &&
+        (filter === "all" ||
+          (filter === "messages"
+            ? e.event.kind === "message"
+            : filter === "commands"
+              ? e.event.kind.startsWith("command.") &&
+                e.event.stream !== "stderr"
+              : filter === "files"
+                ? e.event.kind.startsWith("file.")
+                : filter === "errors"
+                  ? e.event.stream === "stderr" ||
+                    ["run.failed", "run.cancelled"].includes(e.event.kind) ||
+                    ["failed", "interrupted"].includes(
+                      toolState(e.event, e.data, run),
+                    )
+                  : e.event.kind === "test.result")),
+    );
     blocks.push({
       time: run.started_at,
       key: run.id || "ungrouped",
@@ -343,9 +501,12 @@ export const AgentTimeline = ({
                 ),
             )
             .map(renderTool)}
-          {run.output && run.status === "completed" && (
-            <AgentResponse text={run.output} expanded />
-          )}
+          {run.output &&
+            (filter === "all" || filter === "messages") &&
+            (!search ||
+              run.output.toLowerCase().includes(search.toLowerCase())) && (
+              <AgentResponse text={run.output} expanded />
+            )}
           {run.error && <RunError error={run.error} run={run} />}
           {run.id && (
             <div className="turn-outcome">

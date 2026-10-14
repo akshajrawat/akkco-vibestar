@@ -1499,13 +1499,16 @@ export class Engine extends EventEmitter {
       return this.runner.run(
         task ? { ...task, stage: 1 } : { id, stage: 1 },
         this.db.settings(),
-        controller.signal,
+        request.signal
+          ? AbortSignal.any([controller.signal, request.signal])
+          : controller.signal,
         {
           prompt: request.prompt,
           purpose: request.purpose,
           workspace,
           schema: request.schema,
           jobId: request.context?.jobId,
+          analysisId: request.context?.analysisId,
           telemetryTaskId: request.context?.taskId,
           questionId: request.context?.questionId,
           telemetryRepository: request.context?.repository,

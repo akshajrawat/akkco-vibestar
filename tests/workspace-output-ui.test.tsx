@@ -144,7 +144,7 @@ it("makes worktree and branch deletion mandatory when deleting task history", as
   });
 });
 
-it("collapses run metadata into the right sidebar and maximizes/restores the dock without restarting its terminal", async () => {
+it("keeps active execution visible with the right sidebar closed and restores the dock without restarting its terminal", async () => {
   bridge();
   terminal.mounts = 0;
   const ui = render(
@@ -155,13 +155,13 @@ it("collapses run metadata into the right sidebar and maximizes/restores the doc
       back={vi.fn()}
     />,
   );
-  expect(screen.queryByLabelText("Current agent run")).toBeNull();
+  expect(screen.getByLabelText("Current agent run")).toBeTruthy();
   expect(screen.queryByText("View sent prompts")).toBeNull();
   expect(screen.getAllByLabelText("Stop agent").length).toBeGreaterThan(0);
   fireEvent.click(screen.getByLabelText("Toggle pipeline context"));
   const sidebar = ui.container.querySelector("aside.context-pane")!;
   expect(sidebar.contains(screen.getByLabelText("Current agent run"))).toBe(
-    true,
+    false,
   );
   expect(sidebar.contains(screen.getByText("View sent prompts"))).toBe(true);
   fireEvent.click(screen.getByLabelText("Close context pane"));
@@ -347,6 +347,6 @@ it("opens readable agent output with expanded results and both command streams, 
   expect(screen.getByText("remote stress run")).toBeTruthy();
   expect(screen.getByText("actual stdout")).toBeTruthy();
   expect(screen.getByText("actual stderr")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Raw stdout" }));
+  fireEvent.click(screen.getByRole("button", { name: "Raw" }));
   expect(await screen.findByText('{"raw":"provider envelope"}')).toBeTruthy();
 });

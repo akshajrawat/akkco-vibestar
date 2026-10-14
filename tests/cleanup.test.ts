@@ -489,12 +489,11 @@ it("stopping a PR inspection aborts and pauses it, releasing its live blocker", 
       task_id: null,
       interval_minutes: 60,
     });
-    const tick = scheduler.tick();
+    scheduler.runNow(job.id);
     expect(engine.cleanupBlockers()).toMatchObject([
       { id: `pr-watch:${job.id}` },
     ]);
     await engine.stopActivity(`pr-watch:${job.id}`);
-    await tick;
     expect(scheduler.jobs()[0].enabled).toBe(false);
     expect(engine.cleanupBlockers()).toEqual([]);
   } finally {

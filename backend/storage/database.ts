@@ -145,6 +145,10 @@ export class Database {
   recover = () => {
     this.connection.transaction(() => {
       this.run(
+        "UPDATE pr_analyses SET status='interrupted',ended_at=?,data=json_set(data,'$.phase','Analysis interrupted — explicit retry required','$.error','The core restarted during PR analysis. Previous reports are preserved; Analyze Again explicitly.') WHERE status='running'",
+        now(),
+      );
+      this.run(
         "UPDATE agent_runs SET status='interrupted',ended_at=?,error='Execution core stopped; explicit retry required' WHERE status='running'",
         now(),
       );

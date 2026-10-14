@@ -125,4 +125,23 @@ ALTER TABLE test_runs ADD COLUMN call_id TEXT;
 ALTER TABLE test_runs ADD COLUMN output_truncated INTEGER NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX test_runs_provider_call ON test_runs(task_id,run_id,call_id);`,
   },
+  {
+    version: 17,
+    sql: `
+UPDATE settings SET value=json_set(value,'$.auto_watch',json('false')) WHERE key='github_watch';
+UPDATE scheduled_jobs SET data=json_set(data,'$.enabled',json('false'),'$.check_once',json('false'),'$.status',CASE WHEN json_extract(data,'$.status') IN ('polling','pending','analyzing') THEN 'interrupted' ELSE COALESCE(json_extract(data,'$.status'),'idle') END);
+INSERT OR REPLACE INTO settings VALUES('pr_execution_policy','"manual_only_v1"');
+`,
+  },
+  {
+    version: 18,
+    sql: `
+CREATE TABLE pr_analyses(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,data TEXT NOT NULL);
+CREATE INDEX pr_analyses_job ON pr_analyses(job_id,started_at);
+CREATE TABLE pr_review_actions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,anchor TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(job_id,anchor));
+CREATE TABLE pr_action_assessments(analysis_id TEXT NOT NULL REFERENCES pr_analyses(id) ON DELETE CASCADE,action_id TEXT NOT NULL REFERENCES pr_review_actions(id) ON DELETE CASCADE,data TEXT NOT NULL,PRIMARY KEY(analysis_id,action_id));
+ALTER TABLE scheduled_agent_runs ADD COLUMN analysis_id TEXT REFERENCES pr_analyses(id) ON DELETE SET NULL;
+ALTER TABLE ai_usage ADD COLUMN analysis_id TEXT REFERENCES pr_analyses(id) ON DELETE SET NULL;
+`,
+  },
 ];

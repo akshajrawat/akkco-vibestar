@@ -1,0 +1,125 @@
+import { it, expect } from "vitest";
+import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CoreBridge } from "../electron/bridge";
+
+const helper = (manual = true) => `
+const {createInterface}=require('node:readline');
+const {createHash}=require('node:crypto');
+const {readFile}=require('node:fs/promises');
+readFile(__filename).then(bytes=>{
+const build=createHash('sha256').update(bytes).digest('hex');
+const lines=createInterface({input:process.stdin});
+lines.on('line',line=>{
+const request=JSON.parse(line);
+const result=request.method==='core.info'?{build,pipeline_approvals:true,manual_pr_analysis:${manual}}:{accepted:request.method};
+process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
+});
+lines.on('close',()=>process.exit(0));
+});`;
+
+it.skipIf(process.platform === "win32")(
+  "blocks legacy PR actions independently of issue execution capability",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-policy-"));
+    await writeFile(join(dir, "core.cjs"), helper(false));
+    const bridge = new CoreBridge(dir, {
+      distro: "",
+      data_home: dir,
+      helper_path: "",
+    });
+    try {
+      bridge.start();
+      await expect(bridge.request("scheduled.analyze")).rejects.toThrow(
+        "manual-only PR analysis",
+      );
+      await expect(bridge.request("github.sync")).rejects.toThrow(
+        "manual-only PR analysis",
+      );
+      await expect(bridge.request("task.create")).resolves.toEqual({
+        accepted: "task.create",
+      });
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "checks the WSL helper bytes before loading code that could start legacy timers",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-wsl-"));
+    const bin = join(dir, "bin");
+    await mkdir(bin);
+    await writeFile(
+      join(bin, "wsl.exe"),
+      `#!/usr/bin/env node
+const {spawn}=require('node:child_process');
+const args=process.argv.slice(2);
+const command=args.slice(args.indexOf('--exec')+1);
+const child=spawn(command[0],command.slice(1),{stdio:'inherit'});
+child.on('exit',code=>process.exit(code||0));
+`,
+      { mode: 0o755 },
+    );
+    const bundled = helper();
+    await writeFile(join(dir, "core.cjs"), bundled);
+    const installed = join(dir, "installed.cjs");
+    const marker = join(dir, "legacy-loaded");
+    const originalPlatform = Object.getOwnPropertyDescriptor(
+      process,
+      "platform",
+    )!;
+    const originalPath = process.env.PATH;
+    try {
+      process.env.PATH = `${bin}:${originalPath}`;
+      Object.defineProperty(process, "platform", { value: "win32" });
+      for (const stale of [true, false]) {
+        await writeFile(
+          installed,
+          stale
+            ? `require('node:fs/promises').writeFile(${JSON.stringify(marker)},'loaded');${bundled}`
+            : bundled,
+        );
+        const bridge = new CoreBridge(dir, {
+          distro: "Fixture",
+          data_home: dir,
+          helper_path: installed,
+        });
+        const events: { event: string; text?: string }[] = [];
+        bridge.on("event", (event) => events.push(event));
+        try {
+          bridge.start();
+          if (stale) {
+            await expect(bridge.request("scheduled.analyze")).rejects.toThrow(
+              "helper",
+            );
+            expect(
+              events.some((event) =>
+                event.text?.includes(
+                  "legacy automatic PR monitoring is blocked",
+                ),
+              ),
+            ).toBe(true);
+            await expect(readFile(marker)).rejects.toMatchObject({
+              code: "ENOENT",
+            });
+          } else {
+            await expect(bridge.request("snapshot")).resolves.toEqual({
+              accepted: "snapshot",
+            });
+          }
+        } finally {
+          await bridge.stop();
+        }
+      }
+    } finally {
+      Object.defineProperty(process, "platform", originalPlatform);
+      process.env.PATH = originalPath;
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  30000,
+);

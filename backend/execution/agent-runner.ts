@@ -51,6 +51,7 @@ export class AgentRunner {
       config?: StageConfig;
       schema?: z.ZodType;
       jobId?: string;
+      analysisId?: string;
       telemetryTaskId?: string;
       telemetryRepository?: string;
       questionId?: string;
@@ -139,6 +140,18 @@ export class AgentRunner {
       now(),
       purpose,
     );
+    if (options?.analysisId && table === "scheduled_agent_runs") {
+      this.db.run(
+        "UPDATE scheduled_agent_runs SET analysis_id=? WHERE id=?",
+        options.analysisId,
+        id,
+      );
+      this.db.run(
+        "UPDATE ai_usage SET analysis_id=? WHERE id=?",
+        options.analysisId,
+        id,
+      );
+    }
     if (task && options?.questionId) {
       this.db.run(
         "UPDATE code_questions SET run_id=? WHERE id=? AND task_id=?",
@@ -267,16 +280,45 @@ export class AgentRunner {
           } catch {
             raw = { unparsed: line };
           }
-          const conversationId = provider.conversationId(raw);
+          const conversationId =
+            stream === "stdout" ? provider.conversationId(raw) : null;
           if (stream === "stdout") {
             usage.observe(id, raw);
             const reportedModel = object(raw.init).model || raw.model;
-            if (typeof reportedModel === "string" && reportedModel)
+            if (typeof reportedModel === "string" && reportedModel) {
               this.db.run(
-                `UPDATE ${table} SET model=? WHERE id=? AND model=''`,
+                `UPDATE ${table} SET model=? WHERE id=?`,
                 reportedModel,
                 id,
               );
+              this.db.run(
+                "UPDATE ai_usage SET model=? WHERE id=?",
+                reportedModel,
+                id,
+              );
+            }
+            if (
+              raw.event === "init" ||
+              ["system", "thread.started"].includes(String(raw.type))
+            ) {
+              const reportedEffort =
+                object(raw.init).reasoning_effort ||
+                object(raw.init).effort ||
+                raw.reasoning_effort ||
+                raw.effort;
+              if (typeof reportedEffort === "string" && reportedEffort) {
+                this.db.run(
+                  `UPDATE ${table} SET effort=? WHERE id=?`,
+                  reportedEffort,
+                  id,
+                );
+                this.db.run(
+                  "UPDATE ai_usage SET effort=? WHERE id=?",
+                  reportedEffort,
+                  id,
+                );
+              }
+            }
           }
           this.emit({
             event: "usage.changed",
@@ -294,7 +336,7 @@ export class AgentRunner {
               id,
             );
           }
-          const result = provider.result(raw);
+          const result = stream === "stdout" ? provider.result(raw) : undefined;
           if (result !== undefined) final = result;
           for (const event of stream === "stderr"
             ? [{ kind: "command.output" as const, data: { stderr: line } }]

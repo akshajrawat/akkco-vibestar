@@ -48,6 +48,21 @@ it("cancels process groups without waiting for full timeout", async () => {
   });
   await expect(run).rejects.toThrow("cancelled");
 });
+it("preserves UTF-8 split across independent stdout/stderr chunks before redaction", async () => {
+  const lines: string[] = [];
+  const output = await execute({
+    program: process.execPath,
+    args: [
+      "-e",
+      "process.stdout.write(Buffer.from([0xf0,0x9f]));process.stderr.write(Buffer.from([0xe2]));setTimeout(()=>{process.stdout.write(Buffer.from([0x90,0x88,0x0a]));process.stderr.write(Buffer.from([0x9c,0x93,0x0a]));},50)",
+    ],
+    cwd: tmpdir(),
+    onLine: (stream, line) => lines.push(`${stream}:${line}`),
+  });
+  expect(output.stdout).toBe("🐈\n");
+  expect(output.stderr).toBe("✓\n");
+  expect(lines).toEqual(expect.arrayContaining(["stdout:🐈", "stderr:✓"]));
+});
 it("enforces process timeout", async () => {
   await expect(
     execute({

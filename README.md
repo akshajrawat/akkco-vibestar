@@ -1,6 +1,6 @@
 # akkco vibestar
 
-A local Electron Agent Development Environment for independent open-source contribution tasks. The task conversation is the workspace: each whole issue or claimed subtask owns its pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. GitHub repository discovery and an automatic PR inbox use the official GitHub CLI. Nothing is automatically pushed, posted or merged.
+A local Electron Agent Development Environment for independent open-source contribution tasks. The task conversation is the workspace: each whole issue or claimed subtask owns its pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. GitHub repository discovery and a manual PR review inbox use the official GitHub CLI. Nothing is automatically pushed, posted or merged.
 
 The application uses React, TypeScript, Vite, Tailwind, shadcn-style components, Monaco and xterm.js. The Node/TypeScript execution core owns SQLite, Git, processes and scheduling inside Linux/WSL. There is no Rust or Tauri dependency.
 
@@ -85,13 +85,13 @@ Linux/WSLg builds execute directly in their current distro. The desktop process 
 
 Open **Providers** to inspect installation, authentication, current Antigravity model discovery and supported effort values.
 
-**GitHub:** Status uses `gh auth status` and the authenticated account identity. Connect/Reconnect opens the official `gh auth login --hostname github.com --web --git-protocol https` flow in a temporary login dialog. Repository and authored upstream PR discovery starts after connection. Vibestar never extracts or stores OAuth tokens.
+**GitHub:** Status uses `gh auth status` and the authenticated account identity. Connect/Reconnect opens the official `gh auth login --hostname github.com --web --git-protocol https` flow in a temporary login dialog. Repository and authored upstream PR discovery runs only when you click Refresh PR List. Vibestar never extracts or stores OAuth tokens.
 
 **Codex:** Connect opens the official `codex login` flow in a temporary PTY dialog that closes when success is detected. Detection uses `codex login status`. Subscription runs explicitly require ChatGPT authentication and remove API-key environment overrides. No API credit purchase or API key is needed for supported subscription operations.
 
 **Antigravity:** Connect opens the installed official interactive `agy` flow in a temporary login dialog; select Done after authentication. Successful authenticated `agy models` discovery marks the provider Connected. Model names and supported efforts come from the official CLI; credentials remain provider-owned.
 
-Settings has separate Agents, GitHub & PR Watch, Repositories, Storage, Usage and Execution sections. Utility AI is independent of the coding pipeline and is used only for ambiguous PR conversation semantics. Every model run is recorded locally, with token counts only when reported by the provider. Codex subscription windows are displayed when its official CLI exposes them; unavailable allowance information is labeled explicitly.
+Settings has separate Agents, GitHub & PR Watch, Repositories, Storage, Usage and Execution sections. Utility AI is independent of the coding pipeline and is used for explicitly requested PR semantic analysis. Every model run is recorded locally, with token counts only when reported by the provider. Codex subscription windows are displayed when its official CLI exposes them; unavailable allowance information is labeled explicitly.
 
 Connect a local repository explicitly by WSL path or Windows drive path; Windows paths are converted with `wslpath` inside the configured distro. Optional discovery searches configured roots with bounded depth and offers candidates to connect. Imported checkouts remain references; tasks use isolated worktrees under the data root. Storage cleanup never deletes an imported source repository. Existing `~/.akkco-ade` data presents Migrate, Use old location or Start fresh; migration preserves the old root and repairs copied worktree metadata.
 
@@ -133,19 +133,18 @@ The optional **Terminal** utility dock provide a real xterm.js PTY shell restric
 
 Manual commands are explicit argv JSON arrays, for example `["npm","test","--","specific.spec.ts"]`. No shell is implicitly invoked. The assigned working directory remains visible. Results include stdout, stderr, duration, exit code and Passed/Failed status; provider-reported skipped tests are separate.
 
-## Automatic PR monitoring
+## Manual PR review analysis
 
-**PR watch** is an inbox with **Needs attention**, **Watching**, **Paused** and **Recently completed** lists. Connecting GitHub discovers all currently open PRs authored by the account, including fork branches targeting other owners’ upstream repositories. Repository catalog, PR metadata and watches persist locally. Sync runs at startup and every five minutes while open; known PRs are confirmed closed/merged before archival.
+PR review is manual only. Startup, authentication, opening the inbox, tracking and GitHub metadata synchronization never invoke PR-analysis models. Legacy enabled watches are disabled on upgrade while their snapshots, conversations, decisions, provider logs and usage remain available. The existing issue queue and recovery behavior are preserved.
 
-Every discovered open PR receives one watch by default. Pause survives sync; Resume and Check now are row actions. Toolbar settings control automatic watching, the default interval (1 hour, 2 hours or custom) and optional Codex verification. Manual URL tracking stays under Advanced.
+1. **Refresh PR List** retrieves authored PR metadata through official gh; no inference or tracking starts.
+2. **Track PR** saves a PR from the list or a pasted GitHub URL. It does not start inspection or a timer.
+3. **Analyze PR / Analyze Again** retrieves fresh complete discussion/context and invokes the displayed Utility AI provider/model/effort only when semantic classification is needed. Cancellation and errors require an explicit new request; restart never retries PR analysis.
+4. **Review report** shows PR/fork/head/base identity, complete original Markdown reviews/replies, independently tracked observations, unanswered questions, response evidence, positive feedback, checks, patches and analysis history. Replies, commits, dismissed reviews and resolved threads do not prove code correctness.
 
-Cheap GitHub inspections run first: conversation and inline comments, review submissions/decisions, unresolved threads, CI status transitions/failures, merge conflicts, head/base commits and merged/closed state. The initial baseline can flag existing failures, conflicts and requested changes. **Unchanged snapshots never invoke a model.** Approvals, own comments, bot messages and routine CI progress use deterministic decisions.
+An unchanged complete report can be reused without AI; simple acknowledgments and author/bot-only activity also use GitHub inspection only. Every actual invocation uses the existing AgentRunner, read-only utility sandbox, saved prompt/redacted logs and ai_usage. Missing token or subscription information stays unavailable. Long comments are preserved in bounded context packets with explicit per-source coverage. API limits, missing context and partial model coverage are shown; the app never claims every request was assessed when coverage is incomplete.
 
-Ambiguous new feedback invokes configured Antigravity analysis and optional Codex verification, returning a strict action decision: `manualActionRequired`, `severity`, `summary`, `reason`, `newActivity`, `recommendedNextAction` and `affectedFiles`. An unlinked PR uses an empty, read-only analysis workspace with GitHub context; it does not clone a repository or create a task. A safely linked task supplies its worktree for deeper inspection. All inference shares task concurrency limits; pipelines take priority, and worktree leases prevent concurrent access. Failed/interrupted inference requires an explicit retry.
-
-Task/PR linking requires a unique match of upstream repository, head fork and branch. **Open task** opens that conversation. Explicit follow-ups include saved review context so “fix the reviewer feedback” can be acted on within the task scope. Reviewer feedback is never implemented automatically. No GitHub write is performed.
-
-Watches, snapshots and attention survive restarts. Monitoring runs **while Vibestar is open**, rather than through an OS service. A linked worktree may differ from the PR head; analysis is told to identify that mismatch instead of silently checking out a different branch.
+PR repair and confirmed publication are later milestones. **Solve Review** remains unavailable; analysis cannot silently start an issue-task follow-up or modify GitHub. [Revised architecture and milestone checklist](docs/IDE-HARNESS-PR-REVIEW-PLAN.md) describes the approved sequence.
 
 ## Security boundaries
 

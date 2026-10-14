@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { realpath, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import { StringDecoder } from "node:string_decoder";
 import { AdeError } from "../domain";
 export interface ProcessRequest {
   program: string;
@@ -95,6 +96,10 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     let stdout = "";
     let stderr = "";
     const buffers = { stdout: "", stderr: "" };
+    const decoders = {
+      stdout: new StringDecoder("utf8"),
+      stderr: new StringDecoder("utf8"),
+    };
     const cap = 32 * 1024 * 1024;
     const line = (stream: "stdout" | "stderr", value: string) => {
       try {
@@ -105,7 +110,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       }
     };
     const consume = (stream: "stdout" | "stderr", chunk: Buffer) => {
-      const text = chunk.toString("utf8");
+      const text = decoders[stream].write(chunk);
       if (stream === "stdout") {
         if (stdout.length < cap) stdout += text;
       } else if (stderr.length < cap) stderr += text;
@@ -179,8 +184,13 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     child.stdin.on("error", () => {});
     child.stdin.end(r.input);
     child.on("close", (code) => {
-      for (const stream of ["stdout", "stderr"] as const)
+      for (const stream of ["stdout", "stderr"] as const) {
+        const remaining = decoders[stream].end();
+        buffers[stream] += remaining;
+        if (stream === "stdout") stdout += remaining;
+        else stderr += remaining;
         if (buffers[stream]) line(stream, buffers[stream]);
+      }
       cleanup();
       if (child.pid) terminateGroup(child.pid, "SIGKILL");
       if (aborted) reject(aborted);

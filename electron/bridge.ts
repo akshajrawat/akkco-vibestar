@@ -10,6 +10,8 @@ export class CoreBridge extends EventEmitter {
   private checking = Promise.resolve();
   private warning: string | undefined;
   private approvalsAvailable = false;
+  private manualPrAvailable = false;
+  private stopping = false;
   private pending = new Map<
     string,
     {
@@ -25,12 +27,23 @@ export class CoreBridge extends EventEmitter {
     super();
   }
   start = () => {
+    this.stopping = false;
+    this.manualPrAvailable = false;
+    this.approvalsAvailable = false;
+    this.checking = this.launch().catch((error) => {
+      this.warning = String(error);
+      this.emit("event", { event: "core.error", text: this.warning });
+    });
+  };
+  private launch = async () => {
+    const bundle = await readFile(join(this.coreDir, "core.cjs"));
+    if (this.stopping) return;
     const config = this.config;
     const env = {
       ...process.env,
       ...(config.data_home ? { VIBESTAR_HOME: config.data_home } : {}),
     };
-    const launch = `const path=require('node:path');const os=require('node:os');const c=JSON.parse(process.argv[1]);if(c.data_home)process.env.VIBESTAR_HOME=c.data_home;require(c.helper_path||path.join(c.data_home||path.join(os.homedir(),'.akkco-vibestar'),'runtime','core.cjs'));`;
+    const launch = `const path=require('node:path');const os=require('node:os');const fs=require('node:fs/promises');const crypto=require('node:crypto');const c=JSON.parse(process.argv[1]);if(c.data_home)process.env.VIBESTAR_HOME=c.data_home;const helper=c.helper_path||path.join(c.data_home||path.join(os.homedir(),'.akkco-vibestar'),'runtime','core.cjs');fs.readFile(helper).then(bytes=>{if(crypto.createHash('sha256').update(bytes).digest('hex')!==c.bundle_hash)throw Error('The WSL helper differs from this desktop build. Install / update WSL helper in Settings before starting execution; legacy automatic PR monitoring is blocked.');require(helper);}).catch(error=>{process.stderr.write(String(error));process.exit(1);});`;
     this.child =
       process.platform === "win32"
         ? spawn(
@@ -42,7 +55,10 @@ export class CoreBridge extends EventEmitter {
               "node",
               "-e",
               launch,
-              JSON.stringify(config),
+              JSON.stringify({
+                ...config,
+                bundle_hash: createHash("sha256").update(bundle).digest("hex"),
+              }),
             ],
             { stdio: "pipe", windowsHide: true },
           )
@@ -83,21 +99,24 @@ export class CoreBridge extends EventEmitter {
       this.child = null;
       this.emit("event", { event: "core.closed" });
     });
-    this.checking = Promise.all([
-      readFile(join(this.coreDir, "core.cjs")),
-      this.sendRequest<{ build: string; pipeline_approvals?: boolean }>(
-        "core.info",
-        {},
-        15000,
-      ),
+    await Promise.all([
+      Promise.resolve(bundle),
+      this.sendRequest<{
+        build: string;
+        pipeline_approvals?: boolean;
+        manual_pr_analysis?: boolean;
+      }>("core.info", {}, 15000),
     ])
       .then(([bundle, info]) => {
         this.approvalsAvailable = info.pipeline_approvals === true;
+        this.manualPrAvailable = info.manual_pr_analysis === true;
         this.warning = !this.approvalsAvailable
           ? "The running core cannot enforce plan review approvals. Restart the current dev build, or update the WSL helper in Settings → Execution. Task execution is blocked until updated."
-          : createHash("sha256").update(bundle).digest("hex") === info.build
-            ? undefined
-            : "The WSL helper differs from this desktop build. Settings → Execution → Install / update WSL helper, then restart. Usage and newer features may be incomplete until updated.";
+          : !this.manualPrAvailable
+            ? "The helper cannot enforce manual-only PR analysis. Install / update WSL helper before using PR actions."
+            : createHash("sha256").update(bundle).digest("hex") === info.build
+              ? undefined
+              : "The WSL helper differs from this desktop build. Settings → Execution → Install / update WSL helper, then restart. Usage and newer features may be incomplete until updated.";
       })
       .catch(() => {
         this.warning =
@@ -113,6 +132,22 @@ export class CoreBridge extends EventEmitter {
   };
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (
+      !this.manualPrAvailable &&
+      [
+        "github.sync",
+        "github.configure",
+        "scheduled.add",
+        "scheduled.run",
+        "scheduled.analyze",
+        "scheduled.enabled",
+        "scheduled.fix",
+      ].includes(method)
+    )
+      throw new Error(
+        this.warning ||
+          "Update the execution helper before using manual PR actions.",
+      );
     if (
       !this.approvalsAvailable &&
       [
@@ -181,6 +216,7 @@ export class CoreBridge extends EventEmitter {
     });
   };
   stop = async () => {
+    this.stopping = true;
     const child = this.child;
     if (!child) return;
     await new Promise<void>((resolve) => {

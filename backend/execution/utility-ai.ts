@@ -8,11 +8,13 @@ export interface UtilityRequest {
   schema?: z.ZodType;
   workspace?: string;
   configuration?: Settings["utility_ai"];
+  signal?: AbortSignal;
   context?: {
     taskId?: string;
     jobId?: string;
     repository?: string;
     questionId?: string;
+    analysisId?: string;
   };
 }
 export class UtilityAI {

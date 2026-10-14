@@ -166,10 +166,10 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
         });
         await page.getByRole("button", { name: "Checks", exact: true }).click();
         await page
-          .getByRole("button", { name: "Decision", exact: true })
+          .getByRole("button", { name: "Overview", exact: true })
           .click();
         await page
-          .getByRole("button", { name: "Vibestar analysis", exact: true })
+          .getByRole("button", { name: "Analysis history", exact: true })
           .click();
         await page.screenshot({
           path: join(evidence, "electron-pr-analysis.png"),

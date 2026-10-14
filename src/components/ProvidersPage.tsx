@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { RefreshCw, CheckCircle2, Plug } from "lucide-react";
 import { useProviders } from "../lib/useWorkspace";
-import { rpc } from "../lib/api";
 import { AuthDialog } from "./AuthDialog";
 import { Button } from "./ui/button";
 export const ProvidersPage = () => {
@@ -84,10 +83,8 @@ export const ProvidersPage = () => {
             providers.find((p) => p.provider === login)?.connected
           }
           done={() => {
-            const wasGithub = login === "github";
             setLogin("");
             void refresh();
-            if (wasGithub) void rpc("github.sync");
           }}
         />
       )}

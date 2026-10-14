@@ -13,11 +13,14 @@ import { useProviders } from "../lib/useWorkspace";
 export const UsageView = ({
   taskId,
   records,
+  runId,
 }: {
   taskId?: string;
   records?: UsageRecord[];
+  runId?: string;
 }) => {
   const [rows, setRows] = useState(records || []);
+  const [selectedRun, setSelectedRun] = useState(runId || "");
   const { providers, refresh: refreshProviders, loading } = useProviders();
   const [days, setDays] = useState(0);
   const [group, setGroup] = useState("provider");
@@ -83,6 +86,7 @@ export const UsageView = ({
   const visible = rows.filter(
     (r) =>
       Date.parse(r.started_at) >= cutoff &&
+      (!selectedRun || r.id === selectedRun) &&
       Object.entries(filters).every(
         ([key, value]) =>
           !value || String(r[key as keyof UsageRecord]) === value,
@@ -132,6 +136,23 @@ export const UsageView = ({
         </p>
       )}
       {info?.warning && <p className="warning">{info.warning}</p>}
+      {taskId && (
+        <label className="usage-run-select">
+          Run{" "}
+          <select
+            aria-label="Usage run"
+            value={selectedRun}
+            onChange={(e) => setSelectedRun(e.target.value)}
+          >
+            <option value="">All task runs</option>
+            {rows.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.purpose} · {r.provider} · {r.model || "CLI default"}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {!taskId && (
         <>
           <div className="library-tabs">

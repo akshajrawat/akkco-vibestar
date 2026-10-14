@@ -20,13 +20,22 @@ export class GitHubClient {
   };
   api = async <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
     JSON.parse(await this.gh(["api", "--method", "GET", endpoint], signal));
-  pages = async <T>(endpoint: string, signal?: AbortSignal) => {
+  pages = async <T>(
+    endpoint: string,
+    signal?: AbortSignal,
+    maxPages = 1000,
+    collection?: string,
+  ) => {
     const rows: T[] = [];
-    for (let page = 1; page <= 1000; page++) {
-      const part = await this.api<T[]>(
+    for (let page = 1; page <= maxPages; page++) {
+      const response = await this.api<unknown>(
         `${endpoint}${endpoint.includes("?") ? "&" : "?"}per_page=100&page=${page}`,
         signal,
       );
+      const part =
+        collection && response && typeof response === "object"
+          ? (response as Record<string, unknown>)[collection]
+          : response;
       if (!Array.isArray(part))
         throw new AdeError(
           "github",

@@ -101,7 +101,7 @@ export class AntigravityProvider implements AgentProvider {
       const step = object(raw.step_update);
       const type = String(step.step_type);
       // Lifecycle/input envelopes remain in raw logs, but are not reasoning.
-      if (["user_input", "finish", "system_message"].includes(type)) return [];
+      if (["user_input", "finish"].includes(type)) return [];
       let kind: NormalizedEvent["kind"] = "analysis.status";
       if (type === "agent_response") kind = "message";
       else if (type === "tool") {
@@ -139,15 +139,23 @@ export class AntigravityProvider implements AgentProvider {
             text: step.text ?? step.thinking,
             text_delta: step.text_delta,
             command: params.CommandLine,
-            stdout: info.output,
-            stderr: object(info.error).message,
+            stdout: info.stdout ?? info.output,
+            output_source:
+              info.stdout !== undefined
+                ? "stdout"
+                : info.output !== undefined
+                  ? "provider"
+                  : undefined,
+            stderr: info.stderr ?? object(info.error).message,
+            exit_code: info.exit_code ?? step.exit_code,
+            arguments: info.parameters,
             path:
               params.AbsolutePath ??
               params.TargetFile ??
               params.SearchPath ??
               params.DirectoryPath,
             status: step.state === "ERROR" ? "failed" : step.state,
-            tool: step.tool_name,
+            tool: step.tool_name || info.name,
             query: params.SearchString ?? params.Query ?? params.Pattern,
             duration_ms:
               typeof step.duration_seconds === "number"
@@ -187,7 +195,19 @@ export class AntigravityProvider implements AgentProvider {
                 : ["Bash", "run_command"].includes(name)
                   ? "command.started"
                   : "analysis.status";
-          return { kind, data: block };
+          const input = object(block.input);
+          return {
+            kind,
+            data: {
+              ...block,
+              call_id: block.id,
+              tool: block.name,
+              arguments: block.input,
+              command: input.command,
+              path: input.file_path,
+              status: block.type === "tool_use" ? "running" : undefined,
+            },
+          };
         });
     }
     return [

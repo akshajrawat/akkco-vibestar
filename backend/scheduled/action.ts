@@ -72,6 +72,8 @@ export const discussionEntries = (
   ];
 const acknowledgment =
   /^(?:lgtm|looks good(?: to me)?|got it(?:,? thanks)?|thanks(?: you)?(?: for (?:the (?:explanation|update)|clarifying))?|thank you|approved|perfect|great|okay|ok|sounds good|all good)[.!\s]*$/i;
+export const isAcknowledgment = (text: string) =>
+  acknowledgment.test(text.trim());
 const request =
   /\b(?:please\s+(?:rename|add|run|share|check|fix|change|remove|update)|(?:can|could|would) you\b|why (?:is|do|did|does)\b|(?:add|needs?) (?:a |an |another |more )?(?:test|coverage)|rename (?:this|the)\b)/i;
 const addressed =
@@ -201,7 +203,7 @@ export const assessActivity = (
       continue;
     }
     if (
-      acknowledgment.test(body) ||
+      isAcknowledgment(body) ||
       (entry.reviewState === "APPROVED" &&
         !request.test(body) &&
         !/\b(?:except|but|not sure|could break|can we|does this|do we|should we|needs?)\b/i.test(

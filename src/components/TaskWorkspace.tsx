@@ -29,6 +29,7 @@ import { TaskTerminal } from "./TaskTerminal";
 import { ResizeHandle } from "./ResizeHandle";
 import { usePaneSize } from "../lib/usePaneSize";
 import { useTaskView, updateTaskView } from "../lib/taskView";
+import { navigateTabs } from "../lib/keyboard";
 import { AgentTimeline } from "./AgentTimeline";
 import { AgentResponse } from "./AgentResponse";
 import { PlanView } from "./PlanView";
@@ -60,7 +61,8 @@ export const TaskWorkspace = ({
   const [busy, setBusy] = useState(false);
   const [addingContext, setAddingContext] = useState(false);
   const [contextText, setContextText] = useState("");
-  const [selectedRun, setSelectedRun] = useState<string>();
+  const setSelectedRun = (id?: string) =>
+    updateTaskView(t.id, { outputRun: id || "" });
   const [cleanup, setCleanup] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [reviewSeen, setReviewSeen] = useState("");
@@ -69,11 +71,21 @@ export const TaskWorkspace = ({
   const sending = useRef(false);
   const [diff, setDiff] = useState<Diff | null>(null);
   const timeline = useRef<HTMLDivElement>(null);
+  const promptDialog = useRef<HTMLElement>(null);
   const stick = useRef(true);
   const refreshDiff = useRef<(() => Promise<void>) | null>(null);
   const active = !!detail.executing || activeStatuses.includes(t.status);
   const occupied = !!detail.active;
   const watchChanges = active || occupied;
+  useEffect(() => {
+    if (!promptOpen) return;
+    const previous = document.activeElement;
+    promptDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected)
+        previous.focus();
+    };
+  }, [promptOpen]);
   useEffect(() => {
     if (stick.current)
       timeline.current?.scrollTo({ top: timeline.current.scrollHeight });
@@ -389,12 +401,32 @@ export const TaskWorkspace = ({
           }}
         >
           <section
+            ref={promptDialog}
             className="modal prompt-dialog"
             role="dialog"
             aria-modal="true"
             aria-label="Agent prompts"
             onKeyDown={(e) => {
-              if (e.key === "Escape") setPromptOpen(false);
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setPromptOpen(false);
+              }
+              if (e.key === "Tab") {
+                const controls = [
+                  ...e.currentTarget.querySelectorAll<HTMLElement>(
+                    "button, summary, [tabindex='0']",
+                  ),
+                ];
+                const target = e.shiftKey ? controls.at(-1) : controls[0];
+                if (
+                  document.activeElement ===
+                  (e.shiftKey ? controls[0] : controls.at(-1))
+                ) {
+                  e.preventDefault();
+                  target?.focus();
+                }
+              }
             }}
           >
             <div className="modal-heading">
@@ -515,7 +547,12 @@ export const TaskWorkspace = ({
           }}
         />
       )}
-      <div className="workspace-tabs" role="tablist" aria-label="Task views">
+      <div
+        className="workspace-tabs"
+        role="tablist"
+        aria-label="Task views"
+        onKeyDown={navigateTabs}
+      >
         {["Chat", "Plan", "Usage"].map((tab) => (
           <button
             role="tab"
@@ -565,6 +602,22 @@ export const TaskWorkspace = ({
           <PanelBottom size={14} />
         </Button>
       </div>
+      <CurrentRun
+        detail={detail}
+        prompt={() => setPromptOpen(true)}
+        plan={() => updateTaskView(t.id, { tab: "Plan" })}
+        output={() => {
+          setSelectedRun();
+          dock("Agent Output");
+        }}
+        usage={() => {
+          setSelectedRun(
+            [...detail.runs].reverse().find((r) => r.status === "running")?.id,
+          );
+          dock("Usage");
+        }}
+        stop={() => void action("task.cancel")}
+      />
       <div className="workspace-content">
         {tab === "Chat" ? (
           <div className="chat-main">
@@ -885,16 +938,6 @@ export const TaskWorkspace = ({
                 </Button>
               </div>
               <div className="run-details-scroll">
-                <CurrentRun
-                  detail={detail}
-                  prompt={() => setPromptOpen(true)}
-                  plan={() => updateTaskView(t.id, { tab: "Plan" })}
-                  output={() => {
-                    setSelectedRun(undefined);
-                    dock("Agent Output");
-                  }}
-                  stop={() => void action("task.cancel")}
-                />
                 {!!detail.runs.length && (
                   <button
                     className="workspace-prompt-link"
@@ -1043,7 +1086,12 @@ export const TaskWorkspace = ({
             className="utility-dock"
             style={view.dockMaximized ? undefined : { height: dockHeight }}
           >
-            <div className="dock-tabs" role="tablist" aria-label="Utilities">
+            <div
+              className="dock-tabs"
+              role="tablist"
+              aria-label="Utilities"
+              onKeyDown={navigateTabs}
+            >
               {[
                 "Changes",
                 "Problems",
@@ -1104,7 +1152,12 @@ export const TaskWorkspace = ({
               ) : view.dockTab === "Terminal" ? (
                 <TaskTerminal task={t} onError={onError} />
               ) : view.dockTab === "Usage" ? (
-                <UsageView taskId={t.id} records={detail.usage} />
+                <UsageView
+                  key={view.outputRun}
+                  taskId={t.id}
+                  records={detail.usage}
+                  runId={view.outputRun}
+                />
               ) : view.dockTab === "Final review" ? (
                 <div className="final-review-panel">
                   <AgentResponse
@@ -1126,12 +1179,12 @@ export const TaskWorkspace = ({
                 <TestsView detail={detail} onError={onError} />
               ) : view.dockTab === "Logs" || view.dockTab === "Agent Output" ? (
                 <LogView
-                  key={view.dockTab}
+                  key={t.id}
                   taskId={t.id}
                   liveOutput={view.dockTab === "Agent Output"}
                   runs={detail.runs}
                   events={detail.events}
-                  selectedRun={selectedRun}
+                  selectedRun={view.outputRun || undefined}
                 />
               ) : (
                 <div className="problems-panel">

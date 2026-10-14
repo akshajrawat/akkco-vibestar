@@ -27,15 +27,17 @@ export class Rpc {
   private readonly review: ReviewService;
   private readonly terminals: TaskTerminals;
   private readonly storage: StorageService;
-  constructor(readonly engine: Engine) {
-    this.scheduler = new Scheduler(engine);
+  constructor(
+    readonly engine: Engine,
+    monitor = new GitHubMonitor(engine.root),
+  ) {
+    this.scheduler = new Scheduler(engine, monitor);
     this.github = new GitHubService(engine, this.scheduler);
     this.review = new ReviewService(engine);
     this.terminals = new TaskTerminals(engine);
     this.storage = new StorageService(engine);
     this.auth = new AuthSessions(engine.root, (event) => {
       engine.publish(event);
-      if (event.event === "auth.closed") void this.github.sync();
     });
   }
   call = async (method: string, input: unknown) => {
@@ -345,11 +347,16 @@ export class Rpc {
         e.changed(p.id);
         return p.settings;
       }
+      case "task.events":
       case "task.logs": {
         const p = idInput
           .extend({
             run_id: z.string().uuid().nullable(),
-            stream: z.enum(["stdout", "stderr"]),
+            stream: z.enum(["stdout", "stderr"]).default("stdout"),
+            before: z.number().int().nonnegative().optional(),
+            after: z.number().int().nonnegative().optional(),
+            search: z.string().max(256).optional(),
+            paged: z.boolean().optional(),
           })
           .parse(input);
         e.db.task(p.id);
@@ -362,7 +369,62 @@ export class Rpc {
           ).length
         )
           throw new AdeError("isolation", "Run does not belong to this task");
-        return readLogTail(e.root, p.id, p.run_id, p.stream);
+        if (method === "task.events") {
+          const rows = e.db.all<{ id: number; data: string; kind: string }>(
+            `SELECT * FROM agent_events WHERE task_id=? AND run_id=?
+             AND id<? AND id>? AND (?='' OR instr(lower(data || raw),lower(?))>0)
+             ORDER BY id ${p.after !== undefined ? "ASC" : "DESC"} LIMIT 501`,
+            p.id,
+            p.run_id,
+            p.before ?? Number.MAX_SAFE_INTEGER,
+            p.after ?? 0,
+            p.search || "",
+            p.search || "",
+          );
+          const more = rows.length > 500;
+          const events = rows.slice(0, 500);
+          if (p.after === undefined) events.reverse();
+          const calls = [
+            ...new Set(
+              events
+                .filter((event) => event.kind !== "message")
+                .flatMap((event) => {
+                  try {
+                    const data = JSON.parse(event.data);
+                    return data.call_id == null ? [] : [String(data.call_id)];
+                  } catch {
+                    return [];
+                  }
+                }),
+            ),
+          ];
+          const context = calls.length
+            ? e.db.all(
+                `SELECT * FROM agent_events WHERE id IN (
+             SELECT MIN(id) FROM agent_events WHERE task_id=? AND run_id=? AND json_valid(data)
+             AND CAST(json_extract(data,'$.call_id') AS TEXT) IN (${calls.map(() => "?").join(",")}) GROUP BY json_extract(data,'$.call_id')
+             UNION SELECT MAX(id) FROM agent_events WHERE task_id=? AND run_id=? AND json_valid(data)
+             AND CAST(json_extract(data,'$.call_id') AS TEXT) IN (${calls.map(() => "?").join(",")}) GROUP BY json_extract(data,'$.call_id')
+             ) ORDER BY id`,
+                p.id,
+                p.run_id,
+                ...calls,
+                p.id,
+                p.run_id,
+                ...calls,
+              )
+            : [];
+          return { events, context, more };
+        }
+        return readLogTail(
+          e.root,
+          p.id,
+          p.run_id,
+          p.stream,
+          p.paged
+            ? { before: p.before, after: p.after, search: p.search }
+            : undefined,
+        );
       }
       case "review.files":
         return this.review.files(idInput.strict().parse(input).id);
@@ -384,6 +446,49 @@ export class Rpc {
         return this.review.send(idInput.parse(input).id);
       case "scheduled.add":
         return this.scheduler.add(input);
+      case "scheduled.analyze": {
+        const p = idInput
+          .extend({ request_id: z.string().uuid() })
+          .strict()
+          .parse(input);
+        return this.scheduler.analyze(p.id, p.request_id);
+      }
+      case "scheduled.cancel":
+        return this.scheduler.cancel(idInput.strict().parse(input).id);
+      case "scheduled.detail": {
+        const p = idInput.strict().parse(input);
+        if (!this.scheduler.jobs().some((job) => job.id === p.id))
+          throw new AdeError("not_found", "Tracked PR not found");
+        return {
+          analyses: this.scheduler.analysis.history(p.id),
+          runs: e.db.all(
+            "SELECT * FROM scheduled_agent_runs WHERE job_id=? ORDER BY started_at",
+            p.id,
+          ),
+          usage: e.db.all(
+            "SELECT * FROM ai_usage WHERE job_id=? ORDER BY started_at DESC",
+            p.id,
+          ),
+        };
+      }
+      case "scheduled.logs": {
+        const p = idInput
+          .extend({
+            run_id: z.string().uuid(),
+            stream: z.enum(["stdout", "stderr"]),
+          })
+          .strict()
+          .parse(input);
+        if (
+          !e.db.all(
+            "SELECT id FROM scheduled_agent_runs WHERE id=? AND job_id=?",
+            p.run_id,
+            p.id,
+          ).length
+        )
+          throw new AdeError("isolation", "Run does not belong to this PR");
+        return readLogTail(e.root, `pr-watch-${p.id}`, p.run_id, p.stream);
+      }
       case "scheduled.enabled": {
         const p = idInput.extend({ enabled: z.boolean() }).parse(input);
         return this.scheduler.setEnabled(p.id, p.enabled);
@@ -392,12 +497,18 @@ export class Rpc {
         const p = idInput
           .extend({ retry: z.boolean().default(false) })
           .parse(input);
-        return this.scheduler.runNow(p.id, p.retry);
+        return this.scheduler.runNow(p.id);
       }
       case "scheduled.remove": {
         const p = idInput.extend({ confirmed: z.literal(true) }).parse(input);
         const job = this.scheduler.jobs().find((j) => j.id === p.id);
-        if (job && ["analyzing", "polling"].includes(job.status))
+        if (
+          job &&
+          (["analyzing", "polling"].includes(job.status) ||
+            e
+              .cleanupBlockers()
+              .some((activity) => activity.id === `pr-watch:${p.id}`))
+        )
           throw new AdeError("busy", "Wait for inspection to finish");
         e.db.run("DELETE FROM scheduled_jobs WHERE id=?", p.id);
         e.changed();
@@ -406,7 +517,8 @@ export class Rpc {
       case "scheduled.dismiss":
         return this.scheduler.dismiss(idInput.parse(input).id);
       case "scheduled.fix":
-        return this.scheduler.fix(idInput.parse(input).id);
+        idInput.strict().parse(input);
+        return this.scheduler.fix();
       case "scheduled.discover": {
         const p = z.object({ repository: z.string().max(200) }).parse(input);
         return new GitHubMonitor(e.root).discover(

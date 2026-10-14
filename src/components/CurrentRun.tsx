@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Detail } from "../lib/types";
-import { duration, eventData } from "../lib/api";
+import { duration } from "../lib/api";
+import { agentEntries, toolState } from "../lib/agent-output/activity";
 import { readLimits } from "../lib/usage";
-import { useProviders } from "../lib/useWorkspace";
 import { Button } from "./ui/button";
 
 export const CurrentRun = ({
@@ -11,12 +11,14 @@ export const CurrentRun = ({
   stop,
   prompt,
   plan,
+  usage: openUsage,
 }: {
   detail: Detail;
   output: () => void;
   stop: () => void;
   prompt?: () => void;
   plan?: () => void;
+  usage?: () => void;
 }) => {
   const run = [...detail.runs].reverse().find((r) => r.status === "running");
   const active =
@@ -30,13 +32,7 @@ export const CurrentRun = ({
       "validating",
       "reviewing_antigravity",
     ].includes(detail.task.status);
-  const { providers } = useProviders();
-  const model =
-    providers
-      .find((p) => p.provider === run?.provider)
-      ?.models.find((m) => m.id === run?.model)?.label ||
-    run?.model ||
-    "CLI default";
+  const model = run?.model || "CLI default · model not reported";
   const [, tick] = useState(0);
   useEffect(() => {
     if (!active) return;
@@ -66,27 +62,33 @@ export const CurrentRun = ({
             "Reviewing changes & tests",
           ][run.stage]
         : labels[detail.task.status];
-  const event = [...detail.events].reverse().find((e) => {
-    if (e.run_id !== run?.id) return false;
-    if (
-      [
-        "file.read",
-        "file.changed",
-        "command.started",
-        "command.finished",
-      ].includes(e.kind)
-    )
-      return true;
-    if (!["message", "analysis.status"].includes(e.kind)) return false;
-    const data = eventData(e.data);
-    return [data.text, data.text_delta, data.query].some(
-      (value) => typeof value === "string" && value.trim(),
+  const entries = agentEntries(
+    detail.events.filter((e) => e.run_id === run?.id && e.stream !== "stderr"),
+  );
+  const runningTool = [...entries]
+    .reverse()
+    .find(
+      (e) =>
+        (e.data.tool ||
+          e.event.kind.startsWith("command.") ||
+          e.event.kind.startsWith("file.")) &&
+        (e.data.status != null || e.event.kind === "command.started") &&
+        toolState(e.event, e.data, run) === "running",
     );
-  });
-  const data = event ? eventData(event.data) : {};
+  const entry =
+    runningTool ||
+    [...entries]
+      .reverse()
+      .find((e) =>
+        [e.data.text, e.data.query, e.data.command, e.data.path].some(
+          (value) => typeof value === "string" && value.trim(),
+        ),
+      );
+  const event = entry?.event;
+  const data = entry?.data || {};
   const path =
     data.path || (Array.isArray(data.files) ? data.files.join(", ") : "");
-  const activity =
+  const observedActivity =
     typeof data.query === "string"
       ? `Searching: ${data.query}${path ? " · " + path : ""}`
       : event?.kind === "file.changed"
@@ -100,6 +102,12 @@ export const CurrentRun = ({
               : typeof data.text_delta === "string"
                 ? data.text_delta
                 : "Waiting for provider activity…";
+  const activity =
+    entry &&
+    event?.kind !== "message" &&
+    toolState(entry.event, data, run) !== "running"
+      ? `${toolState(entry.event, data, run)} · ${observedActivity}`
+      : observedActivity;
   const usage = detail.usage?.find((u) => u.id === run?.id);
   const window = readLimits(usage?.subscription_limits)?.windows.find(
     (w) => w.windowDurationMins === 300,
@@ -143,12 +151,15 @@ export const CurrentRun = ({
               · {stage} · {model} · {run.effort}
             </span>
           )}
-          <time> · {duration(run?.started_at || detail.task.updated_at)}</time>
+          <time aria-label="Run runtime">
+            {" "}
+            · {duration(run?.started_at || detail.task.updated_at)}
+          </time>
         </div>
         {run && (
           <small title={activity}>
             {activity.trim().startsWith("{")
-              ? "Structured answer received · View plan or Agent Output"
+              ? "Structured output streaming · View plan or Agent Output"
               : activity}
           </small>
         )}
@@ -177,6 +188,11 @@ export const CurrentRun = ({
       <Button size="sm" variant="ghost" disabled={!run} onClick={output}>
         Agent Output
       </Button>
+      {openUsage && (
+        <Button size="sm" variant="ghost" disabled={!run} onClick={openUsage}>
+          Run usage
+        </Button>
+      )}
       <Button size="sm" onClick={stop}>
         Stop
       </Button>

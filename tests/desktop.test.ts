@@ -169,9 +169,8 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       if (github.github?.status?.connected) {
         expect(github.github.error).toBeNull();
         expect(github.github.repositories.length).toBeGreaterThan(0);
-        expect(github.scheduled?.length).toBe(
-          github.github.pull_requests.filter((p) => p.state === "OPEN").length,
-        );
+        expect(github.scheduled?.length).toBe(0);
+        expect(github.github.settings.auto_watch).toBe(false);
         console.log(
           "Live GitHub:",
           github.github.status.username,
@@ -180,63 +179,6 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
           github.scheduled?.length,
           "PR watches",
         );
-        const job = github.scheduled?.[0];
-        if (job) {
-          await expect
-            .poll(
-              () =>
-                page.evaluate(async (id) => {
-                  const s =
-                    await window.vibestar.rpc<
-                      import("../src/lib/types").Snapshot
-                    >("snapshot");
-                  return s.scheduled?.find((j) => j.id === id)?.status;
-                }, job.id),
-              { timeout: 30000 },
-            )
-            .toBe("idle");
-          await expect
-            .poll(
-              () =>
-                page.evaluate(async () => {
-                  const snapshot =
-                    await window.vibestar.rpc<
-                      import("../src/lib/types").Snapshot
-                    >("snapshot");
-                  return snapshot.scheduled?.every(
-                    (w) => w.last_snapshot && !w.error,
-                  );
-                }),
-              { timeout: 45000 },
-            )
-            .toBe(true);
-          await page.evaluate(
-            (id) =>
-              window.vibestar.rpc("scheduled.enabled", { id, enabled: false }),
-            job.id,
-          );
-          const paused = await page.evaluate(() =>
-            window.vibestar.rpc<import("../src/lib/types").Snapshot>(
-              "snapshot",
-            ),
-          );
-          expect(paused.scheduled?.find((j) => j.id === job.id)?.enabled).toBe(
-            false,
-          );
-          await page.evaluate(
-            (id) =>
-              window.vibestar.rpc("scheduled.enabled", { id, enabled: true }),
-            job.id,
-          );
-          const resumed = await page.evaluate(() =>
-            window.vibestar.rpc<import("../src/lib/types").Snapshot>(
-              "snapshot",
-            ),
-          );
-          expect(resumed.scheduled?.find((j) => j.id === job.id)?.enabled).toBe(
-            true,
-          );
-        }
         const localRepository = await page.evaluate(async () => {
           const verified = await window.vibestar.rpc<{
             verification_id: string;

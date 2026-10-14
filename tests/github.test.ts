@@ -34,6 +34,7 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
   const db = new Database(":memory:");
   const engine = {
     root: "/tmp",
+    assertAvailable: vi.fn(),
     trackActivity: vi.fn(() => vi.fn()),
     isExecuting: vi.fn(() => false),
     db,
@@ -72,8 +73,13 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
     expect(service.prs()[0].repository).toBe("upstream/repo");
     expect(service.catalog()).toHaveLength(1);
     expect(db.repositories()).toEqual([]);
-    expect(scheduler.jobs()).toHaveLength(1);
-    expect(scheduler.jobs()[0].enabled).toBe(true);
+    expect(scheduler.jobs()).toHaveLength(0);
+    scheduler.add({
+      url: service.prs()[0].url,
+      task_id: null,
+      interval_minutes: 60,
+    });
+    expect(scheduler.jobs()[0].enabled).toBe(false);
     scheduler.setEnabled(scheduler.jobs()[0].id, false);
     await service.sync();
     expect(scheduler.jobs()).toHaveLength(1);

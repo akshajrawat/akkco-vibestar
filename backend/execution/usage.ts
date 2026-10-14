@@ -3,6 +3,7 @@ import type { Database } from "../storage/database";
 import { object, type ProviderDetection } from "./providers/contracts";
 
 export interface UsageRecord {
+  analysis_id?: string | null;
   id: string;
   task_id: string | null;
   job_id: string | null;

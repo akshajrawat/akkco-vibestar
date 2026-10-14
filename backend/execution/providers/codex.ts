@@ -123,11 +123,25 @@ export class CodexProvider implements AgentProvider {
         data: Object.keys(item).length
           ? {
               call_id: item.id,
+              tool: item.name || item.tool || item.type,
+              arguments: item.arguments ?? item.input,
+              query: item.query,
+              path: item.path,
               text: item.text,
               command: item.command,
-              stdout: item.aggregated_output,
+              stdout: item.stdout ?? item.aggregated_output,
+              output_source:
+                item.stdout !== undefined
+                  ? "stdout"
+                  : item.aggregated_output !== undefined
+                    ? "aggregate"
+                    : undefined,
+              stderr: item.stderr,
               exit_code: item.exit_code,
-              status: item.status,
+              duration_ms: item.duration_ms,
+              status:
+                item.status ||
+                (event === "item.completed" ? "completed" : "running"),
               files: Array.isArray(item.changes)
                 ? item.changes.map((change) => object(change).path)
                 : undefined,

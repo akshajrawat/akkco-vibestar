@@ -409,7 +409,7 @@ const {createHash}=require('node:crypto');
 (async()=>{
 const build=${stale ? "'older-bundle'" : "createHash('sha256').update(await readFile(__filename)).digest('hex')"};
 const lines=createInterface({input:process.stdin});
-lines.on('line',line=>{const request=JSON.parse(line);const result=request.method==='core.info'?{build,pipeline_approvals:true}:request.method==='snapshot'?{tasks:[]}:request.method==='usage.info'?{database:'test.sqlite'}:null;process.stdout.write(JSON.stringify(result?{id:request.id,result}:{id:request.id,error:{message:'Unknown method: '+request.method}})+'\\n');});
+lines.on('line',line=>{const request=JSON.parse(line);const result=request.method==='core.info'?{build,pipeline_approvals:true,manual_pr_analysis:true}:request.method==='snapshot'?{tasks:[]}:request.method==='usage.info'?{database:'test.sqlite'}:null;process.stdout.write(JSON.stringify(result?{id:request.id,result}:{id:request.id,error:{message:'Unknown method: '+request.method}})+'\\n');});
 lines.on('close',()=>process.exit(0));
 })();
 `,

@@ -1,16 +1,238 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Run, AgentEvent } from "../lib/types";
-import { duration, rpc, errorMessage } from "../lib/api";
+import { duration, errorMessage, eventData } from "../lib/api";
+import { useTaskView, updateTaskView } from "../lib/taskView";
+import { useAgentOutput } from "../lib/agent-output/useOutput";
 import { Status } from "./Status";
-import { RunError } from "./RunError";
 import { AgentTimeline } from "./AgentTimeline";
-import { AgentResponse } from "./AgentResponse";
+import { Button } from "./ui/button";
+
+const OutputBody = ({
+  taskId,
+  run,
+  events,
+  preparation,
+}: {
+  taskId: string;
+  run?: Run;
+  events: AgentEvent[];
+  preparation: boolean;
+}) => {
+  const view = useTaskView(taskId);
+  const raw = view.outputView === "raw";
+  const output = useAgentOutput({
+    taskId,
+    run,
+    events,
+    raw,
+    stream: view.outputStream,
+    search: view.outputSearch,
+    preparation,
+  });
+  const scroll = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const restore = useRef<{ height: number; top: number } | null>(null);
+  const [copyStatus, setCopyStatus] = useState("");
+  const text =
+    view.outputView === "prompt"
+      ? run?.prompt || "No saved prompt"
+      : view.outputStream === "events"
+        ? output.events
+            .map((e) =>
+              JSON.stringify({
+                timestamp: e.timestamp,
+                kind: e.kind,
+                stream: e.stream,
+                data: eventData(e.data),
+                raw: e.raw,
+              }),
+            )
+            .join("\n")
+        : output.log.text;
+  const displayedText =
+    view.outputView === "prompt" && view.outputSearch
+      ? text
+          .split("\n")
+          .filter((line) =>
+            line.toLowerCase().includes(view.outputSearch.toLowerCase()),
+          )
+          .join("\n")
+      : text;
+  useEffect(() => {
+    const element = scroll.current;
+    if (!element) return;
+    if (restore.current && !output.loading) {
+      element.scrollTop =
+        restore.current.top + element.scrollHeight - restore.current.height;
+      restore.current = null;
+    } else if (!restore.current && view.outputFollow)
+      element.scrollTo({ top: element.scrollHeight });
+  }, [
+    text,
+    output.events.length,
+    output.loading,
+    view.outputFollow,
+    run?.output,
+  ]);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        raw || preparation || view.outputView === "prompt"
+          ? displayedText
+          : scroll.current?.innerText || scroll.current?.textContent || "",
+      );
+      setCopyStatus("Copied");
+    } catch (e) {
+      setCopyStatus(errorMessage(e));
+    }
+  };
+  return (
+    <>
+      <div
+        className="output-controls"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            updateTaskView(taskId, { outputSearch: "" });
+            searchInput.current?.blur();
+            e.stopPropagation();
+          }
+        }}
+      >
+        <input
+          ref={searchInput}
+          type="search"
+          aria-label="Search saved output"
+          placeholder="Search saved output…"
+          maxLength={256}
+          value={view.outputSearch}
+          onChange={(e) =>
+            updateTaskView(taskId, { outputSearch: e.target.value })
+          }
+        />
+        {!raw && view.outputView !== "prompt" && (
+          <select
+            aria-label="Output filter"
+            value={view.outputFilter}
+            onChange={(e) =>
+              updateTaskView(taskId, { outputFilter: e.target.value })
+            }
+          >
+            {["all", "messages", "commands", "files", "tests", "errors"].map(
+              (filter) => (
+                <option key={filter} value={filter}>
+                  {filter === "all" ? "All activity" : filter}
+                </option>
+              ),
+            )}
+          </select>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-pressed={view.outputFollow}
+          onClick={() =>
+            updateTaskView(taskId, { outputFollow: !view.outputFollow })
+          }
+        >
+          {view.outputFollow ? "Pause scrolling" : "Follow output"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => void copy()}>
+          Copy output
+        </Button>
+        <span className="output-copy-status" role="status">
+          {copyStatus}
+        </span>
+      </div>
+      {output.error && (
+        <p className="error-box" role="alert">
+          {output.error}
+        </p>
+      )}
+      <div
+        className="output-scroll"
+        ref={scroll}
+        tabIndex={0}
+        aria-label="Agent output transcript"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          if (
+            view.outputFollow &&
+            el.scrollHeight - el.scrollTop - el.clientHeight > 80
+          )
+            updateTaskView(taskId, { outputFollow: false });
+        }}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+            e.preventDefault();
+            searchInput.current?.focus();
+          }
+          if (e.key === "End" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            updateTaskView(taskId, { outputFollow: true });
+          }
+        }}
+      >
+        {output.more && view.outputView !== "prompt" && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={output.loading}
+            onClick={() => {
+              updateTaskView(taskId, { outputFollow: false });
+              if (scroll.current && !view.outputSearch)
+                restore.current = {
+                  height: scroll.current.scrollHeight,
+                  top: scroll.current.scrollTop,
+                };
+              void output.loadMore();
+            }}
+          >
+            {view.outputSearch ? "More search matches" : "Load earlier output"}
+          </Button>
+        )}
+        {view.outputSearch && (
+          <p className="output-note">
+            Searching saved{" "}
+            {view.outputView === "prompt"
+              ? "prompt"
+              : raw && view.outputStream !== "events"
+                ? `${view.outputStream} lines`
+                : "events"}
+            . Matches are paged; clear search to restore the transcript.
+          </p>
+        )}
+        {raw || preparation || view.outputView === "prompt" ? (
+          <pre className="raw-log">
+            {displayedText ||
+              (view.outputSearch ? "No matches" : "No output saved yet")}
+          </pre>
+        ) : run ? (
+          <div className="readable-log">
+            <AgentTimeline
+              runs={[run]}
+              events={output.events}
+              search={view.outputSearch}
+              filter={view.outputFilter}
+            />
+          </div>
+        ) : (
+          <p className="empty-row">No provider run has started.</p>
+        )}
+        {raw && !view.outputSearch && output.log.end < output.log.size && (
+          <Button size="sm" onClick={() => void output.refresh()}>
+            Load newer output
+          </Button>
+        )}
+      </div>
+    </>
+  );
+};
+
 export const LogView = ({
   taskId,
   runs,
   events,
   selectedRun,
-  liveOutput = false,
 }: {
   taskId: string;
   runs: Run[];
@@ -18,117 +240,104 @@ export const LogView = ({
   selectedRun?: string;
   liveOutput?: boolean;
 }) => {
-  const [selection, setSelection] = useState("");
-  const [view, setView] = useState(liveOutput ? "activity" : "response");
+  const view = useTaskView(taskId);
+  const selection = view.outputRun || selectedRun || "";
+  const preparation = selection === "preparation";
   const run =
-    runs.find((r) => r.id === (selection || selectedRun)) || runs.at(-1);
-  const [log, setLog] = useState<{ text: string; truncated: boolean }>({
-    text: "",
-    truncated: false,
-  });
-  const [error, setError] = useState("");
-  const preparation = (selection || selectedRun) === "preparation";
-  useEffect(() => {
-    let alive = true;
-    if (!preparation && !["raw events", "stderr"].includes(view)) return;
-    const refresh = () =>
-      rpc<{ text: string; truncated: boolean }>("task.logs", {
-        id: taskId,
-        run_id: preparation ? null : run?.id || null,
-        stream: view === "stderr" ? "stderr" : "stdout",
-      })
-        .then((data) => {
-          if (alive) {
-            setLog(data);
-            setError("");
-          }
-        })
-        .catch((e) => {
-          if (alive) setError(errorMessage(e));
-        });
-    void refresh();
-    const timer =
-      run?.status === "running"
-        ? setInterval(() => void refresh(), 1000)
-        : undefined;
-    return () => {
-      alive = false;
-      if (timer) clearInterval(timer);
-    };
-  }, [taskId, preparation, run?.id, view, events.length, run?.status]);
+    runs.find((r) => r.id === selection) ||
+    [...runs].reverse().find((r) => r.status === "running") ||
+    runs.at(-1);
   return (
-    <div className="logs-panel">
+    <section
+      className="logs-panel"
+      aria-label="Agent output"
+      onKeyDown={(e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          e.currentTarget
+            .querySelector<HTMLInputElement>("input[type=search]")
+            ?.focus();
+        }
+      }}
+    >
       <div className="logs-toolbar">
         <select
           aria-label="Select run"
-          value={preparation ? "preparation" : run?.id || ""}
-          onChange={(e) => setSelection(e.target.value)}
+          value={
+            preparation
+              ? "preparation"
+              : selection && run?.id === selection
+                ? selection
+                : ""
+          }
+          onChange={(e) =>
+            updateTaskView(taskId, { outputRun: e.target.value })
+          }
         >
+          <option value="">Current / latest run</option>
           <option value="preparation">Repository preparation</option>
           {runs.map((r) => (
             <option key={r.id} value={r.id}>
-              {r.provider} ·{" "}
-              {r.purpose === "scheduled" ? "PR analysis" : `stage ${r.stage}`} ·{" "}
-              {new Date(r.started_at).toLocaleTimeString()}
+              {r.provider} · {r.purpose || `stage ${r.stage}`} · {r.status} ·{" "}
+              {new Date(r.started_at).toLocaleString()}
             </option>
           ))}
         </select>
-        {["activity", "prompt", "response", "raw events", "stderr"].map((v) => (
+        {(["readable", "raw", "prompt"] as const).map((mode) => (
           <button
-            className={view === v ? "selected" : ""}
-            key={v}
-            onClick={() => setView(v)}
+            key={mode}
+            aria-pressed={view.outputView === mode}
+            className={view.outputView === mode ? "selected" : ""}
+            onClick={() => updateTaskView(taskId, { outputView: mode })}
           >
-            {v === "raw events" ? "Raw stdout" : v}
+            {mode === "prompt"
+              ? "Saved prompt"
+              : mode === "raw"
+                ? "Raw"
+                : "Readable"}
           </button>
         ))}
+        {view.outputView === "raw" && (
+          <select
+            aria-label="Raw output stream"
+            value={view.outputStream}
+            onChange={(e) =>
+              updateTaskView(taskId, {
+                outputStream: e.target.value as typeof view.outputStream,
+              })
+            }
+          >
+            <option value="stdout">Raw stdout</option>
+            <option value="stderr">Raw stderr</option>
+            <option value="events">Structured events</option>
+          </select>
+        )}
       </div>
-      {error && <p className="error-box">{error}</p>}
-      {log.truncated && (
-        <p className="empty-row">
-          Showing the last 1 MiB. Complete redacted logs remain in the task log
-          directory.
-        </p>
+      {!preparation && run && (
+        <div className="run-metadata">
+          <Status status={run.status} />
+          <span>{run.provider}</span>
+          <code>{run.model || "CLI default · model not reported"}</code>
+          <span>{run.effort}</span>
+          <span>{duration(run.started_at, run.ended_at)}</span>
+          <span>exit {run.exit_code ?? "not reported"}</span>
+          <details>
+            <summary>Run details</summary>
+            <code>{run.id}</code>
+            <p>
+              PID {run.pid ?? "not started"} · session{" "}
+              {run.conversation_id || "not reported"}
+            </p>
+          </details>
+        </div>
       )}
-      {preparation ? (
-        <pre className="raw-log">{log.text || "No preparation log yet"}</pre>
-      ) : run ? (
-        <>
-          <div className="run-metadata">
-            <Status status={run.status} />
-            <code>{run.model || "CLI default"}</code>
-            <span>{run.effort}</span>
-            <span>{duration(run.started_at, run.ended_at)}</span>
-            <span>exit {run.exit_code ?? "pending"}</span>
-            <span>pid {run.pid ?? "pending"}</span>
-            {run.conversation_id && (
-              <span className="mono">conversation {run.conversation_id}</span>
-            )}
-          </div>
-          {run.error && <RunError error={run.error} run={run} />}
-          {view === "activity" ? (
-            <div className="readable-log">
-              <AgentTimeline
-                runs={[run]}
-                events={events.filter((event) => event.run_id === run.id)}
-              />
-            </div>
-          ) : view === "response" ? (
-            <div className="readable-log">
-              <AgentResponse
-                expanded
-                text={run.output || "No final result saved yet"}
-              />
-            </div>
-          ) : (
-            <pre className="raw-log">
-              {view === "prompt" ? run.prompt : log.text}
-            </pre>
-          )}
-        </>
-      ) : (
-        <p className="empty-row">No provider run has started.</p>
-      )}
-    </div>
+      <OutputBody
+        key={`${taskId}/${preparation ? "preparation" : run?.id}/${view.outputView}/${view.outputStream}`}
+        taskId={taskId}
+        run={run}
+        preparation={preparation}
+        events={events}
+      />
+    </section>
   );
 };

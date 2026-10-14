@@ -137,9 +137,49 @@ Final checks passed format, lint, typecheck, **144 normal tests** (7 opt-in test
 
 Historical skipped Oppia checks were not rerun or relabeled as passing. Read-only shared dependencies may still prevent commands that try to change installed packages or build into protected directories; final review reports such blockers rather than claiming CI passed. External editor terminals do not inherit agent sandbox mounts. Native Windows launch/window geometry and a new authenticated Oppia pipeline were not retested.
 
+## Milestone 2 — IDE harness and complete agent output — October 14
+
+Before editing, the saved plan, ARCHITECTURE.md and current runner/adapters/workspace components were inspected. Milestone 1 was present in the uncommitted working tree and retained. The baseline passed **190 tests**, with 8 opt-in tests skipped. No Milestone 1 implementation was repeated and no repair workflow was started.
+
+The final application keeps executing provider/model/effort/stage/runtime/tool activity visible with optional panes closed. Readable output groups streamed messages/tool calls and preserves arguments, paths, command output, actual exit results, interruption and initial/latest raw technical evidence. Provider-emitted errors/status text appear while streaming. Nested results use existing safe Markdown. Raw stdout/stderr, structured events and exact saved prompts remain separately selectable. Existing SQLite events and log files provide historical paging and full saved-output search; no new index or persistence migration is needed. Reported model/effort/usage is distinct from composer configuration, and missing token totals remain unavailable.
+
+Final automated verification:
+
+- `npm test`: **203 passed**, 9 opt-in tests skipped, across 31 passing test files.
+- `npm run test:tui`: **2 passed**, covering real PTYs and task terminal isolation/lifecycle.
+- `npm run lint`, `npm run typecheck`, `npm run format:check`, `npm run build`, explicit Prettier checks for these docs and `git diff --check`: passed.
+- New coverage includes live stream rendering and UTF-8 chunk/page boundaries; stdout/stderr separation and redaction; actual model/effort telemetry; provider errors; interrupted tools even with exit zero; tool completion across history/search boundaries; unknown retained raw fields; logs beyond the 2,000-event/1 MiB UI tails; saved prompts/copying; stale requests on task switching; live capture while scrolling is paused; completion bursts exceeding one page; persisted layout/output preferences; scoped search/follow keys; tab navigation; prompt-dialog focus; and composer Enter/Shift+Enter/IME behavior.
+- Existing issue queue, worktree isolation/ownership, approval and manual PR tests continue passing. The normal suite excludes live subscription/GitHub tests.
+
+The final built Electron check passed **3 fixtures** in 34.57 seconds under Xvfb:
+
+```sh
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 \
+VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_PR_DESKTOP_TEST=1 \
+xvfb-run -a npm test -- \
+  tests/desktop-agent-output.test.ts \
+  tests/desktop-pipeline-approval.test.ts \
+  tests/desktop-pr-analysis.test.ts --maxWorkers=1
+```
+
+These use the built renderer and actual Electron IPC, isolated fixture/empty-core roots and blocked real AI/GitHub executables. The output fixture runs safe Node processes emitting the observed CLI event shapes through the existing AgentRunner/sandbox. It verifies live Readable/Raw output, tool arguments/output, separate redacted stderr copying through Electron's clipboard, historical selection and full-file search, saved prompts, interrupted tools, reported usage and preference restoration after reload. The task stays at its original human approval gate. The other fixtures regress the full original issue approval sequence and Milestone 1 manual PR analysis. No real model subscriptions, live GitHub operations or remote writes were used.
+
+The following final screenshots were visually inspected for text/contrast, dense dark surfaces, independent disclosures, active execution metadata, stream labels, interrupted state, historical search and reported usage:
+
+`/home/aksha/tmp/vibestar-output-desktop-v7DT5Y/screenshots/`
+
+Evidence includes `active-readable.png`, `active-raw-stdout.png`, `active-raw-stderr.png`, `completed-and-interrupted-tools.png`, `historical-search.png`, `historical-raw-paused.png`, `reported-usage.png` and `results.json`. The fixture audit has zero renderer errors; its 120 input / 30 output tokens are explicitly fixture-reported values, with total unavailable. They are not live account usage.
+
+Earlier output-fixture assertions assumed a fresh task list after reload, a still-following scroll position and synchronous clipboard completion. They were corrected to respect restored task/gate/preferences, automatic pause and asynchronous copy confirmation. Desktop files run sequentially to avoid native window focus/clipboard interference. One pre-existing cancellation test timed out during simultaneous full-suite/PTY/desktop load; its isolated rerun and subsequent full runs passed without changing that test's behavior. Existing nonblocking jsdom canvas and third-party Zod annotation warnings remain.
+
+Limits: actual CLI fields that are absent stay unavailable; combined command output cannot be split into streams the provider did not emit. Reported tool durations take precedence over clearly labelled intervals measured between persisted start/finish events. Raw output is the existing redacted, line-oriented capture and may span byte pages for very long lines. Full-file search is linear and rendering grows with explicitly loaded pages; no generalized index or virtualization is added. New/unknown provider shapes remain inspectable in Raw/technical details. Native Windows installation/DPI, packaging and live provider/account behavior were not repeated in this milestone.
+
+Milestone 2 is complete and ready for user review. Milestones 3–5 remain deferred.
+
 ## Practical limits
 
-- Monitoring runs while Vibestar is open, without an installed background service.
+- PR refresh/analysis runs only on explicit user actions while Vibestar is open. The original issue queue/recovery policy is retained; there is no installed background service.
 - Authentication remains owned by official CLIs. Successful Antigravity model discovery establishes connection; unavailable account/tier/allowance details are labeled rather than guessed.
 - Model prompts use excerpts and a byte budget; the UI and database retain full discussion. Ambiguous inference failures preserve the previous decision/snapshot and require explicit retry.
 - Legacy migration preserves the original root. Managed worktree copies are repaired; imported task worktrees or external registrations that cannot be moved safely require Use old location.

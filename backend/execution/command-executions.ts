@@ -45,13 +45,22 @@ export class CommandExecutions {
       typeof data.exit_code === "number"
         ? data.exit_code
         : (row?.exit_code ?? null);
-    const finished = event.kind === "command.finished" || failed;
+    const interrupted = ["interrupted", "cancelled", "canceled"].includes(
+      String(data.status).toLowerCase(),
+    );
+    const finished =
+      event.kind === "command.finished" ||
+      failed ||
+      interrupted ||
+      typeof data.exit_code === "number";
     const status = finished
-      ? failed || (exit !== null && exit !== 0)
-        ? "failed"
-        : exit === 0
-          ? "passed"
-          : "completed"
+      ? interrupted
+        ? "interrupted"
+        : failed || (exit !== null && exit !== 0)
+          ? "failed"
+          : exit === 0
+            ? "passed"
+            : "completed"
       : row?.status || "running";
     const stdout =
       typeof data.stdout === "string" ? data.stdout : row?.stdout || "";

@@ -10,7 +10,11 @@ export const parsePullRequest = (value: string) => {
     u.hostname !== "github.com" ||
     u.username ||
     u.password ||
+    u.port ||
+    u.search ||
+    u.hash ||
     !match ||
+    match.slice(1, 3).some((part) => part === "." || part === "..") ||
     !Number.isSafeInteger(Number(match[3]))
   )
     throw new AdeError(
@@ -31,6 +35,31 @@ export const ScheduleInput = z.object({
   verify_codex: z.boolean().default(false),
 });
 export interface PullRequestState {
+  fetchedAt?: string;
+  identity?: {
+    prId: string;
+    headRepository: string | null;
+    headRepositoryId: string | null;
+    headBranch: string;
+    baseRepository: string;
+    baseRepositoryId: string;
+    baseBranch: string;
+  };
+  coverage?: { complete: boolean; missing: string[]; warnings: string[] };
+  files?: {
+    path: string;
+    previousPath: string | null;
+    status: string;
+    patch: string | null;
+  }[];
+  commits?: {
+    sha: string;
+    author: string | null;
+    message: string;
+    date: string;
+    url: string;
+  }[];
+  linkedIssues?: Record<string, unknown>[];
   title: string;
   body: string;
   state: string;
@@ -47,6 +76,10 @@ export interface PullRequestState {
     path: string;
     body: string;
     commentIds?: string[];
+    comments?: { id: string; body: string }[];
+    outdated?: boolean;
+    line?: number | null;
+    startLine?: number | null;
   }[];
   comments: { id: string; body: string; updated_at: string; author?: string }[];
   reviews: {
@@ -62,6 +95,7 @@ export interface PullRequestState {
     url: string;
     completedAt?: string;
     startedAt?: string;
+    id?: string;
   }[];
 }
 export interface DiscussionEntry {
@@ -79,6 +113,17 @@ export interface DiscussionEntry {
   threadId?: string;
   authorAssociation?: string;
   bot?: boolean;
+  url?: string;
+  authorId?: string;
+  inReplyToId?: string;
+  commitId?: string;
+  originalCommitId?: string;
+  startLine?: number;
+  originalLine?: number;
+  originalStartLine?: number;
+  side?: string;
+  diffHunk?: string;
+  outdated?: boolean;
 }
 export interface ScheduleJob {
   id: string;
@@ -91,6 +136,7 @@ export interface ScheduleJob {
   status:
     "idle" | "polling" | "pending" | "analyzing" | "interrupted" | "error";
   last_checked_at: string | null;
+  last_analyzed_at?: string;
   last_snapshot: PullRequestState | null;
   pending_snapshot: PullRequestState | null;
   changes: string[];

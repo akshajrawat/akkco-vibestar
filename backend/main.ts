@@ -26,7 +26,6 @@ const main = async () => {
       );
       engine.start();
       rpc.scheduler.start();
-      rpc.github.start();
     })().finally(() => {
       initializing = undefined;
     });
@@ -58,7 +57,12 @@ const main = async () => {
         request = requestSchema.parse(JSON.parse(line));
         let result: unknown;
         if (request.method === "core.info")
-          result = { build, protocol: 3, pipeline_approvals: true };
+          result = {
+            build,
+            protocol: 3,
+            pipeline_approvals: true,
+            manual_pr_analysis: true,
+          };
         else if (!rpc && request.method === "snapshot")
           result = {
             repositories: [],

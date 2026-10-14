@@ -111,6 +111,48 @@ it("does not disable real Antigravity plan mode or bypass permissions", () => {
     "workspace-write",
   );
 });
+it("retains exact tool arguments and distinguishes provider aggregates from separately emitted command streams", () => {
+  const command = codex.normalize({
+    type: "item.completed",
+    item: {
+      id: "command",
+      type: "command_execution",
+      command: "npm test",
+      arguments: { cwd: "src" },
+      aggregated_output: "provider aggregate",
+      stderr: "explicit stderr",
+      exit_code: 0,
+    },
+  })[0];
+  expect(command.data).toMatchObject({
+    arguments: { cwd: "src" },
+    output_source: "aggregate",
+    stdout: "provider aggregate",
+    stderr: "explicit stderr",
+  });
+  const read = agy.normalize({
+    event: "step_update",
+    step_update: {
+      step_index: 1,
+      step_type: "tool",
+      state: "DONE",
+      tool_info: {
+        name: "view_file",
+        parameters: { AbsolutePath: "source.ts", StartLine: 5 },
+        output: "file contents",
+      },
+    },
+  })[0];
+  expect(read).toMatchObject({
+    kind: "file.read",
+    data: {
+      tool: "view_file",
+      path: "source.ts",
+      arguments: { AbsolutePath: "source.ts", StartLine: 5 },
+      output_source: "provider",
+    },
+  });
+});
 it("rejects missing flags and malformed plans", () => {
   expect(() => verifyFlags("--json", ["--json", "--sandbox"])).toThrow();
   expect(() => validatePlan(1, { summary: "missing fields" })).toThrow();

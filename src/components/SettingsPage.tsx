@@ -25,8 +25,6 @@ export const SettingsPage = ({
   const [installLog, setLog] = useState("");
   const [editors, setEditors] = useState<{ id: string; label: string }[]>([]);
   const [section, setSection] = useState("Agents");
-  const [watch, setWatch] =
-    useState<import("../../backend/github/contracts").WatchSettings>();
   const { providers } = useProviders();
   useEffect(() => {
     void window.vibestar
@@ -49,12 +47,6 @@ export const SettingsPage = ({
   useEffect(() => {
     setValue(settings);
   }, [settings]);
-  useEffect(() => {
-    if (section === "GitHub & PR Watch")
-      void rpc<import("../lib/types").Snapshot>("snapshot")
-        .then((s) => setWatch(s.github?.settings))
-        .catch((e) => setError(errorMessage(e)));
-  }, [section]);
   const save = async () => {
     setBusy(true);
     setError("");
@@ -405,61 +397,18 @@ export const SettingsPage = ({
           {section === "Usage" && <UsageView />}
           {section === "GitHub & PR Watch" && (
             <section className="settings-section">
-              <h2>GitHub & PR Watch</h2>
-              <p className="subtle">
-                Official gh authentication is managed on Providers. Watches
-                inspect GitHub while Vibestar is open; only ambiguous
-                conversation uses Utility AI.
+              <h2>GitHub & PR review</h2>
+              <p>
+                PR inspection is manual only. Refresh PR List reads GitHub
+                metadata; Track PR saves a record. Only Analyze PR can request
+                semantic review analysis.
               </p>
-              {watch && (
-                <>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={watch.auto_watch}
-                      onChange={(e) =>
-                        setWatch({ ...watch, auto_watch: e.target.checked })
-                      }
-                    />
-                    Automatically watch authored PRs
-                  </label>
-                  <label>
-                    Inspection interval (minutes)
-                    <input
-                      type="number"
-                      min={5}
-                      max={10080}
-                      value={watch.interval_minutes}
-                      onChange={(e) =>
-                        setWatch({
-                          ...watch,
-                          interval_minutes: Number(e.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={watch.verify_codex}
-                      onChange={(e) =>
-                        setWatch({ ...watch, verify_codex: e.target.checked })
-                      }
-                    />
-                    Optional Codex verification after Utility AI
-                  </label>
-                  <Button
-                    onClick={() =>
-                      void rpc("github.configure", watch)
-                        .then(refresh)
-                        .then(() => setNotice("PR watch defaults saved."))
-                        .catch((e) => setError(errorMessage(e)))
-                    }
-                  >
-                    Save PR watch defaults
-                  </Button>
-                </>
-              )}
+              <p className="subtle">
+                Automatic watches, recurring inspections and legacy optional
+                second-model verification are disabled. Existing PR history and
+                usage are preserved. Configure the analysis provider/model under
+                Agents → Utility AI.
+              </p>
             </section>
           )}
         </div>

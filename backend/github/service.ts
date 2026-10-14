@@ -174,7 +174,6 @@ export class GitHubService {
     this.engine.changed();
     return activity;
   };
-  private timer: ReturnType<typeof setTimeout> | undefined;
   private controller = new AbortController();
   private running: Promise<unknown> | undefined;
   private status: GitHubStatus | null = null;
@@ -205,12 +204,18 @@ export class GitHubService {
     const row = this.engine.db.all<{ value: string }>(
       "SELECT value FROM settings WHERE key='github_watch'",
     )[0];
-    return row
+    const saved = row
       ? watchSchema.parse(JSON.parse(row.value))
-      : { auto_watch: true, interval_minutes: 60, verify_codex: false };
+      : { auto_watch: false, interval_minutes: 60, verify_codex: false };
+    return { ...saved, auto_watch: false, verify_codex: false };
   };
   configure = (input: unknown) => {
     const value = watchSchema.parse(input);
+    if (value.auto_watch || value.verify_codex)
+      throw new AdeError(
+        "manual_policy",
+        "PR inspection and analysis require an explicit user action. Automatic watching and second-model verification are disabled.",
+      );
     this.engine.db.run(
       "INSERT INTO settings VALUES('github_watch',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       JSON.stringify(value),
@@ -420,7 +425,7 @@ export class GitHubService {
             saved?.task_id || (matches.length === 1 ? matches[0].id : null),
         };
         this.savePR(value);
-        this.scheduler.discovered(value, this.settings());
+        this.scheduler.discovered(value);
       }
       // Missing search results are not proof of closure. Confirm each known PR.
       for (const old of this.prs().filter(
@@ -438,7 +443,7 @@ export class GitHubService {
             updated_at: now(),
           };
           this.savePR(value);
-          this.scheduler.discovered(value, this.settings());
+          this.scheduler.discovered(value);
         }
       }
       this.lastSync = now();
@@ -463,30 +468,13 @@ export class GitHubService {
       pr.updated_at,
     );
   };
-  start = () => {
-    const poll = async () => {
-      try {
-        await this.sync();
-      } catch (error) {
-        if (!this.closed)
-          this.engine.publish({
-            event: "core.error",
-            text: error instanceof Error ? error.message : String(error),
-          });
-      }
-      if (!this.closed) {
-        this.timer = setTimeout(() => void poll(), 5 * 60000);
-        this.timer.unref();
-      }
-    };
-    void poll();
-  };
+  // Kept for older callers: starting the service never schedules a GitHub read.
+  start = () => {};
   close = async () => {
     this.closed = true;
     this.controller.abort();
     for (const clone of this.clones.values()) clone.controller.abort();
     await Promise.all([...this.clones.values()].map((c) => c.promise));
-    if (this.timer) clearTimeout(this.timer);
     await this.running;
   };
 }

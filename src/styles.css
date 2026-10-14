@@ -875,7 +875,7 @@ details > pre {
   width: 7px;
   font-size: 14px;
 }
-.tool-event details[open] summary:before {
+.tool-event details[open] > summary:before {
   transform: rotate(90deg);
 }
 .tool-event summary > span {
@@ -903,6 +903,10 @@ details > pre {
 .tool-details pre {
   color: var(--text-secondary);
   font-size: 11px;
+}
+.tool-details > small {
+  display: block;
+  margin-top: 4px;
 }
 .edited-file {
   display: flex;
@@ -1502,7 +1506,7 @@ details > pre {
   flex-wrap: wrap;
 }
 .logs-toolbar select {
-  max-width: 300px;
+  max-width: min(420px, 100%);
   font-size: 11px;
   padding: 4px;
 }
@@ -1536,6 +1540,122 @@ details > pre {
   min-height: 0;
   overflow: auto;
   padding: 12px 18px;
+}
+.output-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--background-panel);
+}
+.output-controls input {
+  flex: 1;
+  min-width: 140px;
+  max-width: 420px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.output-controls select,
+.usage-run-select select {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.output-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.output-scroll .readable-log,
+.output-scroll .raw-log {
+  overflow: visible;
+}
+.output-scroll .raw-log {
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+.output-scroll > button,
+.output-note {
+  margin: 8px 12px;
+}
+.output-note,
+.output-copy-status {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.tool-interrupted summary {
+  color: var(--accent-amber);
+}
+.tool-state {
+  color: inherit;
+  font-size: 10px;
+}
+.tool-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 12px;
+  margin-bottom: 10px;
+}
+.tool-facts dt,
+.tool-stream > strong {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.tool-facts dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.tool-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.tool-stream {
+  margin: 10px 0;
+  padding: 7px 10px;
+  background: var(--background-app);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+}
+.tool-technical {
+  margin: 8px 0;
+}
+.provider-diagnostic {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--accent-amber);
+  color: var(--text-secondary);
+}
+.provider-diagnostic strong {
+  font-size: 11px;
+}
+.provider-diagnostic pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.result-fields > div {
+  margin: 8px 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--border-default);
+}
+.result-fields dt {
+  font-weight: 600;
+}
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+}
+.usage-run-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
 }
 .tests-panel {
   flex: 1;
@@ -2913,9 +3033,9 @@ details > pre {
   min-width: 0;
 }
 .current-run-text > div {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 4px;
 }
 .current-run-text span,
 .current-run-text time {
@@ -2928,6 +3048,13 @@ details > pre {
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 4px;
+}
+.workspace > .current-run {
+  padding: 8px 14px;
+  flex-wrap: wrap;
+}
+.workspace > .current-run .current-run-text {
+  flex-basis: 280px;
 }
 .editor-launcher {
   display: inline-flex;

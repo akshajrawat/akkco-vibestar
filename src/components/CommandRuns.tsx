@@ -132,11 +132,23 @@ export const CommandRuns = ({ detail }: { detail: Detail }) => {
                 value={stream}
                 onChange={(e) => setStream(e.target.value)}
               >
-                <option value="all">stdout + stderr</option>
-                <option value="stdout">stdout</option>
+                <option value="all">
+                  {command.call_id
+                    ? "Provider output + stderr"
+                    : "stdout + stderr"}
+                </option>
+                <option value="stdout">
+                  {command.call_id ? "Provider output" : "stdout"}
+                </option>
                 <option value="stderr">stderr</option>
               </select>
             </div>
+            {command.call_id && (
+              <small className="subtle">
+                Provider command output may combine streams. Agent Output
+                retains the exact emitted fields and separate CLI stdout/stderr.
+              </small>
+            )}
             {!!command.output_truncated && (
               <p className="warning">
                 Showing the last 1 MiB per stream.
