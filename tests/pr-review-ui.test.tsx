@@ -181,7 +181,7 @@ it("renders the entire original multiline review, source links, independent obse
     />,
   );
   await screen.findByText("Three observations require consideration.");
-  fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Full Conversation" }));
   expect(container.textContent).toContain(
     "those selectors and expect functions are moved into the utility files",
   );
@@ -200,7 +200,7 @@ it("renders the entire original multiline review, source links, independent obse
   expect(window.vibestar.openExternal).toHaveBeenCalledWith(
     prSnapshot.discussion![0].url,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Action items" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Review Actions" }));
   expect(
     screen.getByRole("heading", { name: "Outstanding observations" }),
   ).toBeTruthy();
@@ -234,7 +234,7 @@ it("keeps incomplete coverage and cancellation visible and preserves a complete 
   install([cancelled, session]);
   render(<PrDetails job={{ ...job, status: "interrupted" }} close={vi.fn()} />);
   await screen.findByText(/Stopped by user/);
-  fireEvent.click(screen.getByRole("button", { name: "Analysis history" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Analysis History" }));
   fireEvent.click(screen.getByRole("button", { name: /completed/ }));
   expect(
     screen.getByText("Three observations require consideration."),

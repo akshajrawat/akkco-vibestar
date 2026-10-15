@@ -13,7 +13,12 @@ export const CurrentRun = ({
   plan,
   usage: openUsage,
 }: {
-  detail: Detail;
+  detail: Pick<Detail, "runs" | "events" | "usage"> & {
+    task?: Pick<Detail["task"], "status" | "updated_at">;
+    status?: string;
+    updated_at?: string;
+    artifacts?: Detail["artifacts"];
+  };
   output: () => void;
   stop: () => void;
   prompt?: () => void;
@@ -21,6 +26,7 @@ export const CurrentRun = ({
   usage?: () => void;
 }) => {
   const run = [...detail.runs].reverse().find((r) => r.status === "running");
+  const status = detail.task?.status || detail.status || "";
   const active =
     !!run ||
     [
@@ -31,7 +37,9 @@ export const CurrentRun = ({
       "implementing",
       "validating",
       "reviewing_antigravity",
-    ].includes(detail.task.status);
+      "codex_implementing",
+      "antigravity_verifying",
+    ].includes(status);
   const model = run?.model || "CLI default · model not reported";
   const [, tick] = useState(0);
   useEffect(() => {
@@ -48,20 +56,24 @@ export const CurrentRun = ({
     implementing: "Implementing",
     validating: "Validation",
     reviewing_antigravity: "Reviewing changes & tests",
+    codex_implementing: "Implementing review fixes",
+    antigravity_verifying: "Independent review & tests",
   };
   const stage =
     run?.purpose === "Code Review Ask AI"
       ? "Code review · read-only"
-      : run
-        ? [
-            "",
-            "Planning",
-            "Reviewing plan",
-            "Implementing",
-            "Validation",
-            "Reviewing changes & tests",
-          ][run.stage]
-        : labels[detail.task.status];
+      : run?.purpose?.startsWith("PR Repair")
+        ? run.purpose
+        : run
+          ? [
+              "",
+              "Planning",
+              "Reviewing plan",
+              "Implementing",
+              "Validation",
+              "Reviewing changes & tests",
+            ][run.stage]
+          : labels[status];
   const entries = agentEntries(
     detail.events.filter((e) => e.run_id === run?.id && e.stream !== "stderr"),
   );
@@ -153,7 +165,13 @@ export const CurrentRun = ({
           )}
           <time aria-label="Run runtime">
             {" "}
-            · {duration(run?.started_at || detail.task.updated_at)}
+            ·{" "}
+            {duration(
+              run?.started_at ||
+                detail.task?.updated_at ||
+                detail.updated_at ||
+                new Date().toISOString(),
+            )}
           </time>
         </div>
         {run && (
@@ -175,7 +193,7 @@ export const CurrentRun = ({
       {plan &&
         run &&
         [1, 2].includes(run.stage) &&
-        detail.artifacts.some((a) => a.kind === `draft:${run.id}`) && (
+        detail.artifacts?.some((a) => a.kind === `draft:${run.id}`) && (
           <Button size="sm" onClick={plan}>
             View streamed plan
           </Button>

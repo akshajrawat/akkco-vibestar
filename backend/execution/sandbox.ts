@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { realpath } from "node:fs/promises";
-import { AdeError, type Task } from "../domain";
+import { AdeError, type WorkspaceAssignment } from "../domain";
 import { exists, taskRoot, inside } from "../workspace/paths";
 import type { Database } from "../storage/database";
 import { checked, cleanEnvironment } from "./process";
@@ -9,12 +9,13 @@ import { taskRuntime } from "../workspace/runtime";
 export const sandboxInvocation = async (
   root: string,
   db: Database,
-  task: Task | null,
+  task: WorkspaceAssignment | null,
   invocation: { program: string; args: string[]; input?: string },
   readOnly: boolean,
   schemaPath?: string,
   provider?: string,
   analysisWorkspace?: string,
+  contextPaths: string[] = [],
 ) => {
   if (process.platform !== "linux")
     throw new AdeError(
@@ -139,6 +140,15 @@ export const sandboxInvocation = async (
     if (!inside(join(root, "artifacts"), schema))
       throw new AdeError("isolation", "Schema is outside managed artifacts");
     args.push("--ro-bind", schema, schema);
+  }
+  for (const path of contextPaths) {
+    const context = await realpath(path);
+    if (!inside(join(root, "artifacts"), context))
+      throw new AdeError(
+        "isolation",
+        "Repair context is outside managed artifacts",
+      );
+    args.push("--ro-bind", context, context);
   }
   args.push("--chdir", cwd, "--", invocation.program, ...invocation.args);
   return { program: "bwrap", args, input: invocation.input };

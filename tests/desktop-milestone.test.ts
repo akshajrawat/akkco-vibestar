@@ -164,12 +164,14 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
         await page.screenshot({
           path: join(evidence, "electron-pr-conversation.png"),
         });
-        await page.getByRole("button", { name: "Checks", exact: true }).click();
+        await page
+          .getByRole("tab", { name: "CI / Checks", exact: true })
+          .click();
         await page
           .getByRole("button", { name: "Overview", exact: true })
           .click();
         await page
-          .getByRole("button", { name: "Analysis history", exact: true })
+          .getByRole("tab", { name: "Analysis History", exact: true })
           .click();
         await page.screenshot({
           path: join(evidence, "electron-pr-analysis.png"),

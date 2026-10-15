@@ -19,6 +19,8 @@ import {
   type CoreEvent,
   type ActivityBlocker,
   type IssueRef,
+  type WorkspaceAssignment,
+  type StageConfig,
 } from "../domain";
 import { Database } from "../storage/database";
 import { GitWorkspace } from "../workspace/git";
@@ -236,6 +238,62 @@ export class Engine extends EventEmitter {
         "Vibestar storage is being maintained. Try again when it finishes.",
       );
   };
+  runRepair = async (
+    assignment: WorkspaceAssignment,
+    provider: "codex" | "antigravity",
+    config: StageConfig,
+    prompt: string,
+    schema: z.ZodType,
+    contextPaths: string[],
+    signal: AbortSignal,
+  ) => {
+    this.assertAvailable();
+    const key = `repair:${assignment.id}`;
+    if (
+      this.active.has(key) ||
+      this.active.size >= this.db.settings().concurrency
+    )
+      throw new AdeError(
+        "busy",
+        "The configured execution slots are occupied. Start this repair explicitly when a slot is available.",
+      );
+    const controller = new AbortController();
+    const result = Promise.resolve().then(() =>
+      this.runner.run(
+        { id: assignment.id, stage: provider === "codex" ? 3 : 5 },
+        this.db.settings(),
+        AbortSignal.any([signal, controller.signal]),
+        {
+          repair: assignment,
+          prompt,
+          purpose:
+            provider === "codex"
+              ? "PR Repair Implementation"
+              : "PR Repair Verification",
+          provider,
+          config,
+          schema,
+          contextPaths,
+        },
+      ),
+    );
+    const promise = result
+      .then(
+        () => {},
+        () => {},
+      )
+      .finally(() => {
+        this.active.delete(key);
+        this.changed();
+        void this.drain();
+      });
+    this.active.set(key, { controller, promise, purpose: "PR repair" });
+    try {
+      return await result;
+    } finally {
+      await promise;
+    }
+  };
   private constructor(
     readonly root: string,
     private readonly release: () => Promise<void>,
@@ -246,7 +304,7 @@ export class Engine extends EventEmitter {
   ) {
     super();
     this.db = new Database(join(root, "state", "vibestar.sqlite"));
-    this.git = new GitWorkspace(root);
+    this.git = new GitWorkspace(root, (id) => this.db.repository(id).path);
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>
       this.trackActivity(
         {
@@ -288,7 +346,7 @@ export class Engine extends EventEmitter {
     });
     const engine = new Engine(root, release, providers);
     for (const run of engine.db.all<{ pid: number; process_identity: string }>(
-      "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL",
+      "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT json_extract(data,'$.workspace.operation.pid'),json_extract(data,'$.workspace.operation.identity') FROM pr_repairs WHERE json_extract(data,'$.workspace.operation.pid') IS NOT NULL UNION ALL SELECT json_extract(data,'$.pid'),json_extract(data,'$.process_identity') FROM repair_publications WHERE status='pushing' AND json_extract(data,'$.pid') IS NOT NULL",
     )) {
       if (
         run.process_identity &&
@@ -1302,6 +1360,7 @@ export class Engine extends EventEmitter {
     argv: string[],
     signal?: AbortSignal,
     internal = false,
+    repair?: WorkspaceAssignment,
   ) => {
     if (
       !argv.length ||
@@ -1317,17 +1376,18 @@ export class Engine extends EventEmitter {
         "invalid_state",
         "Wait for task execution to finish before running a manual command",
       );
-    const t = this.db.task(id);
+    const t = repair || this.db.task(id);
     const cwd = await taskRoot(this.root, t);
     const run = randomUUID();
     this.db.run(
-      "INSERT INTO test_runs(id,task_id,command,status,started_at) VALUES(?,?,?,'running',?)",
+      `INSERT INTO test_runs(id,${repair ? "repair_id" : "task_id"},command,status,started_at) VALUES(?,?,?,'running',?)`,
       run,
       id,
       JSON.stringify(argv),
       now(),
     );
-    this.changed(id);
+    const owner = repair ? { repair_id: id } : { task_id: id };
+    this.publish({ event: "changed", ...owner });
     try {
       const invocation = await sandboxInvocation(
         this.root,
@@ -1356,7 +1416,7 @@ export class Engine extends EventEmitter {
             `${text}\n`,
             run,
           );
-          this.publish({ event: "command.output", task_id: id, stream, text });
+          this.publish({ event: "command.output", ...owner, stream, text });
         },
       });
       this.db.run(
@@ -1372,14 +1432,15 @@ export class Engine extends EventEmitter {
       return output;
     } catch (e) {
       this.db.run(
-        "UPDATE test_runs SET status='failed',ended_at=?,stderr=? WHERE id=?",
+        "UPDATE test_runs SET status=?,ended_at=?,stderr=? WHERE id=?",
+        signal?.aborted ? "cancelled" : "failed",
         now(),
         String(e),
         run,
       );
       throw e;
     } finally {
-      this.changed(id);
+      this.publish({ event: "changed", ...owner });
     }
   };
   runCommand = async (id: string, argv: string[]) => {

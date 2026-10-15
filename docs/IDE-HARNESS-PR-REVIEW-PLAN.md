@@ -1,6 +1,6 @@
 # IDE harness and manual PR review milestone plan
 
-Status: Milestone 1 approved; Milestone 2 implemented and verified, awaiting user review. Milestones 3–5 remain deferred pending separate approval.
+Status: Milestones 1–5 implemented. The current user brief authorized Milestones 3–5 as one integrated delivery. Source verification, built Electron fixtures and packaging evidence are recorded in [VERIFICATION.md](VERIFICATION.md); contracts, file inventory and manual acceptance instructions are in [PR-REPAIR-SYSTEM.md](PR-REPAIR-SYSTEM.md).
 
 ## Accepted boundaries
 
@@ -74,36 +74,36 @@ Milestone 2 verification:
 
 The final built output screenshots and fixture audit are at `/home/aksha/tmp/vibestar-output-desktop-v7DT5Y/screenshots/`. Readable streaming, independent raw streams, redaction/copying, completed/interrupted tools, historical search beyond the UI tail, reported usage and restored preferences were visually inspected. Full commands and limits are recorded in [verification documentation](VERIFICATION.md).
 
-Limits: provider-omitted fields remain unavailable; raw search is a linear scan of saved files, and large output is browsed in pages. Unknown CLI variants remain available in raw/technical views. Native Windows installation/DPI and live account/provider behavior were not retested. Existing issue pipeline, approval gates, manual PR policy, worktree ownership, concurrency, authentication and remote-write restrictions remain unchanged. Repair implementation remains deferred. Stop here until the user approves Milestone 3.
+Limits: provider-omitted fields remain unavailable; raw search is a linear scan of saved files, and large output is browsed in pages. Unknown CLI variants remain available in raw/technical views. Native Windows installation/DPI and live account/provider behavior require separate live verification. Milestones 3–5 reuse this output browser and retain the original issue approval gates and manual PR policy.
 
 ## Milestone 3 — Isolated PR worktree and upstream integration
 
-- [ ] Verify PR/fork/ref/SHA and explicitly selected local repository; import manual PRs without inventing an issue branch.
-- [ ] Create an owned repair branch/worktree from the verified remote PR head; preserve foreign checkouts and local changes.
-- [ ] Fetch the configured latest upstream base and merge it into the repair branch with a normal local merge commit. Checkpoint intent/result and stop on conflicts; recovery never blindly replays the merge.
-- [ ] Record original PR, upstream integration and repair diff baselines. Reserve the repair worktree/remote branch against concurrent writers.
-- [ ] Verify identity, merge direction, dirty/checked-out branches, conflicts, stale remote heads and restart behavior using real local Git fixtures.
+- [x] Verify PR/fork/ref/SHA and explicitly selected local repository; import manual PRs without inventing an issue branch.
+- [x] Create an owned repair branch/worktree from the verified remote PR head; preserve foreign checkouts and local changes.
+- [x] Fetch the configured latest upstream base and merge it into the repair branch with a normal local merge commit. Checkpoint intent/result and stop on conflicts; recovery never blindly replays the merge.
+- [x] Record original PR, upstream integration and repair diff baselines. Reserve the repair worktree/remote branch against concurrent writers.
+- [x] Verify identity, merge direction, dirty/checked-out branches, conflicts, stale remote heads and restart behavior using real local Git fixtures.
 
 ## Milestone 4 — Repair → verification → manual review
 
-- [ ] Introduce a separate typed persistent PR-repair workflow, using the existing runner/event/log infrastructure.
-- [ ] Codex implements selected observations and runs applicable checks; Antigravity independently reviews afterward with source-write restrictions.
-- [ ] Persist per-action files, commands, validation, uncertainty and acceptance. Never equate model success with a verified fix.
-- [ ] Stop at manual review with original comments, checklist, actual test outcomes, diff and local commits. Support explicit retry/additional fixes and durable history.
-- [ ] Verify provider order, isolation, evidence, failed verification, cancellation and restart; regress the original issue pipeline.
+- [x] Introduce a separate typed persistent PR-repair workflow, using the existing runner/event/log infrastructure.
+- [x] Codex implements selected observations and runs applicable checks; Antigravity independently reviews afterward with source-write restrictions.
+- [x] Persist per-action files, commands, validation, uncertainty and acceptance. Never equate model success with a verified fix.
+- [x] Stop at manual review with original comments, checklist, actual test outcomes, diff and local commits. Support explicit retry/additional fixes and durable history.
+- [x] Verify provider order, isolation, evidence, failed verification, cancellation and restart; regress the original issue pipeline.
 
 ## Milestone 5 — Confirmed finalization/push and integrated polish
 
-- [ ] Prepare reviewable local finalization and remote publication separately, including exact destination/ref, expected remote SHA, reviewed fingerprint and commit information.
-- [ ] Require explicit confirmation for every push/GitHub modification; use an ordinary fast-forward push only. A guarded per-invocation pre-push check must reject changed advertised remote heads. Never force-push or modify the source checkout.
-- [ ] Journal publication and reconcile uncertain outcomes read-only after interruption; no blind replay.
-- [ ] Integrate repository navigation, repair history and professional pane/report styling; preserve branding and established React/Electron boundaries.
-- [ ] Run fixture desktop, integration, issue regression, PTY, build and packaging verification. Any real provider/live publication test needs separate explicit authorization.
+- [x] Prepare reviewable local finalization and remote publication separately, including exact destination/ref, expected remote SHA, reviewed fingerprint and commit information.
+- [x] Require explicit confirmation for every push/GitHub modification; use an ordinary fast-forward push only. A guarded per-invocation pre-push check must reject changed advertised remote heads. Never force-push or modify the source checkout.
+- [x] Journal publication and reconcile uncertain outcomes read-only after interruption; no blind replay.
+- [x] Integrate repository navigation, repair history and professional pane/report styling; preserve branding and established React/Electron boundaries.
+- [x] Run fixture desktop, integration, issue regression, PTY, build and packaging verification. Any real provider/live publication test needs separate explicit authorization.
 
 ## Persistence and security methodology
 
-Milestone 1 extends existing tracked PR records rather than adding another PR registry. Full GitHub snapshots, immutable analysis sessions and host-assigned stable observations preserve source provenance. ai_usage remains the authoritative local provider usage record; token/allowance values stay nullable unless officially reported. Later milestones add only their required workspace/repair/publication checkpoints.
+Milestone 1 extends existing tracked PR records rather than adding another PR registry. Full GitHub snapshots, immutable analysis sessions and host-assigned stable observations preserve source provenance. ai_usage remains the authoritative local provider usage record; token/allowance values stay nullable unless officially reported. Migrations 19–20 add repair/workspace/publication checkpoints and repair ownership on existing execution records while preserving issue data.
 
 GitHub and repository text are untrusted model context, never execution authority. Official gh/codex/agy own authentication; no credential extraction or permission bypass. Existing path checks, argv-safe execution, bubblewrap, PID identity recovery and storage leases stay in force. No analysis posts replies, resolves threads, merges or pushes.
 
-Each meaningful change updates ARCHITECTURE.md. Do not start the next milestone without approval.
+Each meaningful change updates ARCHITECTURE.md. The integrated user brief supplies authorization for all remaining milestones; real subscription runs or GitHub publication during verification still require separate authorization.

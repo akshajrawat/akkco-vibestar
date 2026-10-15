@@ -62,6 +62,7 @@ const main = async () => {
             protocol: 3,
             pipeline_approvals: true,
             manual_pr_analysis: true,
+            pr_repair: true,
           };
         else if (!rpc && request.method === "snapshot")
           result = {

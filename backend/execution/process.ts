@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { AdeError } from "../domain";
 export interface ProcessRequest {
+  rawStdoutForIntegrity?: boolean;
   program: string;
   args: string[];
   cwd: string;
@@ -197,7 +198,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       else
         resolve({
           code: code ?? -1,
-          stdout: redact(stdout),
+          stdout: r.rawStdoutForIntegrity ? stdout : redact(stdout),
           stderr: redact(stderr),
           duration_ms: Date.now() - start,
         });

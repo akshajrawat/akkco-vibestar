@@ -3462,3 +3462,150 @@ progress::-webkit-progress-value {
   margin-bottom: 12px;
   border: 1px solid var(--border);
 }
+
+.repair-navigation {
+  padding: 4px 8px;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.repair-navigation button {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  width: 100%;
+  padding: 6px;
+  text-align: left;
+  border-radius: 3px;
+}
+.repair-navigation button span {
+  flex: 1;
+}
+.repair-navigation button small {
+  max-width: 74px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.repair-repository-label {
+  display: block;
+  margin: 5px;
+  color: var(--text-secondary);
+}
+.repair-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.repair-conversation {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 24px;
+  background: var(--background-panel);
+}
+.repair-intro,
+.repair-gate,
+.repair-history {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--background-elevated);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.repair-gate {
+  border-left: 3px solid var(--accent);
+}
+.repair-gate.warning {
+  border-left-color: var(--accent-amber);
+}
+.repair-gate.success {
+  border-left-color: var(--accent-green);
+}
+.repair-gate h2,
+.repair-intro h2 {
+  font-size: 16px;
+  margin: 4px 0 12px;
+}
+.repair-checklist {
+  padding-left: 20px;
+}
+.repair-checklist li {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.repair-context {
+  overflow-y: auto;
+  padding: 14px;
+}
+.repair-context article {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.repair-context code,
+.publication-dialog code {
+  overflow-wrap: anywhere;
+}
+.repair-composer {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--background-elevated);
+}
+.repair-composer textarea {
+  width: 100%;
+  margin: 8px 0;
+}
+.repair-diff-layers {
+  display: flex;
+  gap: 4px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.repair-workspace .utility-dock {
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+}
+.repair-workspace .changes-panel {
+  flex: 1;
+  min-height: 0;
+}
+.repair-workspace.dock-maximized .repair-body {
+  display: none;
+}
+.repair-workspace.dock-maximized .utility-dock {
+  flex: 1;
+}
+.repair-item-selection {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 12px 0;
+}
+.repair-item-selection article {
+  padding: 12px;
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  border-radius: 3px;
+}
+.repair-item-selection input[type="checkbox"] {
+  width: auto;
+  margin-right: 8px;
+}
+.solve-review-dialog,
+.publication-dialog {
+  width: min(760px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.solve-review-dialog label,
+.publication-dialog label {
+  display: block;
+}
+.solve-review-dialog textarea,
+.solve-review-dialog select,
+.publication-dialog input {
+  width: 100%;
+  margin: 7px 0;
+}

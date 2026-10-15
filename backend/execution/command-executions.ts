@@ -9,10 +9,11 @@ import { object } from "./providers/contracts";
 export class CommandExecutions {
   constructor(private readonly db: Database) {}
   observe = (
-    taskId: string,
+    taskId: string | null,
     runId: string,
     event: NormalizedEvent,
     timestamp = now(),
+    repairId: string | null = null,
   ) => {
     if (!event.kind.startsWith("command.")) return;
     const data = object(event.data);
@@ -30,8 +31,8 @@ export class CommandExecutions {
       exit_code: number | null;
       output_truncated: number;
     }>(
-      "SELECT * FROM test_runs WHERE task_id=? AND run_id=? AND call_id=?",
-      taskId,
+      `SELECT * FROM test_runs WHERE ${repairId ? "repair_id" : "task_id"}=? AND run_id=? AND call_id=?`,
+      repairId || taskId,
       runId,
       callId,
     )[0];
@@ -68,8 +69,8 @@ export class CommandExecutions {
       typeof data.stderr === "string" ? data.stderr : row?.stderr || "";
     const limit = 1024 * 1024;
     this.db.run(
-      `INSERT INTO test_runs(id,task_id,run_id,call_id,command,status,started_at,ended_at,exit_code,duration_ms,stdout,stderr,output_truncated)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET command=excluded.command,status=excluded.status,ended_at=excluded.ended_at,exit_code=excluded.exit_code,duration_ms=excluded.duration_ms,stdout=excluded.stdout,stderr=excluded.stderr,output_truncated=excluded.output_truncated`,
+      `INSERT INTO test_runs(id,task_id,run_id,call_id,command,status,started_at,ended_at,exit_code,duration_ms,stdout,stderr,output_truncated${repairId ? ",repair_id" : ""})
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?${repairId ? ",?" : ""}) ON CONFLICT(id) DO UPDATE SET command=excluded.command,status=excluded.status,ended_at=excluded.ended_at,exit_code=excluded.exit_code,duration_ms=excluded.duration_ms,stdout=excluded.stdout,stderr=excluded.stderr,output_truncated=excluded.output_truncated`,
       row?.id || randomUUID(),
       taskId,
       runId,
@@ -92,6 +93,7 @@ export class CommandExecutions {
       stdout.length > limit || stderr.length > limit || row?.output_truncated
         ? 1
         : 0,
+      ...(repairId ? [repairId] : []),
     );
   };
   finish = (runId: string, timestamp = now()) =>

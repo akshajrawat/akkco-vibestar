@@ -9,26 +9,41 @@ export const ChangesView = ({
   diff,
   revision,
   onError,
+  owner = "task",
+  layer,
+  reviews = [],
+  reviewed,
 }: {
-  task: Task;
+  task: Pick<Task, "id" | "base_commit_sha">;
   diff: Diff | null;
   revision: number;
   onError: (error: string) => void;
+  owner?: "task" | "repair";
+  layer?: "original" | "upstream" | "repair";
+  reviews?: { path: string; hash: string; reviewed: boolean }[];
+  reviewed?: (
+    path: string,
+    oldPath: string | null,
+    hash: string,
+    checked: boolean,
+  ) => void;
 }) => {
   const view = useTaskView(task.id);
   const file =
     diff?.files.find((f) => f.path === view.diffPath) || diff?.files[0];
   const path = file?.path;
   const oldPath = file?.old_path;
+  const review = reviews.find((row) => row.path === path);
   const [content, setContent] = useState<FileDiff | null>(null);
   useEffect(() => {
     let alive = true;
     setContent(null);
     if (path)
-      void rpc<FileDiff>("task.file", {
+      void rpc<FileDiff>(`${owner}.file`, {
         id: task.id,
         path,
         old_path: oldPath,
+        ...(layer ? { layer } : {}),
       })
         .then((value) => {
           if (alive) setContent(value);
@@ -39,7 +54,7 @@ export const ChangesView = ({
     return () => {
       alive = false;
     };
-  }, [task.id, path, oldPath, revision, onError]);
+  }, [task.id, path, oldPath, revision, onError, owner, layer]);
   return (
     <section className="changes-panel" aria-label="Task changes">
       <DiffFileTree
@@ -51,6 +66,24 @@ export const ChangesView = ({
         <div className="cwd-banner">
           <code>{file?.path || "No changed files"}</code>
           <span>base {task.base_commit_sha.slice(0, 8)} → working tree</span>
+          {review && file && reviewed && (
+            <label>
+              <input
+                type="checkbox"
+                aria-label="Mark repair file reviewed"
+                checked={review.reviewed}
+                onChange={(e) =>
+                  reviewed(
+                    file.path,
+                    file.old_path,
+                    review.hash,
+                    e.target.checked,
+                  )
+                }
+              />
+              Reviewed
+            </label>
+          )}
         </div>
         {content?.binary ? (
           <p className="empty-row">

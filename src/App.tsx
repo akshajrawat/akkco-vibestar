@@ -26,6 +26,7 @@ import { rpc, errorMessage } from "./lib/api";
 import { ScheduledPage } from "./components/ScheduledPage";
 import { TitleBar } from "./components/TitleBar";
 import { DataMigration } from "./components/DataMigration";
+import { RepairWorkspace } from "./components/repair/RepairWorkspace";
 const navigation = [
   ["Tasks", ListTodo],
   ["Scheduled", GitPullRequest],
@@ -40,6 +41,9 @@ export const App = () => {
     localStorage.getItem("vibestar.activeTask"),
   );
   const [palette, setPalette] = useState(false);
+  const [repairId, setRepairId] = useState<string | null>(() =>
+    localStorage.getItem("vibestar.activeRepair"),
+  );
   const [newTask, setNewTask] = useState(false);
   const [sidebar, setSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = usePaneSize(
@@ -76,6 +80,8 @@ export const App = () => {
     }
   }, [snapshot, taskId]);
   const open = (id: string) => {
+    setRepairId(null);
+    localStorage.removeItem("vibestar.activeRepair");
     setTaskId(id);
     setPage("Tasks");
     localStorage.setItem("vibestar.activeTask", id);
@@ -83,11 +89,25 @@ export const App = () => {
   const navigate = (p: Page) => {
     setPage(p);
     setTaskId(null);
+    setRepairId(null);
+    localStorage.removeItem("vibestar.activeRepair");
+  };
+  const openRepair = (id: string) => {
+    setTaskId(null);
+    setRepairId(id);
+    setPage("Tasks");
+    localStorage.removeItem("vibestar.activeTask");
+    localStorage.setItem("vibestar.activeRepair", id);
   };
   const count = snapshot?.attention?.length || 0;
   const content =
     page === "Scheduled" && snapshot ? (
-      <ScheduledPage snapshot={snapshot} refresh={refresh} open={open} />
+      <ScheduledPage
+        snapshot={snapshot}
+        refresh={refresh}
+        open={open}
+        openRepair={openRepair}
+      />
     ) : page === "Settings" ? (
       <SettingsPage
         settings={snapshot?.settings}
@@ -101,6 +121,23 @@ export const App = () => {
         snapshot={snapshot}
         refresh={refresh}
         createTask={() => setNewTask(true)}
+      />
+    ) : repairId ? (
+      <RepairWorkspace
+        key={repairId}
+        id={repairId}
+        revision={revision}
+        refresh={refresh}
+        back={() => navigate("Scheduled")}
+        analyze={(jobId) => {
+          navigate("Scheduled");
+          void rpc("scheduled.analyze", {
+            id: jobId,
+            request_id: crypto.randomUUID(),
+          })
+            .then(refresh)
+            .catch((e) => onError(errorMessage(e)));
+        }}
       />
     ) : taskId ? (
       detail && detail.task.id === taskId ? (
@@ -165,7 +202,7 @@ export const App = () => {
                 <kbd>＋</kbd>
               </Button>
               <div className="sidebar-label">
-                <button onClick={() => navigate("Tasks")}>TASKS</button>
+                <button onClick={() => navigate("Tasks")}>ISSUE TASKS</button>
                 <small>{snapshot?.tasks.length || 0}</small>
               </div>
               <TaskNavigation
@@ -174,6 +211,39 @@ export const App = () => {
                 selected={taskId}
                 open={open}
               />
+              {!!snapshot?.repairs?.length && (
+                <div className="repair-navigation">
+                  <div className="sidebar-label">
+                    PULL REQUESTS <small>{snapshot.repairs.length}</small>
+                  </div>
+                  {snapshot.repositories.map((repository) => {
+                    const repairs =
+                      snapshot.repairs?.filter(
+                        (repair) => repair.repo_id === repository.id,
+                      ) || [];
+                    return repairs.length ? (
+                      <div key={repository.id}>
+                        <small className="repair-repository-label">
+                          {repository.owner}/{repository.name}
+                        </small>
+                        {repairs.map((repair) => (
+                          <button
+                            key={repair.id}
+                            className={repairId === repair.id ? "selected" : ""}
+                            onClick={() => openRepair(repair.id)}
+                          >
+                            <GitPullRequest size={13} />
+                            <span>
+                              #{repair.identity.number} · Review repair
+                            </span>
+                            <small>{repair.status.replaceAll("_", " ")}</small>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              )}
               <nav className="sidebar-tools">
                 {navigation
                   .filter(([label]) => label !== "Tasks")

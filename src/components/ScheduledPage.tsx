@@ -9,10 +9,12 @@ export const ScheduledAttention = ({
   snapshot,
   refresh,
   open,
+  openRepair,
 }: {
   snapshot: Snapshot;
   refresh: () => Promise<void>;
   open: (id: string) => void;
+  openRepair?: (id: string) => void;
 }) => {
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState("");
@@ -71,6 +73,11 @@ export const ScheduledAttention = ({
           job={snapshot.scheduled.find((j) => j.id === selected)!}
           configuration={snapshot.settings.utility_ai}
           close={() => setSelected(undefined)}
+          repositories={snapshot.repositories}
+          settings={snapshot.settings}
+          repairs={snapshot.repairs}
+          openRepair={openRepair}
+          refresh={refresh}
         />
       )}
     </section>
@@ -81,10 +88,12 @@ export const ScheduledPage = ({
   snapshot,
   refresh,
   open,
+  openRepair,
 }: {
   snapshot: Snapshot;
   refresh: () => Promise<void>;
   open: (id: string) => void;
+  openRepair?: (id: string) => void;
 }) => {
   const [selected, setSelected] = useState<string>();
   const [url, setUrl] = useState("");
@@ -193,8 +202,12 @@ export const ScheduledPage = ({
                 </p>
                 <div className="pr-metadata">
                   <span>
-                    {job.action?.outstandingRequests.length || 0} observations
-                    to consider
+                    {snapshot.pr_reports?.find(
+                      (report) => report.job_id === job.id,
+                    )?.outstanding ??
+                      job.action?.outstandingRequests.length ??
+                      0}{" "}
+                    observations to consider
                   </span>
                   <span>
                     Last analyzed{" "}
@@ -203,7 +216,31 @@ export const ScheduledPage = ({
                       : "never"}
                   </span>
                   <span>
+                    {snapshot.pr_reports?.find(
+                      (report) => report.job_id === job.id,
+                    )?.unanswered_questions || 0}{" "}
+                    unanswered questions
+                  </span>
+                  <span>
                     {job.archived ? "Closed / merged" : "Manual analysis"}
+                  </span>
+                  <span>
+                    {snapshot.repairs?.filter(
+                      (repair) => repair.job_id === job.id,
+                    ).length || 0}{" "}
+                    repair sessions
+                  </span>
+                  <span>
+                    {(job.pending_snapshot || job.last_snapshot)?.checks.filter(
+                      (check) =>
+                        ![
+                          "SUCCESS",
+                          "COMPLETED",
+                          "NEUTRAL",
+                          "SKIPPED",
+                        ].includes(check.state),
+                    ).length || 0}{" "}
+                    checks need attention
                   </span>
                 </div>
                 {job.error && (
@@ -323,6 +360,11 @@ export const ScheduledPage = ({
           job={jobs.find((j) => j.id === selected)!}
           configuration={configuration}
           close={() => setSelected(undefined)}
+          repositories={snapshot.repositories}
+          settings={snapshot.settings}
+          repairs={snapshot.repairs}
+          openRepair={openRepair}
+          refresh={refresh}
         />
       )}
     </div>

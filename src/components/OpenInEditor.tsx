@@ -10,7 +10,7 @@ export const OpenInEditor = ({
   disabled = false,
 }: {
   id: string;
-  kind: "task" | "repository";
+  kind: "task" | "repository" | "repair";
   path: string;
   disabled?: boolean;
 }) => {
@@ -36,16 +36,23 @@ export const OpenInEditor = ({
     <div className="editor-launcher">
       <Button
         size="sm"
-        variant={kind === "task" ? "default" : "secondary"}
+        variant={kind !== "repository" ? "default" : "secondary"}
         disabled={disabled || busy}
-        title={kind === "task" ? "Open task worktree" : "Open source checkout"}
+        title={
+          kind !== "repository"
+            ? "Open isolated worktree"
+            : "Open source checkout"
+        }
         onClick={async () => {
           setBusy(true);
           setError("");
           try {
             const result =
               await rpc<NonNullable<typeof selection>>("editors.list");
-            if (kind === "task" && result.editors.some((e) => e.id === "code"))
+            if (
+              kind !== "repository" &&
+              result.editors.some((e) => e.id === "code")
+            )
               await open("code");
             else if (
               result.default &&
@@ -63,16 +70,18 @@ export const OpenInEditor = ({
         <Code2 size={14} />
         {busy
           ? "Opening editor…"
-          : kind === "task"
+          : kind !== "repository"
             ? "Open in VS Code"
             : "Open in Editor ▾"}
       </Button>
-      {kind === "task" && (
+      {kind !== "repository" && (
         <Button
           size="sm"
           variant="ghost"
           disabled={disabled || busy}
-          aria-label="Choose task editor"
+          aria-label={
+            kind === "repair" ? "Choose repair editor" : "Choose task editor"
+          }
           onClick={async () => {
             setBusy(true);
             setError("");
@@ -100,7 +109,11 @@ export const OpenInEditor = ({
             onClick={(e) => e.stopPropagation()}
           >
             <h2>
-              {kind === "task" ? "Open task worktree" : "Open source checkout"}
+              {kind === "repository"
+                ? "Open source checkout"
+                : kind === "repair"
+                  ? "Open PR repair worktree"
+                  : "Open task worktree"}
             </h2>
             <code className="repository-path">{path}</code>
             {busy && (

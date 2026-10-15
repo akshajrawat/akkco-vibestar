@@ -212,9 +212,15 @@ export interface Task {
   approval_gate?:
     "antigravity_plan" | "codex_plan" | "implementation" | "final_review";
 }
+// Shared physical assignment; repair workflows do not become issue tasks.
+export type WorkspaceAssignment = Pick<
+  Task,
+  "id" | "repo_id" | "branch_name" | "worktree_path" | "base_commit_sha"
+>;
 export interface CoreEvent {
   event: string;
   task_id?: string;
+  repair_id?: string;
   run_id?: string;
   kind?: string;
   data?: unknown;

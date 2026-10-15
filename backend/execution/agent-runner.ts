@@ -16,6 +16,7 @@ import {
   type Settings,
   type CoreEvent,
   type StageConfig,
+  type WorkspaceAssignment,
 } from "../domain";
 import type { Database } from "../storage/database";
 import type { GitWorkspace } from "../workspace/git";
@@ -40,7 +41,7 @@ export class AgentRunner {
     ) => AgentProvider,
   ) {}
   run = async (
-    t: Task | { id: string; stage: 1 | 2 },
+    t: Task | { id: string; stage: 1 | 2 | 3 | 5 },
     settings: Settings,
     signal: AbortSignal,
     options?: {
@@ -55,15 +56,22 @@ export class AgentRunner {
       telemetryTaskId?: string;
       telemetryRepository?: string;
       questionId?: string;
+      repair?: WorkspaceAssignment;
+      contextPaths?: string[];
     },
   ) => {
     const task = "repo_id" in t ? t : null;
-    if (!task && !options?.workspace)
+    const repair = options?.repair;
+    const assignment = task || repair || null;
+    const fingerprint = repair
+      ? this.git.repairFingerprint
+      : this.git.fingerprint;
+    if (!assignment && !options?.workspace)
       throw new AdeError(
         "invalid_state",
         "Detached analysis requires a managed PR workspace",
       );
-    const table = task
+    const table = assignment
       ? "agent_runs"
       : options?.jobId || options?.purpose === "scheduled"
         ? "scheduled_agent_runs"
@@ -90,8 +98,8 @@ export class AgentRunner {
     const started = Date.now();
     const prompt = options?.prompt ?? buildPrompt(this.db, task!);
     const usage = new Usage(this.db);
-    const repo = task
-      ? this.db.repository(task.repo_id)
+    const repo = assignment
+      ? this.db.repository(assignment.repo_id)
       : options?.telemetryTaskId
         ? this.db.repository(this.db.task(options.telemetryTaskId).repo_id)
         : null;
@@ -119,19 +127,24 @@ export class AgentRunner {
       model: config.model,
       effort: config.effort,
     });
+    if (repair)
+      this.db.run("UPDATE ai_usage SET repair_id=? WHERE id=?", repair.id, id);
     this.emit({
       event: "usage.changed",
       task_id: task?.id || options?.telemetryTaskId,
+      repair_id: repair?.id,
     });
-    const parent = task
-      ? "task_id"
-      : table === "scheduled_agent_runs"
-        ? "job_id"
-        : null;
+    const parent = repair
+      ? "repair_id"
+      : task
+        ? "task_id"
+        : table === "scheduled_agent_runs"
+          ? "job_id"
+          : null;
     this.db.run(
       `INSERT INTO ${table}(id,${parent ? `${parent},` : ""}stage,provider,model,effort,prompt,status,started_at,purpose) VALUES(?${parent ? ",?" : ""},?,?,?,?,?,'running',?,?)`,
       id,
-      ...(parent ? [task?.id || options?.jobId || t.id] : []),
+      ...(parent ? [assignment?.id || options?.jobId || t.id] : []),
       t.stage,
       provider.name,
       config.model,
@@ -172,7 +185,7 @@ export class AgentRunner {
         id,
         task.id,
       );
-    const dir = join(this.root, "logs", task ? t.id : `pr-watch-${t.id}`);
+    const dir = join(this.root, "logs", assignment ? t.id : `pr-watch-${t.id}`);
     let cwd = "";
     let stdout: Awaited<ReturnType<typeof open>> | undefined;
     let stderr: Awaited<ReturnType<typeof open>> | undefined;
@@ -188,7 +201,9 @@ export class AgentRunner {
     let officialCodex = false;
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
-      cwd = task ? await this.git.assertTask(task) : options!.workspace!;
+      cwd = assignment
+        ? await this.git.assertTask(assignment)
+        : options!.workspace!;
       const detection = await provider.detect(this.root, signal);
       if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
       officialCodex = detection.provider === "codex";
@@ -240,22 +255,23 @@ export class AgentRunner {
         prompt,
         schemaPath,
         schema: outputSchema,
-        workspaceType: options ? "utility" : "task",
+        workspaceType: repair ? "task" : options ? "utility" : "task",
       });
       const invocation = await sandboxInvocation(
         this.root,
         this.db,
-        task,
+        assignment,
         directInvocation,
         t.stage !== 3,
         schemaPath,
         provider.name === "antigravity" ? "antigravity" : "codex",
         options?.workspace,
+        options?.contextPaths,
       );
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
-      const before = task ? await this.git.fingerprint(task) : null;
-      this.emit({ event: "changed", task_id: task?.id });
+      const before = assignment ? await fingerprint(assignment) : null;
+      this.emit({ event: "changed", task_id: task?.id, repair_id: repair?.id });
       invoked = true;
       const output = await execute({
         ...invocation,
@@ -323,6 +339,7 @@ export class AgentRunner {
           this.emit({
             event: "usage.changed",
             task_id: task?.id || options?.telemetryTaskId,
+            repair_id: repair?.id,
           });
           if (conversationId) {
             this.db.run(
@@ -362,21 +379,29 @@ export class AgentRunner {
                 );
               }
             }
-            if (!task) continue;
-            commands.observe(t.id, id, event);
-            this.db.run(
-              "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,?,?,?,?)",
+            if (!assignment) continue;
+            commands.observe(
+              task?.id || null,
               id,
-              t.id,
+              event,
+              now(),
+              repair?.id || null,
+            );
+            this.db.run(
+              "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream,repair_id) VALUES(?,?,?,?,?,?,?,?)",
+              id,
+              task?.id || null,
               now(),
               event.kind,
               JSON.stringify(event.data),
               line,
               stream,
+              repair?.id || null,
             );
             this.emit({
               event: "agent.event",
-              task_id: t.id,
+              task_id: task?.id,
+              repair_id: repair?.id,
               run_id: id,
               ...event,
             });
@@ -399,9 +424,9 @@ export class AgentRunner {
           ? ActionSchema.parse(value)
           : validatePlan(t.stage, value);
       if (
-        task &&
+        assignment &&
         t.stage !== 3 &&
-        before !== (await this.git.fingerprint(task))
+        before !== (await fingerprint(assignment))
       )
         throw new AdeError(
           "planning_violation",
@@ -474,6 +499,7 @@ export class AgentRunner {
       this.emit({
         event: "agent.event",
         task_id: task?.id,
+        repair_id: repair?.id,
         run_id: id,
         kind: signal.aborted ? "run.cancelled" : "run.failed",
         data: { message: String(e) },
@@ -496,6 +522,7 @@ export class AgentRunner {
         this.emit({
           event: "usage.changed",
           task_id: task?.id || options?.telemetryTaskId,
+          repair_id: repair?.id,
         });
       }
     }

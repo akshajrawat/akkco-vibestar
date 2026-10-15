@@ -47,12 +47,19 @@ export const discoverEditors = async () => {
   return available.filter((e) => e !== null);
 };
 export class Editors {
-  constructor(private readonly engine: Engine) {}
+  constructor(
+    private readonly engine: Engine,
+    private readonly repairPath?: (id: string) => Promise<string>,
+  ) {}
   list = async () => ({
     editors: await discoverEditors(),
     default: this.engine.db.settings().default_editor,
   });
-  open = async (id: string, kind: "task" | "repository", editor: string) => {
+  open = async (
+    id: string,
+    kind: "task" | "repository" | "repair",
+    editor: string,
+  ) => {
     this.engine.assertAvailable();
     const available = await discoverEditors();
     const selected = available.find((e) => e.id === editor);
@@ -62,9 +69,11 @@ export class Editors {
         "This editor CLI is unavailable. Open the folder or copy its path instead.",
       );
     const path =
-      kind === "task"
-        ? await this.engine.git.assertTask(this.engine.db.task(id))
-        : await realpath(this.engine.db.repository(id).path);
+      kind === "repair" && this.repairPath
+        ? await this.repairPath(id)
+        : kind === "task"
+          ? await this.engine.git.assertTask(this.engine.db.task(id))
+          : await realpath(this.engine.db.repository(id).path);
     if (selected.windowsLauncher) {
       // The installed VS Code CLI exposes --folder-uri. Opening its native
       // launcher with a WSL URI keeps Windows/WSL integration in the editor.

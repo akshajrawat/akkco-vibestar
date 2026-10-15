@@ -3,6 +3,7 @@ import { ChangesView } from "./ChangesView";
 import type { Run } from "../lib/types";
 import { CurrentRun } from "./CurrentRun";
 import { OpenInEditor } from "./OpenInEditor";
+import { containDialogFocus } from "../lib/keyboard";
 import { useState, useRef, useEffect } from "react";
 import {
   GitBranch,
@@ -412,21 +413,7 @@ export const TaskWorkspace = ({
                 e.stopPropagation();
                 setPromptOpen(false);
               }
-              if (e.key === "Tab") {
-                const controls = [
-                  ...e.currentTarget.querySelectorAll<HTMLElement>(
-                    "button, summary, [tabindex='0']",
-                  ),
-                ];
-                const target = e.shiftKey ? controls.at(-1) : controls[0];
-                if (
-                  document.activeElement ===
-                  (e.shiftKey ? controls[0] : controls.at(-1))
-                ) {
-                  e.preventDefault();
-                  target?.focus();
-                }
-              }
+              containDialogFocus(e);
             }}
           >
             <div className="modal-heading">

@@ -7,7 +7,11 @@ import { Button } from "./ui/button";
 import { AgentResponse } from "./AgentResponse";
 import { RunPrompt } from "./RunPrompt";
 import type { Run } from "../lib/types";
-import type { Settings } from "../../backend/domain";
+import type { Settings, Repository } from "../../backend/domain";
+import type { RepairSession } from "../../backend/review/repair/contracts";
+import { SolveReview } from "./repair/SolveReview";
+import { containDialogFocus, navigateTabs } from "../lib/keyboard";
+import { useDialogFocus } from "../lib/useDialogFocus";
 import type {
   PRAnalysisSession,
   ReviewAction,
@@ -79,10 +83,20 @@ export const PrDetails = ({
   job,
   close,
   configuration,
+  repositories = [],
+  repairs = [],
+  settings,
+  openRepair,
+  refresh,
 }: {
   job: ScheduleJob;
   close: () => void;
   configuration?: Settings["utility_ai"];
+  repositories?: Repository[];
+  repairs?: RepairSession[];
+  settings?: Settings;
+  openRepair?: (id: string) => void;
+  refresh?: () => Promise<void>;
 }) => {
   const [tab, setTab] = useState("Overview");
   const [selected, setSelected] = useState("");
@@ -94,6 +108,8 @@ export const PrDetails = ({
   const [usage, setUsage] = useState<UsageRecord[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [solve, setSolve] = useState(false);
+  const dialog = useDialogFocus();
   const [raw, setRaw] = useState<{ text: string; truncated: boolean }>();
   const analysis = analyses.find((a) => a.id === selected) || analyses[0];
   const snapshot =
@@ -252,8 +268,10 @@ export const PrDetails = ({
         role="dialog"
         aria-modal="true"
         aria-label="Pull request details"
+        ref={dialog}
         onKeyDown={(e) => {
           if (e.key === "Escape") close();
+          containDialogFocus(e);
         }}
       >
         <div className="modal-heading">
@@ -270,25 +288,74 @@ export const PrDetails = ({
             ×
           </Button>
         </div>
-        <div className="workspace-tabs">
+        <div
+          className="workspace-tabs"
+          role="tablist"
+          aria-label="PR detail views"
+          onKeyDown={navigateTabs}
+        >
           {[
             "Overview",
             "Conversation",
             "Action items",
             "Checks",
             "Analysis history",
+            "Repair sessions",
           ].map((name) => (
             <button
               type="button"
+              role="tab"
+              aria-selected={name === tab}
+              tabIndex={name === tab ? 0 : -1}
               key={name}
               className={name === tab ? "selected" : ""}
               onClick={() => setTab(name)}
             >
-              {name}
+              {{
+                Conversation: "Full Conversation",
+                "Action items": "Review Actions",
+                Checks: "CI / Checks",
+                "Analysis history": "Analysis History",
+                "Repair sessions": "Repair Sessions",
+              }[name] || name}
             </button>
           ))}
         </div>
         <div className="pr-details-content">
+          {tab === "Repair sessions" && (
+            <>
+              <h3>Isolated review repair sessions</h3>
+              {repairs
+                .filter((repair) => repair.job_id === job.id)
+                .map((repair) => (
+                  <article className="discussion-entry" key={repair.id}>
+                    <strong>
+                      PR #{repair.identity.number} ·{" "}
+                      {repair.status.replaceAll("_", " ")}
+                    </strong>
+                    <p>
+                      {repair.actions.length} selected review items ·{" "}
+                      {new Date(repair.created_at).toLocaleString()}
+                    </p>
+                    <code>{repair.workspace.worktree_path}</code>
+                    <Button
+                      disabled={!openRepair}
+                      onClick={() => {
+                        close();
+                        openRepair?.(repair.id);
+                      }}
+                    >
+                      Open repair workspace
+                    </Button>
+                  </article>
+                ))}
+              {!repairs.some((repair) => repair.job_id === job.id) && (
+                <p className="empty-row">
+                  No repairs yet. Analyze the PR, then select Solve Review.
+                </p>
+              )}
+            </>
+          )}
           {error && (
             <p className="error-box" role="alert">
               {error}
@@ -713,8 +780,17 @@ export const PrDetails = ({
             </Button>
           )}
           <Button
-            disabled
-            title="Isolated repair is implemented in a later milestone"
+            disabled={
+              busy ||
+              running ||
+              !openRepair ||
+              !settings ||
+              !refresh ||
+              !analysis?.report?.complete ||
+              !outstanding.length
+            }
+            title="Select review observations and an isolated PR repair workspace"
+            onClick={() => setSolve(true)}
           >
             Solve Review
           </Button>
@@ -724,6 +800,16 @@ export const PrDetails = ({
           <Button onClick={close}>Done</Button>
         </div>
       </section>
+      {solve && analysis && settings && refresh && openRepair && (
+        <SolveReview
+          analysis={analysis}
+          repositories={repositories}
+          settings={settings}
+          close={() => setSolve(false)}
+          refresh={refresh}
+          open={openRepair}
+        />
+      )}
     </div>
   );
 };

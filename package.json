@@ -22,6 +22,7 @@
     "test:tui": "vitest run tests/pty.test.ts tests/task-terminal.test.ts",
     "test:desktop": "VIBESTAR_DESKTOP_TEST=1 vitest run tests/desktop.test.ts",
     "test:desktop:pr": "VIBESTAR_PR_DESKTOP_TEST=1 vitest run tests/desktop-pr-analysis.test.ts",
+    "test:desktop:repair": "VIBESTAR_REPAIR_DESKTOP_TEST=1 vitest run tests/desktop-pr-repair.test.ts",
     "test:desktop:output": "VIBESTAR_OUTPUT_DESKTOP_TEST=1 vitest run tests/desktop-agent-output.test.ts",
     "test:windows": "node scripts/test-windows.mjs"
   },

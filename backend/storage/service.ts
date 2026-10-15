@@ -350,6 +350,11 @@ export class StorageService {
     this.engine.withStorageMaintenance(() => this.removeRepositoryData(id));
   private removeRepositoryData = async (id: string) => {
     const e = this.engine;
+    if (e.db.all("SELECT id FROM pr_repairs WHERE repo_id=?", id).length)
+      throw new AdeError(
+        "repair_history",
+        "Remove this repository's owned PR repair workspaces and history explicitly before deleting its connection.",
+      );
     const repo = e.db.repository(id);
     const tasks = e.db.tasks().filter((t) => t.repo_id === id);
     if (
@@ -433,6 +438,8 @@ export class StorageService {
       .filter(
         (r) =>
           r.source !== "imported" &&
+          !this.engine.db.all("SELECT id FROM pr_repairs WHERE repo_id=?", r.id)
+            .length &&
           !this.engine.db.tasks().some((t) => t.repo_id === r.id),
       );
     for (const repo of repos) await this.removeRepositoryData(repo.id);
@@ -440,6 +447,11 @@ export class StorageService {
   };
   reset = () => this.engine.withStorageMaintenance(this.resetData);
   private resetData = async () => {
+    if (this.engine.db.all("SELECT id FROM pr_repairs").length)
+      throw new AdeError(
+        "repair_history",
+        "Remove PR repair workspaces and history explicitly before resetting storage; local changes must remain preserved.",
+      );
     for (const task of this.engine.db.tasks()) {
       if (!task.worktree_path && !task.branch_name) continue;
       this.engine.db.saveTask({ ...task, status: "cancelled" });

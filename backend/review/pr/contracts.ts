@@ -55,15 +55,19 @@ export type ReviewObservation = z.infer<
   typeof ReviewAnalysisSchema
 >["observations"][number];
 
-export interface ReviewAction extends ReviewObservation {
-  id: string;
-  reviewer: string;
-  sourceUrl: string | null;
-  sourceThreadId: string | null;
-  threadResolved: boolean | null;
-  outdated: boolean | null;
-  codeStatus: "unverified";
-}
+export const ReviewActionSchema =
+  ReviewAnalysisSchema.shape.observations.element
+    .extend({
+      id: z.string().uuid(),
+      reviewer: z.string(),
+      sourceUrl: z.string().nullable(),
+      sourceThreadId: z.string().nullable(),
+      threadResolved: z.boolean().nullable(),
+      outdated: z.boolean().nullable(),
+      codeStatus: z.literal("unverified"),
+    })
+    .strict();
+export type ReviewAction = z.infer<typeof ReviewActionSchema>;
 
 export interface PRAnalysisSession {
   id: string;

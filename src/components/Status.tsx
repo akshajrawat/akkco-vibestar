@@ -1,12 +1,27 @@
 import { activeStatuses } from "../lib/types";
 export const Status = ({ status }: { status: string }) => {
-  const color = activeStatuses.includes(status)
+  const running = [
+    ...activeStatuses,
+    "codex_implementing",
+    "antigravity_verifying",
+  ].includes(status);
+  const color = running
     ? "running"
-    : ["completed", "passed", "ready_for_review"].includes(status)
+    : ["completed", "passed", "ready_for_review", "published"].includes(status)
       ? "success"
       : ["failed"].includes(status)
         ? "failure"
-        : ["interrupted", "cancelled", "awaiting_approval"].includes(status)
+        : [
+              "interrupted",
+              "cancelled",
+              "awaiting_approval",
+              "awaiting_manual_review",
+              "merge_conflict",
+              "stale_remote_head",
+              "verification_blocked",
+              "blocked",
+              "not_run",
+            ].includes(status)
           ? "warning"
           : "muted";
   return (
@@ -15,7 +30,7 @@ export const Status = ({ status }: { status: string }) => {
       title={status.replaceAll("_", " ")}
     >
       <i />
-      {activeStatuses.includes(status)
+      {running
         ? "Running"
         : status === "awaiting_approval"
           ? "Review needed"

@@ -175,7 +175,7 @@ Earlier output-fixture assertions assumed a fresh task list after reload, a stil
 
 Limits: actual CLI fields that are absent stay unavailable; combined command output cannot be split into streams the provider did not emit. Reported tool durations take precedence over clearly labelled intervals measured between persisted start/finish events. Raw output is the existing redacted, line-oriented capture and may span byte pages for very long lines. Full-file search is linear and rendering grows with explicitly loaded pages; no generalized index or virtualization is added. New/unknown provider shapes remain inspectable in Raw/technical details. Native Windows installation/DPI, packaging and live provider/account behavior were not repeated in this milestone.
 
-Milestone 2 is complete and ready for user review. Milestones 3–5 remain deferred.
+At the Milestone 2 delivery, Milestones 3–5 were deferred. The subsequent integrated delivery below implements them under the user's full-system authorization.
 
 ## Practical limits
 
@@ -186,5 +186,75 @@ Milestone 2 is complete and ready for user review. Milestones 3–5 remain defer
 - Storage totals are logical file sizes, including SQLite WAL/SHM, rather than physical allocated blocks. Cleanup never follows symlinks into imported sources.
 - Sandboxing remains mandatory and fails closed. Provider-owned authentication/session directories remain a documented trust boundary.
 - Linux/Windows packaging was verified at the previous milestone; signed distribution and NSIS installation/update were not repeated in this source milestone.
+
+## Milestones 3–5 — integrated PR repair — October 15, 2026
+
+Implemented the complete existing-PR path: exact identity → selected observations → isolated owned repair branch → latest actual base merge → configured Codex implementation/tests → independent read-only Antigravity verification → manual review → local-only commit or separately confirmed normal push. Original issue tasks and Milestone 1/2 behavior remain covered. [PR-REPAIR-SYSTEM.md](PR-REPAIR-SYSTEM.md) records architecture, changed-file groups, migrations 19–20, RPCs, safeguards and the manual acceptance procedure.
+
+Final source verification:
+
+| Command                    | Result                                                    |
+| -------------------------- | --------------------------------------------------------- |
+| `npm run format:check`     | Passed                                                    |
+| `npm run lint`             | Passed                                                    |
+| `npm run typecheck`        | Passed                                                    |
+| `npm test`                 | **227 passed, 10 opt-in tests skipped**, 37 passing files |
+| `npm run test:integration` | **7 passed**                                              |
+| `npm run test:tui`         | **2 passed**, real PTYs                                   |
+| `npm run build`            | Passed                                                    |
+
+The 24 new repair tests use real local repositories and separate bare upstream/fork remotes. Coverage includes imported and managed checkouts, an already checked-out feature branch, dirty original files/index, exact head/ref/immutable identity, a non-default slash-containing base, merge ancestry/conflicts/index, creation/removal checkpoints, canonical common-directory locks, ignored-file preservation, safe cleanup and managed-root migration. Restart tests reopen the actual core and exercise a saved process PID/start identity. A real repair PTY excludes concurrent agents/Git writers. Content-bound review and approval tests detect changed files, including a credential-shaped filename without weakening log redaction.
+
+Pipeline tests execute fixture Node providers through the existing AgentRunner/bubblewrap sandbox. They verify configured Codex → Antigravity ordering, complete source-linked reviewer/issue packets, exact per-item results, actual command outcomes, independent read-only review/write rejection, blocked dependencies, invalid/incomplete reports, explicit same-worktree follow-ups, cancellation and no startup inference. Publication tests perform actual normal pushes only to local bare forks, exercising confirmation, exact destination/ref/SHA, ancestry, dirty/changed fingerprints, permission/closed PR rejection, an advertised-head race, post-transmission network failure, read-only reconciliation and no duplicate push after core reopen. Local-only approval/commit works with no remote push permission and creates no publication attempt.
+
+The full suite emitted jsdom's existing canvas-context diagnostic while exercising terminal-related renderer code; it did not fail a test. The build emitted existing third-party Zod annotation warnings; it completed successfully.
+
+### Built Electron acceptance and regressions
+
+After the final source build:
+
+```bash
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 \
+VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_PR_DESKTOP_TEST=1 \
+VIBESTAR_REPAIR_DESKTOP_TEST=1 \
+VIBESTAR_KEEP_EVIDENCE=1 \
+xvfb-run -a npm test -- \
+  tests/desktop-agent-output.test.ts \
+  tests/desktop-pipeline-approval.test.ts \
+  tests/desktop-pr-analysis.test.ts \
+  tests/desktop-pr-repair.test.ts \
+  --maxWorkers=1
+```
+
+**Four tests passed** in the built Electron renderer with actual IPC. Existing issue approvals, manual-only PR analysis and Milestone 2 output/history/preferences passed alongside the complete repair acceptance flow.
+
+The repair fixture models `oppia/oppia #27527`, fork `akshajrawat/oppia`, base `develop`, and three concerns: utility selectors/assertions, changed exploration and a vacuous draft assertion. Explicit analysis identifies three source-linked items; selection/preparation creates an isolated exact-head branch and normal base merge. The implementation moves utilities, restores the original exploration and tests rejection of an empty draft list. Implementation and independent review each execute `node --test repair.test.cjs` with three actual passing checks. A browser-dependent check is explicitly blocked, not counted as passed. The user-equivalent UI then approves review, commits locally and separately confirms a normal push to the local bare fork.
+
+The audit records unchanged original source files/index, the exact published local SHA, durable repair/publication history, zero renderer errors and exactly three fixture inference runs (analysis, implementation and verification). Subsequent local progress/inspection causes no inference. The ordinary desktop core uses an empty isolated root, with real AI/GitHub executables blocked. No subscriptions or real GitHub writes were used.
+
+Final repair evidence is retained at `/home/aksha/tmp/vibestar-pr-repair-desktop-wfFUH8/screenshots/`:
+
+- `full-review.png` and `selected-review-items.png` preserve reviewer wording and show explicit selection/instructions/configuration.
+- `upstream-integration.png`, `repair-raw-output.png` and `real-command-evidence.png` show distinct baselines, the shared output browser and command evidence.
+- `manual-publication-before-commit.png`, `explicit-push-confirmation.png` and `published-repair.png` show the separate commit/push gates and saved result.
+- `results.json` contains the persisted session, runs, command records, usage, publication journals and audit assertions.
+
+Selection, push confirmation and published screenshots were visually inspected after this final run. Fixture token counts are reported fixture values; total/subscription limits remain unavailable. They are not live account usage.
+
+### Installer builds and packaged launch
+
+`npm run desktop:build` and `npm run desktop:build:windows` both passed, using `--publish never`. Cross-building NSIS used the available Wine toolchain. Final artifacts:
+
+| Artifact                                 |      Bytes | SHA-256                                                            |
+| ---------------------------------------- | ---------: | ------------------------------------------------------------------ |
+| `release/akkco-vibestar_0.1.0_amd64.deb` | 94,895,888 | `cb6782d342413a65858fcaf7a3e39d71635ff81e82636c30dbc55b98e8a17d76` |
+| `release/akkco vibestar Setup 0.1.0.exe` | 98,722,000 | `6f47a763522f4caa9a28aad403635475062d6505c1220183b8c613e41c37b864` |
+
+The actual `release/linux-unpacked/akkco-vibestar` executable launched under Xvfb with a temporary HOME/data root and blocked `gh`, `codex` and `agy`. Its bundled core advertised protocol 3, issue approval support, manual PR analysis and `pr_repair=true`; real IPC returned zero tasks/repairs, with no renderer errors. Evidence is `/home/aksha/tmp/vibestar-packaged-repair-gLGhR4/{results.json,packaged-repair-shell.png}`. This smoke check verifies the bundled renderer/core connection and empty-root startup, not a native Windows installation or live-account workflow. Installer artifacts were built locally and were not uploaded.
+
+### Remaining live/environment verification
+
+Actual Codex/Antigravity repair semantics and allowance snapshots, live GitHub fork permissions/publication, the real Oppia dependency/browser matrix and native Windows installation/update/DPI/editor launch were not exercised. No milestone feature is intentionally left deferred; these are environment/live verification limits. Signing is not configured. External editors/Git operations do not participate in Vibestar's leases, so subsequent changes require fresh review/fingerprint checks. Existing provider auth/session mounts retain their documented trusted-provider boundary.
 
 See [README.md](../README.md) for operation and [ARCHITECTURE.md](../ARCHITECTURE.md) for persistence, execution and authentication boundaries.

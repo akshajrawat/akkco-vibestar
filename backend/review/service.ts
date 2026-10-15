@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { AdeError, now, StageConfigSchema } from "../domain";
 import { redact } from "../execution/process";
 import type { Engine } from "../execution/engine";
+import { fileHash } from "./file-hash";
 const noteInput = z
   .object({
     id: z.string().uuid(),
@@ -55,12 +56,6 @@ const questionInput = z
       .optional(),
   })
   .strict();
-const fileHash = (original: string, modified: string) =>
-  createHash("sha256")
-    .update(original)
-    .update("\0")
-    .update(modified)
-    .digest("hex");
 export class ReviewService {
   constructor(private readonly engine: Engine) {}
   files = async (id: string) => {

@@ -144,4 +144,45 @@ ALTER TABLE scheduled_agent_runs ADD COLUMN analysis_id TEXT REFERENCES pr_analy
 ALTER TABLE ai_usage ADD COLUMN analysis_id TEXT REFERENCES pr_analyses(id) ON DELETE SET NULL;
 `,
   },
+  {
+    version: 19,
+    sql: `
+CREATE TABLE pr_repairs(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id),repo_id TEXT NOT NULL REFERENCES repositories(id),analysis_id TEXT NOT NULL REFERENCES pr_analyses(id),status TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX pr_repairs_job ON pr_repairs(job_id,created_at);
+CREATE TABLE repair_messages(id TEXT PRIMARY KEY,repair_id TEXT NOT NULL REFERENCES pr_repairs(id),role TEXT NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE repair_activity(id INTEGER PRIMARY KEY AUTOINCREMENT,repair_id TEXT NOT NULL REFERENCES pr_repairs(id),kind TEXT NOT NULL,data TEXT NOT NULL,timestamp TEXT NOT NULL);
+CREATE TABLE repair_publications(id TEXT PRIMARY KEY,repair_id TEXT NOT NULL REFERENCES pr_repairs(id),status TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX repair_publications_session ON repair_publications(repair_id,created_at);
+CREATE TABLE repair_reviewed_files(repair_id TEXT NOT NULL REFERENCES pr_repairs(id),path TEXT NOT NULL,source_hash TEXT NOT NULL,reviewed_at TEXT NOT NULL,PRIMARY KEY(repair_id,path));
+`,
+  },
+  {
+    version: 20,
+    foreign_keys_off: true,
+    sql: `
+CREATE TABLE agent_runs_new(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id),stage INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,pid INTEGER,process_identity TEXT,conversation_id TEXT,output TEXT,error TEXT,purpose TEXT NOT NULL DEFAULT 'pipeline',repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
+INSERT INTO agent_runs_new(id,task_id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,pid,process_identity,conversation_id,output,error,purpose) SELECT id,task_id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,pid,process_identity,conversation_id,output,error,purpose FROM agent_runs;
+DROP TABLE agent_runs;
+ALTER TABLE agent_runs_new RENAME TO agent_runs;
+CREATE INDEX repair_runs ON agent_runs(repair_id,started_at);
+CREATE TABLE agent_events_new(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES agent_runs(id),task_id TEXT REFERENCES tasks(id),timestamp TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL,raw TEXT NOT NULL,stream TEXT NOT NULL,repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
+INSERT INTO agent_events_new(id,run_id,task_id,timestamp,kind,data,raw,stream) SELECT id,run_id,task_id,timestamp,kind,data,raw,stream FROM agent_events;
+DROP TABLE agent_events;
+ALTER TABLE agent_events_new RENAME TO agent_events;
+CREATE INDEX task_events ON agent_events(task_id,id);
+CREATE INDEX repair_events ON agent_events(repair_id,id);
+CREATE TABLE test_runs_new(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id),command TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,duration_ms INTEGER,stdout TEXT NOT NULL DEFAULT '',stderr TEXT NOT NULL DEFAULT '',pid INTEGER,process_identity TEXT,run_id TEXT,call_id TEXT,output_truncated INTEGER NOT NULL DEFAULT 0,repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
+INSERT INTO test_runs_new(id,task_id,command,status,started_at,ended_at,exit_code,duration_ms,stdout,stderr,pid,process_identity,run_id,call_id,output_truncated) SELECT id,task_id,command,status,started_at,ended_at,exit_code,duration_ms,stdout,stderr,pid,process_identity,run_id,call_id,output_truncated FROM test_runs;
+DROP TABLE test_runs;
+ALTER TABLE test_runs_new RENAME TO test_runs;
+CREATE UNIQUE INDEX test_runs_provider_call ON test_runs(run_id,call_id);
+CREATE INDEX repair_tests ON test_runs(repair_id,started_at);
+CREATE TABLE terminal_sessions_new(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,pid INTEGER,process_identity TEXT,exit_code INTEGER,repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
+INSERT INTO terminal_sessions_new(id,task_id,status,started_at,ended_at,pid,process_identity,exit_code) SELECT id,task_id,status,started_at,ended_at,pid,process_identity,exit_code FROM terminal_sessions;
+DROP TABLE terminal_sessions;
+ALTER TABLE terminal_sessions_new RENAME TO terminal_sessions;
+ALTER TABLE ai_usage ADD COLUMN repair_id TEXT REFERENCES pr_repairs(id) ON DELETE SET NULL;
+CREATE INDEX repair_usage ON ai_usage(repair_id,started_at);
+`,
+  },
 ];

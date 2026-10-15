@@ -17,6 +17,7 @@ export const useAgentOutput = ({
   stream,
   search,
   preparation,
+  owner = "task",
 }: {
   taskId: string;
   run?: Run;
@@ -25,6 +26,7 @@ export const useAgentOutput = ({
   stream: "stdout" | "stderr" | "events";
   search: string;
   preparation: boolean;
+  owner?: "task" | "repair";
 }) => {
   const [rows, setRows] = useState<AgentEvent[] | null>(null);
   const [log, setLog] = useState<LogPage>({
@@ -69,7 +71,7 @@ export const useAgentOutput = ({
       let catchup = false;
       try {
         if (file) {
-          const page = await rpc<LogPage>("task.logs", {
+          const page = await rpc<LogPage>(`${owner}.logs`, {
             id: taskId,
             run_id: runId,
             stream: stream === "stderr" ? "stderr" : "stdout",
@@ -104,7 +106,7 @@ export const useAgentOutput = ({
             events: AgentEvent[];
             context?: AgentEvent[];
             more: boolean;
-          }>("task.events", {
+          }>(`${owner}.events`, {
             id: taskId,
             run_id: runId,
             search,
@@ -153,7 +155,7 @@ export const useAgentOutput = ({
       clearInterval(timer);
       load.current = async () => {};
     };
-  }, [taskId, runId, preparation, file, stream, search]);
+  }, [taskId, runId, preparation, file, stream, search, owner]);
   const byId = new Map(
     [
       ...(rows || []),

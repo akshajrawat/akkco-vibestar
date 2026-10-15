@@ -30,6 +30,12 @@ export interface Task {
   error: string | null;
 }
 export interface Snapshot {
+  repairs?: import("../../backend/review/repair/contracts").RepairSession[];
+  pr_reports?: {
+    job_id: string;
+    outstanding: number;
+    unanswered_questions: number;
+  }[];
   warning?: string;
   repositories: Repository[];
   tasks: Task[];
@@ -70,7 +76,8 @@ export interface Run {
 export interface AgentEvent {
   id: number;
   run_id: string;
-  task_id: string;
+  task_id: string | null;
+  repair_id?: string | null;
   timestamp: string;
   kind: string;
   data: string;
@@ -143,6 +150,7 @@ export interface FileDiff {
 export interface CoreEvent {
   event: string;
   task_id?: string;
+  repair_id?: string;
   session_id?: string;
   text?: string;
   stream?: string;

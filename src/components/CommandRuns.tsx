@@ -14,7 +14,11 @@ const displayCommand = (command: string) => {
   }
 };
 
-export const CommandRuns = ({ detail }: { detail: Detail }) => {
+export const CommandRuns = ({
+  detail,
+}: {
+  detail: Pick<Detail, "tests" | "runs">;
+}) => {
   const [selected, setSelected] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");

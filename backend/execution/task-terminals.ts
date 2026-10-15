@@ -2,7 +2,7 @@ import { spawn, type IPty } from "node-pty";
 import { randomUUID } from "node:crypto";
 import { mkdir, open } from "node:fs/promises";
 import { join } from "node:path";
-import { AdeError, now } from "../domain";
+import { AdeError, now, type WorkspaceAssignment } from "../domain";
 import type { Engine } from "./engine";
 import { sandboxInvocation } from "./sandbox";
 import { cleanEnvironment, redact, processIdentity } from "./process";
@@ -17,7 +17,13 @@ export class TaskTerminals {
       stop: () => Promise<void>;
     }
   >();
-  constructor(private readonly engine: Engine) {}
+  constructor(
+    private readonly engine: Engine,
+    private readonly repair?: {
+      assignment: (id: string) => WorkspaceAssignment;
+      acquire: (id: string) => Promise<() => Promise<void>>;
+    },
+  ) {}
   open = async (id: string, cols: number, rows: number) => {
     const existing = this.sessions.get(id);
     if (existing)
@@ -31,8 +37,18 @@ export class TaskTerminals {
         "terminal_limit",
         "Close an existing task terminal before opening another (maximum 4)",
       );
-    const release = this.engine.acquireTerminal(id);
-    const task = this.engine.db.task(id);
+    const releaseLease = this.repair
+      ? await this.repair.acquire(id)
+      : this.engine.acquireTerminal(id);
+    const task = this.repair
+      ? this.repair.assignment(id)
+      : this.engine.db.task(id);
+    const owner = this.repair ? { repair_id: id } : { task_id: id };
+    let releaseActivity = () => {};
+    const release = async () => {
+      await releaseLease();
+      releaseActivity();
+    };
     const sessionId = randomUUID();
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
@@ -48,7 +64,7 @@ export class TaskTerminals {
       await mkdir(dir, { recursive: true });
       handle = await open(join(dir, `${sessionId}.terminal.log`), "a", 0o600);
       this.engine.db.run(
-        "INSERT INTO terminal_sessions(id,task_id,status,started_at) VALUES(?,?,'running',?)",
+        `INSERT INTO terminal_sessions(id,${this.repair ? "repair_id" : "task_id"},status,started_at) VALUES(?,?,'running',?)`,
         sessionId,
         id,
         now(),
@@ -97,6 +113,16 @@ export class TaskTerminals {
         },
       };
       this.sessions.set(id, session);
+      if (this.repair)
+        releaseActivity = this.engine.trackActivity(
+          {
+            id: `repair-terminal:${id}`,
+            kind: "terminal",
+            label: "PR repair terminal is open",
+            stoppable: true,
+          },
+          () => this.close(id),
+        );
       void processIdentity(pty.pid).then((identity) => {
         if (this.sessions.has(id))
           this.engine.db.run(
@@ -117,13 +143,13 @@ export class TaskTerminals {
           .catch((error: unknown) => {
             this.engine.publish({
               event: "core.error",
-              task_id: id,
+              ...owner,
               text: `Task terminal log could not be saved: ${redact(String(error))}`,
             });
           });
         this.engine.publish({
           event: "terminal.output",
-          task_id: id,
+          ...owner,
           session_id: sessionId,
           text,
           data: { sequence: session.sequence },
@@ -140,7 +166,7 @@ export class TaskTerminals {
         );
         this.engine.publish({
           event: "terminal.closed",
-          task_id: id,
+          ...owner,
           session_id: sessionId,
         });
         void writes.then(async () => {
@@ -149,12 +175,12 @@ export class TaskTerminals {
           } catch (error) {
             this.engine.publish({
               event: "core.error",
-              task_id: id,
+              ...owner,
               text: `Task terminal log could not be closed: ${redact(String(error))}`,
             });
           } finally {
             this.sessions.delete(id);
-            release();
+            await release();
             resolveExit();
           }
         });
@@ -170,11 +196,11 @@ export class TaskTerminals {
       } catch (error) {
         this.engine.publish({
           event: "core.error",
-          task_id: id,
+          ...owner,
           text: `Terminal log cleanup failed: ${redact(String(error))}`,
         });
       } finally {
-        release();
+        await release();
       }
       this.engine.db.run(
         "UPDATE terminal_sessions SET status='failed',ended_at=? WHERE id=?",

@@ -16,8 +16,10 @@ export const TaskTerminal = ({
   task,
   onError,
   dock,
+  owner = "task",
 }: {
-  task: Task;
+  task: Pick<Task, "id" | "worktree_path">;
+  owner?: "task" | "repair";
   onError: (error: string) => void;
   dock?: () => void;
 }) => {
@@ -27,6 +29,7 @@ export const TaskTerminal = ({
   const replay = useRef<{ text: string; sequence: number }[] | null>(null);
   const [session, setSession] = useState("");
   const [busy, setBusy] = useState(false);
+  const prefix = owner === "repair" ? "repair.terminal" : "terminal";
   const attach = useCallback((snapshot: TerminalSnapshot | null) => {
     terminal.current?.clear();
     if (snapshot) {
@@ -56,7 +59,8 @@ export const TaskTerminal = ({
     let alive = true;
     replay.current = [];
     const sub = subscribe((event) => {
-      if (event.task_id !== task.id) return;
+      if ((owner === "repair" ? event.repair_id : event.task_id) !== task.id)
+        return;
       if (event.event === "terminal.output") {
         const sequence =
           (event.data as { sequence: number } | undefined)?.sequence || 0;
@@ -74,7 +78,7 @@ export const TaskTerminal = ({
         term.writeln("\r\n[Task terminal exited]");
       }
     });
-    void rpc<TerminalSnapshot | null>("terminal.status", { id: task.id })
+    void rpc<TerminalSnapshot | null>(`${prefix}.status`, { id: task.id })
       .then((snapshot) => {
         if (alive) attach(snapshot);
       })
@@ -83,7 +87,7 @@ export const TaskTerminal = ({
       });
     const input = term.onData((text) => {
       if (sessionRef.current)
-        void rpc("terminal.input", {
+        void rpc(`${prefix}.input`, {
           id: task.id,
           session_id: sessionRef.current,
           text,
@@ -96,7 +100,7 @@ export const TaskTerminal = ({
       const size = `${term.cols}/${term.rows}`;
       if (sessionRef.current && size !== lastSize) {
         lastSize = size;
-        void rpc("terminal.resize", {
+        void rpc(`${prefix}.resize`, {
           id: task.id,
           session_id: sessionRef.current,
           cols: Math.max(20, Math.min(500, term.cols)),
@@ -113,12 +117,12 @@ export const TaskTerminal = ({
       term.dispose();
       terminal.current = null;
     };
-  }, [task.id, onError, attach]);
+  }, [task.id, onError, attach, owner, prefix]);
   const start = async () => {
     setBusy(true);
     replay.current = [];
     try {
-      const snapshot = await rpc<TerminalSnapshot>("terminal.open", {
+      const snapshot = await rpc<TerminalSnapshot>(`${prefix}.open`, {
         id: task.id,
         cols: Math.max(20, terminal.current?.cols || 100),
         rows: Math.max(4, terminal.current?.rows || 20),
@@ -135,7 +139,7 @@ export const TaskTerminal = ({
   const close = async () => {
     setBusy(true);
     try {
-      await rpc("terminal.close", { id: task.id });
+      await rpc(`${prefix}.close`, { id: task.id });
       sessionRef.current = "";
       setSession("");
     } catch (e) {

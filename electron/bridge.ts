@@ -11,6 +11,7 @@ export class CoreBridge extends EventEmitter {
   private warning: string | undefined;
   private approvalsAvailable = false;
   private manualPrAvailable = false;
+  private repairAvailable = false;
   private stopping = false;
   private pending = new Map<
     string,
@@ -29,6 +30,7 @@ export class CoreBridge extends EventEmitter {
   start = () => {
     this.stopping = false;
     this.manualPrAvailable = false;
+    this.repairAvailable = false;
     this.approvalsAvailable = false;
     this.checking = this.launch().catch((error) => {
       this.warning = String(error);
@@ -105,11 +107,13 @@ export class CoreBridge extends EventEmitter {
         build: string;
         pipeline_approvals?: boolean;
         manual_pr_analysis?: boolean;
+        pr_repair?: boolean;
       }>("core.info", {}, 15000),
     ])
       .then(([bundle, info]) => {
         this.approvalsAvailable = info.pipeline_approvals === true;
         this.manualPrAvailable = info.manual_pr_analysis === true;
+        this.repairAvailable = info.pr_repair === true;
         this.warning = !this.approvalsAvailable
           ? "The running core cannot enforce plan review approvals. Restart the current dev build, or update the WSL helper in Settings → Execution. Task execution is blocked until updated."
           : !this.manualPrAvailable
@@ -132,6 +136,20 @@ export class CoreBridge extends EventEmitter {
   };
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (
+      !this.repairAvailable &&
+      method.startsWith("repair.") &&
+      ![
+        "repair.list",
+        "repair.detail",
+        "repair.logs",
+        "repair.events",
+        "repair.cancel",
+      ].includes(method)
+    )
+      throw new Error(
+        "Update the execution helper before using PR repair and publishing.",
+      );
     if (
       !this.manualPrAvailable &&
       [

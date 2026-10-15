@@ -5,9 +5,12 @@ import {
   stat,
   writeFile,
   realpath,
+  lstat,
+  readlink,
 } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import lockfile from "proper-lockfile";
 import {
   AdeError,
@@ -15,17 +18,57 @@ import {
   now,
   type Repository,
   type Task,
+  type WorkspaceAssignment,
 } from "../domain";
 import { capture, checked, execute } from "../execution/process";
 import { exists, safeFile, taskRoot, worktreePath } from "./paths";
 export class GitWorkspace {
-  constructor(private readonly root: string) {}
+  constructor(
+    private readonly root: string,
+    private readonly repositoryPath?: (id: string) => string,
+  ) {}
+  commonDirectory = async (cwd: string) =>
+    realpath(
+      await checked(
+        "git",
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd,
+      ),
+    );
+  acquireWrite = async (cwd: string, identity: string) => {
+    const common = await this.commonDirectory(cwd);
+    const key = createHash("sha256").update(identity).digest("hex");
+    const target = join(common, `vibestar-write-${key}`);
+    await writeFile(target, "", { flag: "a", mode: 0o600 });
+    try {
+      return await lockfile.lock(target, {
+        stale: 30000,
+        update: 10000,
+        retries: 0,
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ELOCKED")
+        throw new AdeError(
+          "busy",
+          "Another operation has exclusive write access to this Git workspace or PR destination.",
+        );
+      throw error;
+    }
+  };
   withLock = async <T>(repoId: string, operation: () => Promise<T>) => {
     if (!/^[\w-]+$/.test(repoId))
       throw new AdeError("invalid_input", "Invalid repository lock key");
-    const path = join(this.root, "state", `repo-${repoId}.lock`);
-    await writeFile(path, "", { flag: "a", mode: 0o600 });
+    const repository = this.repositoryPath?.(repoId);
+    const common =
+      repository && (await exists(join(repository, ".git")))
+        ? await this.commonDirectory(repository)
+        : null;
+    const path = common || join(this.root, "state", `repo-${repoId}.lock`);
+    if (!common) await writeFile(path, "", { flag: "a", mode: 0o600 });
     const release = await lockfile.lock(path, {
+      ...(common
+        ? { lockfilePath: join(common, "vibestar-operation.lock") }
+        : {}),
       stale: 30000,
       update: 10000,
       retries: { retries: 30, minTimeout: 250, maxTimeout: 2000 },
@@ -194,7 +237,7 @@ export class GitWorkspace {
         "Unable to find a unique branch name",
       );
     });
-  assertTask = async (t: Task) => {
+  assertTask = async (t: WorkspaceAssignment) => {
     const cwd = await taskRoot(this.root, t);
     const branch = await checked(
       "git",
@@ -208,7 +251,7 @@ export class GitWorkspace {
       );
     return cwd;
   };
-  fingerprint = async (t: Task) => {
+  fingerprint = async (t: WorkspaceAssignment) => {
     const cwd = await this.assertTask(t);
     const hash = createHash("sha256");
     hash.update(await checked("git", ["rev-parse", "HEAD"], cwd));
@@ -239,7 +282,78 @@ export class GitWorkspace {
     }
     return hash.digest("hex");
   };
-  file = async (t: Task, path: string, oldPath?: string | null) => {
+  repairFingerprint = async (t: WorkspaceAssignment, includeHistory = true) => {
+    const cwd = await this.assertTask(t);
+    const hash = createHash("sha256").update(t.base_commit_sha);
+    const output = async (args: string[]) => {
+      const result = await execute({
+        program: "git",
+        args,
+        cwd,
+        rawStdoutForIntegrity: true,
+      });
+      if (
+        result.code !== 0 ||
+        Buffer.byteLength(result.stdout) >= 32 * 1024 * 1024
+      )
+        throw new AdeError(
+          "fingerprint",
+          "Git fingerprint evidence failed or exceeded the capture limit.",
+        );
+      return result.stdout;
+    };
+    if (includeHistory) {
+      hash.update(await output(["rev-parse", "HEAD"]));
+      hash.update(await output(["ls-files", "--stage", "-z"]));
+    }
+    const paths = new Set(
+      (
+        (await output([
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--no-renames",
+          "--name-only",
+          "-z",
+          t.base_commit_sha,
+          "--",
+        ])) +
+        (await output(["ls-files", "--others", "--exclude-standard", "-z"]))
+      )
+        .split("\0")
+        .filter(Boolean),
+    );
+    for (const path of [...paths].sort()) {
+      const file = await safeFile(cwd, path);
+      hash.update(`\0${path}\0`);
+      try {
+        const metadata = await lstat(file);
+        hash.update(String(metadata.mode & 0o111));
+        if (metadata.isSymbolicLink())
+          hash.update(`symlink:${await readlink(file)}`);
+        else if (metadata.isFile()) {
+          const content = createHash("sha256");
+          for await (const chunk of createReadStream(file))
+            content.update(chunk);
+          hash.update(content.digest());
+        } else
+          throw new AdeError(
+            "fingerprint",
+            "Review changes include an unsupported file type.",
+          );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        hash.update("deleted");
+      }
+    }
+    return hash.digest("hex");
+  };
+  file = async (
+    t: WorkspaceAssignment,
+    path: string,
+    oldPath?: string | null,
+    head?: string,
+  ) => {
     const cwd = await this.assertTask(t);
     const file = await safeFile(cwd, path);
     const old = oldPath || path;
@@ -263,19 +377,30 @@ export class GitWorkspace {
       cwd,
     );
     let bytes = Buffer.alloc(0);
-    try {
-      const s = await stat(file);
-      if (s.isFile()) {
-        if (s.size > 4 * 1024 * 1024)
-          throw new AdeError(
-            "file_limit",
-            "File exceeds the 4 MiB editor limit",
-          );
-        bytes = await readFile(file);
+    if (head) {
+      const size = await capture(
+        "git",
+        ["cat-file", "-s", `${head}:${path}`],
+        cwd,
+      );
+      if (size.code === 0 && Number(size.stdout) > 4 * 1024 * 1024)
+        throw new AdeError("file_limit", "File exceeds the 4 MiB editor limit");
+      const content = await capture("git", ["show", `${head}:${path}`], cwd);
+      if (content.code === 0) bytes = Buffer.from(content.stdout);
+    } else
+      try {
+        const s = await stat(file);
+        if (s.isFile()) {
+          if (s.size > 4 * 1024 * 1024)
+            throw new AdeError(
+              "file_limit",
+              "File exceeds the 4 MiB editor limit",
+            );
+          bytes = await readFile(file);
+        }
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-    }
     const binary = bytes.includes(0) || original.stdout.includes("\0");
     const unified = await capture(
       "git",
@@ -284,6 +409,7 @@ export class GitWorkspace {
         "--no-ext-diff",
         "--no-textconv",
         t.base_commit_sha,
+        ...(head ? [head] : []),
         "--",
         path,
         old,
@@ -313,7 +439,7 @@ export class GitWorkspace {
       unified: unified.stdout || addedPatch?.stdout || "",
     };
   };
-  diff = async (t: Task) => {
+  diff = async (t: WorkspaceAssignment, head?: string) => {
     const cwd = await this.assertTask(t);
     const output = await capture(
       "git",
@@ -323,6 +449,7 @@ export class GitWorkspace {
         "-z",
         "--find-renames",
         t.base_commit_sha,
+        ...(head ? [head] : []),
         "--",
       ],
       cwd,
@@ -352,7 +479,7 @@ export class GitWorkspace {
       ["ls-files", "--others", "--exclude-standard", "-z"],
       cwd,
     );
-    for (const path of untracked.stdout.split("\0").filter(Boolean))
+    for (const path of head ? [] : untracked.stdout.split("\0").filter(Boolean))
       files.push({
         path,
         old_path: null,
@@ -369,7 +496,7 @@ export class GitWorkspace {
       ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
       cwd,
     );
-    const rows = porcelain.stdout.split("\0");
+    const rows = head ? [] : porcelain.stdout.split("\0");
     for (let i = 0; i < rows.length; i++) {
       const line = rows[i];
       if (line.length < 4) continue;
@@ -398,7 +525,7 @@ export class GitWorkspace {
     }
     for (const f of files) {
       try {
-        const content = await this.file(t, f.path, f.old_path);
+        const content = await this.file(t, f.path, f.old_path, head);
         f.binary = content.binary;
         if (f.status === "A" && !f.old_path)
           f.insertions = countLines(content.modified);
@@ -409,6 +536,7 @@ export class GitWorkspace {
               "diff",
               "--numstat",
               t.base_commit_sha,
+              ...(head ? [head] : []),
               "--",
               f.path,
               ...(f.old_path ? [f.old_path] : []),

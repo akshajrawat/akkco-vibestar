@@ -12,11 +12,13 @@ const OutputBody = ({
   run,
   events,
   preparation,
+  owner,
 }: {
   taskId: string;
   run?: Run;
   events: AgentEvent[];
   preparation: boolean;
+  owner: "task" | "repair";
 }) => {
   const view = useTaskView(taskId);
   const raw = view.outputView === "raw";
@@ -28,6 +30,7 @@ const OutputBody = ({
     stream: view.outputStream,
     search: view.outputSearch,
     preparation,
+    owner,
   });
   const scroll = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -233,12 +236,14 @@ export const LogView = ({
   runs,
   events,
   selectedRun,
+  owner = "task",
 }: {
   taskId: string;
   runs: Run[];
   events: AgentEvent[];
   selectedRun?: string;
   liveOutput?: boolean;
+  owner?: "task" | "repair";
 }) => {
   const view = useTaskView(taskId);
   const selection = view.outputRun || selectedRun || "";
@@ -336,6 +341,7 @@ export const LogView = ({
         taskId={taskId}
         run={run}
         preparation={preparation}
+        owner={owner}
         events={events}
       />
     </section>

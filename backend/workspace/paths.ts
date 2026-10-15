@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { realpath, stat, mkdir } from "node:fs/promises";
 import { isAbsolute, join, relative, dirname, sep, resolve } from "node:path";
-import { AdeError, slug, type Task } from "../domain";
+import { AdeError, slug, type WorkspaceAssignment } from "../domain";
 export const inside = (root: string, path: string) => {
   const r = relative(root, path);
   return r !== "" && !r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute(r);
@@ -49,7 +49,7 @@ export const safeFile = async (root: string, path: string) => {
   }
   return file;
 };
-export const taskRoot = async (root: string, task: Task) => {
+export const taskRoot = async (root: string, task: WorkspaceAssignment) => {
   const path = await realpath(task.worktree_path);
   const allowed = await realpath(join(root, "worktrees", task.repo_id));
   if (!inside(allowed, path))

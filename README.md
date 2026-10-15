@@ -1,6 +1,6 @@
 # akkco vibestar
 
-A local Electron Agent Development Environment for independent open-source contribution tasks. The task conversation is the workspace: each whole issue or claimed subtask owns its pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. GitHub repository discovery and a manual PR review inbox use the official GitHub CLI. Nothing is automatically pushed, posted or merged.
+A local Electron Agent Development Environment for independent open-source contributions. Each whole issue or claimed subtask owns its pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. Existing GitHub PRs have a separate manual analysis and repair workflow: isolated branch preparation, Codex fixes, independent Antigravity review and confirmed publication to the original fork/branch. GitHub access uses the official CLI. Nothing is automatically pushed, posted or merged.
 
 The application uses React, TypeScript, Vite, Tailwind, shadcn-style components, Monaco and xterm.js. The Node/TypeScript execution core owns SQLite, Git, processes and scheduling inside Linux/WSL. There is no Rust or Tauri dependency.
 
@@ -72,8 +72,8 @@ Linux/WSLg builds execute directly in their current distro. The desktop process 
 ```text
 ~/.akkco-vibestar/
   repos/<repository-id>/              # one managed upstream clone
-  worktrees/<repository-id>/<scope>/  # independent task checkouts
-  logs/<task-id>/                     # preparation and redacted provider logs
+  worktrees/<repository-id>/<scope>/  # independent issue/PR repair checkouts
+  logs/<task-or-repair-id>/            # preparation and redacted provider logs
   artifacts/                         # temporary structured-output schemas
   state/vibestar.sqlite              # queue, context, settings and schedules
   cache/                             # disposable utility workspaces
@@ -119,7 +119,7 @@ Every new task fetches upstream under a repository lock, saves the exact base SH
 
 The compact IDE shell has a collapsible, resizable repository/task tree, a dominant conversation, optional resizable pipeline context, and a bottom **Problems / Tests / Terminal / Logs** dock. **Chat / Plan / Usage** are views of the same task. There is no global Diffs destination or dashboard Overview. Ctrl+Shift+P opens commands; Ctrl+B toggles the sidebar.
 
-Chat shows actual preparation commands, Antigravity planning, Codex refinement, Codex implementation, validation and final Antigravity review in one continuous conversation. Exact saved prompts are available from every tab and each historical run. Streamed planning drafts appear immediately in Plan and survive a cancelled run. Stop run & use this draft explicitly recovers a schema-valid draft only if the worktree is unchanged, then pauses for plan approval. Structured provider streams become collapsible read/search/command/edit/test events. Prose and structured results render as readable content; raw events stay in Logs. Changed-file counts appear in Chat. **Open in VS Code** opens the assigned task worktree, where code review takes place; the in-app diff panel has been removed.
+Chat shows actual preparation commands, Antigravity planning, Codex refinement, Codex implementation, validation and final Antigravity review in one continuous conversation. Exact saved prompts are available from every tab and each historical run. Streamed planning drafts appear immediately in Plan and survive a cancelled run. Stop run & use this draft explicitly recovers a schema-valid draft only if the worktree is unchanged, then pauses for plan approval. Structured provider streams become collapsible read/search/command/edit/test events. Prose and structured results render as readable content; raw events stay in Logs. Changed-file counts appear in Chat. The Changes dock displays file-level patches; **Open in VS Code** opens the assigned task worktree for full editor review.
 
 The composer sends follow-up messages through the selected Codex or Antigravity headless adapter in the same worktree. Provider, model and effort apply to the next follow-up; historical run metadata and saved pipeline settings remain unchanged. During execution, Stop cancels the current run and a draft stays local until submitted afterward. Text is never silently injected into a running process. Each task keeps separate drafts, events, plans, diffs, view preferences and PTY sessions.
 
@@ -144,7 +144,18 @@ PR review is manual only. Startup, authentication, opening the inbox, tracking a
 
 An unchanged complete report can be reused without AI; simple acknowledgments and author/bot-only activity also use GitHub inspection only. Every actual invocation uses the existing AgentRunner, read-only utility sandbox, saved prompt/redacted logs and ai_usage. Missing token or subscription information stays unavailable. Long comments are preserved in bounded context packets with explicit per-source coverage. API limits, missing context and partial model coverage are shown; the app never claims every request was assessed when coverage is incomplete.
 
-PR repair and confirmed publication are later milestones. **Solve Review** remains unavailable; analysis cannot silently start an issue-task follow-up or modify GitHub. [Revised architecture and milestone checklist](docs/IDE-HARNESS-PR-REVIEW-PLAN.md) describes the approved sequence.
+### Solve an existing PR review
+
+1. Complete **Analyze PR**, then click **Solve Review**. Select source-linked observations, add instructions and explicitly choose a connected upstream checkout or use the existing local connection/managed-clone controls. A manually created PR needs no Vibestar issue task.
+2. Confirm the displayed Codex and Antigravity model/effort settings. Vibestar verifies the immutable upstream/fork/PR identity and current head, creates its own repair branch/worktree and merges the actual latest PR base into that branch. Your source checkout and issue worktrees stay untouched.
+3. Codex implements the selected concerns and executes applicable checks. Antigravity independently reviews the changes with read-only source access. The repair stops at **Manual Review Required**. Original comments, per-item findings, actual command exits, reported tests, logs, usage and the three diff layers remain available.
+4. Review the files in **Changes** or open the exact repair worktree in your editor. **Request Further Fix** explicitly repeats Codex → Antigravity in the same worktree, retaining earlier history. A blocked check remains unverified.
+5. **Commit Locally** approves the current reviewed content and creates a local-only commit, including when you lack remote push permission. **Keep Local** retains the workspace. **Approve and Prepare Push** opens a separate publication dialog with the exact fork/ref, expected remote SHA, local head, changes and validation. Commit there if necessary, then explicitly **Confirm Push**.
+6. Publication checks the open PR, identity, permission, remote freshness, approved fingerprint and ancestry again. It uses a normal fast-forward push to the original PR branch. The resulting SHA and publication history are saved; **Analyze PR Again** remains a separate click.
+
+Conflicts preserve the worktree and staged conflict state. Resolve and stage them in the editor, then explicitly resume preparation. A stale remote head stops the session for fresh analysis. Cancellation/restart preserve checkpoints and never replay inference or pushes; an uncertain push must first be reconciled by a read-only remote check. Clean owned worktrees can be removed explicitly while retaining repair history.
+
+[PR repair implementation and manual test guide](docs/PR-REPAIR-SYSTEM.md) covers the contracts, safeguards and verification evidence. [Milestone checklist](docs/IDE-HARNESS-PR-REVIEW-PLAN.md) records the complete five-milestone delivery.
 
 ## Security boundaries
 
@@ -169,6 +180,7 @@ npm run test:integration
 npm run test:tui
 npm run build
 npm run test:desktop
+npm run test:desktop:repair
 npm run desktop:build
 ```
 
@@ -178,6 +190,6 @@ npm run desktop:build
 
 ## Deliberate V1 limits
 
-No automatic upstream rebase, push, PR creation, GitHub comments, merges or issue administration. Updating a pinned base is reserved for a deliberate later action. Provider model slugs and errors remain provider-owned. Binary or larger-than-4-MiB files remain in the changed-file list but are not rendered as editable text. Live event inspection keeps the latest 2,000 events in the UI; raw-log inspection reads the last 1 MiB directly from the complete redacted logs on disk. Application-closed monitoring, signed Windows release distribution, and execution of Windows installer tests require the corresponding external environment or credentials.
+No automatic upstream rebase, push, PR creation, GitHub comments, PR merges or issue administration. Issue-task bases stay pinned; explicit PR repair preparation integrates its current base in a separate branch. Provider model slugs and errors remain provider-owned. Binary or larger-than-4-MiB files remain in the changed-file list but are not rendered as editable text. The output browser pages persisted events and redacted stdout/stderr, with full-file search; legacy tail reads stay bounded. Repair requires a complete saved analysis, a connected upstream checkout and available dependencies. Application-closed monitoring, signed Windows release distribution and Windows installer execution require the corresponding external environment or credentials.
 
 Interaction references include Codex, Antigravity, Cursor and T3 Code. This milestone copies no proprietary source/assets or third-party IDE components. Vibestar keeps its own issue/scope/pinned-worktree orchestration and official CLI integrations; it does not adopt remote-account services or provider credential extraction.

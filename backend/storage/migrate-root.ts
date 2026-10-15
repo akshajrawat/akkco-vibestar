@@ -16,6 +16,7 @@ import { Database } from "./database";
 import { AdeError } from "../domain";
 import { createLayout, exists, inside } from "../workspace/paths";
 import { checked } from "../execution/process";
+import { RepairStore } from "../review/repair/store";
 
 const promotedDirectories = [
   "state",
@@ -114,9 +115,19 @@ export const migrateDataRoot = async (source: string, target: string) => {
     db = new Database(join(staging, "state", "vibestar.sqlite"));
     const translated = (path: string) =>
       inside(source, path) ? join(target, relative(source, path)) : path;
+    const repairs = new RepairStore(db);
     for (const repo of db.repositories()) {
       if (repo.source === "imported") {
-        if (db.tasks().some((t) => t.repo_id === repo.id && t.worktree_path))
+        if (
+          db.tasks().some((t) => t.repo_id === repo.id && t.worktree_path) ||
+          repairs
+            .list()
+            .some(
+              (session) =>
+                session.repo_id === repo.id &&
+                session.workspace.preparation !== "removed",
+            )
+        )
           throw new AdeError(
             "migration",
             "Imported task worktrees require keeping the old location. Choose Use old location to preserve them safely.",
@@ -155,6 +166,41 @@ export const migrateDataRoot = async (source: string, target: string) => {
         `${translated(task.worktree_path)}/.git\n`,
       );
       db.saveTask({ ...task, worktree_path: translated(task.worktree_path) });
+    }
+    for (const session of repairs.list()) {
+      const workspace = session.workspace;
+      if (
+        workspace.preparation !== "removed" &&
+        (await exists(join(staging, relative(source, workspace.worktree_path))))
+      ) {
+        if (
+          !inside(join(source, "worktrees"), workspace.worktree_path) ||
+          !inside(join(source, "repos"), workspace.git_common_dir)
+        )
+          throw new AdeError(
+            "migration",
+            "Repair worktree metadata is outside the old managed root. Use the old location to preserve it.",
+          );
+        const copy = join(staging, relative(source, workspace.worktree_path));
+        const gitfile = await readFile(join(copy, ".git"), "utf8");
+        const gitdir = gitfile.trim().replace(/^gitdir: /, "");
+        if (
+          !gitfile.startsWith("gitdir: ") ||
+          !inside(workspace.git_common_dir, gitdir)
+        )
+          throw new AdeError(
+            "migration",
+            "Repair Git metadata is unsafe. Original data was preserved.",
+          );
+        await writeFile(join(copy, ".git"), `gitdir: ${translated(gitdir)}\n`);
+        await writeFile(
+          join(staging, relative(source, gitdir), "gitdir"),
+          `${translated(workspace.worktree_path)}/.git\n`,
+        );
+      }
+      workspace.worktree_path = translated(workspace.worktree_path);
+      workspace.git_common_dir = translated(workspace.git_common_dir);
+      repairs.save(session);
     }
     // Rewrite every copied worktree registration, including those not linked to current tasks.
     for (const repo of db
@@ -207,7 +253,16 @@ export const migrateDataRoot = async (source: string, target: string) => {
     }
     const verify = new Database(join(target, "state", "vibestar.sqlite"));
     try {
-      for (const task of verify.tasks().filter((t) => t.worktree_path)) {
+      const repairAssignments = new RepairStore(verify)
+        .list()
+        .filter((session) => session.workspace.preparation !== "removed")
+        .map((session) => ({
+          repo_id: session.repo_id,
+          worktree_path: session.workspace.worktree_path,
+        }));
+      for (const task of [...verify.tasks(), ...repairAssignments].filter(
+        (t) => t.worktree_path,
+      )) {
         if (!(await exists(task.worktree_path))) continue;
         const common = await checked(
           "git",

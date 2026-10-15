@@ -121,7 +121,7 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
         1,
       );
       await page
-        .getByRole("button", { name: "Conversation", exact: true })
+        .getByRole("tab", { name: "Full Conversation", exact: true })
         .click();
       await page
         .getByText("Apart from that, everything seems to be fine to me.", {
@@ -129,7 +129,7 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
         })
         .waitFor();
       await page
-        .getByRole("button", { name: "Action items", exact: true })
+        .getByRole("tab", { name: "Review Actions", exact: true })
         .click();
       await page
         .getByRole("heading", { name: "Positive feedback / information" })
@@ -138,9 +138,9 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
         await page
           .getByRole("button", { name: "Solve Review", exact: true })
           .isDisabled(),
-      ).toBe(true);
+      ).toBe(false);
       await page
-        .getByRole("button", { name: "Analysis history", exact: true })
+        .getByRole("tab", { name: "Analysis History", exact: true })
         .click();
       await page.getByText(/input 50/).waitFor();
       await page
