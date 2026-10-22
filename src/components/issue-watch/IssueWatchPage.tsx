@@ -209,10 +209,24 @@ export const IssueWatchPage = ({
           </h1>
           <p>Saved criteria. Fresh evidence. Scans only when you choose.</p>
         </div>
-        <Button variant="default" onClick={() => setEditor("new")}>
-          <Plus size={14} />
-          New watch
-        </Button>
+        <div className="watch-toolbar-actions">
+          {active && (
+            <Button
+              className="watch-mobile-cancel"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void cancel()}
+              aria-label="Cancel active scan"
+            >
+              <Square size={12} />
+              Cancel scan
+            </Button>
+          )}
+          <Button variant="default" onClick={() => setEditor("new")}>
+            <Plus size={14} />
+            New watch
+          </Button>
+        </div>
       </header>
       {state.error && (
         <div className="error-box watch-error" role="alert">
@@ -318,6 +332,11 @@ export const IssueWatchPage = ({
                       : "Create a watch to save your repository, filters and model. Nothing runs until Scan Now."}
                   </p>
                 )}
+                {state.moreWatches && (
+                  <Button variant="ghost" size="sm" onClick={state.loadWatches}>
+                    Load more watches
+                  </Button>
+                )}
               </div>
             </aside>
             <ResizeHandle
@@ -383,12 +402,19 @@ export const IssueWatchPage = ({
               </header>
               <div className="watch-effective-model">
                 <span>
-                  {model?.provider} / {model?.model} / {model?.effort}
+                  Next scan · {model?.provider} / {model?.model} /{" "}
+                  {model?.effort}
                 </span>
                 <small>
                   At most one semantic invocation · {model?.timeout_secs}s ·
                   Private GitHub content is sent to this provider
                 </small>
+                {scan?.run && (
+                  <small>
+                    Selected attempt · {scan.run.provider} / {scan.run.model} /{" "}
+                    {scan.run.effort} · {scan.run.status}
+                  </small>
+                )}
               </div>
               {unsupported && (
                 <p className="error-box">
@@ -441,6 +467,11 @@ export const IssueWatchPage = ({
                     ))}
                   </select>
                 </label>
+                {state.moreHistory && (
+                  <Button variant="ghost" size="sm" onClick={state.loadHistory}>
+                    Load older attempts
+                  </Button>
+                )}
                 <span>
                   {detail.baseline
                     ? `Last complete: ${new Date(detail.baseline.ended_at || detail.baseline.started_at).toLocaleString()}`

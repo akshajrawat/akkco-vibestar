@@ -111,7 +111,9 @@ it.skipIf(process.env.VIBESTAR_UX_TEST !== "1")(
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
-      await page.getByRole("button", { name: "PR watch", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Pull Requests", exact: true })
+        .click();
       await page.locator(".pr-inbox-row").first().waitFor();
       expect(await page.locator(".pr-row-details[open]").count()).toBe(0);
       expect(await page.locator(".pr-state").allTextContents()).toEqual(

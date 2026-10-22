@@ -34,6 +34,7 @@ export const AgentConfiguration = ({
         Model
         <select
           id={`${id}-models`}
+          aria-label="Model"
           value={config.model}
           onChange={(e) => {
             const model = e.target.value;

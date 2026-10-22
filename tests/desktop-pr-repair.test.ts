@@ -154,7 +154,9 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       };
       engine.on("event", forward);
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      await page.getByRole("button", { name: "PR watch", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Pull Requests", exact: true })
+        .click();
       await page.getByLabel("PR URL").fill(fixture.session.identity.url);
       await page.getByRole("button", { name: "Track PR", exact: true }).click();
       expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);

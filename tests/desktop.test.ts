@@ -156,7 +156,9 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
         await page.getByLabel("Restore window").waitFor();
         await page.getByLabel("Restore window").click();
       }
-      await page.getByRole("button", { name: "PR watch", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Pull Requests", exact: true })
+        .click();
       await page
         .getByRole("heading", { name: "Pull requests", exact: true })
         .waitFor();

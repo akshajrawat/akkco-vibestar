@@ -36,10 +36,12 @@ export class Rpc {
     readonly engine: Engine,
     monitor = new GitHubMonitor(engine.root),
     repairs = new RepairService(engine),
+    issueWatch?: IssueWatchService,
   ) {
     this.scheduler = new Scheduler(engine, monitor);
     this.github = new GitHubService(engine, this.scheduler);
-    this.issueWatch = new IssueWatchService(engine, this.github.client);
+    this.issueWatch =
+      issueWatch || new IssueWatchService(engine, this.github.client);
     this.review = new ReviewService(engine);
     this.repairs = repairs;
     this.terminals = new TaskTerminals(engine);
@@ -89,6 +91,7 @@ export class Rpc {
           tasks: e.db.tasks(),
           settings: e.db.displaySettings(),
           root: e.root,
+          capabilities: { manual_issue_watch: true, issue_watch_contract: 1 },
           execution_environment: {
             distro: process.env.WSL_DISTRO_NAME || "Linux",
           },

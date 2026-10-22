@@ -3760,6 +3760,9 @@ progress::-webkit-progress-value {
 .watch-running {
   color: var(--accent-blue);
 }
+.watch-mobile-cancel {
+  display: none;
+}
 .watch-discovery {
   display: flex;
   flex-direction: column;
@@ -3852,6 +3855,7 @@ progress::-webkit-progress-value {
 }
 .watch-history-toolbar label {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -4288,6 +4292,10 @@ progress::-webkit-progress-value {
   flex-direction: row;
   align-items: center;
 }
+.watch-checks input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--accent-blue);
+}
 .watch-tracker-input {
   display: grid;
   grid-template-columns: 1fr 150px 28px;
@@ -4327,14 +4335,23 @@ progress::-webkit-progress-value {
   padding: 9px 0;
 }
 .watch-notifications {
-  position: fixed;
-  bottom: 20px;
-  right: 22px;
-  z-index: 45;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-width: min(430px, 90vw);
+  flex-shrink: 0;
+  gap: 6px;
+  max-height: 150px;
+  overflow: auto;
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--border-default);
+}
+.watch-saved-heading label,
+.watch-view-tabs label {
+  flex-direction: row;
+  align-items: center;
+}
+.issue-watch-page input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--accent-blue);
 }
 .watch-notifications > div {
   display: flex;
@@ -4361,6 +4378,9 @@ progress::-webkit-progress-value {
   margin: 4px 0;
 }
 @media (max-width: 1200px) {
+  .watch-mobile-cancel {
+    display: inline-flex;
+  }
   .watch-details-container {
     position: absolute;
     right: 0;

@@ -225,7 +225,6 @@ export const WatchEditor = ({
             <label>
               Watch name
               <input
-                autoFocus
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Contribution opportunities"

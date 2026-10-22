@@ -132,10 +132,20 @@ export class IssueWatchScanner {
           );
         }
       }
+      scan.coverage.excluded = candidates.filter(
+        (candidate) => !candidate.eligible,
+      ).length;
       progress("Verifying tracker exclusions");
       let exclusions: Set<string>;
       try {
-        exclusions = await trackerExclusions(reader, rules, save);
+        exclusions = await trackerExclusions(
+          reader,
+          rules,
+          save,
+          rules.trackers.length && watch.last_complete_scan_id
+            ? this.store.sources(watch.id, watch.last_complete_scan_id, true)
+            : [],
+        );
         if (repository.full_name !== watch.repository.full_name)
           for (const key of [...exclusions]) {
             if (key.startsWith(`${watch.repository.full_name}#`))
@@ -312,6 +322,14 @@ export class IssueWatchScanner {
             candidate.claim_state = "ineligible";
         }
       }
+      scan.coverage.excluded = candidates.filter(
+        (candidate) =>
+          hardExclusions(candidate.issue, rules, exclusions).length > 0 ||
+          (!candidate.eligible &&
+            ["ineligible", "competing_pr_detected"].includes(
+              candidate.claim_state,
+            )),
+      ).length;
       const checked = new Set(
         candidates.map((candidate) => candidate.issue.id),
       );

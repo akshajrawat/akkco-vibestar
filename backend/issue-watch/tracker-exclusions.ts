@@ -2,7 +2,11 @@ import { unified } from "unified";
 import remarkParse from "remark-parse";
 import type { Nodes } from "mdast";
 import { now, parseIssue } from "../domain";
-import { CollectionLimit, type IssueSearch } from "../github/issue-search";
+import {
+  CollectionLimit,
+  verifyIssueIdentity,
+  type IssueSearch,
+} from "../github/issue-search";
 import type { WatchRules, WatchSource } from "./contracts";
 import { digest, issueKey, repositoryName } from "./rules";
 import { z } from "zod";
@@ -114,13 +118,25 @@ export const trackerExclusions = async (
   reader: IssueSearch,
   rules: WatchRules,
   save: (source: WatchSource) => void,
+  previous: WatchSource[] = [],
 ) => {
   const excluded = new Set<string>();
   for (const tracker of rules.trackers) {
     reader.signal.throwIfAborted();
     const ref = parseIssue(tracker.url);
-    const repository = await reader.repository(`${ref.owner}/${ref.repo}`);
+    const prior = previous.find(
+      (source) =>
+        source.kind === "tracker" &&
+        (source.requested_url || source.url).toLowerCase() ===
+          tracker.url.toLowerCase(),
+    );
+    const repository = await reader.repository(
+      `${ref.owner}/${ref.repo}`,
+      prior?.repository_id,
+    );
     const issue = await reader.issue(repository, ref.number);
+    if (prior?.issue_id)
+      verifyIssueIdentity(issue, { id: prior.issue_id, number: ref.number });
     if (issue.pull_request)
       throw new CollectionLimit(
         "A required tracker identifies a pull request.",
@@ -140,6 +156,7 @@ export const trackerExclusions = async (
       key: `tracker:${issue.id}`,
       kind: "tracker",
       url: issue.url,
+      requested_url: tracker.url,
       issue_id: issue.id,
       repository_id: repository.id,
       revision: issue.updated_at,

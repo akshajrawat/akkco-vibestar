@@ -1,8 +1,8 @@
-# Verification: 7 October 2026
+# Verification — latest checkpoint October 22, 2026
 
 ## S1 security checkpoint — October 20, 2026
 
-S1 of the approved [Issue Watch/security plan](ISSUE-WATCH-SECURITY-PLAN.md) passed. S2–S5 remain in progress and are not represented by this checkpoint. The unrestricted pre-change baseline passed 227 tests with 10 opt-in skipped; the initial restricted invocation lost nested child-process output and was independently reproduced without source changes.
+S1 of the approved [Issue Watch/security plan](ISSUE-WATCH-SECURITY-PLAN.md) passed. At this checkpoint S2–S5 remained in progress; their completed verification is recorded below. The unrestricted pre-change baseline passed 227 tests with 10 opt-in skipped; the initial restricted invocation lost nested child-process output and was independently reproduced without source changes.
 
 Fresh S1 verification: npm test **316 passed, 10 opt-in skipped, 49 passing files**; npm run test:integration **7 passed**; npm run test:tui **3 passed**. Lint, typecheck, format:check, targeted nested-doc formatting, build and git diff --check passed. The first full run exposed a stale refusal-label assertion and schema property-order affecting unchanged PR-report reuse; both were fixed, then the complete suite was rerun. Retained local logs: /tmp/vibestar-s1-final-test-2.log, /tmp/vibestar-s1-final-integration.log, /tmp/vibestar-s1-final-tui.log and /tmp/vibestar-s1-final-build.log. Existing jsdom canvas and third-party Zod annotation diagnostics are non-fatal.
 
@@ -14,7 +14,87 @@ No live subscription inference, real credential reads, personal-source changes o
 
 S2 passed the full suite with **344 tests, 10 opt-in skipped (54 passing files)**, plus typecheck, lint, root/nested-doc formatting, build and whitespace checks. Fixtures exercise dynamic tracker membership (body/all-comments), strict current facts, independent claims/withdrawals/association authority, visible Markdown PR closing references, search/request/source budgets, durable requests, cancelled/interrupted attempts, baseline lineage, helper negotiation and actual SQLite/root migration without any local clone.
 
-S3 passed the full suite with **357 tests, 10 opt-in skipped (55 passing files)**, typecheck, lint and formatting. Thirteen semantic fixtures use inert Node provider binaries through the actual UtilityAI/AgentRunner/bubblewrap path: one invocation, normalized output and reported usage, quota failure, unknown IDs/forged citations/actors/factual blockers, omitted candidates, complete-packet bounds, no inference when all excluded, changed final metadata, explicit continued selection, process cancellation and restart. An actual data-root migration preserves prompts, utility events and usage; explicit reset validates the new foreign-key order. Local logs: /tmp/vibestar-s2-full-test.log, /tmp/vibestar-s2-build.log, /tmp/vibestar-s3-full-test.log and /tmp/vibestar-s3-watch-tests.log. S3 build is running; S4 UI and S5 integrated verification remain outstanding.
+S3 passed the full suite with **357 tests, 10 opt-in skipped (55 passing files)**, typecheck, lint and formatting. Thirteen semantic fixtures use inert Node provider binaries through the actual UtilityAI/AgentRunner/bubblewrap path: one invocation, normalized output and reported usage, quota failure, unknown IDs/forged citations/actors/factual blockers, omitted candidates, complete-packet bounds, no inference when all excluded, changed final metadata, explicit continued selection, process cancellation and restart. An actual data-root migration preserves prompts, utility events and usage; explicit reset validates the new foreign-key order. Local logs: /tmp/vibestar-s2-full-test.log, /tmp/vibestar-s2-build.log, /tmp/vibestar-s3-full-test.log and /tmp/vibestar-s3-watch-tests.log. S3 build also passed. These checkpoint log paths are historical and may no longer exist after environment resets. S4/S5 current verification is recorded below.
+
+## S4/S5 integration — October 22, 2026 — complete
+
+The approved S1–S5 implementation passed its final checkpoint. Source is the user checkpoint `554b70cb7baa17cac267b4c2df9ee4d2506bd845` plus the current working-tree changes. Host: Linux x64, WSL2 kernel 6.18.33.2, Node 22.22.1, npm 9.2.0, Electron 41.10.7, Git 2.53.0 and gh 2.46.0. npm is below the declared recommended version 10; the recorded scripts and builds completed successfully.
+
+| Command                                                                              | Final result                                                                 |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `npm run format:check` and targeted Prettier checks for the four changed nested docs | Passed                                                                       |
+| `npm run lint`                                                                       | Passed                                                                       |
+| `npm run typecheck`                                                                  | Passed                                                                       |
+| `npm test -- --maxWorkers=2`                                                         | **370 passed, 13 opt-in skipped; 56 passing files, 69 total**                |
+| `npm run test:integration`                                                           | **7 passed**                                                                 |
+| `npm run test:tui`                                                                   | **3 passed**, real PTYs                                                      |
+| `npm run build`                                                                      | Passed                                                                       |
+| Four existing built Electron fixtures                                                | **4 passed**                                                                 |
+| Final watch acceptance and packaged smoke                                            | **2 passed**                                                                 |
+| Authorized real GitHub fixture                                                       | **1 passed**, repeated successfully after the final identity/cleanup changes |
+| `npm exec -- electron-builder --linux deb --win nsis --publish never`                | Both installers built                                                        |
+| `git diff --check`                                                                   | Passed                                                                       |
+
+Fresh logs are `/tmp/vibestar-s5-{full-test,integration,tui,typecheck,lint,format,doc-format,build,electron-regressions,packaged-smoke,github-final,packaging}.log`. The final normal suite took 257.87 seconds. Its 13 skipped cases require explicit live, desktop, GitHub or package gates. Existing jsdom canvas diagnostics and third-party Zod annotation warnings remain non-fatal; packaging also reported duplicate dependency references without failing.
+
+The first unrestricted S5 suite was run alongside build/Electron work and hit 5-second timeouts in two renderer tests. Both passed in the subsequent complete run with two workers. No assertion was removed and no timeout was raised to hide a failing behavior. Built Electron exposed model-label accessibility, conflicting editor autofocus and notification overlap; these were corrected and the complete watch fixture rerun successfully. A partial-dismissal test initially left its fake missing policy enabled, and a corruption fixture initially violated SQLite's JSON CHECK instead of seeding schema-invalid JSON; those test setups were corrected. An early unit rendering query needed an explicit saved watch and an appropriate bounded async wait under load.
+
+New regressions cover compact detail reads, immutable provisional dismissals across restart, equal-timestamp history paging, repeated/overlapping/incomplete/PR-shaped search pages, changing totals, required tracker node-ID replacement, canonical renames and corrupt prior tracker evidence. Baseline corruption remains an explicit execution blocker with original bytes retained. The full suite includes S1 hostile Git/ownership/fingerprint/sandbox/redaction/persistence fixtures and existing issue, PR analysis, repair and guarded publication regressions.
+
+### Built Electron acceptance
+
+The four existing fixtures ran sequentially through actual Electron/IPC:
+
+```bash
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_PR_DESKTOP_TEST=1 VIBESTAR_REPAIR_DESKTOP_TEST=1 \
+VIBESTAR_KEEP_EVIDENCE=1 xvfb-run -a -s '-screen 0 1600x1100x24' \
+  npm test -- tests/desktop-agent-output.test.ts \
+  tests/desktop-pipeline-approval.test.ts tests/desktop-pr-analysis.test.ts \
+  tests/desktop-pr-repair.test.ts --maxWorkers=1
+```
+
+They passed in 105.90 seconds, including original issue approval gates, readable/raw output, manual PR analysis and isolated repair/local publication to a local bare fixture. Repair evidence is `/home/aksha/tmp/vibestar-pr-repair-desktop-gOKww5/screenshots/`.
+
+After the final production build and both installers:
+
+```bash
+VIBESTAR_WATCH_DESKTOP_TEST=1 VIBESTAR_PACKAGED_TEST=1 \
+VIBESTAR_KEEP_EVIDENCE=1 xvfb-run -a -s '-screen 0 1600x1100x24' \
+  npm test -- tests/desktop-issue-watch.test.ts tests/packaged.test.ts --maxWorkers=1
+```
+
+Both passed in 26.50 seconds. The watch fixture uses the exact Oppia acceptance prompt and actual AgentRunner/bubblewrap fixture processes. Save/navigation/history/restart cause no scan or model call. It checks current tracker membership, triage/assignment/competing-work exclusions, possible claims, source Markdown, one-call usage/output, notifications, keyboard/focus, layout persistence, newly matching and no-longer-eligible outcomes, task-form prefill, blocked tracker behavior and cancellation at 1100-pixel width. Four attempts end completed/completed/blocked/cancelled, with exactly three fake provider invocations and zero renderer errors. Blocked/cancelled attempts retain the second complete baseline; no task is submitted.
+
+Final watch evidence is `/home/aksha/tmp/vibestar-watch-evidence-a7ntrQ/`: `results.json`, `fixture.sqlite` and screenshots for editor, initial discoveries, trackers, raw output, new matches, task handoff, blocked tracker and narrow Cancel. New-match, handoff, narrow Cancel and packaged-editor screenshots were visually inspected. Earlier passing functional evidence remains at `/home/aksha/tmp/vibestar-watch-evidence-AwB1WT/`.
+
+### Authorized real GitHub workflow
+
+The user explicitly authorized writes in [akshajrawat/akkco-vibestar-test](https://github.com/akshajrawat/akkco-vibestar-test). Routine tests still use isolated GitHub responses. The separate opt-in test uses official gh against this one hardcoded repository and fake Node providers through AgentRunner:
+
+```bash
+VIBESTAR_GITHUB_WATCH_TEST=1 VIBESTAR_KEEP_EVIDENCE=1 \
+  npm test -- tests/issue-watch/github-live.test.ts --maxWorkers=1
+```
+
+The final run passed in 89.36 seconds, creating and closing fixture issues [#5](https://github.com/akshajrawat/akkco-vibestar-test/issues/5), [#6](https://github.com/akshajrawat/akkco-vibestar-test/issues/6), [#7](https://github.com/akshajrawat/akkco-vibestar-test/issues/7) and [#8](https://github.com/akshajrawat/akkco-vibestar-test/issues/8). Earlier fixtures #1–#4 are also closed. Both runs removed their temporary labels and CONTRIBUTING.md; closed issues and policy commit history remain as the audit trail. Cleanup reported no errors. Policy removal checks its exact created blob SHA and refuses a concurrent edit.
+
+Each run records three explicit attempts: partial for missing contribution policy (17 GitHub requests), complete after a temporary policy (18), and complete after changed tracker/label membership (18). The final run confirms tracker identity binding against the prior complete sources, newly matching prior membership, loss of eligibility, current facts despite stale search indexing, and possible claims that the fake model cannot promote. Three runs each report 125 fixture tokens; these are fake telemetry, not account spending. Saved detail/history reads start no further invocation. No clone or issue task is created.
+
+Final evidence is `/home/aksha/tmp/vibestar-watch-github-YrDT4C/results.json` and its isolated SQLite/artifact tree. Earlier evidence is `/home/aksha/tmp/vibestar-watch-github-vqHzm5/results.json`. No real subscription inference, raw credential inspection or personal-source changes were performed.
+
+### Installers and packaged smoke
+
+| Local artifact                           |      Bytes | SHA-256                                                            |
+| ---------------------------------------- | ---------: | ------------------------------------------------------------------ |
+| `release/akkco-vibestar_0.1.0_amd64.deb` | 95,261,292 | `8e910a1f3f499b5e307727f4de863de00a837e46288f5aa981eb1293cda35811` |
+| `release/akkco vibestar Setup 0.1.0.exe` | 98,939,681 | `09612eea8a110659d84d4efaff4bc524200561c36bcd163d1bfb838bf4318a6a` |
+
+The actual Linux executable opens Issue Watch and its editor with an isolated HOME/data root and blocked gh/codex/agy. Both distributed Node helper payloads start with empty roots and report protocol 3, schema 23, issue approvals/manual PR analysis/repair, manual_issue_watch=true and contract 1. Both helpers have build SHA `37899c1f1c62142193089a73e7189036346185289fc7ad7a9166135dc475e640`. Their watch/task/repair lists and usage are empty; the packaged renderer has zero errors. Evidence is `/home/aksha/tmp/vibestar-packaged-watch-p9Euw5/{results.json,packaged-watch-editor.png}`.
+
+The Windows-distributed Linux/WSL helper was run under Linux Node, not native Windows. No installer was installed or uploaded. The NSIS PE certificate directory is empty; signing is not configured. Native Windows installation/update/DPI, current real provider-native tool/auth/allowance behavior and the real Oppia dependency/browser matrix remain unverified. Provider-owned state/network remains a trusted boundary, and redaction remains best effort. Legacy live opt-in tests requiring personal checkouts or subscriptions were not enabled.
+
+The [delivery report](ISSUE-WATCH-DELIVERY.md) records all twelve requested deliverable categories; the [usage guide](ISSUE-WATCH.md) covers a real Oppia watch. No feature phase or required supported-host check remains deferred.
 
 Historical verification below records earlier milestones and their then-current architecture/counts; it is not fresh evidence for S1–S5.
 

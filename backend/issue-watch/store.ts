@@ -249,12 +249,15 @@ export class IssueWatchStore {
   };
   history = (watchId: string, limit = 50, before?: string) => {
     this.get(watchId);
+    const cursor = before ? this.scan(watchId, before) : null;
     return this.db.records.list(
       "issue_watch_scans",
       this.db.all<{ id: string; data: string }>(
-        `SELECT id,data FROM issue_watch_scans WHERE watch_id=? ${before ? "AND started_at<?" : ""} ORDER BY started_at DESC,rowid DESC LIMIT ?`,
+        `SELECT id,data FROM issue_watch_scans WHERE watch_id=? ${cursor ? "AND (started_at<? OR (started_at=? AND rowid<(SELECT rowid FROM issue_watch_scans WHERE id=? AND watch_id=?)))" : ""} ORDER BY started_at DESC,rowid DESC LIMIT ?`,
         watchId,
-        ...(before ? [before] : []),
+        ...(cursor
+          ? [cursor.started_at, cursor.started_at, cursor.id, watchId]
+          : []),
         limit,
       ),
       ScanSchema.parse,
@@ -356,8 +359,22 @@ export class IssueWatchStore {
       JSON.stringify(value),
     );
   };
-  sources = (watchId: string, scanId: string) => {
+  sources = (watchId: string, scanId: string, strict = false) => {
     this.scan(watchId, scanId);
+    if (strict)
+      return this.db
+        .all<{ id: string; data: string }>(
+          "SELECT source_key id,data FROM issue_watch_sources WHERE scan_id=? ORDER BY rowid",
+          scanId,
+        )
+        .map((row) =>
+          this.decode(
+            "issue_watch_sources",
+            `${scanId}:${row.id}`,
+            row.data,
+            SourceSchema.parse,
+          ),
+        );
     return this.db.records.list(
       "issue_watch_sources",
       this.db.all<{ id: string; data: string }>(

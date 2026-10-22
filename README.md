@@ -4,6 +4,8 @@ A local Electron Agent Development Environment for independent open-source contr
 
 The application uses React, TypeScript, Vite, Tailwind, shadcn-style components and xterm.js. The Node/TypeScript execution core owns SQLite, Git, processes and scheduling inside Linux/WSL. There is no Rust or Tauri dependency.
 
+**Issue Watch** adds saved GitHub contribution searches with explicit **Scan Now**, current tracker/claim evidence, one bounded Codex screening invocation and persistent results/history/usage. Saving or opening a watch starts no scan. See the [Issue Watch guide](docs/ISSUE-WATCH.md) for the Oppia example, outcome meanings and verification commands. Antigravity is accurately unsupported for this new workflow; existing adapters remain available.
+
 ## Prerequisites
 
 - Windows with WSL2 Ubuntu and WSLg, or a Linux desktop. Windows can run the Electron GUI natively; execution remains in WSL.
@@ -183,14 +185,16 @@ npm test
 npm run test:integration
 npm run test:tui
 npm run build
-npm run test:desktop
+npm run test:desktop:watch
+npm run test:desktop:output
+npm run test:desktop:pr
 npm run test:desktop:repair
 npm run desktop:build
 ```
 
 `npm run test:live` is opt-in and uses your authenticated real provider subscriptions against a small isolated local fixture. It consumes model quota. Normal tests use injectable **test-only** provider fixtures; production has no mock-provider selection. The earlier live slice verified the previous autonomous pipeline with the official CLIs. The current approval workflow is verified with fixtures without consuming provider quota. Live GitHub verification detected the authenticated account, discovered 26 repositories and 5 open authored PRs, inspected watch snapshots and exercised pause/resume. The Oppia issue and proven fork/default-branch inference were verified without executing its migration.
 
-[Verification results](docs/VERIFICATION.md) record the real provider run, tests and packaged-app checks. `docs/screenshots/` holds actual Electron smoke-test captures when that test is run. `ARCHITECTURE.md` explains implementation boundaries. `AGENTS.md` was copied from the local akkco-code instructions.
+[Security and Issue Watch delivery](docs/ISSUE-WATCH-DELIVERY.md) records the S1–S5 changes, migrations, compatibility and limits. [Verification results](docs/VERIFICATION.md) record the real provider run, tests and packaged-app checks. `docs/screenshots/` holds actual Electron smoke-test captures when that test is run. `ARCHITECTURE.md` explains implementation boundaries. `AGENTS.md` was copied from the local akkco-code instructions.
 
 ## Deliberate V1 limits
 

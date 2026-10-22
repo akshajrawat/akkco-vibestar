@@ -394,6 +394,7 @@ it("stores claim and competing PR facts while retaining uncertainty from missing
     base: { repo: { node_id: "R_oppia" } },
   });
   const competing = await f.scan(watch.id);
+  expect(competing.coverage.excluded).toBe(1);
   expect(
     f.service.store.candidate(watch.id, competing.id, "I_1"),
   ).toMatchObject({ eligible: false, claim_state: "competing_pr_detected" });
@@ -446,4 +447,182 @@ it("preserves watch revisions, source history and baselines through actual data-
   } finally {
     await engine.close();
   }
+});
+
+it("keeps provisional dismissals local and compact reads separate from immutable full evidence", async () => {
+  const f = await setup();
+  const { watch } = await f.create();
+  f.overrides.set("repos/oppia/oppia/community/profile", {
+    files: { contributing: null },
+  });
+  f.issues.get(1)!.body =
+    "Original full evidence retained only in selected details.";
+  const partial = await f.scan(watch.id);
+  expect(partial.status).toBe("partial");
+  const original = f.service.store.candidate(watch.id, partial.id, "I_1");
+  await f.service.call("dismissCandidate", {
+    watch_id: watch.id,
+    issue_id: "I_1",
+    dismissed: true,
+  });
+  expect(f.service.store.results(watch.id, true)).toEqual([]);
+  expect(f.service.store.get(watch.id).last_complete_scan_id).toBeNull();
+  expect(f.service.store.candidate(watch.id, partial.id, "I_1")).toEqual(
+    original,
+  );
+  const compact = (await f.service.call("scanDetail", {
+    watch_id: watch.id,
+    scan_id: partial.id,
+  })) as {
+    candidates: {
+      issue: { id: string; body?: string };
+      dismissed_at: string | null;
+      evidence?: unknown;
+      source_keys?: unknown;
+      body_bytes: number;
+    }[];
+    sources: { text?: string; references?: unknown; body_bytes: number }[];
+  };
+  const row = compact.candidates.find(
+    (candidate) => candidate.issue.id === "I_1",
+  )!;
+  expect(row.dismissed_at).toEqual(expect.any(String));
+  expect(row.issue.body).toBeUndefined();
+  expect(row.evidence).toBeUndefined();
+  expect(row.source_keys).toBeUndefined();
+  expect(row.body_bytes).toBe(Buffer.byteLength(original.issue.body));
+  expect(
+    compact.sources.every(
+      (source) => source.text === undefined && source.references === undefined,
+    ),
+  ).toBe(true);
+  const selected = (await f.service.call("candidateDetail", {
+    watch_id: watch.id,
+    scan_id: partial.id,
+    issue_id: "I_1",
+  })) as { candidate: typeof original };
+  expect(selected.candidate.issue.body).toBe(original.issue.body);
+  expect(selected.candidate.dismissed_at).toEqual(expect.any(String));
+  await f.restart();
+  expect(f.service.store.dispositions(watch.id).get("I_1")).toEqual(
+    expect.any(String),
+  );
+  expect(f.service.store.results(watch.id, true)).toEqual([]);
+  await f.service.call("dismissCandidate", {
+    watch_id: watch.id,
+    issue_id: "I_1",
+    dismissed: false,
+  });
+  expect(f.service.store.dispositions(watch.id).get("I_1")).toBeNull();
+  expect(f.service.store.candidate(watch.id, partial.id, "I_1")).toEqual(
+    original,
+  );
+  f.overrides.delete("repos/oppia/oppia/community/profile");
+  const complete = await f.scan(watch.id);
+  expect(complete.status).toBe("completed");
+  expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(complete.id);
+  expect(
+    f.service.store
+      .results(watch.id)
+      .find((candidate) => candidate.issue.id === "I_1"),
+  ).toMatchObject({ classification: "initial_discovery", dismissed_at: null });
+});
+
+it("pages equal-timestamp attempts without omissions and rejects a foreign watch cursor", async () => {
+  const f = await setup();
+  const { watch } = await f.create();
+  const initial = await f.scan(watch.id);
+  const ids = [initial.id];
+  for (let index = 0; index < 4; index++) {
+    const saved = { ...initial, id: randomUUID() };
+    f.service.store.reserve(saved, randomUUID(), randomUUID());
+    ids.unshift(saved.id);
+  }
+  const first = f.service.store.history(watch.id, 2);
+  const second = f.service.store.history(watch.id, 2, first[1].id);
+  const third = f.service.store.history(watch.id, 2, second[1].id);
+  expect([...first, ...second, ...third].map((scan) => scan.id)).toEqual(ids);
+  const other = await f.create();
+  expect(() =>
+    f.service.store.history(other.watch.id, 2, initial.id),
+  ).toThrow();
+  expect(f.service.store.history(watch.id, 2, third[0].id)).toEqual([]);
+});
+
+it("pins required tracker identities across canonical renames and refuses replaced or corrupt prior evidence", async () => {
+  const f = await setup();
+  const tracker = {
+    ...githubIssue(99, "https://github.com/oppia/oppia/issues/2"),
+    node_id: "I_tracker",
+    html_url: "https://github.com/tracker/repo/issues/99",
+  };
+  const repository = {
+    node_id: "R_tracker",
+    full_name: "tracker/repo",
+    html_url: "https://github.com/tracker/repo",
+  };
+  f.overrides.set("repos/tracker/repo", repository);
+  f.overrides.set("repos/tracker/repo/issues/99", tracker);
+  const { watch } = await f.create(
+    watchConfiguration("Open issues", {
+      trackers: [{ url: tracker.html_url, comments: "none" }],
+    }),
+  );
+  const baseline = await f.scan(watch.id);
+  expect(baseline.status).toBe("completed");
+  f.overrides.set("repos/tracker/repo", {
+    ...repository,
+    node_id: "R_replaced",
+  });
+  const replacedRepository = await f.scan(watch.id);
+  expect(replacedRepository).toMatchObject({
+    status: "blocked",
+    semantic_attempts: 0,
+  });
+  f.overrides.set("repos/tracker/repo", repository);
+  f.overrides.set("repos/tracker/repo/issues/99", {
+    ...tracker,
+    node_id: "I_replaced",
+  });
+  expect((await f.scan(watch.id)).status).toBe("blocked");
+  expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(baseline.id);
+  f.overrides.set("repos/tracker/repo", {
+    ...repository,
+    full_name: "moved/tracker",
+    html_url: "https://github.com/moved/tracker",
+  });
+  f.overrides.set("repos/moved/tracker/issues/99", {
+    ...tracker,
+    html_url: "https://github.com/moved/tracker/issues/99",
+  });
+  const renamed = await f.scan(watch.id);
+  expect(renamed.status).toBe("completed");
+  expect(
+    f.service.store
+      .sources(watch.id, renamed.id)
+      .find((source) => source.kind === "tracker"),
+  ).toMatchObject({
+    requested_url: tracker.html_url,
+    repository_id: "R_tracker",
+    issue_id: "I_tracker",
+    url: "https://github.com/moved/tracker/issues/99",
+  });
+  expect((await f.scan(watch.id)).status).toBe("completed");
+  const latest = f.service.store.get(watch.id).last_complete_scan_id!;
+  f.engine.db.run(
+    "UPDATE issue_watch_sources SET data=? WHERE scan_id=? AND kind='tracker'",
+    JSON.stringify("invalid preserved bytes"),
+    latest,
+  );
+  expect((await f.scan(watch.id)).status).toBe("blocked");
+  expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(latest);
+  expect(
+    f.engine.db.all<{ data: string }>(
+      "SELECT data FROM issue_watch_sources WHERE scan_id=? AND kind='tracker'",
+      latest,
+    )[0].data,
+  ).toBe(JSON.stringify("invalid preserved bytes"));
+  expect(f.engine.db.records.diagnostics()).toContainEqual(
+    expect.objectContaining({ table_name: "issue_watch_sources" }),
+  );
 });

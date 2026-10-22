@@ -155,7 +155,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
           job.id,
         );
         await page
-          .getByRole("button", { name: "PR watch", exact: true })
+          .getByRole("button", { name: "Pull Requests", exact: true })
           .click();
         await page.getByText(inspected.title!, { exact: true }).first().click();
         await page

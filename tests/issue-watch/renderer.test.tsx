@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { useState } from "react";
+import { randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -93,6 +94,46 @@ const setup = async () => {
   };
 };
 
+it("loads older local history pages without GitHub reads or inference", async () => {
+  const { f, snapshot } = await setup();
+  const { watch } = await f.create();
+  const first = await f.scan(watch.id);
+  for (let index = 0; index < 52; index++)
+    f.service.store.reserve(
+      { ...first, id: randomUUID() },
+      randomUUID(),
+      randomUUID(),
+    );
+  const reads = f.api.mock.calls.length;
+  const infer = vi.spyOn(f.engine.utility, "run");
+  render(
+    <IssueWatchPage
+      snapshot={snapshot}
+      initialWatchId={watch.id}
+      startTask={vi.fn()}
+    />,
+  );
+  const load = await screen.findByRole(
+    "button",
+    {
+      name: "Load older attempts",
+    },
+    { timeout: 5000 },
+  );
+  fireEvent.click(load);
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Load older attempts" }),
+    ).toBeNull(),
+  );
+  const select = screen.getByLabelText("Scan history");
+  expect(within(select).getAllByRole("option")).toHaveLength(54);
+  fireEvent.change(select, { target: { value: first.id } });
+  await screen.findByText("Initial discoveries");
+  expect(f.api).toHaveBeenCalledTimes(reads);
+  expect(infer).not.toHaveBeenCalled();
+});
+
 it("previews and saves a watch without inference or a scan, using an explicitly selected official model", async () => {
   const { f, snapshot, api } = await setup();
   const infer = vi.spyOn(f.engine.utility, "run");
@@ -166,7 +207,7 @@ it("opens saved results and the existing prefilled task form without queueing a 
   fireEvent.click(screen.getByRole("button", { name: "Start Vibestar Task" }));
   const form = screen.getByRole("dialog", { name: "New task" });
   expect(
-    (within(form).getByLabelText("GitHub issue URL") as HTMLInputElement).value,
+    (within(form).getByLabelText("Issue URL") as HTMLInputElement).value,
   ).toBe("https://github.com/oppia/oppia/issues/1");
   expect(
     (

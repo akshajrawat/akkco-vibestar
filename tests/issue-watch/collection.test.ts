@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { GitHubClient } from "../../backend/github/client";
 import { GitHubReadPool, IssueSearch } from "../../backend/github/issue-search";
 import { WatchLimitsSchema } from "../../backend/issue-watch/contracts";
+import { githubIssue } from "./fixtures";
 
 it("caps shared concurrent reads at four and removes cancelled waiters", async () => {
   const pool = new GitHubReadPool();
@@ -63,4 +64,63 @@ it("retains strict request, pagination and data budgets without fallback or auto
   api.mockResolvedValue({ text: "a".repeat(20 * 1024 * 1024) });
   await expect(paged.read("repos/a/b/issues/1")).rejects.toThrow("20 MiB");
   api.mockRestore();
+});
+
+it.each([
+  "repeated",
+  "overlapping",
+  "changed-total",
+  "incomplete",
+  "pull-request",
+])("keeps %s search pages partial and bounded", async (mode) => {
+  const client = new GitHubClient("/tmp");
+  const items = Array.from({ length: 100 }, (_, index) =>
+    githubIssue(index + 1),
+  );
+  const second = Array.from({ length: 100 }, (_, index) =>
+    githubIssue(index + 101),
+  );
+  if (mode === "overlapping") second[0] = items[0];
+  const api = vi
+    .spyOn(client, "api")
+    .mockResolvedValueOnce({
+      total_count: 200,
+      incomplete_results: mode === "incomplete",
+      items:
+        mode === "pull-request"
+          ? items.map((item, index) =>
+              index === 0 ? { ...item, pull_request: {} } : item,
+            )
+          : items,
+    })
+    .mockResolvedValueOnce({
+      total_count: mode === "changed-total" ? 201 : 200,
+      incomplete_results: false,
+      items: mode === "repeated" ? items : second,
+    });
+  try {
+    const reader = new IssueSearch(
+      client,
+      new AbortController().signal,
+      WatchLimitsSchema.parse({}),
+      new GitHubReadPool(),
+    );
+    const result = await reader.discover(
+      {
+        id: "R_oppia",
+        full_name: "oppia/oppia",
+        url: "https://github.com/oppia/oppia",
+      },
+      "repo:oppia/oppia is:issue is:open",
+    );
+    expect(result.complete).toBe(false);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(new Set(result.identities.map((item) => item.id)).size).toBe(
+      result.identities.length,
+    );
+    expect(result.identities.length).toBeLessThanOrEqual(200);
+    expect(api).toHaveBeenCalledTimes(2);
+  } finally {
+    api.mockRestore();
+  }
 });

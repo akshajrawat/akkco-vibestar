@@ -230,7 +230,7 @@ export const App = () => {
                 <kbd>＋</kbd>
               </Button>
               <div className="sidebar-label">
-                <button onClick={() => navigate("Tasks")}>ISSUE TASKS</button>
+                <button onClick={() => navigate("Tasks")}>Tasks</button>
                 <small>{snapshot?.tasks.length || 0}</small>
               </div>
               <TaskNavigation
@@ -339,6 +339,43 @@ export const App = () => {
               </Button>
             </div>
           )}
+          {notifications.notices.length > 0 && (
+            <div
+              className="watch-notifications"
+              role="log"
+              aria-live="polite"
+              aria-label="Issue Watch notifications"
+            >
+              {notifications.notices.map((notice) => (
+                <div key={notice.id}>
+                  <Search size={16} />
+                  <div>
+                    <strong>{notice.text}</strong>
+                    <small>Counts include dismissed results.</small>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        navigate("Issue Watch");
+                        setWatchId(notice.watchId);
+                        notifications.dismiss(notice.id);
+                      }}
+                    >
+                      View results
+                    </Button>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Dismiss scan notification"
+                    onClick={() => notifications.dismiss(notice.id)}
+                  >
+                    <X size={14} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
           {content}
         </main>
         {palette && (
@@ -445,43 +482,6 @@ export const App = () => {
               open(id);
             }}
           />
-        )}
-        {notifications.notices.length > 0 && (
-          <div
-            className="watch-notifications"
-            role="log"
-            aria-live="polite"
-            aria-label="Issue Watch notifications"
-          >
-            {notifications.notices.map((notice) => (
-              <div key={notice.id}>
-                <Search size={16} />
-                <div>
-                  <strong>{notice.text}</strong>
-                  <small>Counts include dismissed results.</small>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      navigate("Issue Watch");
-                      setWatchId(notice.watchId);
-                      notifications.dismiss(notice.id);
-                    }}
-                  >
-                    View results
-                  </Button>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Dismiss scan notification"
-                  onClick={() => notifications.dismiss(notice.id)}
-                >
-                  <X size={14} />
-                </Button>
-              </div>
-            ))}
-          </div>
         )}
       </div>
     </div>

@@ -155,6 +155,7 @@ export const SourceSchema = z
       "tracker_comment",
     ]),
     url: z.string().max(1000),
+    requested_url: z.string().max(1000).optional(),
     issue_id: identity.nullable(),
     repository_id: identity,
     revision: z.string().max(256),
