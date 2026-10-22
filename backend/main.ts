@@ -63,6 +63,8 @@ const main = async () => {
             pipeline_approvals: true,
             manual_pr_analysis: true,
             pr_repair: true,
+            manual_issue_watch: true,
+            issue_watch_contract: 1,
           };
         else if (!rpc && request.method === "snapshot")
           result = {

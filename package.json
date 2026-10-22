@@ -29,12 +29,12 @@
   "devDependencies": {
     "@electron/get": "^5.1.0",
     "@eslint/js": "^9.39.0",
-    "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/vite": "^4.2.0",
     "@testing-library/jest-dom": "^6.9.0",
     "@testing-library/react": "^16.3.0",
     "@types/better-sqlite3": "^7.6.0",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^22.19.0",
     "@types/proper-lockfile": "^4.1.4",
     "@types/react": "^19.2.0",
@@ -52,7 +52,6 @@
     "eslint-plugin-react-hooks": "^7.0.0",
     "jsdom": "^27.0.0",
     "lucide-react": "^0.577.0",
-    "monaco-editor": "^0.57.0",
     "node-pty": "^1.1.0",
     "playwright-core": "^1.63.0",
     "prettier": "^3.8.0",
@@ -112,9 +111,6 @@
   "description": "Local desktop Agent Development Environment for isolated open-source contribution tasks",
   "author": "akkco",
   "homepage": "https://github.com",
-  "overrides": {
-    "dompurify": "3.4.16"
-  },
   "engines": {
     "node": ">=22.12.0",
     "npm": ">=10"
@@ -122,6 +118,8 @@
   "desktopName": "akkco-vibestar.desktop",
   "dependencies": {
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   }
 }

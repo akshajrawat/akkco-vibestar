@@ -15,6 +15,8 @@ export interface UtilityRequest {
     repository?: string;
     questionId?: string;
     analysisId?: string;
+    watchId?: string;
+    scanId?: string;
   };
 }
 export class UtilityAI {

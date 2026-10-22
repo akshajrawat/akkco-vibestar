@@ -7,14 +7,24 @@ import { redact } from "../../execution/process";
 import { discussionEntries, isAcknowledgment } from "../../scheduled/action";
 import {
   parsePullRequest,
+  PullRequestStateSchema,
   type PullRequestState,
 } from "../../scheduled/contracts";
 import { persistReviewActions } from "./actions";
-import { ReviewAnalysisSchema, type PRAnalysisSession } from "./contracts";
+import {
+  ReviewAnalysisSchema,
+  PRAnalysisSessionSchema,
+  type PRAnalysisSession,
+} from "./contracts";
 
 const contextHash = (snapshot: PullRequestState) =>
   createHash("sha256")
-    .update(JSON.stringify({ ...snapshot, fetchedAt: undefined }))
+    .update(
+      JSON.stringify({
+        ...PullRequestStateSchema.parse(snapshot),
+        fetchedAt: undefined,
+      }),
+    )
     .digest("hex");
 
 export class PRAnalysis {
@@ -24,17 +34,28 @@ export class PRAnalysis {
     this.engine.db
       .all<{
         data: string;
+        id: string;
         status: PRAnalysisSession["status"];
         ended_at: string | null;
       }>(
-        "SELECT data,status,ended_at FROM pr_analyses WHERE job_id=? ORDER BY started_at DESC,rowid DESC",
+        "SELECT id,data,status,ended_at FROM pr_analyses WHERE job_id=? ORDER BY started_at DESC,rowid DESC",
         jobId,
       )
-      .map((row) => ({
-        ...(JSON.parse(row.data) as PRAnalysisSession),
-        status: row.status,
-        ended_at: row.ended_at,
-      }));
+      .flatMap((row) => {
+        const value = this.engine.db.records.tryDecode(
+          {
+            table: "pr_analyses",
+            id: row.id,
+            column: "data",
+            source: row.data,
+            identity: "id",
+          },
+          PRAnalysisSessionSchema.parse,
+        );
+        return value
+          ? [{ ...value, status: row.status, ended_at: row.ended_at }]
+          : [];
+      });
 
   save = (session: PRAnalysisSession) => {
     this.engine.db.run(

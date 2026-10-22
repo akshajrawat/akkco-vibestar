@@ -18,6 +18,8 @@ export const useAgentOutput = ({
   search,
   preparation,
   owner = "task",
+  watchId,
+  scanId,
 }: {
   taskId: string;
   run?: Run;
@@ -26,7 +28,9 @@ export const useAgentOutput = ({
   stream: "stdout" | "stderr" | "events";
   search: string;
   preparation: boolean;
-  owner?: "task" | "repair";
+  owner?: "task" | "repair" | "issueWatch";
+  watchId?: string;
+  scanId?: string;
 }) => {
   const [rows, setRows] = useState<AgentEvent[] | null>(null);
   const [log, setLog] = useState<LogPage>({
@@ -72,10 +76,11 @@ export const useAgentOutput = ({
       try {
         if (file) {
           const page = await rpc<LogPage>(`${owner}.logs`, {
-            id: taskId,
+            ...(owner === "issueWatch"
+              ? { watch_id: watchId, scan_id: scanId }
+              : { id: taskId, paged: true }),
             run_id: runId,
             stream: stream === "stderr" ? "stderr" : "stdout",
-            paged: true,
             search,
             ...(initialized
               ? search
@@ -107,7 +112,9 @@ export const useAgentOutput = ({
             context?: AgentEvent[];
             more: boolean;
           }>(`${owner}.events`, {
-            id: taskId,
+            ...(owner === "issueWatch"
+              ? { watch_id: watchId, scan_id: scanId }
+              : { id: taskId }),
             run_id: runId,
             search,
             ...(initialized && newest
@@ -155,7 +162,17 @@ export const useAgentOutput = ({
       clearInterval(timer);
       load.current = async () => {};
     };
-  }, [taskId, runId, preparation, file, stream, search, owner]);
+  }, [
+    taskId,
+    runId,
+    preparation,
+    file,
+    stream,
+    search,
+    owner,
+    watchId,
+    scanId,
+  ]);
   const byId = new Map(
     [
       ...(rows || []),

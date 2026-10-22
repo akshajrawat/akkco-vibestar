@@ -3,8 +3,11 @@ import { realpath, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { AdeError } from "../domain";
+import { StreamRedactor } from "./stream-redactor";
+import { OutputBudget } from "./bounded-output";
 export interface ProcessRequest {
   rawStdoutForIntegrity?: boolean;
+  gitEnvironment?: boolean;
   program: string;
   args: string[];
   cwd: string;
@@ -21,12 +24,19 @@ export interface ProcessOutput {
   stdout: string;
   stderr: string;
   duration_ms: number;
+  stdout_truncated?: boolean;
+  stderr_truncated?: boolean;
 }
-export const redact = (s: string) =>
-  s.replace(
-    /(authorization[\s:=]+(?:bearer\s+)?|(?:api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|cookie|set-cookie)[\s"':=]+)[^\s"',;}]+|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|ya29\.[A-Za-z0-9_.-]+)/gi,
+export const redact = (text: string) => {
+  if (text.includes("\x1b") || /\\u[\da-f]{4}/i.test(text)) {
+    const redactor = new StreamRedactor();
+    return redactor.push(text) + redactor.finish(true);
+  }
+  return text.replace(
+    /(\b(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|cookie|set-cookie)[\\\s"':=]+(?:bearer[\\\s]+)?)[^\s"',;}]+|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{12,}|ya29\.[A-Za-z0-9_.-]+)/gi,
     "$1[REDACTED]",
   );
+};
 export const cleanEnvironment = () => {
   const env: NodeJS.ProcessEnv = {};
   for (const k of [
@@ -83,6 +93,16 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       cwd,
       env: {
         ...cleanEnvironment(),
+        ...(r.gitEnvironment
+          ? {
+              GIT_CONFIG_NOSYSTEM: "1",
+              GIT_CONFIG_SYSTEM: "/dev/null",
+              GIT_CONFIG_GLOBAL: "/dev/null",
+              GIT_NO_LAZY_FETCH: "1",
+              GIT_NO_REPLACE_OBJECTS: "1",
+              GIT_ATTR_NOSYSTEM: "1",
+            }
+          : {}),
         ...(r.wslInterop && process.env.WSL_INTEROP
           ? { WSL_INTEROP: process.env.WSL_INTEROP }
           : {}),
@@ -96,13 +116,20 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     let killTimer: ReturnType<typeof setTimeout> | undefined;
     let stdout = "";
     let stderr = "";
+    const truncated = { stdout: false, stderr: false };
     const buffers = { stdout: "", stderr: "" };
     const decoders = {
       stdout: new StringDecoder("utf8"),
       stderr: new StringDecoder("utf8"),
     };
+    const integrityDecoder = r.rawStdoutForIntegrity
+      ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+      : null;
+    let integrityBytes = 0;
     const cap = 32 * 1024 * 1024;
+    const outputBudget = new OutputBudget();
     const line = (stream: "stdout" | "stderr", value: string) => {
+      if (aborted) return;
       try {
         r.onLine?.(stream, redact(value));
       } catch (e) {
@@ -111,10 +138,49 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       }
     };
     const consume = (stream: "stdout" | "stderr", chunk: Buffer) => {
-      const text = decoders[stream].write(chunk);
+      if (aborted) return;
+      try {
+        outputBudget.consume(chunk);
+      } catch (error) {
+        aborted = error as Error;
+        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        return;
+      }
+      let text: string;
+      try {
+        text =
+          stream === "stdout" && integrityDecoder
+            ? integrityDecoder.decode(chunk, { stream: true })
+            : decoders[stream].write(chunk);
+      } catch {
+        aborted = new AdeError(
+          "integrity_encoding",
+          "Integrity identifiers contain unsupported non-UTF-8 bytes",
+        );
+        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        return;
+      }
+      if (stream === "stdout" && integrityDecoder)
+        integrityBytes += chunk.length;
       if (stream === "stdout") {
-        if (stdout.length < cap) stdout += text;
-      } else if (stderr.length < cap) stderr += text;
+        truncated.stdout ||= stdout.length + text.length > cap;
+        stdout += text.slice(0, Math.max(0, cap - stdout.length));
+      } else {
+        truncated.stderr ||= stderr.length + text.length > cap;
+        stderr += text.slice(0, Math.max(0, cap - stderr.length));
+      }
+      if (
+        r.rawStdoutForIntegrity &&
+        (truncated.stdout || integrityBytes > cap)
+      ) {
+        aborted = new AdeError(
+          "output_limit",
+          "Integrity output exceeded the capture limit",
+        );
+        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        return;
+      }
+      if (r.rawStdoutForIntegrity && stream === "stdout" && !r.onLine) return;
       buffers[stream] += text;
       if (buffers[stream].length > 2 * 1024 * 1024) {
         aborted = new AdeError(
@@ -126,6 +192,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       }
       let i;
       while (
+        !aborted &&
         (i = r.progressLines
           ? buffers[stream].search(/[\r\n]/)
           : buffers[stream].indexOf("\n")) >= 0
@@ -166,9 +233,15 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     };
     child.on("spawn", () => {
       if (child.pid)
-        void processIdentity(child.pid).then((identity) => {
-          if (child.pid) r.onSpawn?.(child.pid, identity);
-        });
+        void processIdentity(child.pid)
+          .then((identity) => {
+            if (!settled && child.pid) r.onSpawn?.(child.pid, identity);
+          })
+          .catch((error: unknown) =>
+            interrupt(
+              error instanceof Error ? error : new Error(String(error)),
+            ),
+          );
       if (r.signal?.aborted) abort();
     });
     child.on("error", (e) => {
@@ -186,7 +259,18 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     child.stdin.end(r.input);
     child.on("close", (code) => {
       for (const stream of ["stdout", "stderr"] as const) {
-        const remaining = decoders[stream].end();
+        let remaining = "";
+        try {
+          remaining =
+            stream === "stdout" && integrityDecoder
+              ? integrityDecoder.decode()
+              : decoders[stream].end();
+        } catch {
+          aborted ||= new AdeError(
+            "integrity_encoding",
+            "Integrity identifiers contain unsupported non-UTF-8 bytes",
+          );
+        }
         buffers[stream] += remaining;
         if (stream === "stdout") stdout += remaining;
         else stderr += remaining;
@@ -201,6 +285,8 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
           stdout: r.rawStdoutForIntegrity ? stdout : redact(stdout),
           stderr: redact(stderr),
           duration_ms: Date.now() - start,
+          ...(truncated.stdout ? { stdout_truncated: true } : {}),
+          ...(truncated.stderr ? { stderr_truncated: true } : {}),
         });
     });
   });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, ArrowUpRight } from "lucide-react";
 import { rpc, errorMessage } from "../lib/api";
 import type { Repository, Task, Settings, Snapshot } from "../lib/types";
@@ -19,15 +19,19 @@ interface Preview {
 export const NewTask = ({
   close,
   created,
+  initialIssueUrl = "",
+  initialNotes = "",
 }: {
   close: () => void;
   created: (id: string) => void;
+  initialIssueUrl?: string;
+  initialNotes?: string;
 }) => {
   const models = useProviders();
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialIssueUrl);
   const [scope, setScope] = useState("");
   const [mode, setMode] = useState<"whole_issue" | "partial">("whole_issue");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [settings, setSettings] = useState<Settings>();
   const [repositories, setRepositories] = useState<Repository[]>([]);
@@ -38,6 +42,7 @@ export const NewTask = ({
   const [error, setError] = useState("");
   const [resolving, setResolving] = useState(false);
   const [busy, setBusy] = useState(false);
+  const request = useRef({ payload: "", id: "" });
   useEffect(() => {
     void rpc<Snapshot>("snapshot")
       .then((s) => {
@@ -155,13 +160,23 @@ export const NewTask = ({
             setBusy(true);
             setError("");
             try {
-              const task = await rpc<Task>("task.create", {
+              const payload = {
                 repository_id: selected.id,
                 issue_url: url.trim(),
                 scope_mode: mode,
                 claimed_scope: mode === "partial" ? scope : "",
                 notes,
                 settings,
+              };
+              const identity = JSON.stringify(payload);
+              if (request.current.payload !== identity)
+                request.current = {
+                  payload: identity,
+                  id: crypto.randomUUID(),
+                };
+              const task = await rpc<Task>("task.create", {
+                ...payload,
+                request_id: request.current.id,
               });
               created(task.id);
               close();

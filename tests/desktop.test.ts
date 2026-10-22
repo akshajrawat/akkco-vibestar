@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { Engine } from "../backend/execution/engine";
 import { parseIssue } from "../backend/domain";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   finishFixtureTask as waitForTask,
@@ -18,7 +18,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
   "verifies real desktop windows, GitHub discovery, issue preview and isolated task conversation/diff/dock workflows",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-desktop-"));
-    const engine = await Engine.create(
+    const engine = await createFixtureEngine(
       join(dir, "ade"),
       () => new FixtureProvider(),
     );

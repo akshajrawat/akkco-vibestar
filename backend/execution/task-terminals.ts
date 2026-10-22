@@ -6,6 +6,8 @@ import { AdeError, now, type WorkspaceAssignment } from "../domain";
 import type { Engine } from "./engine";
 import { sandboxInvocation } from "./sandbox";
 import { cleanEnvironment, redact, processIdentity } from "./process";
+import { StreamRedactor } from "./stream-redactor";
+import { BoundedWriter, OutputBudget } from "./bounded-output";
 export class TaskTerminals {
   private readonly sessions = new Map<
     string,
@@ -80,7 +82,6 @@ export class TaskTerminals {
           PS1: "\\[\\e[38;5;110m\\]vibestar \\w\\[\\e[0m\\] $ ",
         } as Record<string, string>,
       });
-      let writes = Promise.resolve();
       let resolveExit!: () => void;
       const exited = new Promise<void>((resolve) => {
         resolveExit = resolve;
@@ -112,6 +113,20 @@ export class TaskTerminals {
           await exited;
         },
       };
+      const redactor = new StreamRedactor();
+      const budget = new OutputBudget();
+      let outputFailure = false;
+      const failOutput = (error: unknown) => {
+        if (outputFailure) return;
+        outputFailure = true;
+        this.engine.publish({
+          event: "core.error",
+          ...owner,
+          text: `Task terminal output stopped: ${redact(String(error))}`,
+        });
+        void session.stop();
+      };
+      const writes = new BoundedWriter(failOutput);
       this.sessions.set(id, session);
       if (this.repair)
         releaseActivity = this.engine.trackActivity(
@@ -132,21 +147,11 @@ export class TaskTerminals {
             sessionId,
           );
       });
-      pty.onData((raw) => {
-        const text = redact(raw);
+      const publish = (text: string) => {
+        if (!text || outputFailure) return;
+        writes.write(text, (value) => handle!.write(value));
         session.output = (session.output + text).slice(-65536);
         session.sequence++;
-        writes = writes
-          .then(async () => {
-            await handle!.write(text);
-          })
-          .catch((error: unknown) => {
-            this.engine.publish({
-              event: "core.error",
-              ...owner,
-              text: `Task terminal log could not be saved: ${redact(String(error))}`,
-            });
-          });
         this.engine.publish({
           event: "terminal.output",
           ...owner,
@@ -154,36 +159,54 @@ export class TaskTerminals {
           text,
           data: { sequence: session.sequence },
         });
+      };
+      pty.onData((raw) => {
+        if (outputFailure) return;
+        try {
+          budget.consume(raw);
+          publish(redactor.push(raw));
+        } catch (error) {
+          failOutput(error);
+        }
       });
       pty.onExit(({ exitCode }) => {
         stopping = true;
         if (timer) clearTimeout(timer);
-        this.engine.db.run(
-          "UPDATE terminal_sessions SET status='closed',ended_at=?,exit_code=? WHERE id=?",
-          now(),
-          exitCode,
-          sessionId,
-        );
-        this.engine.publish({
-          event: "terminal.closed",
-          ...owner,
-          session_id: sessionId,
-        });
-        void writes.then(async () => {
-          try {
-            await handle!.close();
-          } catch (error) {
-            this.engine.publish({
-              event: "core.error",
-              ...owner,
-              text: `Task terminal log could not be closed: ${redact(String(error))}`,
-            });
-          } finally {
-            this.sessions.delete(id);
-            await release();
-            resolveExit();
-          }
-        });
+        try {
+          publish(redactor.finish());
+        } catch (error) {
+          failOutput(error);
+        }
+        void writes
+          .drain()
+          .catch(failOutput)
+          .then(async () => {
+            try {
+              await handle!.close();
+            } catch (error) {
+              this.engine.publish({
+                event: "core.error",
+                ...owner,
+                text: `Task terminal log could not be closed: ${redact(String(error))}`,
+              });
+            } finally {
+              this.engine.db.run(
+                "UPDATE terminal_sessions SET status=?,ended_at=?,exit_code=? WHERE id=?",
+                outputFailure ? "failed" : "closed",
+                now(),
+                exitCode,
+                sessionId,
+              );
+              this.engine.publish({
+                event: "terminal.closed",
+                ...owner,
+                session_id: sessionId,
+              });
+              this.sessions.delete(id);
+              await release();
+              resolveExit();
+            }
+          });
       });
       return {
         session_id: sessionId,

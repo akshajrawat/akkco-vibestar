@@ -5,10 +5,13 @@ import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { defaultSettings, parseIssue } from "../backend/domain";
-import { fixtureRepository, FixtureProvider } from "./fixtures";
+import {
+  createFixtureEngine,
+  fixtureRepository,
+  FixtureProvider,
+} from "./fixtures";
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
@@ -17,7 +20,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
     const dir = await mkdtemp(join(tmpdir(), "vibestar-gate-desktop-"));
     const evidence = join(dir, "screenshots");
     await mkdir(evidence);
-    const engine = await Engine.create(
+    const engine = await createFixtureEngine(
       join(dir, "fixture-data"),
       (stage, provider) => ({
         ...new FixtureProvider(
@@ -40,7 +43,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
     });
     const { repo } = await fixtureRepository(engine, dir);
     const emptyRoot = join(dir, "empty-core");
-    const empty = await Engine.create(emptyRoot);
+    const empty = await createFixtureEngine(emptyRoot);
     empty.db.run(
       "INSERT INTO settings VALUES('github_watch',?)",
       JSON.stringify({

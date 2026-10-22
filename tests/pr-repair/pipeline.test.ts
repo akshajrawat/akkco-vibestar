@@ -1,9 +1,9 @@
+import { createFixtureEngine } from "../fixtures";
 import { expect, it } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { Engine } from "../../backend/execution/engine";
 import { RepairService } from "../../backend/review/repair/service";
 import { RepairWorkspaces } from "../../backend/review/repair/workspace";
 import { repairFixture } from "./fixtures";
@@ -39,7 +39,7 @@ const waitForRepair = (service: RepairService, id: string) =>
 it("implements selected manual PR feedback through Codex then a read-only Antigravity review and stops at manual review", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-pipeline-"));
   const order: string[] = [];
-  const engine = await Engine.create(join(dir, "ade"), (_, provider) => {
+  const engine = await createFixtureEngine(join(dir, "ade"), (_, provider) => {
     order.push(provider!);
     return new RepairFixtureProvider(provider!, {
       readonlyProbe: provider === "antigravity",
@@ -154,7 +154,7 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
 
 it("validates selections and creates repairs from analyses without original issue tasks", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-create-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     (_, provider) =>
       new RepairFixtureProvider(provider!, {
@@ -200,7 +200,7 @@ it("validates selections and creates repairs from analyses without original issu
 it("rejects incomplete item reports and preserves cancellation without starting verification or replaying models", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-cancel-"));
   let waiting = false;
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     (_, provider) =>
       new RepairFixtureProvider(provider!, {

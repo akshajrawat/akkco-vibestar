@@ -1,7 +1,7 @@
+import { gitCapture } from "./git-command";
 import { lstat, mkdir, readFile, readdir, realpath } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { capture } from "../execution/process";
 import { inside } from "./paths";
 
 // Reuse installed, ignored dependencies without exposing the source checkout.
@@ -25,14 +25,9 @@ export const taskRuntime = async (
       !(await lstat(installed)).isDirectory()
     )
       continue;
-    const tracked = await capture("git", ["ls-files", "--", name], worktree);
-    const sourceTracked = await capture(
-      "git",
-      ["ls-files", "--", name],
-      source,
-    );
-    const ignored = await capture(
-      "git",
+    const tracked = await gitCapture(["ls-files", "--", name], worktree);
+    const sourceTracked = await gitCapture(["ls-files", "--", name], source);
+    const ignored = await gitCapture(
       ["check-ignore", "--", `${name}/.vibestar-runtime-probe`],
       worktree,
     );

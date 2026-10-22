@@ -13,12 +13,16 @@ const OutputBody = ({
   events,
   preparation,
   owner,
+  watchId,
+  scanId,
 }: {
   taskId: string;
   run?: Run;
   events: AgentEvent[];
   preparation: boolean;
-  owner: "task" | "repair";
+  owner: "task" | "repair" | "issueWatch";
+  watchId?: string;
+  scanId?: string;
 }) => {
   const view = useTaskView(taskId);
   const raw = view.outputView === "raw";
@@ -31,6 +35,8 @@ const OutputBody = ({
     search: view.outputSearch,
     preparation,
     owner,
+    watchId,
+    scanId,
   });
   const scroll = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -237,17 +243,21 @@ export const LogView = ({
   events,
   selectedRun,
   owner = "task",
+  watchId,
+  scanId,
 }: {
   taskId: string;
   runs: Run[];
   events: AgentEvent[];
   selectedRun?: string;
   liveOutput?: boolean;
-  owner?: "task" | "repair";
+  owner?: "task" | "repair" | "issueWatch";
+  watchId?: string;
+  scanId?: string;
 }) => {
   const view = useTaskView(taskId);
   const selection = view.outputRun || selectedRun || "";
-  const preparation = selection === "preparation";
+  const preparation = owner !== "issueWatch" && selection === "preparation";
   const run =
     runs.find((r) => r.id === selection) ||
     [...runs].reverse().find((r) => r.status === "running") ||
@@ -280,7 +290,9 @@ export const LogView = ({
           }
         >
           <option value="">Current / latest run</option>
-          <option value="preparation">Repository preparation</option>
+          {owner !== "issueWatch" && (
+            <option value="preparation">Repository preparation</option>
+          )}
           {runs.map((r) => (
             <option key={r.id} value={r.id}>
               {r.provider} · {r.purpose || `stage ${r.stage}`} · {r.status} ·{" "}
@@ -342,6 +354,8 @@ export const LogView = ({
         run={run}
         preparation={preparation}
         owner={owner}
+        watchId={watchId}
+        scanId={scanId}
         events={events}
       />
     </section>

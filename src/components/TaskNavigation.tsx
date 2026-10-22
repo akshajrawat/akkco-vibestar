@@ -49,12 +49,14 @@ export const TaskNavigation = ({
                     className={`tree-task ${task.id === selected ? "selected" : ""}`}
                     key={task.id}
                     onClick={() => open(task.id)}
-                    title={`${task.issue.title || task.claimed_scope}\n${task.branch_name}`}
+                    title={`${task.issue?.title || task.claimed_scope}\n${task.branch_name}`}
                   >
                     <i className={`task-dot ${task.status}`} />
                     <span>
                       <small>#{task.issue_number}</small>{" "}
-                      {task.claimed_scope || task.issue.title || "Entire issue"}
+                      {task.claimed_scope ||
+                        task.issue?.title ||
+                        "Entire issue"}
                     </span>
                   </button>
                 ))}

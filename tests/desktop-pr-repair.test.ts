@@ -1,10 +1,10 @@
+import { createFixtureEngine } from "./fixtures";
 import { expect, it, vi } from "vitest";
 import { _electron } from "playwright-core";
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { GitHubMonitor } from "../backend/scheduled/github";
 import { RepairService } from "../backend/review/repair/service";
@@ -21,7 +21,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
   "completes an Oppia-shaped manual PR analysis, isolated repair, independent review and confirmed fast-forward publication through built Electron IPC",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-repair-desktop-"));
-    const engine = await Engine.create(
+    const engine = await createFixtureEngine(
       join(dir, "fixture"),
       (stage, provider) =>
         stage === 1
@@ -71,7 +71,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
     );
     const rpc = new Rpc(engine, monitor, repairs);
     const emptyRoot = join(dir, "empty-core");
-    const empty = await Engine.create(emptyRoot);
+    const empty = await createFixtureEngine(emptyRoot);
     await empty.close();
     const isolatedHome = join(dir, "isolated-home"),
       blockedCli = join(dir, "blocked-cli"),

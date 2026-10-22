@@ -10,6 +10,8 @@ export const AgentConfiguration = ({
   onChange,
   label,
   id,
+  allowDefault = true,
+  maxTimeout = 86400,
 }: {
   config: StageConfig;
   provider: string;
@@ -17,6 +19,8 @@ export const AgentConfiguration = ({
   onChange: (value: StageConfig) => void;
   label: string;
   id: string;
+  allowDefault?: boolean;
+  maxTimeout?: number;
 }) => {
   const detected = providers.find((p) => p.provider === provider);
   const efforts = supportedEfforts(detected, config.model);
@@ -43,7 +47,11 @@ export const AgentConfiguration = ({
             });
           }}
         >
-          <option value="">Official CLI default</option>
+          <option value="" disabled={!allowDefault}>
+            {allowDefault
+              ? "Official CLI default"
+              : "Select a discovered model"}
+          </option>
           {config.model &&
             !detected?.models.some((m) => m.id === config.model) && (
               <option value={config.model}>
@@ -79,7 +87,7 @@ export const AgentConfiguration = ({
         <input
           type="number"
           min={10}
-          max={86400}
+          max={maxTimeout}
           value={config.timeout_secs}
           onChange={(e) =>
             onChange({ ...config, timeout_secs: Number(e.target.value) })

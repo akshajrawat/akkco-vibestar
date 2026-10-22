@@ -9,11 +9,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../backend/execution/engine";
+import type { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { parseIssue } from "../backend/domain";
 import * as processes from "../backend/execution/process";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   finishFixtureTask as waitForTask,
@@ -154,7 +155,7 @@ const connect = async (rpc: Rpc, path: string) => {
 
 it("verifies all remotes without scanning, explicitly connects and persists independent checkout IDs across restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-connected-"));
-  let engine = await Engine.create(join(dir, "data"));
+  let engine = await createFixtureEngine(join(dir, "data"));
   let rpc = new Rpc(engine);
   try {
     const path = await checkout(dir);
@@ -192,7 +193,7 @@ it("verifies all remotes without scanning, explicitly connects and persists inde
     expect(engine.db.repositories()).toHaveLength(2);
     await rpc.close();
     await engine.close();
-    engine = await Engine.create(join(dir, "data"));
+    engine = await createFixtureEngine(join(dir, "data"));
     rpc = new Rpc(engine);
     expect(engine.db.repository(repository.id)).toMatchObject({
       connected: true,
@@ -218,18 +219,24 @@ it("verifies all remotes without scanning, explicitly connects and persists inde
 it("requires the selected ID, blocks mismatches, never creates a clone, and runs two isolated tasks in the imported Git repository", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-selected-"));
   const workspaces: { stage: number; cwd: string }[] = [];
-  const engine = await Engine.create(join(dir, "data"), () => {
-    const provider = new FixtureProvider();
-    const invocation = provider.invocation;
-    provider.invocation = (request) => {
-      workspaces.push({ stage: request.stage, cwd: request.cwd });
-      return invocation(request);
-    };
-    return provider;
-  });
+  let fixtureSource = "";
+  const engine = await createFixtureEngine(
+    join(dir, "data"),
+    () => {
+      const provider = new FixtureProvider();
+      const invocation = provider.invocation;
+      provider.invocation = (request) => {
+        workspaces.push({ stage: request.stage, cwd: request.cwd });
+        return invocation(request);
+      };
+      return provider;
+    },
+    () => fixtureSource,
+  );
   const rpc = new Rpc(engine);
   try {
     const path = await checkout(dir);
+    fixtureSource = path;
     const { repository } = await connect(rpc, path);
     const second = await connect(rpc, await checkout(dir, "second"));
     await writeFile(join(path, "source.txt"), "source stays dirty\n");
@@ -256,19 +263,6 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
       issue_url,
     });
     expect(preview).toMatchObject({ repository: { id: second.repository.id } });
-    // Redirect only the fixture's fetch transport; stored GitHub remotes and connection identity stay real.
-    const capture = processes.capture;
-    vi.spyOn(processes, "capture").mockImplementation(
-      (program, args, cwd, signal) =>
-        capture(
-          program,
-          args[0] === "-c" && args.includes("fetch")
-            ? args.map((a) => (a === repository.upstream_url ? path : a))
-            : args,
-          cwd,
-          signal,
-        ),
-    );
     const a = (await rpc.call("task.create", {
       repository_id: repository.id,
       issue_url,
@@ -379,7 +373,7 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
 
 it("rejects invalid/non-Git paths, unsafe Windows paths and stale verification; uses wslpath rather than guessing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-verify-path-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   const rpc = new Rpc(engine);
   try {
     const path = await checkout(dir);
@@ -456,7 +450,7 @@ it("rejects invalid/non-Git paths, unsafe Windows paths and stale verification; 
 
 it("requires an explicit upstream for ambiguous remotes and an explicit base when remote HEAD is unavailable", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-ambiguous-local-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   const rpc = new Rpc(engine);
   try {
     const path = await checkout(dir);
@@ -521,7 +515,7 @@ it("requires an explicit upstream for ambiguous remotes and an explicit base whe
 
 it("keeps an explicitly selected legacy managed repository authoritative when its clone is missing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-legacy-selected-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new FixtureProvider(),
   );

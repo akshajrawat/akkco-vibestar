@@ -1,5 +1,23 @@
 # Verification: 7 October 2026
 
+## S1 security checkpoint — October 20, 2026
+
+S1 of the approved [Issue Watch/security plan](ISSUE-WATCH-SECURITY-PLAN.md) passed. S2–S5 remain in progress and are not represented by this checkpoint. The unrestricted pre-change baseline passed 227 tests with 10 opt-in skipped; the initial restricted invocation lost nested child-process output and was independently reproduced without source changes.
+
+Fresh S1 verification: npm test **316 passed, 10 opt-in skipped, 49 passing files**; npm run test:integration **7 passed**; npm run test:tui **3 passed**. Lint, typecheck, format:check, targeted nested-doc formatting, build and git diff --check passed. The first full run exposed a stale refusal-label assertion and schema property-order affecting unchanged PR-report reuse; both were fixed, then the complete suite was rerun. Retained local logs: /tmp/vibestar-s1-final-test-2.log, /tmp/vibestar-s1-final-integration.log, /tmp/vibestar-s1-final-tui.log and /tmp/vibestar-s1-final-build.log. Existing jsdom canvas and third-party Zod annotation diagnostics are non-fatal.
+
+New adversarial fixtures exercise host Git configuration/transport, canonical managed roots, exact content fingerprints including 35 MiB binaries and hidden index entries, worktree ownership/recovery/dirty-safe expected-SHA cleanup, explicit sandbox manifests with fake provider homes/socket canaries, split/escaped PTY credentials, output/backpressure failure, discovery cancellation, corrupt JSON/schema isolation, actual migration/FK rollback and backups, task request idempotency and composer transport retries. Original source/index canaries and prior PR repair/publication workflows remain covered. Narrow dead-code cleanup retained supported contracts/history while removing unmounted Monaco views and test-only legacy analysis.
+
+No live subscription inference, real credential reads, personal-source changes or real GitHub writes were used. Provider-native sandbox/auth behavior, current packaging/Electron screenshots and native Windows execution remain unverified here; S5 owns integrated verification. Provider-owned state/network remains a documented trusted boundary. Git version refusal uses fixture responses, not execution of an older native Git binary.
+
+## S2 and S3 backend checkpoints — October 20, 2026
+
+S2 passed the full suite with **344 tests, 10 opt-in skipped (54 passing files)**, plus typecheck, lint, root/nested-doc formatting, build and whitespace checks. Fixtures exercise dynamic tracker membership (body/all-comments), strict current facts, independent claims/withdrawals/association authority, visible Markdown PR closing references, search/request/source budgets, durable requests, cancelled/interrupted attempts, baseline lineage, helper negotiation and actual SQLite/root migration without any local clone.
+
+S3 passed the full suite with **357 tests, 10 opt-in skipped (55 passing files)**, typecheck, lint and formatting. Thirteen semantic fixtures use inert Node provider binaries through the actual UtilityAI/AgentRunner/bubblewrap path: one invocation, normalized output and reported usage, quota failure, unknown IDs/forged citations/actors/factual blockers, omitted candidates, complete-packet bounds, no inference when all excluded, changed final metadata, explicit continued selection, process cancellation and restart. An actual data-root migration preserves prompts, utility events and usage; explicit reset validates the new foreign-key order. Local logs: /tmp/vibestar-s2-full-test.log, /tmp/vibestar-s2-build.log, /tmp/vibestar-s3-full-test.log and /tmp/vibestar-s3-watch-tests.log. S3 build is running; S4 UI and S5 integrated verification remain outstanding.
+
+Historical verification below records earlier milestones and their then-current architecture/counts; it is not fresh evidence for S1–S5.
+
 This milestone extends the existing Electron/React/TypeScript application, WSL execution core, SQLite, official `gh` integration, official provider subscription authentication, worktrees, scheduler and Monaco. It preserves the autonomous Antigravity → Codex refinement → Codex implementation → validation pipeline.
 
 Verification used Ubuntu 26.04 in WSL2, Node 22.22.1, Electron 41.10.7, Git 2.53.0, gh 2.46.0, Codex 0.160.1 and Antigravity 1.3.1. Official CLI help and safe account/model interfaces were inspected. Provider credential files were not read or copied.

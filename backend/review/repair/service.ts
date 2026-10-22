@@ -1,19 +1,20 @@
+import { gitCapture } from "../../workspace/git-command";
 import { z } from "zod";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AdeError, now, type WorkspaceAssignment } from "../../domain";
 import type { Engine } from "../../execution/engine";
-import { capture, execute, redact } from "../../execution/process";
+import { execute, redact } from "../../execution/process";
 import { taskRuntime } from "../../workspace/runtime";
-import { safeFile } from "../../workspace/paths";
+import { managedPath, safeFile } from "../../workspace/paths";
 import { GitHubClient } from "../../github/client";
-import type { PRAnalysisSession } from "../pr/contracts";
+import { PRAnalysisSessionSchema } from "../pr/contracts";
 import { fileHash } from "../file-hash";
 import { PRIdentityReader } from "./identity";
 import { RepairStore } from "./store";
 import { RepairWorkspaces, repairAssignment } from "./workspace";
 import { repairPrompt } from "./prompt";
-import { RepairPublisher } from "./publication";
+import { RepairPublisher, PublicationSchema } from "./publication";
 import {
   RepairImplementationSchema,
   RepairVerificationSchema,
@@ -130,7 +131,24 @@ export class RepairService {
     for (const publication of this.engine.db.all<{ id: string; data: string }>(
       "SELECT id,data FROM repair_publications WHERE status='pushing'",
     )) {
-      const data = JSON.parse(publication.data);
+      const data = this.engine.db.records.tryDecode(
+        {
+          table: "repair_publications",
+          id: publication.id,
+          column: "data",
+          source: publication.data,
+          identity: "id",
+        },
+        PublicationSchema.parse,
+      );
+      if (!data) {
+        this.engine.db.run(
+          "UPDATE repair_publications SET status='uncertain',updated_at=? WHERE id=?",
+          now(),
+          publication.id,
+        );
+        continue;
+      }
       this.engine.db.run(
         "UPDATE repair_publications SET status='uncertain',data=?,updated_at=? WHERE id=?",
         JSON.stringify({
@@ -183,6 +201,20 @@ export class RepairService {
     if (this.active.has(id) || this.terminalLeases.has(id))
       throw new AdeError("busy", "This repair workspace is already in use.");
     const session = this.store.get(id);
+    for (const row of this.engine.db.all<{ id: string; data: string }>(
+      "SELECT id,data FROM repair_publications WHERE repair_id=?",
+      id,
+    ))
+      this.engine.db.records.decode(
+        {
+          table: "repair_publications",
+          id: row.id,
+          column: "data",
+          source: row.data,
+          identity: "id",
+        },
+        PublicationSchema.parse,
+      );
     const controller = new AbortController();
     let releaseActivity = () => {};
     const promise = Promise.resolve()
@@ -266,14 +298,27 @@ export class RepairService {
     request: z.infer<typeof createInput>,
     controller: AbortController,
   ) => {
-    const previous = this.store.list().find((s) => s.id === request.request_id);
+    const previous = this.engine.db.all(
+      "SELECT id FROM pr_repairs WHERE id=?",
+      request.request_id,
+    ).length
+      ? this.store.get(request.request_id)
+      : undefined;
     if (previous) {
-      const original = this.engine.db.all<{ data: string }>(
-        "SELECT data FROM repair_activity WHERE repair_id=? AND kind='creation_request' ORDER BY id LIMIT 1",
+      const original = this.engine.db.all<{ id: number; data: string }>(
+        "SELECT id,data FROM repair_activity WHERE repair_id=? AND kind='creation_request' ORDER BY id LIMIT 1",
         previous.id,
       )[0];
       const originalInstructions = original
-        ? JSON.parse(original.data).instructions
+        ? this.engine.db.records.decode(
+            {
+              table: "repair_activity",
+              id: original.id,
+              column: "data",
+              source: original.data,
+            },
+            createInput.parse,
+          ).instructions
         : previous.instructions;
       if (
         previous.job_id !== request.job_id ||
@@ -298,7 +343,17 @@ export class RepairService {
       request.job_id,
     )[0];
     const context =
-      row && (JSON.parse(row.data) as PRAnalysisSession | undefined);
+      row &&
+      this.engine.db.records.decode(
+        {
+          table: "pr_analyses",
+          id: request.analysis_id,
+          column: "data",
+          source: row.data,
+          identity: "id",
+        },
+        PRAnalysisSessionSchema.parse,
+      );
     if (
       !context?.snapshot?.identity ||
       !context.report?.complete ||
@@ -342,7 +397,12 @@ export class RepairService {
       )[0];
       if (!job) throw new AdeError("not_found", "Tracked PR no longer exists.");
       const identity = await this.readIdentity(
-        JSON.parse(job.data).url,
+        this.engine.db.records.decode({
+          table: "scheduled_jobs",
+          id: request.job_id,
+          column: "data",
+          source: job.data,
+        }).url as string,
         controller.signal,
       );
       const analyzed = context.snapshot.identity;
@@ -483,10 +543,9 @@ export class RepairService {
     return this.store.get(id);
   };
   private context = async (session: RepairSession) => {
-    const path = join(
+    const path = await managedPath(
       this.engine.root,
-      "artifacts",
-      `repair-${session.id}-context`,
+      join(this.engine.root, "artifacts", `repair-${session.id}-context`),
     );
     await mkdir(path, { recursive: true, mode: 0o700 });
     const runtime = await taskRuntime(
@@ -499,7 +558,7 @@ export class RepairService {
       session.id,
     );
     await writeFile(
-      join(path, "review.json"),
+      await managedPath(this.engine.root, join(path, "review.json")),
       JSON.stringify({
         identity: session.identity,
         snapshot: session.context.snapshot,
@@ -577,8 +636,7 @@ export class RepairService {
     await this.workspaces.assert(session, repo);
     if (
       (
-        await capture(
-          "git",
+        await gitCapture(
           ["rev-parse", "--verify", "MERGE_HEAD"],
           session.workspace.worktree_path,
         )
@@ -817,6 +875,12 @@ export class RepairService {
       id,
       "Removing owned PR repair workspace",
       async (session) => {
+        const paths = [
+          join(this.engine.root, "logs", id),
+          join(this.engine.root, "artifacts", `repair-${id}-context`),
+        ];
+        if (history)
+          for (const path of paths) await managedPath(this.engine.root, path);
         await this.workspaces.cleanup(
           session,
           this.engine.db.repository(session.repo_id),
@@ -824,11 +888,11 @@ export class RepairService {
         );
         this.store.activity(session, "workspace_removed", { timestamp: now() });
         if (history) {
-          for (const path of [
-            join(this.engine.root, "logs", id),
-            join(this.engine.root, "artifacts", `repair-${id}-context`),
-          ])
-            await rm(path, { recursive: true, force: true });
+          for (const path of paths)
+            await rm(await managedPath(this.engine.root, path), {
+              recursive: true,
+              force: true,
+            });
           this.engine.db.transaction(() => {
             for (const table of [
               "agent_events",

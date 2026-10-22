@@ -6,19 +6,31 @@ import { RepairSessionSchema, type RepairSession } from "./contracts";
 export class RepairStore {
   constructor(private readonly db: Database) {}
   list = (jobId?: string) =>
-    this.db
-      .all<{ data: string }>(
-        `SELECT data FROM pr_repairs ${jobId ? "WHERE job_id=?" : ""} ORDER BY created_at DESC,rowid DESC`,
+    this.db.records.list(
+      "pr_repairs",
+      this.db.all<{ id: string; data: string }>(
+        `SELECT id,data FROM pr_repairs ${jobId ? "WHERE job_id=?" : ""} ORDER BY created_at DESC,rowid DESC`,
         ...(jobId ? [jobId] : []),
-      )
-      .map((row) => RepairSessionSchema.parse(JSON.parse(row.data)));
+      ),
+      RepairSessionSchema.parse,
+      "id",
+    );
   get = (id: string) => {
     const row = this.db.all<{ data: string }>(
       "SELECT data FROM pr_repairs WHERE id=?",
       id,
     )[0];
     if (!row) throw new AdeError("not_found", "PR repair session not found.");
-    return RepairSessionSchema.parse(JSON.parse(row.data));
+    return this.db.records.decode(
+      {
+        table: "pr_repairs",
+        id,
+        column: "data",
+        source: row.data,
+        identity: "id",
+      },
+      RepairSessionSchema.parse,
+    );
   };
   save = (session: RepairSession) => {
     session.updated_at = now();

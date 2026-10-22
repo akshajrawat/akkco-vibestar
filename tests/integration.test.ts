@@ -1,12 +1,13 @@
+import { ActionSchema } from "../backend/scheduled/action";
 import { it, expect } from "vitest";
 import { mkdtemp, writeFile, readFile, rm, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Engine } from "../backend/execution/engine";
 import { parseIssue, now } from "../backend/domain";
 import { checked } from "../backend/execution/process";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   finishFixtureTask as waitForTask,
@@ -22,7 +23,7 @@ it("creates two concurrently running worktrees, isolates same-file edits, and ig
   const both = new Promise<void>((r) => {
     reached = r;
   });
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     (stage) =>
       new FixtureProvider(
@@ -95,7 +96,7 @@ it("creates two concurrently running worktrees, isolates same-file edits, and ig
 }, 40000);
 it("calculates staged, unstaged, untracked, deleted and renamed files against saved base", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-diff-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     () => new FixtureProvider(),
   );
@@ -154,7 +155,7 @@ it("calculates staged, unstaged, untracked, deleted and renamed files against sa
 it("retries only the failed stage and continues from locally persisted plans", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-retry-"));
   const fail = { value: true };
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     () => new FixtureProvider(undefined, fail),
   );
@@ -204,7 +205,7 @@ it("retries only the failed stage and continues from locally persisted plans", a
 }, 30000);
 it("reconciles crash records as Interrupted without automatically spending model quota", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-recovery-"));
-  let engine = await Engine.create(
+  let engine = await createFixtureEngine(
     join(dir, "ade"),
     () => new FixtureProvider(),
   );
@@ -241,7 +242,10 @@ it("reconciles crash records as Interrupted without automatically spending model
       now(),
     );
     await engine.close();
-    engine = await Engine.create(join(dir, "ade"), () => new FixtureProvider());
+    engine = await createFixtureEngine(
+      join(dir, "ade"),
+      () => new FixtureProvider(),
+    );
     engine.start();
     expect(engine.db.task(t.id).status).toBe("interrupted");
     expect(
@@ -264,7 +268,7 @@ it("reconciles crash records as Interrupted without automatically spending model
 }, 30000);
 it("fetches before every worktree, pins exact upstream SHA, and suffixes duplicate scope branches", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-base-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     () => new FixtureProvider(),
   );
@@ -303,9 +307,9 @@ it("fetches before every worktree, pins exact upstream SHA, and suffixes duplica
     await rm(dir, { recursive: true });
   }
 }, 30000);
-it("scheduled planning reuses isolation and shared slots without changing task plans or implementing", async () => {
+it("explicit PR utility reasoning reuses isolation and shared slots without changing task plans or implementing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-scheduled-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     () => new FixtureProvider(),
   );
@@ -334,19 +338,22 @@ it("scheduled planning reuses isolation and shared slots without changing task p
       verify_codex: true,
     });
     await scheduler.close();
-    const result = await engine.analyzeScheduled(
-      task.id,
-      "Analyze PR updates. Do not edit files.",
-      true,
-      watch.id,
-    );
-    expect(result?.analysis).toHaveProperty("summary");
-    expect(result?.refinement).toHaveProperty("manualActionRequired");
+    const result = await engine.utility.run({
+      purpose: "PR Review Analysis",
+      prompt: "Analyze PR updates. Do not edit files.",
+      schema: ActionSchema,
+      context: {
+        taskId: task.id,
+        jobId: watch.id,
+        repository: "fixture/fixture",
+      },
+    });
+    expect(result).toHaveProperty("manualActionRequired");
     expect(await engine.git.fingerprint(engine.db.task(task.id))).toBe(before);
     expect(engine.db.detail(task.id).artifacts).toEqual(artifacts);
     expect(engine.db.task(task.id).status).toBe("ready_for_review");
     expect(engine.db.all("SELECT id FROM scheduled_agent_runs")).toHaveLength(
-      2,
+      1,
     );
   } finally {
     await engine.close();
@@ -356,7 +363,7 @@ it("scheduled planning reuses isolation and shared slots without changing task p
 it("persists local line review notes, rejects escaping paths and sends feedback only on explicit action", async () => {
   const { ReviewService } = await import("../backend/review/service");
   const dir = await mkdtemp(join(tmpdir(), "vibestar-review-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     () => new FixtureProvider(),
   );

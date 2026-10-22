@@ -1,70 +1,26 @@
+import { prSnapshot } from "./pr-fixtures";
 import { it, expect, vi } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { Engine } from "../backend/execution/engine";
 import { StorageService } from "../backend/storage/service";
-import {
-  now,
-  defaultSettings,
-  type Task,
-  type Repository,
-} from "../backend/domain";
+import { now, defaultSettings, type Task } from "../backend/domain";
 import { checked, capture } from "../backend/execution/process";
 import { exists } from "../backend/workspace/paths";
-import { fixtureRepository } from "./fixtures";
+import {
+  createFixtureEngine,
+  fixtureRepository,
+  prepareFixtureTask,
+} from "./fixtures";
 import { Scheduler } from "../backend/scheduled/scheduler";
 import { GitHubMonitor } from "../backend/scheduled/github";
 
-const preparedTask = async (
-  engine: Engine,
-  repo: Repository,
-  id: string,
-  issue = 1,
-) => {
-  const task: Task = {
-    id,
-    repo_id: repo.id,
-    issue_number: issue,
-    issue_url: `https://github.com/fixture/fixture/issues/${issue}`,
-    claimed_scope: id,
-    notes: "",
-    issue: {},
-    branch_name: "",
-    base_branch: "main",
-    base_commit_sha: "",
-    worktree_path: "",
-    stage: 1,
-    status: "cancelled",
-    error: null,
-    created_at: now(),
-    updated_at: now(),
-  };
-  engine.db.saveTask(task);
-  await engine.git.prepare(
-    repo,
-    task,
-    undefined,
-    (value) => engine.db.saveTask(value),
-    async (record) => {
-      engine.db.run(
-        "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'preparation',?,?)",
-        task.id,
-        JSON.stringify(record),
-        now(),
-      );
-    },
-  );
-  engine.db.saveTask(task);
-  return task;
-};
-
 it("history deletion removes the owned branch and worktree even when worktree cleanup is deselected, preserving other branches", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-history-branch-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
-    const task = await preparedTask(engine, repo, "history");
+    const task = await prepareFixtureTask(engine, repo, "history");
     await checked("git", ["branch", "akkco/personal"], repo.path);
     const before = await checked(
       "git",
@@ -72,12 +28,34 @@ it("history deletion removes the owned branch and worktree even when worktree cl
       repo.path,
     );
     await writeFile(join(task.worktree_path, "source.txt"), "task change\n");
-    await new StorageService(engine).cleanupTask(task.id, {
+    const storage = new StorageService(engine);
+    const options = {
       worktree: false,
       logs: false,
       artifacts: false,
       history: true,
-    });
+    };
+    await expect(storage.cleanupTask(task.id, options)).rejects.toThrow(
+      "local changes",
+    );
+    expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe(
+      "task change\n",
+    );
+    expect(engine.db.task(task.id).archived).not.toBe(true);
+    await checked(
+      "git",
+      [
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-am",
+        "Save fixture work",
+      ],
+      task.worktree_path,
+    );
+    await storage.cleanupTask(task.id, options);
     expect(await exists(task.worktree_path)).toBe(false);
     expect(
       (
@@ -107,10 +85,10 @@ it.each(["unregistered", "missing", "detached"])(
   "cleans owned task history when the worktree is %s",
   async (kind) => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-orphan-branch-"));
-    const engine = await Engine.create(join(dir, "data"));
+    const engine = await createFixtureEngine(join(dir, "data"));
     try {
       const { repo } = await fixtureRepository(engine, dir);
-      const task = await preparedTask(engine, repo, kind);
+      const task = await prepareFixtureTask(engine, repo, kind);
       if (kind === "unregistered") {
         await checked(
           "git",
@@ -163,10 +141,10 @@ it.each(["unregistered", "missing", "detached"])(
 
 it("does not delete an unowned namespaced branch, a recreated personal branch, or an external checkout", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-foreign-branch-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
-    const task = await preparedTask(engine, repo, "owned");
+    const task = await prepareFixtureTask(engine, repo, "owned");
     const storage = new StorageService(engine);
     await checked("git", ["branch", "akkco/personal"], repo.path);
     const foreign = {
@@ -223,10 +201,10 @@ it("does not delete an unowned namespaced branch, a recreated personal branch, o
 
 it("deletes history after preparation left only a checkpoint and no Git resources", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-empty-preparation-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
-    const task = await preparedTask(engine, repo, "checkpoint");
+    const task = await prepareFixtureTask(engine, repo, "checkpoint");
     await checked(
       "git",
       ["worktree", "remove", "--", task.worktree_path],
@@ -252,10 +230,10 @@ it("deletes history after preparation left only a checkpoint and no Git resource
 
 it("accepts a successful legacy creation record but never treats the branch prefix alone as ownership", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-legacy-branch-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
-    const task = await preparedTask(engine, repo, "legacy");
+    const task = await prepareFixtureTask(engine, repo, "legacy");
     await checked(
       "git",
       ["config", "--unset", `branch.${task.branch_name}.vibestarTask`],
@@ -277,10 +255,10 @@ it("accepts a successful legacy creation record but never treats the branch pref
 
 it("preserves a personal branch recreated under a legacy task's branch name", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-legacy-recreated-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
-    const task = await preparedTask(engine, repo, "legacy-recreated");
+    const task = await prepareFixtureTask(engine, repo, "legacy-recreated");
     engine.db.saveTask({ ...task, branch_owned: undefined });
     await checked(
       "git",
@@ -309,7 +287,7 @@ it("preserves a personal branch recreated under a legacy task's branch name", as
 
 it("task deletion ignores unrelated scans but reports its own terminal and linked review activity", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-cleanup-scope-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const task: Task = {
@@ -403,7 +381,7 @@ it("task deletion ignores unrelated scans but reports its own terminal and linke
 
 it("maintenance reserves only its task and always releases its lease on failure", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-maintenance-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     await expect(
       engine.withTaskMaintenance("one", async () => {
@@ -438,7 +416,7 @@ it("maintenance reserves only its task and always releases its lease on failure"
 
 it("cancelled repository discovery releases activity and preserves the previous index", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-scan-stop-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const source = join(dir, "source");
     await mkdir(source);
@@ -470,7 +448,7 @@ it("cancelled repository discovery releases activity and preserves the previous 
 
 it("stopping a PR inspection aborts and pauses it, releasing its live blocker", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-watch-stop-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   const monitor = new GitHubMonitor(dir);
   vi.spyOn(monitor, "inspect").mockImplementation(
     async (_url, signal) =>
@@ -503,32 +481,32 @@ it("stopping a PR inspection aborts and pauses it, releasing its live blocker", 
   }
 });
 
-it("a stopped semantic analysis cannot start a subsequent verification run", async () => {
+it("cancels the current semantic PR analysis without starting a second provider", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-verification-stop-"));
-  const engine = await Engine.create(join(dir, "data"));
-  const scheduler = new Scheduler(engine);
+  const engine = await createFixtureEngine(join(dir, "data"));
+  const monitor = new GitHubMonitor(dir);
+  vi.spyOn(monitor, "inspect").mockResolvedValue(prSnapshot);
+  const scheduler = new Scheduler(engine, monitor);
   try {
     const job = scheduler.add({
       url: "https://github.com/fixture/fixture/pull/1",
       task_id: null,
       interval_minutes: 60,
     });
-    const controller = new AbortController();
-    const utility = vi
-      .spyOn(engine.utility, "run")
-      .mockImplementation(async () => {
-        controller.abort();
-        return {};
-      });
-    await expect(
-      engine.analyzeScheduled(
-        null,
-        "Review context",
-        true,
-        job.id,
-        controller.signal,
-      ),
-    ).rejects.toThrow();
+    const utility = vi.spyOn(engine.utility, "run").mockImplementation(
+      async (request) =>
+        new Promise((_resolve, reject) => {
+          request.signal!.addEventListener(
+            "abort",
+            () => reject(new Error("Semantic analysis cancelled")),
+            { once: true },
+          );
+        }),
+    );
+    scheduler.analyze(job.id);
+    await vi.waitFor(() => expect(utility).toHaveBeenCalledOnce());
+    await scheduler.cancel(job.id);
+    expect(scheduler.analysis.history(job.id)[0].status).toBe("cancelled");
     expect(utility).toHaveBeenCalledOnce();
     expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
     expect(engine.cleanupBlockers()).toEqual([]);

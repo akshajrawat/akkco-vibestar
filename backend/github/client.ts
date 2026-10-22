@@ -19,7 +19,12 @@ export class GitHubClient {
     return result.stdout;
   };
   api = async <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
-    JSON.parse(await this.gh(["api", "--method", "GET", endpoint], signal));
+    JSON.parse(
+      await this.gh(
+        ["api", "--hostname", "github.com", "--method", "GET", endpoint],
+        signal,
+      ),
+    );
   pages = async <T>(
     endpoint: string,
     signal?: AbortSignal,

@@ -4,10 +4,10 @@ import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { defaultSettings, parseIssue, now } from "../backend/domain";
 import { ActionSchema } from "../backend/scheduled/action";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   finishFixtureTask as waitForTask,
@@ -20,7 +20,7 @@ it.skipIf(process.env.VIBESTAR_UX_TEST !== "1")(
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-desktop-polish-"));
     const root = join(dir, "data");
-    const engine = await Engine.create(root, () => new FixtureProvider());
+    const engine = await createFixtureEngine(root, () => new FixtureProvider());
     let taskId = "";
     try {
       const { repo } = await fixtureRepository(engine, dir);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Settings } from "../lib/types";
+import type { Settings, Snapshot } from "../lib/types";
 import type { DesktopInfo } from "../../electron/contracts";
 import { useProviders } from "../lib/useWorkspace";
 import { rpc, errorMessage, subscribe } from "../lib/api";
@@ -12,10 +12,12 @@ export const SettingsPage = ({
   settings,
   root,
   refresh,
+  diagnostics,
 }: {
   settings?: Settings;
   root?: string;
   refresh: () => Promise<void>;
+  diagnostics?: Snapshot["persistence"];
 }) => {
   const [value, setValue] = useState(settings);
   const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
@@ -63,6 +65,29 @@ export const SettingsPage = ({
   };
   return (
     <div className="page">
+      {!!diagnostics?.length && (
+        <details className="error-box" open>
+          <summary>Saved records need recovery</summary>
+          <p>
+            Original record data remains in SQLite. Affected workspace actions
+            are blocked. Preserve the data root and its pre-migration backups
+            before repairing these records.
+          </p>
+          <ul>
+            {diagnostics.map((record) => (
+              <li
+                key={`${record.table_name}:${record.record_id}:${record.column_name}`}
+              >
+                <code>
+                  {record.table_name} · {record.record_id} ·{" "}
+                  {record.column_name}
+                </code>
+                <small>Source SHA-256: {record.source_hash}</small>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <div className="page-title">
         <div>
           <span className="eyebrow">LOCAL EXECUTION CONFIGURATION</span>

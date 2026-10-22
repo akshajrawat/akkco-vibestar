@@ -7,6 +7,8 @@ import {
   Settings,
   Plus,
   X,
+  Search,
+  Activity,
 } from "lucide-react";
 import type { Page } from "./lib/types";
 import { useWorkspace, useDetail } from "./lib/useWorkspace";
@@ -27,11 +29,16 @@ import { ScheduledPage } from "./components/ScheduledPage";
 import { TitleBar } from "./components/TitleBar";
 import { DataMigration } from "./components/DataMigration";
 import { RepairWorkspace } from "./components/repair/RepairWorkspace";
+import { IssueWatchPage } from "./components/issue-watch/IssueWatchPage";
+import { UsageView } from "./components/UsageView";
+import { useWatchNotifications } from "./lib/issue-watch/notifications";
 const navigation = [
   ["Tasks", ListTodo],
   ["Scheduled", GitPullRequest],
+  ["Issue Watch", Search],
   ["Repositories", FolderGit2],
   ["Providers", Plug],
+  ["Usage", Activity],
   ["Settings", Settings],
 ] as const;
 export const App = () => {
@@ -45,6 +52,14 @@ export const App = () => {
     localStorage.getItem("vibestar.activeRepair"),
   );
   const [newTask, setNewTask] = useState(false);
+  const [taskPrefill, setTaskPrefill] = useState<{
+    url: string;
+    notes: string;
+  }>();
+  const [watchId, setWatchId] = useState<string | null>(null);
+  const notifications = useWatchNotifications(
+    snapshot?.capabilities?.manual_issue_watch === true,
+  );
   const [sidebar, setSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = usePaneSize(
     "sidebarWidth",
@@ -88,6 +103,7 @@ export const App = () => {
   };
   const navigate = (p: Page) => {
     setPage(p);
+    setWatchId(null);
     setTaskId(null);
     setRepairId(null);
     localStorage.removeItem("vibestar.activeRepair");
@@ -108,10 +124,22 @@ export const App = () => {
         open={open}
         openRepair={openRepair}
       />
+    ) : page === "Issue Watch" && snapshot ? (
+      <IssueWatchPage
+        snapshot={snapshot}
+        initialWatchId={watchId}
+        startTask={(url, notes) => {
+          setTaskPrefill({ url, notes });
+          setNewTask(true);
+        }}
+      />
+    ) : page === "Usage" ? (
+      <UsageView />
     ) : page === "Settings" ? (
       <SettingsPage
         settings={snapshot?.settings}
         root={snapshot?.root}
+        diagnostics={snapshot?.persistence}
         refresh={refresh}
       />
     ) : page === "Providers" ? (
@@ -176,7 +204,7 @@ export const App = () => {
         onSidebar={() => setSidebar((v) => !v)}
         currentTask={
           detail && detail.task.id === taskId
-            ? `#${detail.task.issue_number} · ${detail.task.claimed_scope || detail.task.issue.title}`
+            ? `#${detail.task.issue_number} · ${detail.task.claimed_scope || detail.task.issue?.title}`
             : undefined
         }
       />
@@ -251,11 +279,13 @@ export const App = () => {
                     <button
                       className={page === label ? "selected" : ""}
                       key={label}
-                      aria-label={label === "Scheduled" ? "PR watch" : label}
+                      aria-label={
+                        label === "Scheduled" ? "Pull Requests" : label
+                      }
                       onClick={() => navigate(label)}
                     >
                       <Icon size={14} />
-                      {label === "Scheduled" ? "PR watch" : label}
+                      {label === "Scheduled" ? "Pull Requests" : label}
                       {label === "Scheduled" && (
                         <small className={count ? "warning" : ""}>
                           {count
@@ -323,7 +353,7 @@ export const App = () => {
               },
               ...navigation.map(([label]) => ({
                 id: label,
-                label: `Go to ${label === "Scheduled" ? "PR watch" : label}`,
+                label: `Go to ${label === "Scheduled" ? "Pull Requests" : label}`,
                 run: () => navigate(label),
               })),
               {
@@ -350,7 +380,7 @@ export const App = () => {
               },
               ...(snapshot?.tasks || []).map((task) => ({
                 id: `task-${task.id}`,
-                label: `Open #${task.issue_number} · ${task.claimed_scope || task.issue.title}`,
+                label: `Open #${task.issue_number} · ${task.claimed_scope || task.issue?.title}`,
                 detail: task.branch_name,
                 run: () => open(task.id),
               })),
@@ -404,12 +434,54 @@ export const App = () => {
         )}
         {newTask && (
           <NewTask
-            close={() => setNewTask(false)}
+            initialIssueUrl={taskPrefill?.url}
+            initialNotes={taskPrefill?.notes}
+            close={() => {
+              setNewTask(false);
+              setTaskPrefill(undefined);
+            }}
             created={async (id) => {
               await refresh();
               open(id);
             }}
           />
+        )}
+        {notifications.notices.length > 0 && (
+          <div
+            className="watch-notifications"
+            role="log"
+            aria-live="polite"
+            aria-label="Issue Watch notifications"
+          >
+            {notifications.notices.map((notice) => (
+              <div key={notice.id}>
+                <Search size={16} />
+                <div>
+                  <strong>{notice.text}</strong>
+                  <small>Counts include dismissed results.</small>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      navigate("Issue Watch");
+                      setWatchId(notice.watchId);
+                      notifications.dismiss(notice.id);
+                    }}
+                  >
+                    View results
+                  </Button>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Dismiss scan notification"
+                  onClick={() => notifications.dismiss(notice.id)}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

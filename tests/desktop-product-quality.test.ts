@@ -1,3 +1,4 @@
+import { createFixtureEngine } from "./fixtures";
 import { it, expect } from "vitest";
 import { _electron } from "playwright-core";
 import { createRequire } from "node:module";
@@ -5,7 +6,6 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { checked } from "../backend/execution/process";
 import { defaultSettings, now, type Task } from "../backend/domain";
 import { StorageService } from "../backend/storage/service";
@@ -31,7 +31,7 @@ it.skipIf(process.env.VIBESTAR_PRODUCT_DESKTOP_TEST !== "1")(
     const reuse = process.env.VIBESTAR_PRODUCT_REUSE_ROOT;
     const root = reuse || join(dir, "data");
     const evidence = join(root, "artifacts", "verification");
-    const engine = await Engine.create(root);
+    const engine = await createFixtureEngine(root);
     let id: Task["id"] = randomUUID();
     let reusedReady = false;
     let success = false;
@@ -574,7 +574,7 @@ it.skipIf(process.env.VIBESTAR_PRODUCT_DESKTOP_TEST !== "1")(
         .screenshot({ path: join(evidence, "last-window.png") })
         .catch(() => {});
       await app.close();
-      const cleanup = await Engine.create(root);
+      const cleanup = await createFixtureEngine(root);
       try {
         for (const task of cleanup.db.tasks())
           if (success && task.worktree_path)

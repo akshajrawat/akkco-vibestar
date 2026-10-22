@@ -11,7 +11,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { defaultSettings, parseIssue, now, type Task } from "../backend/domain";
 import { Usage } from "../backend/execution/usage";
 import { ActionSchema } from "../backend/scheduled/action";
@@ -23,6 +22,7 @@ import { checked } from "../backend/execution/process";
 import { discoveryRoot } from "../backend/workspace/discovery";
 import { createLayout } from "../backend/workspace/paths";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   finishFixtureTask as waitForTask,
@@ -41,7 +41,7 @@ it.each([1, 2])(
       release = resolve;
     });
     let blocked = false;
-    const engine = await Engine.create(
+    const engine = await createFixtureEngine(
       join(dir, "data"),
       (current) =>
         new FixtureProvider(async () => {
@@ -116,7 +116,7 @@ it("keeps the provider sequence after explicitly reviewed planning feedback when
   });
   let blocked = false;
   const providers: { stage: number; name?: string }[] = [];
-  const engine = await Engine.create(join(dir, "data"), (stage, name) => {
+  const engine = await createFixtureEngine(join(dir, "data"), (stage, name) => {
     providers.push({ stage, name });
     return new FixtureProvider(async () => {
       if (stage === 1 && !blocked) {
@@ -165,7 +165,7 @@ it("keeps the provider sequence after explicitly reviewed planning feedback when
 
 it("keeps a user message when the selected model fails validation, and records every attempted run", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-usage-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new FixtureProvider(),
   );
@@ -235,7 +235,7 @@ it("keeps a user message when the selected model fails validation, and records e
 
 it("honors the selected checkout for an older deferred clone registration", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-deferred-import-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new FixtureProvider(),
   );
@@ -337,7 +337,7 @@ it("stores only reported token counts and keeps totals unavailable when absent",
 
 it("indexes an existing checkout and creates isolated worktrees while preserving its files, branch and remotes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-index-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new FixtureProvider(),
   );
@@ -425,7 +425,28 @@ it("indexes an existing checkout and creates isolated worktrees while preserving
     expect(task.worktree_path.startsWith(join(engine.root, "worktrees"))).toBe(
       true,
     );
-    await new StorageService(engine).removeRepository(imported.id);
+    const storage = new StorageService(engine);
+    await expect(storage.removeRepository(imported.id)).rejects.toThrow(
+      "local changes",
+    );
+    expect(engine.db.repository(imported.id).path).toBe(source);
+    expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe(
+      "isolated change\n",
+    );
+    await checked(
+      "git",
+      [
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-am",
+        "Save fixture work",
+      ],
+      task.worktree_path,
+    );
+    await storage.removeRepository(imported.id);
     expect(await readFile(join(source, "source.txt"), "utf8")).toBe(
       "my uncommitted work\n",
     );
@@ -440,7 +461,7 @@ it("indexes an existing checkout and creates isolated worktrees while preserving
 
 it("measures storage and restricts each cleanup action to its selected category", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-storage-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     await writeFile(join(engine.root, "logs", "sample.log"), "12345");
     await writeFile(join(engine.root, "cache", "sample.bin"), "1234567");
@@ -501,7 +522,7 @@ it("recovers an interrupted root migration before activating a partially promote
 });
 it("preserves external worktrees registered with a managed clone", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-managed-cleanup-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const external = join(dir, "external-worktree");
@@ -521,7 +542,7 @@ it("offers legacy data migration and repairs copied Git worktree pointers withou
   const dir = await mkdtemp(join(tmpdir(), "vibestar-migration-"));
   const old = join(dir, ".akkco-ade"),
     target = join(dir, ".akkco-vibestar");
-  const engine = await Engine.create(old, () => new FixtureProvider());
+  const engine = await createFixtureEngine(old, () => new FixtureProvider());
   let taskId = "";
   let oldWorktree = "";
   try {
@@ -566,7 +587,10 @@ it("offers legacy data migration and repairs copied Git worktree pointers withou
     expect(
       await readFile(join(old, "runtime", "migration-fixture.json"), "utf8"),
     ).toBe("preserved runtime metadata");
-    const migrated = await Engine.create(target, () => new FixtureProvider());
+    const migrated = await createFixtureEngine(
+      target,
+      () => new FixtureProvider(),
+    );
     try {
       const task = migrated.db.task(taskId);
       expect(task.worktree_path.startsWith(target)).toBe(true);

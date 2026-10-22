@@ -176,9 +176,9 @@ export const TaskWorkspace = ({
           >
             #{t.issue_number}
           </button>
-          <strong className="task-title" title={t.issue.title}>
+          <strong className="task-title" title={t.issue?.title}>
             {t.scope_mode === "whole_issue"
-              ? t.issue.title || "Entire issue"
+              ? t.issue?.title || "Entire issue"
               : t.claimed_scope}
           </strong>
           <div className="spacer" />
@@ -624,7 +624,7 @@ export const TaskWorkspace = ({
                     ? "Entire issue"
                     : "Specific scope"}
                 </small>
-                <h2>{t.issue.title || `Issue #${t.issue_number}`}</h2>
+                <h2>{t.issue?.title || `Issue #${t.issue_number}`}</h2>
                 <p>
                   {t.scope_mode === "whole_issue"
                     ? "All issue requirements are in scope."
@@ -633,7 +633,7 @@ export const TaskWorkspace = ({
                 {t.notes && <p>{t.notes}</p>}
                 <details>
                   <summary>Issue context</summary>
-                  <AgentResponse text={t.issue.body || "No description"} />
+                  <AgentResponse text={t.issue?.body || "No description"} />
                 </details>
               </article>
               <section className="preparation-turn">

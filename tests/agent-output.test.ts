@@ -3,13 +3,16 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { defaultSettings, now, type Task } from "../backend/domain";
 import { readLogTail } from "../backend/storage/logs";
 import { CommandExecutions } from "../backend/execution/command-executions";
 import { AgentRunner } from "../backend/execution/agent-runner";
-import { fixtureRepository, FixtureProvider } from "./fixtures";
+import {
+  createFixtureEngine,
+  fixtureRepository,
+  FixtureProvider,
+} from "./fixtures";
 import type { AgentEvent } from "../src/lib/types";
 
 const taskRecord = (repoId: string): Task => ({
@@ -111,7 +114,7 @@ it("reads complete historical redacted logs beyond the tail, searches all lines,
 
 it("pages and searches saved run events beyond 2000 and retains full tool context without crossing task ownership", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-event-pages-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   const rpc = new Rpc(engine);
   try {
     const { repo } = await fixtureRepository(engine, dir);
@@ -202,7 +205,7 @@ it("pages and searches saved run events beyond 2000 and retains full tool contex
 it("persists actual emitted model/effort and separate redacted streams without trusting structured stderr as a result", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-output-runner-"));
   const fixture = new FixtureProvider();
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const task = taskRecord(repo.id);

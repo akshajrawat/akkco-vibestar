@@ -2,9 +2,13 @@ import { it, expect } from "vitest";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { parseIssue } from "../backend/domain";
-import { fixtureRepository, FixtureProvider, waitForTask } from "./fixtures";
+import {
+  createFixtureEngine,
+  fixtureRepository,
+  FixtureProvider,
+  waitForTask,
+} from "./fixtures";
 import { checked, execute } from "../backend/execution/process";
 import { sandboxInvocation } from "../backend/execution/sandbox";
 import { taskRuntime } from "../backend/workspace/runtime";
@@ -12,7 +16,7 @@ import { CoreBridge } from "../electron/bridge";
 
 it("uses an installed source virtualenv and ignored dependencies read-only without exposing source files", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-runtime-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new FixtureProvider(),
   );

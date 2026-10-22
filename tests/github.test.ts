@@ -4,10 +4,8 @@ import { GitHubClient } from "../backend/github/client";
 import { GitHubService } from "../backend/github/service";
 import { Scheduler } from "../backend/scheduled/scheduler";
 import { GitHubMonitor } from "../backend/scheduled/github";
-import { assessActivity } from "../backend/scheduled/action";
 import type { GitHubRepository } from "../backend/github/contracts";
 import type { Engine } from "../backend/execution/engine";
-import type { PullRequestState } from "../backend/scheduled/contracts";
 const repository = (full_name: string, parent?: string): GitHubRepository => ({
   id: full_name.includes("viewer") ? 2 : 1,
   full_name,
@@ -153,66 +151,6 @@ it("uses proven fork parents and refuses a same-name unrelated fork", async () =
     await service.close();
     db.close();
   }
-});
-it("classifies approvals, own comments and CI progress without model calls; questions require assessment", () => {
-  const base: PullRequestState = {
-    title: "PR",
-    body: "",
-    state: "OPEN",
-    mergeable: "MERGEABLE",
-    reviewDecision: "",
-    headRefOid: "sha",
-    author: "viewer",
-    comments: [],
-    reviews: [],
-    checks: [],
-  };
-  expect(
-    assessActivity(base, { ...base, reviewDecision: "APPROVED" }, ["Approval"]),
-  ).toMatchObject({ analyze: false, action: { manualActionRequired: false } });
-  expect(
-    assessActivity(
-      base,
-      {
-        ...base,
-        comments: [
-          { id: "self", author: "viewer", body: "Update", updated_at: "1" },
-        ],
-      },
-      ["Comment"],
-    ),
-  ).toMatchObject({ analyze: false, action: { manualActionRequired: false } });
-  expect(
-    assessActivity(
-      base,
-      { ...base, checks: [{ name: "tests", state: "IN_PROGRESS", url: "" }] },
-      ["CI tests"],
-    ),
-  ).toMatchObject({ analyze: false, action: { manualActionRequired: false } });
-  expect(
-    assessActivity(
-      base,
-      {
-        ...base,
-        comments: [
-          {
-            id: "question",
-            author: "maintainer",
-            body: "Can you explain this?",
-            updated_at: "1",
-          },
-        ],
-      },
-      ["Comment"],
-    ),
-  ).toMatchObject({ analyze: false, action: { manualActionRequired: true } });
-  expect(
-    assessActivity(
-      base,
-      { ...base, checks: [{ name: "tests", state: "FAILURE", url: "" }] },
-      ["CI tests"],
-    ),
-  ).toMatchObject({ analyze: false, action: { manualActionRequired: true } });
 });
 it("paginates repository catalogs instead of limiting them to 100", async () => {
   const client = new GitHubClient("/tmp");

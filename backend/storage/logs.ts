@@ -1,7 +1,7 @@
 import { open, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { AdeError } from "../domain";
-import { inside, safeFile } from "../workspace/paths";
+import { inside, managedPath, safeFile } from "../workspace/paths";
 export const readLogTail = async (
   root: string,
   taskId: string,
@@ -10,7 +10,7 @@ export const readLogTail = async (
   options?: { before?: number; after?: number; search?: string },
 ) => {
   try {
-    const dir = await realpath(join(root, "logs", taskId));
+    const dir = await realpath(await managedPath(root, join("logs", taskId)));
     if (!inside(join(root, "logs"), dir))
       throw new AdeError("isolation", "Log directory is outside managed logs");
     const path = await safeFile(

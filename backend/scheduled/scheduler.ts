@@ -1,4 +1,5 @@
 import { ActionSchema } from "./action";
+import { z } from "zod";
 import type { GitHubPullRequest } from "../github/contracts";
 import { randomUUID } from "node:crypto";
 import { now, AdeError } from "../domain";
@@ -12,7 +13,31 @@ import {
   parsePullRequest,
   type ScheduleJob,
   type ScheduleAttention,
+  PullRequestStateSchema,
 } from "./contracts";
+const savedJob = z
+  .object({
+    id: z.string(),
+    url: z.string().optional(),
+    status: z.string().optional(),
+    action: ActionSchema.optional(),
+    conversation_action: ActionSchema.optional(),
+    title: z.string().optional(),
+    task_id: z.string().nullable().optional(),
+    last_snapshot: PullRequestStateSchema.nullable().optional(),
+    pending_snapshot: PullRequestStateSchema.nullable().optional(),
+    changes: z.array(z.string()).optional(),
+    error: z.string().nullable().optional(),
+    last_checked_at: z.string().nullable().optional(),
+    next_run_at: z.string().optional(),
+    last_analyzed_at: z.string().optional(),
+    archived: z.boolean().optional(),
+    paused_before_archive: z.boolean().optional(),
+  })
+  .loose()
+  .transform(
+    (value) => ({ ...value, enabled: false, check_once: false }) as ScheduleJob,
+  );
 
 // Legacy tracked records remain readable; only explicit operations execute.
 export class Scheduler {
@@ -29,15 +54,14 @@ export class Scheduler {
     this.analysis = new PRAnalysis(engine);
   }
   jobs = () =>
-    this.engine.db
-      .all<{ data: string }>("SELECT data FROM scheduled_jobs ORDER BY rowid")
-      .map((r) => {
-        const job = JSON.parse(r.data) as ScheduleJob;
-        if (job.action) job.action = ActionSchema.parse(job.action);
-        if (job.conversation_action)
-          job.conversation_action = ActionSchema.parse(job.conversation_action);
-        return { ...job, enabled: false, check_once: false };
-      });
+    this.engine.db.records.list(
+      "scheduled_jobs",
+      this.engine.db.all<{ id: string; data: string }>(
+        "SELECT id,data FROM scheduled_jobs ORDER BY rowid",
+      ),
+      savedJob.parse,
+      "id",
+    );
   attention = () =>
     this.engine.db.all<ScheduleAttention>(
       "SELECT * FROM scheduled_attention WHERE dismissed=0 ORDER BY created_at DESC",
@@ -45,7 +69,7 @@ export class Scheduler {
   private save = (job: ScheduleJob) => {
     if (
       job.task_id &&
-      !this.engine.db.tasks().some((t) => t.id === job.task_id)
+      !this.engine.db.all("SELECT id FROM tasks WHERE id=?", job.task_id).length
     )
       job.task_id = null;
     this.engine.db.run(
@@ -56,9 +80,21 @@ export class Scheduler {
     this.engine.changed();
   };
   private job = (id: string) => {
-    const job = this.jobs().find((j) => j.id === id);
-    if (!job) throw new AdeError("not_found", "Tracked PR not found");
-    return job;
+    const row = this.engine.db.all<{ data: string }>(
+      "SELECT data FROM scheduled_jobs WHERE id=?",
+      id,
+    )[0];
+    if (!row) throw new AdeError("not_found", "Tracked PR not found");
+    return this.engine.db.records.decode(
+      {
+        table: "scheduled_jobs",
+        id,
+        column: "data",
+        source: row.data,
+        identity: "id",
+      },
+      savedJob.parse,
+    );
   };
   add = (input: unknown) => {
     this.engine.assertAvailable();
@@ -123,7 +159,7 @@ export class Scheduler {
   fix = () => {
     throw new AdeError(
       "repair_unavailable",
-      "The isolated PR-repair workflow is a later milestone. Review analysis cannot start an issue-task follow-up.",
+      "Legacy scheduled.fix is unsupported. Use Solve Review with an explicitly selected analysis, observations and repository.",
     );
   };
   start = () => {

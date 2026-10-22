@@ -2,7 +2,7 @@
 
 A local Electron Agent Development Environment for independent open-source contributions. Each whole issue or claimed subtask owns its pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. Existing GitHub PRs have a separate manual analysis and repair workflow: isolated branch preparation, Codex fixes, independent Antigravity review and confirmed publication to the original fork/branch. GitHub access uses the official CLI. Nothing is automatically pushed, posted or merged.
 
-The application uses React, TypeScript, Vite, Tailwind, shadcn-style components, Monaco and xterm.js. The Node/TypeScript execution core owns SQLite, Git, processes and scheduling inside Linux/WSL. There is no Rust or Tauri dependency.
+The application uses React, TypeScript, Vite, Tailwind, shadcn-style components and xterm.js. The Node/TypeScript execution core owns SQLite, Git, processes and scheduling inside Linux/WSL. There is no Rust or Tauri dependency.
 
 ## Prerequisites
 
@@ -117,7 +117,7 @@ Every new task fetches upstream under a repository lock, saves the exact base SH
 
 ## Task workspace
 
-The compact IDE shell has a collapsible, resizable repository/task tree, a dominant conversation, optional resizable pipeline context, and a bottom **Problems / Tests / Terminal / Logs** dock. **Chat / Plan / Usage** are views of the same task. There is no global Diffs destination or dashboard Overview. Ctrl+Shift+P opens commands; Ctrl+B toggles the sidebar.
+The compact IDE shell has a collapsible, resizable repository/task tree, a dominant conversation, optional resizable pipeline context, and a bottom **Changes / Problems / Tests / Terminal / Logs** dock. **Chat / Plan / Usage** are views of the same task. Tasks opens the queue overview; selecting a task opens its workspace. Ctrl+Shift+P opens commands; Ctrl+B toggles the sidebar.
 
 Chat shows actual preparation commands, Antigravity planning, Codex refinement, Codex implementation, validation and final Antigravity review in one continuous conversation. Exact saved prompts are available from every tab and each historical run. Streamed planning drafts appear immediately in Plan and survive a cancelled run. Stop run & use this draft explicitly recovers a schema-valid draft only if the worktree is unchanged, then pauses for plan approval. Structured provider streams become collapsible read/search/command/edit/test events. Prose and structured results render as readable content; raw events stay in Logs. Changed-file counts appear in Chat. The Changes dock displays file-level patches; **Open in VS Code** opens the assigned task worktree for full editor review.
 
@@ -159,12 +159,16 @@ Conflicts preserve the worktree and staged conflict state. Resolve and stage the
 
 ## Security boundaries
 
-- Renderer: sandboxed Electron, context isolation enabled, Node integration disabled, narrow sender-validated preload IPC, local bundled Monaco assets, restrictive CSP, denied navigation/webviews/new windows.
+- Host Git uses inspected local/worktree configuration, suppresses system/global executable settings, binds managed network operations to GitHub HTTPS and delegates authentication to official gh. Unsupported local includes, filters, drivers, helpers and rewrites receive an actionable refusal; source/global configuration is not edited. New managed clones use full objects. Existing partial clones need Git 2.45 or newer; implicit object downloads are disabled.
+- Managed category/repository/worktree aliases are refused. Issue review uses versioned content fingerprints; pending legacy reviews/drafts without comparable integrity evidence require explicit fresh review/planning. Saved completed history remains available.
+- Renderer: sandboxed Electron, context isolation enabled, Node integration disabled, narrow sender-validated preload IPC, restrictive CSP, denied navigation/webviews/new windows.
 - Processes: argv arrays, no interpolation into shells, filtered environment, bounded streaming buffers, deadlines, graceful interrupt followed by termination, persisted PID plus process-start identity.
 - Files: canonicalized managed paths, traversal and escaping-symlink rejection, editor size limits, confirmation enforced in RPC for destructive operations.
 - Agents: required outer bubblewrap mount namespace plus official provider sandboxes. Planning worktrees are read-only; implementation sees only its assigned writable worktree. Other worktrees, personal home files and Windows drives are hidden. Missing isolation blocks execution.
 - Provider-owned auth/session directories remain mounted because the official CLI must authenticate and store conversations. Vibestar never reads, deserializes or copies their credentials. This is a trust boundary: an OS mount cannot distinguish provider authentication code from tools running inside that same provider process. Provider security restrictions and prompts remain necessary, and this is not a claim of complete protection against a malicious provider executable.
 - SQLite and logs store task context and **redacted** events, not provider OAuth tokens. Authentication PTY output is ephemeral. Raw logs are redacted too.
+- PTY redaction retains bounded recognition state across chunks before output reaches events, snapshots or logs. Output and pending writes have explicit limits; redaction remains best effort. Corrupt SQLite records retain their source bytes and appear in Settings diagnostics while unrelated history remains readable. Unsafe operations on corrupt ownership records are blocked.
+- Issue-task submissions use durable request identities. Retrying the same submission returns its original task; reusing an identity with different content is refused. Worktree cleanup requires ownership evidence, a clean index/worktree and the expected branch SHA.
 - Remote access is limited to issue/PR reads, upstream Git fetch, and official inference/authentication. Vibestar never automatically pushes, comments, creates PRs, merges, assigns or closes issues. Model instructions prohibit remote writes; official provider tooling and its auth directory remain trusted.
 
 The window keeps its dark frameless titlebar and native resizing, and its initial size fits the current display. Maximize checks the current display’s work area and retains restore bounds for a geometry fallback. State events drive the icon; titlebar double-click toggles maximize, F11 enters actual fullscreen, and Escape exits it. Fullscreen and maximize/restore are also available through Ctrl+Shift+P. Native Windows keeps native titlebar dragging and avoids WSLg's frameless maximize shadow offset. `npm run test:windows` tests Windows DPI-aware client bounds, restore, fullscreen, resize and real mouse dragging/double-click through the running host; it requires the dev Vite server. The optional WSLg path retains a pointer-driven drag fallback.

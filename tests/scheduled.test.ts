@@ -1,9 +1,10 @@
+import { createFixtureEngine } from "./fixtures";
 import { it, expect, vi, afterEach } from "vitest";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Engine } from "../backend/execution/engine";
+import type { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { Scheduler } from "../backend/scheduled/scheduler";
 import { GitHubMonitor } from "../backend/scheduled/github";
@@ -22,7 +23,7 @@ import {
 const resources: { dir: string; engine: Engine; scheduler: Scheduler }[] = [];
 const setup = async (realRunner = false) => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-manual-pr-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new PRFixtureProvider(),
   );
@@ -93,7 +94,7 @@ it("defaults to manual PR policy; startup, tracking, imports and timers do not i
       verify_codex: false,
     }),
   ).toThrow("explicit user action");
-  expect(() => scheduler.fix()).toThrow("isolated PR-repair");
+  expect(() => scheduler.fix()).toThrow("Use Solve Review");
   expect(sync).not.toHaveBeenCalled();
   expect(inspect).not.toHaveBeenCalled();
   expect(infer).not.toHaveBeenCalled();
@@ -493,7 +494,7 @@ it("interrupts an in-flight analysis on shutdown and does not replay it after re
     resources.findIndex((resource) => resource.engine === engine),
     1,
   );
-  const reopened = await Engine.create(
+  const reopened = await createFixtureEngine(
     join(dir, "data"),
     () => new PRFixtureProvider(),
   );

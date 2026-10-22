@@ -1,10 +1,40 @@
 import { homedir } from "node:os";
-import { realpath, stat, mkdir } from "node:fs/promises";
+import { realpath, stat, mkdir, lstat } from "node:fs/promises";
 import { isAbsolute, join, relative, dirname, sep, resolve } from "node:path";
 import { AdeError, slug, type WorkspaceAssignment } from "../domain";
 export const inside = (root: string, path: string) => {
   const r = relative(root, path);
   return r !== "" && !r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute(r);
+};
+// root is the canonical identity retained by createLayout, not a fresh trust boundary.
+export const managedPath = async (root: string, path: string) => {
+  const candidate = resolve(root, path);
+  if (!inside(root, candidate) || (await realpath(root)) !== root)
+    throw new AdeError(
+      "isolation",
+      "Managed storage root or path changed. Restore the original dedicated directory before retrying.",
+    );
+  let parent = root;
+  for (const part of relative(root, candidate).split(sep)) {
+    parent = join(parent, part);
+    try {
+      const entry = await lstat(parent);
+      if (entry.isSymbolicLink())
+        throw new AdeError(
+          "isolation",
+          `Managed storage path ${parent} is a symlink. Restore dedicated directories; Vibestar will not relocate or remove its target.`,
+        );
+      if (parent !== candidate && !entry.isDirectory())
+        throw new AdeError(
+          "isolation",
+          "A managed storage parent is not a directory.",
+        );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+      throw error;
+    }
+  }
+  return candidate;
 };
 export const worktreePath = (
   root: string,
@@ -22,7 +52,7 @@ export const worktreePath = (
     `${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`,
   );
 };
-export const safeFile = async (root: string, path: string) => {
+const validateFilePath = (path: string) => {
   if (
     !path ||
     isAbsolute(path) ||
@@ -31,6 +61,30 @@ export const safeFile = async (root: string, path: string) => {
     path.split("/").some((p) => !p || p === "." || p === ".." || p === ".git")
   )
     throw new AdeError("isolation", "Invalid relative file path");
+};
+export const workspaceEntry = async (root: string, path: string) => {
+  validateFilePath(path);
+  const canonicalRoot = await realpath(root);
+  const destination = join(canonicalRoot, path);
+  let current = canonicalRoot;
+  const parts = path.split("/");
+  for (const [index, part] of parts.entries()) {
+    current = join(current, part);
+    const metadata = await lstat(current).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (["ENOENT", "ENOTDIR"].includes(error.code || "")) return null;
+        throw error;
+      },
+    );
+    if (index === parts.length - 1) return { path: destination, metadata };
+    // Git can retain a deleted descendant after its parent becomes a file/link.
+    // It is absent from the working tree; never follow that parent into a target.
+    if (!metadata?.isDirectory()) return { path: destination, metadata: null };
+  }
+  throw new AdeError("isolation", "Invalid workspace entry");
+};
+export const safeFile = async (root: string, path: string) => {
+  validateFilePath(path);
   const canonicalRoot = await realpath(root);
   const file = join(canonicalRoot, path);
   let parent = file;
@@ -50,8 +104,10 @@ export const safeFile = async (root: string, path: string) => {
   return file;
 };
 export const taskRoot = async (root: string, task: WorkspaceAssignment) => {
-  const path = await realpath(task.worktree_path);
-  const allowed = await realpath(join(root, "worktrees", task.repo_id));
+  if (!/^[a-zA-Z0-9-]+$/.test(task.repo_id))
+    throw new AdeError("isolation", "Invalid repository ID");
+  const allowed = await managedPath(root, join("worktrees", task.repo_id));
+  const path = await realpath(await managedPath(root, task.worktree_path));
   if (!inside(allowed, path))
     throw new AdeError(
       "isolation",
@@ -104,8 +160,11 @@ export const createLayout = async (root: string) => {
     "cache",
     "runtime",
     "telemetry",
-  ])
-    await mkdir(join(root, d), { recursive: true, mode: 0o700 });
+  ]) {
+    const directory = await managedPath(root, d);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await managedPath(root, d);
+  }
   return root;
 };
 export const exists = async (path: string) =>

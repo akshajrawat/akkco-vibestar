@@ -1,6 +1,9 @@
 import { z } from "zod";
-import type { Settings } from "../../domain";
-import type { PullRequestState } from "../../scheduled/contracts";
+import { StageConfigSchema, type Settings } from "../../domain";
+import {
+  PullRequestStateSchema,
+  type PullRequestState,
+} from "../../scheduled/contracts";
 
 export const ReviewAnalysisSchema = z
   .object({
@@ -95,3 +98,38 @@ export interface PRAnalysisSession {
     warnings: string[];
   };
 }
+
+export const PRAnalysisSessionSchema = z
+  .object({
+    id: z.string(),
+    job_id: z.string(),
+    status: z.enum([
+      "running",
+      "completed",
+      "partial",
+      "failed",
+      "cancelled",
+      "interrupted",
+    ]),
+    started_at: z.string().optional(),
+    ended_at: z.string().nullable().optional(),
+    phase: z.string().optional(),
+    configuration: StageConfigSchema.extend({
+      provider: z.enum(["codex", "antigravity"]),
+    }).optional(),
+    snapshot: PullRequestStateSchema.optional(),
+    method: z.enum(["deterministic", "utility_ai", "reused"]).optional(),
+    changes: z.array(z.string()).optional(),
+    error: z.string().optional(),
+    report: z
+      .object({
+        summary: z.string(),
+        actions: z.array(ReviewActionSchema),
+        coverage: ReviewAnalysisSchema.shape.coverage,
+        complete: z.boolean(),
+        warnings: z.array(z.string()),
+      })
+      .optional(),
+  })
+  .loose()
+  .transform((value) => value as PRAnalysisSession);

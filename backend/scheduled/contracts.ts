@@ -98,6 +98,156 @@ export interface PullRequestState {
     id?: string;
   }[];
 }
+export const PullRequestStateSchema = z
+  .object({
+    fetchedAt: z.string().optional(),
+    identity: z
+      .object({
+        prId: z.string(),
+        headRepository: z.string().nullable(),
+        headRepositoryId: z.string().nullable(),
+        headBranch: z.string(),
+        baseRepository: z.string(),
+        baseRepositoryId: z.string(),
+        baseBranch: z.string(),
+      })
+      .strict()
+      .optional(),
+    coverage: z
+      .object({
+        complete: z.boolean(),
+        missing: z.array(z.string()),
+        warnings: z.array(z.string()),
+      })
+      .strict()
+      .optional(),
+    title: z.string(),
+    body: z.string(),
+    state: z.string(),
+    mergeable: z.string(),
+    reviewDecision: z.string(),
+    headRefOid: z.string(),
+    baseRefOid: z.string().optional(),
+    author: z.string().optional(),
+    authenticatedUser: z.string().optional(),
+    comments: z.array(
+      z
+        .object({
+          id: z.string(),
+          body: z.string(),
+          updated_at: z.string(),
+          author: z.string().optional(),
+        })
+        .strict(),
+    ),
+    reviews: z.array(
+      z
+        .object({
+          id: z.string(),
+          body: z.string(),
+          state: z.string(),
+          submitted_at: z.string(),
+          author: z.string().optional(),
+        })
+        .strict(),
+    ),
+    checks: z.array(
+      z
+        .object({
+          name: z.string(),
+          state: z.string(),
+          url: z.string(),
+          completedAt: z.string().optional(),
+          startedAt: z.string().optional(),
+          id: z.string().optional(),
+        })
+        .strict(),
+    ),
+    files: z
+      .array(
+        z
+          .object({
+            path: z.string(),
+            previousPath: z.string().nullable(),
+            status: z.string(),
+            patch: z.string().nullable(),
+          })
+          .strict(),
+      )
+      .optional(),
+    commits: z
+      .array(
+        z
+          .object({
+            sha: z.string(),
+            author: z.string().nullable(),
+            message: z.string(),
+            date: z.string(),
+            url: z.string(),
+          })
+          .strict(),
+      )
+      .optional(),
+    linkedIssues: z.array(z.record(z.string(), z.unknown())).optional(),
+    threads: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            resolved: z.boolean(),
+            path: z.string(),
+            body: z.string(),
+            commentIds: z.array(z.string()).optional(),
+            comments: z
+              .array(z.object({ id: z.string(), body: z.string() }).strict())
+              .optional(),
+            outdated: z.boolean().optional(),
+            line: z.number().nullable().optional(),
+            startLine: z.number().nullable().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    discussion: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            type: z.enum([
+              "issue_comment",
+              "review_comment",
+              "review",
+              "thread",
+            ]),
+            author: z.string(),
+            body: z.string(),
+            createdAt: z.string(),
+            updatedAt: z.string(),
+            path: z.string().optional(),
+            line: z.number().optional(),
+            reviewState: z.string().optional(),
+            reviewId: z.string().optional(),
+            resolved: z.boolean().optional(),
+            threadId: z.string().optional(),
+            authorAssociation: z.string().optional(),
+            bot: z.boolean().optional(),
+            url: z.string().optional(),
+            authorId: z.string().optional(),
+            inReplyToId: z.string().optional(),
+            commitId: z.string().optional(),
+            originalCommitId: z.string().optional(),
+            startLine: z.number().optional(),
+            originalLine: z.number().optional(),
+            originalStartLine: z.number().optional(),
+            side: z.string().optional(),
+            diffHunk: z.string().optional(),
+            outdated: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
 export interface DiscussionEntry {
   id: string;
   type: "issue_comment" | "review_comment" | "review" | "thread";

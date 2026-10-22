@@ -1,9 +1,9 @@
+import { createFixtureEngine } from "../fixtures";
 import { expect, it } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { Engine } from "../../backend/execution/engine";
 import { capture, checked } from "../../backend/execution/process";
 import { RepairWorkspaces } from "../../backend/review/repair/workspace";
 import { repairFixture } from "./fixtures";
@@ -15,7 +15,7 @@ it.each([true, false])(
   "prepares a manual PR in an isolated %s imported checkout without touching source or remotes",
   async (imported) => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-workspace-"));
-    const engine = await Engine.create(join(dir, "ade"));
+    const engine = await createFixtureEngine(join(dir, "ade"));
     try {
       const fixture = await repairFixture(engine, dir, {
         imported,
@@ -128,7 +128,7 @@ it.each([true, false])(
 
 it("preserves conflicted index stages and explicitly recovers a resolved merge", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-conflict-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   try {
     const { repo, session, checkpoint, upstream, fork } = await repairFixture(
       engine,
@@ -184,7 +184,7 @@ it("preserves conflicted index stages and explicitly recovers a resolved merge",
 
 it("rejects changed PR head and serializes registrations sharing Git metadata", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-shared-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   try {
     const { repo, session, checkpoint, upstream, fork, seed } =
       await repairFixture(engine, dir);
@@ -264,7 +264,7 @@ it("rejects changed PR head and serializes registrations sharing Git metadata", 
 
 it("integrates the actual PR base ref even when the selected repository has a different default", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-base-ref-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   try {
     const { session, repo, checkpoint, upstream, fork, base } =
       await repairFixture(engine, dir, {
@@ -297,7 +297,7 @@ it("integrates the actual PR base ref even when the selected repository has a di
 
 it("recovers a crash between exact-head worktree creation and its ownership checkpoint", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-create-checkpoint-"));
-  let engine = await Engine.create(join(dir, "ade"));
+  let engine = await createFixtureEngine(join(dir, "ade"));
   try {
     const { session, repo, checkpoint, upstream, fork, head } =
       await repairFixture(engine, dir);
@@ -321,7 +321,7 @@ it("recovers a crash between exact-head worktree creation and its ownership chec
       repo.path,
     );
     await engine.close();
-    engine = await Engine.create(join(dir, "ade"));
+    engine = await createFixtureEngine(join(dir, "ade"));
     const workspace = new RepairWorkspaces(
       engine.root,
       engine.git,
@@ -349,7 +349,7 @@ it("recovers a crash between exact-head worktree creation and its ownership chec
 
 it("preserves ignored local files that an upstream merge would overwrite", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-ignored-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   try {
     const { session, repo, checkpoint, upstream, fork, seed, source, head } =
       await repairFixture(engine, dir);

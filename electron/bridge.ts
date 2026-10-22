@@ -12,6 +12,7 @@ export class CoreBridge extends EventEmitter {
   private approvalsAvailable = false;
   private manualPrAvailable = false;
   private repairAvailable = false;
+  private issueWatchAvailable = false;
   private stopping = false;
   private pending = new Map<
     string,
@@ -31,6 +32,7 @@ export class CoreBridge extends EventEmitter {
     this.stopping = false;
     this.manualPrAvailable = false;
     this.repairAvailable = false;
+    this.issueWatchAvailable = false;
     this.approvalsAvailable = false;
     this.checking = this.launch().catch((error) => {
       this.warning = String(error);
@@ -108,12 +110,16 @@ export class CoreBridge extends EventEmitter {
         pipeline_approvals?: boolean;
         manual_pr_analysis?: boolean;
         pr_repair?: boolean;
+        manual_issue_watch?: boolean;
+        issue_watch_contract?: number;
       }>("core.info", {}, 15000),
     ])
       .then(([bundle, info]) => {
         this.approvalsAvailable = info.pipeline_approvals === true;
         this.manualPrAvailable = info.manual_pr_analysis === true;
         this.repairAvailable = info.pr_repair === true;
+        this.issueWatchAvailable =
+          info.manual_issue_watch === true && info.issue_watch_contract === 1;
         this.warning = !this.approvalsAvailable
           ? "The running core cannot enforce plan review approvals. Restart the current dev build, or update the WSL helper in Settings → Execution. Task execution is blocked until updated."
           : !this.manualPrAvailable
@@ -136,6 +142,10 @@ export class CoreBridge extends EventEmitter {
   };
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (!this.issueWatchAvailable && method.startsWith("issueWatch."))
+      throw new Error(
+        "Update the execution helper before using manual Issue Watch.",
+      );
     if (
       !this.repairAvailable &&
       method.startsWith("repair.") &&
@@ -183,6 +193,15 @@ export class CoreBridge extends EventEmitter {
       );
     try {
       const result = await this.sendRequest<T>(method, params);
+      if (method === "snapshot" && result && typeof result === "object")
+        return {
+          ...result,
+          capabilities: {
+            manual_issue_watch: this.issueWatchAvailable,
+            issue_watch_contract: this.issueWatchAvailable ? 1 : null,
+          },
+          ...(this.warning ? { warning: this.warning } : {}),
+        };
       if (
         this.warning &&
         ["snapshot", "usage.info"].includes(method) &&

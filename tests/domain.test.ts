@@ -310,6 +310,9 @@ describe("domain and persistence", () => {
         { version: 18 },
         { version: 19 },
         { version: 20 },
+        { version: 21 },
+        { version: 22 },
+        { version: 23 },
       ]);
       db.close();
       const reopened = new Database(path);

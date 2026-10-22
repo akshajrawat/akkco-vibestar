@@ -1,10 +1,10 @@
+import { createFixtureEngine } from "./fixtures";
 import { it, expect } from "vitest";
 import { _electron } from "playwright-core";
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { checked } from "../backend/execution/process";
 import type { Snapshot } from "../src/lib/types";
 const require = createRequire(import.meta.url);
@@ -25,7 +25,7 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
     };
     const dir = await mkdtemp(join(tmpdir(), "vibestar-desktop-repositories-"));
     const root = join(dir, "data");
-    const engine = await Engine.create(root);
+    const engine = await createFixtureEngine(root);
     engine.db.run(
       "INSERT INTO settings VALUES('github_watch',?)",
       JSON.stringify({

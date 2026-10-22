@@ -1,9 +1,18 @@
 import { migrations } from "./migrations";
-import { CommandExecutions } from "../execution/command-executions";
+import {
+  CommandExecutions,
+  CommandEvidenceSchema,
+} from "../execution/command-executions";
 import type { NormalizedEvent } from "../domain";
 import BetterSqlite3 from "better-sqlite3";
+import { randomUUID } from "node:crypto";
+import { chmod } from "node:fs/promises";
+import { exists } from "../workspace/paths";
+import { PersistedRecords } from "./records";
+import { TaskRecordSchema, RepositoryRecordSchema } from "./contracts";
 import {
   defaultSettings,
+  AdeError,
   SettingsSchema,
   now,
   type Repository,
@@ -13,65 +22,114 @@ import {
 
 export class Database {
   private readonly connection: BetterSqlite3.Database;
+  readonly records = new PersistedRecords(this);
+  static open = async (path: string) => {
+    if (path !== ":memory:" && (await exists(path))) {
+      const source = new BetterSqlite3(path, {
+        readonly: true,
+        fileMustExist: true,
+      });
+      try {
+        const table = source
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
+          )
+          .get();
+        const version = table
+          ? (
+              source
+                .prepare("SELECT max(version) version FROM schema_migrations")
+                .get() as { version: number | null }
+            ).version || 0
+          : 0;
+        if (version < migrations.at(-1)!.version) {
+          const backup = `${path}.before-v${version}-${randomUUID()}.sqlite`;
+          await source.backup(backup);
+          await chmod(backup, 0o600);
+        }
+      } finally {
+        source.close();
+      }
+    }
+    return new Database(path);
+  };
   constructor(path: string) {
     this.connection = new BetterSqlite3(path);
-    this.connection.pragma("journal_mode = WAL");
-    this.connection.pragma("foreign_keys = ON");
-    this.connection.pragma("busy_timeout = 5000");
-    this.connection.exec(
-      "CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT NOT NULL)",
-    );
-    for (const migration of migrations) {
-      if (
-        !this.connection
-          .prepare("SELECT version FROM schema_migrations WHERE version=?")
-          .get(migration.version)
-      ) {
-        const rebuild =
-          "foreign_keys_off" in migration && migration.foreign_keys_off;
-        if (rebuild) this.connection.pragma("foreign_keys = OFF");
-        try {
-          this.connection.transaction(() => {
-            this.connection.exec(migration.sql);
-            this.run(
-              "INSERT OR IGNORE INTO schema_migrations VALUES(?,?)",
-              migration.version,
-              now(),
-            );
-            if (migration.version === 16) {
-              const commands = new CommandExecutions(this);
-              for (const event of this.all<{
-                task_id: string;
-                run_id: string;
-                kind: NormalizedEvent["kind"];
-                data: string;
-                timestamp: string;
-              }>(
-                "SELECT task_id,run_id,kind,data,timestamp FROM agent_events WHERE kind LIKE 'command.%' ORDER BY id",
-              ))
-                commands.observe(
-                  event.task_id,
-                  event.run_id,
-                  {
-                    kind: event.kind,
-                    data: JSON.parse(event.data),
-                  },
-                  event.timestamp,
-                );
-              for (const run of this.all<{ id: string; ended_at: string }>(
-                "SELECT id,ended_at FROM agent_runs WHERE status!='running'",
-              ))
-                commands.finish(run.id, run.ended_at || now());
-            }
-            if (rebuild && this.all("PRAGMA foreign_key_check").length)
-              throw new Error(
-                "Repository migration failed foreign key verification",
+    try {
+      this.connection.pragma("journal_mode = WAL");
+      this.connection.pragma("foreign_keys = ON");
+      this.connection.pragma("busy_timeout = 5000");
+      this.connection.exec(
+        "CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT NOT NULL)",
+      );
+      for (const migration of migrations) {
+        if (
+          !this.connection
+            .prepare("SELECT version FROM schema_migrations WHERE version=?")
+            .get(migration.version)
+        ) {
+          const rebuild =
+            "foreign_keys_off" in migration && migration.foreign_keys_off;
+          if (rebuild) this.connection.pragma("foreign_keys = OFF");
+          try {
+            this.connection.transaction(() => {
+              this.connection.exec(migration.sql);
+              this.run(
+                "INSERT OR IGNORE INTO schema_migrations VALUES(?,?)",
+                migration.version,
+                now(),
               );
-          })();
-        } finally {
-          if (rebuild) this.connection.pragma("foreign_keys = ON");
+              if (migration.version === 16) {
+                const commands = new CommandExecutions(this);
+                for (const event of this.all<{
+                  task_id: string;
+                  run_id: string;
+                  kind: NormalizedEvent["kind"];
+                  data: string;
+                  id: number;
+                  timestamp: string;
+                }>(
+                  "SELECT id,task_id,run_id,kind,data,timestamp FROM agent_events WHERE kind LIKE 'command.%' ORDER BY id",
+                )) {
+                  const data = this.records.tryDecode(
+                    {
+                      table: "agent_events",
+                      id: event.id,
+                      column: "data",
+                      source: event.data,
+                    },
+                    CommandEvidenceSchema.parse,
+                  );
+                  if (!data) continue;
+                  commands.observe(
+                    event.task_id,
+                    event.run_id,
+                    {
+                      kind: event.kind,
+                      data,
+                    },
+                    event.timestamp,
+                  );
+                }
+                for (const run of this.all<{ id: string; ended_at: string }>(
+                  "SELECT id,ended_at FROM agent_runs WHERE status!='running'",
+                ))
+                  commands.finish(run.id, run.ended_at || now());
+              }
+              if (this.all("PRAGMA foreign_key_check").length)
+                throw new Error(
+                  "Repository migration failed foreign key verification",
+                );
+            })();
+          } finally {
+            if (rebuild) this.connection.pragma("foreign_keys = ON");
+          }
         }
       }
+      this.records.initialize();
+    } catch (error) {
+      this.connection.close();
+      throw error;
     }
   }
   run = (sql: string, ...params: unknown[]) =>
@@ -84,13 +142,30 @@ export class Database {
     ...params: unknown[]
   ) => this.connection.prepare(sql).all(...params) as T[];
   repositories = () =>
-    this.all<{ data: string }>(
-      "SELECT data FROM repositories ORDER BY owner,name",
-    ).map((r) => JSON.parse(r.data) as Repository);
+    this.records.list<Repository>(
+      "repositories",
+      this.all<{ id: string; data: string }>(
+        "SELECT id,data FROM repositories ORDER BY owner,name",
+      ),
+      RepositoryRecordSchema.parse,
+      "id",
+    );
   repository = (id: string) => {
-    const r = this.repositories().find((r) => r.id === id);
-    if (!r) throw new Error("Repository is not registered");
-    return r;
+    const row = this.all<{ data: string }>(
+      "SELECT data FROM repositories WHERE id=?",
+      id,
+    )[0];
+    if (!row) throw new Error("Repository is not registered");
+    return this.records.decode<Repository>(
+      {
+        table: "repositories",
+        id,
+        column: "data",
+        source: row.data,
+        identity: "id",
+      },
+      RepositoryRecordSchema.parse,
+    );
   };
   saveRepository = (r: Repository) =>
     this.run(
@@ -101,13 +176,41 @@ export class Database {
       JSON.stringify(r),
     );
   tasks = () =>
-    this.all<{ data: string }>(
-      "SELECT data FROM tasks ORDER BY created_at DESC",
-    ).map((r) => JSON.parse(r.data) as Task);
+    this.records.list<Task>(
+      "tasks",
+      this.all<{ id: string; data: string }>(
+        "SELECT id,data FROM tasks ORDER BY created_at DESC",
+      ),
+      TaskRecordSchema.parse,
+      "id",
+    );
   task = (id: string) => {
-    const t = this.tasks().find((t) => t.id === id);
-    if (!t) throw new Error("Task not found");
-    return t;
+    const row = this.all<{ data: string }>(
+      "SELECT data FROM tasks WHERE id=?",
+      id,
+    )[0];
+    if (!row) throw new Error("Task not found");
+    return this.records.decode<Task>(
+      {
+        table: "tasks",
+        id,
+        column: "data",
+        source: row.data,
+        identity: "id",
+      },
+      TaskRecordSchema.parse,
+    );
+  };
+  assertOwnershipRecords = () => {
+    if (
+      this.tasks().length !== this.all("SELECT id FROM tasks").length ||
+      this.repositories().length !==
+        this.all("SELECT id FROM repositories").length
+    )
+      throw new AdeError(
+        "corrupt_record",
+        "Saved workspace ownership records are corrupt. Preserve the data root and inspect persistence diagnostics before cleanup or migration.",
+      );
   };
   saveTask = (t: Task) =>
     this.run(
@@ -125,8 +228,25 @@ export class Database {
       "SELECT value FROM settings WHERE key='pipeline'",
     )[0];
     return row
-      ? SettingsSchema.parse(JSON.parse(row.value))
+      ? this.records.decode(
+          {
+            table: "settings",
+            id: "pipeline",
+            column: "value",
+            source: row.value,
+          },
+          SettingsSchema.parse,
+        )
       : structuredClone(defaultSettings);
+  };
+  displaySettings = () => {
+    try {
+      return this.settings();
+    } catch (error) {
+      if (error instanceof AdeError && error.kind === "corrupt_record")
+        return structuredClone(defaultSettings);
+      throw error;
+    }
   };
   saveSettings = (s: Settings) =>
     this.run(
@@ -134,18 +254,23 @@ export class Database {
       JSON.stringify(SettingsSchema.parse(s)),
     );
   artifact = (taskId: string, stage: number) => {
-    const row = this.all<{ content: string }>(
-      "SELECT content FROM task_artifacts WHERE task_id=? AND stage=? AND kind='plan' ORDER BY created_at DESC,rowid DESC LIMIT 1",
+    const row = this.all<{ id: string; content: string }>(
+      "SELECT id,content FROM task_artifacts WHERE task_id=? AND stage=? AND kind='plan' ORDER BY created_at DESC,rowid DESC LIMIT 1",
       taskId,
       stage,
     )[0];
     if (!row) throw new Error(`No successful saved result for stage ${stage}`);
-    return JSON.parse(row.content) as Record<string, unknown>;
+    return this.records.decode({
+      table: "task_artifacts",
+      id: row.id,
+      column: "content",
+      source: row.content,
+    });
   };
   recover = () => {
     this.connection.transaction(() => {
       this.run(
-        "UPDATE pr_analyses SET status='interrupted',ended_at=?,data=json_set(data,'$.phase','Analysis interrupted — explicit retry required','$.error','The core restarted during PR analysis. Previous reports are preserved; Analyze Again explicitly.') WHERE status='running'",
+        "UPDATE pr_analyses SET status='interrupted',ended_at=?,data=CASE WHEN json_valid(data) THEN json_set(data,'$.phase','Analysis interrupted — explicit retry required','$.error','The core restarted during PR analysis. Previous reports are preserved; Analyze Again explicitly.') ELSE data END WHERE status='running'",
         now(),
       );
       this.run(
@@ -229,5 +354,7 @@ export class Database {
       id,
     ),
   });
-  close = () => this.connection.close();
+  close = () => {
+    if (this.connection.open) this.connection.close();
+  };
 }

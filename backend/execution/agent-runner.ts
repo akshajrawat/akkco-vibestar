@@ -17,10 +17,12 @@ import {
   type CoreEvent,
   type StageConfig,
   type WorkspaceAssignment,
+  type NormalizedEvent,
 } from "../domain";
 import type { Database } from "../storage/database";
 import type { GitWorkspace } from "../workspace/git";
 import { execute, redact } from "./process";
+import { BoundedWriter } from "./bounded-output";
 import { buildPrompt } from "./prompt";
 import {
   schemaFor,
@@ -53,6 +55,8 @@ export class AgentRunner {
       schema?: z.ZodType;
       jobId?: string;
       analysisId?: string;
+      watchId?: string;
+      scanId?: string;
       telemetryTaskId?: string;
       telemetryRepository?: string;
       questionId?: string;
@@ -95,6 +99,22 @@ export class AgentRunner {
           ? settings.codex_plan
           : settings.codex_implementation);
     const id = randomUUID();
+    if (options?.scanId || options?.watchId) {
+      if (
+        table !== "utility_runs" ||
+        !options.scanId ||
+        !options.watchId ||
+        !this.db.all(
+          "SELECT id FROM issue_watch_scans WHERE id=? AND watch_id=? AND status='running' AND semantic_attempts=1 AND utility_run_id IS NULL",
+          options.scanId,
+          options.watchId,
+        ).length
+      )
+        throw new AdeError(
+          "isolation",
+          "Issue Watch utility execution needs its one reserved, unconsumed scan invocation slot.",
+        );
+    }
     const started = Date.now();
     const prompt = options?.prompt ?? buildPrompt(this.db, task!);
     const usage = new Usage(this.db);
@@ -153,6 +173,51 @@ export class AgentRunner {
       now(),
       purpose,
     );
+    if (options?.scanId)
+      this.db.transaction(() => {
+        this.db.run(
+          "UPDATE utility_runs SET watch_id=?,scan_id=? WHERE id=?",
+          options.watchId!,
+          options.scanId!,
+          id,
+        );
+        this.db.run(
+          "UPDATE ai_usage SET watch_id=?,scan_id=? WHERE id=?",
+          options.watchId!,
+          options.scanId!,
+          id,
+        );
+        this.db.run(
+          "UPDATE issue_watch_scans SET utility_run_id=?,data=json_set(data,'$.utility_run_id',?) WHERE id=? AND watch_id=?",
+          id,
+          id,
+          options.scanId!,
+          options.watchId!,
+        );
+      });
+    const utilityEvent = (
+      event: NormalizedEvent,
+      raw = "",
+      stream = "stdout",
+    ) => {
+      if (!options?.scanId) return;
+      this.db.run(
+        "INSERT INTO utility_events(run_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,?,?,?)",
+        id,
+        now(),
+        event.kind,
+        JSON.stringify(event.data ?? null),
+        raw,
+        stream,
+      );
+      this.emit({
+        event: "utility.event",
+        watch_id: options.watchId,
+        scan_id: options.scanId,
+        run_id: id,
+        ...event,
+      });
+    };
     if (options?.analysisId && table === "scheduled_agent_runs") {
       this.db.run(
         "UPDATE scheduled_agent_runs SET analysis_id=? WHERE id=?",
@@ -185,11 +250,25 @@ export class AgentRunner {
         id,
         task.id,
       );
-    const dir = join(this.root, "logs", assignment ? t.id : `pr-watch-${t.id}`);
+    const dir = join(
+      this.root,
+      "logs",
+      assignment
+        ? t.id
+        : options?.scanId
+          ? `issue-watch-${options.scanId}`
+          : `pr-watch-${t.id}`,
+    );
     let cwd = "";
     let stdout: Awaited<ReturnType<typeof open>> | undefined;
     let stderr: Awaited<ReturnType<typeof open>> | undefined;
-    let writes = Promise.resolve();
+    const outputAbort = new AbortController();
+    const runSignal = AbortSignal.any([signal, outputAbort.signal]);
+    let outputFailure: Error | undefined;
+    const writes = new BoundedWriter((error) => {
+      outputFailure = error;
+      outputAbort.abort();
+    });
     const draft = new StreamedPlan(t.stage);
     const commands = new CommandExecutions(this.db);
     let savedDraft = "";
@@ -264,7 +343,12 @@ export class AgentRunner {
         directInvocation,
         t.stage !== 3,
         schemaPath,
-        provider.name === "antigravity" ? "antigravity" : "codex",
+        (detection.provider === "codex" &&
+          directInvocation.program === "codex") ||
+          (detection.provider === "antigravity" &&
+            directInvocation.program === "agy")
+          ? detection.provider
+          : undefined,
         options?.workspace,
         options?.contextPaths,
       );
@@ -276,7 +360,7 @@ export class AgentRunner {
       const output = await execute({
         ...invocation,
         cwd,
-        signal,
+        signal: runSignal,
         timeoutMs: config.timeout_secs * 1000,
         onSpawn: (pid, identity) => {
           this.db.run(
@@ -287,9 +371,9 @@ export class AgentRunner {
           );
         },
         onLine: (stream, line) => {
-          writes = writes.then(async () => {
-            await (stream === "stdout" ? stdout : stderr)!.write(`${line}\n`);
-          });
+          writes.write(`${line}\n`, (value) =>
+            (stream === "stdout" ? stdout : stderr)!.write(value),
+          );
           let raw: Record<string, unknown>;
           try {
             raw = object(JSON.parse(line));
@@ -379,7 +463,10 @@ export class AgentRunner {
                 );
               }
             }
-            if (!assignment) continue;
+            if (!assignment) {
+              utilityEvent(event, line, stream);
+              continue;
+            }
             commands.observe(
               task?.id || null,
               id,
@@ -408,6 +495,8 @@ export class AgentRunner {
           }
         },
       });
+      await writes.drain();
+      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
       code = output.code;
       if (code !== 0 || failure)
         throw new AdeError(
@@ -432,6 +521,7 @@ export class AgentRunner {
           "planning_violation",
           "A read-only planning or review run modified the worktree. Pipeline stopped. Review the changes before retrying.",
         );
+      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
       if (task && t.stage === 3) {
         const implementation = object(result);
         for (const [field, status] of [
@@ -460,7 +550,8 @@ export class AgentRunner {
           }
         }
       }
-      await writes;
+      await writes.drain();
+      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
       this.db.run(
         `UPDATE ${table} SET status='completed',ended_at=?,exit_code=?,output=? WHERE id=?`,
         now(),
@@ -479,7 +570,12 @@ export class AgentRunner {
           now(),
         );
       return result;
-    } catch (e) {
+    } catch (error) {
+      utilityEvent({
+        kind: signal.aborted ? "run.cancelled" : "run.failed",
+        data: { message: redact(String(error)) },
+      });
+      const e = outputFailure || error;
       const status = signal.aborted ? "cancelled" : "failed";
       usage.finish(
         id,
@@ -508,15 +604,17 @@ export class AgentRunner {
     } finally {
       commands.finish(id);
       try {
-        await writes;
+        await writes.drain().catch(() => {});
       } finally {
         await stdout?.close();
         await stderr?.close();
         await unlink(schemaPath).catch(() => {});
         // Discovery reads official allowance only; it never starts a model turn.
-        // A fresh signal permits an after-snapshot even when the run was cancelled.
-        if (invoked && officialCodex) {
-          const after = await discoverCodexModels(this.root).catch(() => null);
+        if (invoked && officialCodex && !signal.aborted) {
+          const after = await discoverCodexModels(
+            this.root,
+            AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+          ).catch(() => null);
           usage.recordLimits(id, after?.subscriptionLimits, true);
         }
         this.emit({

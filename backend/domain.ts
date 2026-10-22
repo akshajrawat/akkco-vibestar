@@ -8,6 +8,7 @@ export interface ActivityBlocker {
     | "github_sync"
     | "repository_scan"
     | "repository"
+    | "issue_watch"
     | "maintenance";
   label: string;
   task_id?: string;
@@ -43,6 +44,10 @@ export const StageConfigSchema = z.object({
     .regex(/^[^\x00-\x1f]*$/),
   effort: z.string().min(1).max(30),
   timeout_secs: z.number().int().min(10).max(86400),
+});
+export const FollowupConfigSchema = z.object({
+  provider: z.enum(["codex", "antigravity"]),
+  config: StageConfigSchema,
 });
 export const SettingsSchema = z
   .object({
@@ -198,6 +203,18 @@ export interface Task {
   execution_settings?: Settings;
   branch_name: string;
   branch_owned?: boolean;
+  workspace_checkpoint?: {
+    state: "fetching" | "creating" | "ready" | "removing" | "removed";
+    git_common_dir: string;
+    started_at: string;
+    cleanup_head?: string;
+    operation?: {
+      kind: string;
+      pid: number;
+      identity: string;
+      started_at: string;
+    } | null;
+  };
   base_branch: string;
   base_commit_sha: string;
   worktree_path: string;
@@ -221,6 +238,8 @@ export interface CoreEvent {
   event: string;
   task_id?: string;
   repair_id?: string;
+  watch_id?: string;
+  scan_id?: string;
   run_id?: string;
   kind?: string;
   data?: unknown;

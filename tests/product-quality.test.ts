@@ -2,9 +2,9 @@ import { it, expect, vi } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { defaultSettings, parseIssue, now } from "../backend/domain";
 import {
+  createFixtureEngine,
   FixtureProvider,
   fixtureRepository,
   finishFixtureTask as waitForTask,
@@ -31,12 +31,12 @@ vi.mock("../backend/execution/providers/codex-models", () => ({
   })),
 }));
 
-it("records successful, failed and cancelled provider invocations, including after snapshots on cancellation", async () => {
+it("records successful, failed and cancelled provider invocations without starting allowance discovery after cancellation", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-usage-lifecycle-"));
   let mode = "success";
   let providerName = "antigravity";
   const fixture = new FixtureProvider();
-  const engine = await Engine.create(join(dir, "data"), () => ({
+  const engine = await createFixtureEngine(join(dir, "data"), () => ({
     ...fixture,
     name: providerName,
     detect: async () => ({
@@ -132,15 +132,21 @@ it("records successful, failed and cancelled provider invocations, including aft
     ).toBe(true);
     expect(
       rows
-        .filter((r) => r.provider === "codex")
+        .filter((r) => r.provider === "codex" && r.status !== "cancelled")
         .every((r) =>
           r.subscription_limits_after?.includes('"usedPercent":37'),
         ),
     ).toBe(true);
     expect(
-      limitDeltas(rows.find((r) => r.provider === "codex")!)[0].delta,
+      rows.find((r) => r.provider === "codex" && r.status === "cancelled")
+        ?.subscription_limits_after,
+    ).toBeNull();
+    expect(
+      limitDeltas(
+        rows.find((r) => r.provider === "codex" && r.status === "completed")!,
+      )[0].delta,
     ).toBe(6);
-    expect(discoverCodexModels).toHaveBeenCalled();
+    expect(discoverCodexModels).toHaveBeenCalledTimes(2);
     expect(engine.cleanupBlockers()).toHaveLength(0);
   } finally {
     await engine.close();
@@ -232,7 +238,7 @@ it("persists content-bound reviewed state, invalidates modified files and links 
   const fixture = new FixtureProvider();
   const requests: Parameters<FixtureProvider["invocation"]>[0][] = [];
   let fail = false;
-  const engine = await Engine.create(join(dir, "data"), () => ({
+  const engine = await createFixtureEngine(join(dir, "data"), () => ({
     ...fixture,
     invocation: (request) => {
       if (
@@ -386,7 +392,7 @@ it("persists content-bound reviewed state, invalidates modified files and links 
   } finally {
     await engine.close();
   }
-  const reopened = await Engine.create(root);
+  const reopened = await createFixtureEngine(root);
   try {
     expect(new ReviewService(reopened).questions(taskId)).toHaveLength(3);
     expect(new Usage(reopened.db).list(taskId)).toHaveLength(7);
@@ -442,7 +448,7 @@ lines.on('close',()=>process.exit(0));
 
 it("discovers editor CLIs and opens task worktrees separately from source checkouts", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-editor-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new FixtureProvider(),
   );
@@ -498,7 +504,7 @@ it("discovers editor CLIs and opens task worktrees separately from source checko
 
 it("uses fork parent/base for managed clones, publishes progress and cleans cancelled owned clones", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-clone-"));
-  const engine = await Engine.create(join(dir, "data"));
+  const engine = await createFixtureEngine(join(dir, "data"));
   const rpc = new Rpc(engine);
   try {
     const { upstream } = await fixtureRepository(engine, dir);

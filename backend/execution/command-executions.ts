@@ -2,7 +2,18 @@ import { randomUUID } from "node:crypto";
 import type { Database } from "../storage/database";
 import type { NormalizedEvent } from "../domain";
 import { now } from "../domain";
-import { object } from "./providers/contracts";
+import { z } from "zod";
+export const CommandEvidenceSchema = z
+  .object({
+    call_id: z.union([z.string(), z.number().finite()]).nullable().optional(),
+    command: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    stdout: z.string().nullable().optional(),
+    stderr: z.string().nullable().optional(),
+    exit_code: z.number().int().nullable().optional(),
+    duration_ms: z.number().nonnegative().nullable().optional(),
+  })
+  .loose();
 
 // Providers report cumulative output snapshots. Keep each call independent of
 // the bounded chat event window, without inventing successful exit codes.
@@ -16,7 +27,7 @@ export class CommandExecutions {
     repairId: string | null = null,
   ) => {
     if (!event.kind.startsWith("command.")) return;
-    const data = object(event.data);
+    const data = CommandEvidenceSchema.parse(event.data);
     if (data.call_id === undefined || data.call_id === null) return;
     const callId = String(data.call_id);
     const row = this.db.all<{

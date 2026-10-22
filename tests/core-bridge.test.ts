@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreBridge } from "../electron/bridge";
 
-const helper = (manual = true) => `
+const helper = (manual = true, watch = false) => `
 const {createInterface}=require('node:readline');
 const {createHash}=require('node:crypto');
 const {readFile}=require('node:fs/promises');
@@ -13,7 +13,7 @@ const build=createHash('sha256').update(bytes).digest('hex');
 const lines=createInterface({input:process.stdin});
 lines.on('line',line=>{
 const request=JSON.parse(line);
-const result=request.method==='core.info'?{build,pipeline_approvals:true,manual_pr_analysis:${manual}}:{accepted:request.method};
+const result=request.method==='core.info'?{build,pipeline_approvals:true,manual_pr_analysis:${manual},manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
 process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
 });
 lines.on('close',()=>process.exit(0));
@@ -40,6 +40,9 @@ it.skipIf(process.platform === "win32")(
       await expect(bridge.request("task.create")).resolves.toEqual({
         accepted: "task.create",
       });
+      await expect(bridge.request("issueWatch.scan")).rejects.toThrow(
+        "manual Issue Watch",
+      );
     } finally {
       await bridge.stop();
       await rm(dir, { recursive: true, force: true });
@@ -109,6 +112,10 @@ child.on('exit',code=>process.exit(code||0));
           } else {
             await expect(bridge.request("snapshot")).resolves.toEqual({
               accepted: "snapshot",
+              capabilities: {
+                manual_issue_watch: false,
+                issue_watch_contract: null,
+              },
             });
           }
         } finally {
@@ -122,4 +129,29 @@ child.on('exit',code=>process.exit(code||0));
     }
   },
   30000,
+);
+
+it.skipIf(process.platform === "win32")(
+  "negotiates Issue Watch separately without starting any scan",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-issue-watch-"));
+    await writeFile(join(dir, "core.cjs"), helper(true, true));
+    const bridge = new CoreBridge(dir, {
+      distro: "",
+      data_home: dir,
+      helper_path: "",
+    });
+    try {
+      bridge.start();
+      await expect(bridge.request("snapshot")).resolves.toMatchObject({
+        capabilities: { manual_issue_watch: true, issue_watch_contract: 1 },
+      });
+      await expect(bridge.request("issueWatch.create")).resolves.toEqual({
+        accepted: "issueWatch.create",
+      });
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
 );

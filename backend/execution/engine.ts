@@ -1,13 +1,16 @@
+import { gitChecked } from "../workspace/git-command";
 import { StreamedPlan } from "./streamed-plan";
 import { validatePlan, object } from "./providers/contracts";
 import { sandboxInvocation } from "./sandbox";
 import { EventEmitter } from "node:events";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { join } from "node:path";
 import { writeFile, rm, mkdir, appendFile } from "node:fs/promises";
 import lockfile from "proper-lockfile";
 import {
   AdeError,
+  FollowupConfigSchema,
+  SettingsSchema,
   now,
   parseIssue,
   remoteIdentity,
@@ -24,16 +27,16 @@ import {
 } from "../domain";
 import { Database } from "../storage/database";
 import { GitWorkspace } from "../workspace/git";
-import { createLayout, inside, taskRoot, exists } from "../workspace/paths";
+import {
+  createLayout,
+  inside,
+  managedPath,
+  taskRoot,
+  exists,
+} from "../workspace/paths";
 import { fetchIssue } from "../workspace/issue";
 import { taskRuntime } from "../workspace/runtime";
-import {
-  checked,
-  execute,
-  processIdentity,
-  terminateGroup,
-  redact,
-} from "./process";
+import { execute, processIdentity, terminateGroup, redact } from "./process";
 import { AgentRunner } from "./agent-runner";
 import { CodexProvider } from "./providers/codex";
 import { AntigravityProvider } from "./providers/antigravity";
@@ -45,8 +48,6 @@ import {
 } from "../workspace/discovery";
 import type { z } from "zod";
 import { UtilityAI, type UtilityRequest } from "./utility-ai";
-import { ActionSchema } from "../scheduled/action";
-import { parsePullRequest } from "../scheduled/contracts";
 import { continuationStage } from "./continuation";
 export class Engine extends EventEmitter {
   readonly db: Database;
@@ -64,8 +65,13 @@ export class Engine extends EventEmitter {
     }
   >();
   private readonly interactive = new Set<string>();
+  private readonly creatingTasks = new Map<
+    string,
+    { digest: string; promise: Promise<Task> }
+  >();
   private draining = false;
   private closed = false;
+  private closing: Promise<void> | undefined;
   private maintenance = false;
   private readonly taskMaintenance = new Set<string>();
   private readonly activities = new Map<
@@ -123,7 +129,8 @@ export class Engine extends EventEmitter {
     for (const [id, activity] of this.active) {
       if (
         id.startsWith("utility:") &&
-        this.activities.has(`pr-watch:${id.slice(8)}`)
+        (this.activities.has(`pr-watch:${id.slice(8)}`) ||
+          this.activities.has(`issue-watch:${id.slice(8)}`))
       )
         continue;
       blockers.push({
@@ -297,14 +304,20 @@ export class Engine extends EventEmitter {
   private constructor(
     readonly root: string,
     private readonly release: () => Promise<void>,
+    database: Database,
     providers?: (
       stage: number,
       provider?: "codex" | "antigravity",
     ) => AgentProvider,
+    gitTransport?: (url: string) => string,
   ) {
     super();
-    this.db = new Database(join(root, "state", "vibestar.sqlite"));
-    this.git = new GitWorkspace(root, (id) => this.db.repository(id).path);
+    this.db = database;
+    this.git = new GitWorkspace(
+      root,
+      (id) => this.db.repository(id),
+      gitTransport,
+    );
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>
       this.trackActivity(
         {
@@ -335,6 +348,7 @@ export class Engine extends EventEmitter {
       stage: number,
       provider?: "codex" | "antigravity",
     ) => AgentProvider,
+    gitTransport?: (url: string) => string,
   ) => {
     root = await createLayout(root);
     const path = join(root, "state", "core.lock");
@@ -344,43 +358,71 @@ export class Engine extends EventEmitter {
       update: 5000,
       retries: 0,
     });
-    const engine = new Engine(root, release, providers);
-    for (const run of engine.db.all<{ pid: number; process_identity: string }>(
-      "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT json_extract(data,'$.workspace.operation.pid'),json_extract(data,'$.workspace.operation.identity') FROM pr_repairs WHERE json_extract(data,'$.workspace.operation.pid') IS NOT NULL UNION ALL SELECT json_extract(data,'$.pid'),json_extract(data,'$.process_identity') FROM repair_publications WHERE status='pushing' AND json_extract(data,'$.pid') IS NOT NULL",
-    )) {
-      if (
-        run.process_identity &&
-        (await processIdentity(run.pid)) === run.process_identity
-      )
-        terminateGroup(run.pid, "SIGKILL");
-    }
-    for (const task of engine.db.tasks()) {
-      if (task.stage === 0 && task.worktree_path) {
-        if (await exists(task.worktree_path)) {
-          await engine.git.assertTask(task);
-          if (
-            (await checked(
-              "git",
-              ["rev-parse", "HEAD"],
-              task.worktree_path,
-            )) !== task.base_commit_sha
-          )
-            throw new AdeError(
-              "recovery",
-              "Prepared worktree no longer matches its saved base SHA",
-            );
-          engine.db.saveTask({ ...task, stage: 1 });
-        } else
-          engine.db.saveTask({
-            ...task,
-            worktree_path: "",
-            branch_name: "",
-            base_commit_sha: "",
-          });
+    let database: Database | undefined;
+    try {
+      database = await Database.open(join(root, "state", "vibestar.sqlite"));
+      const engine = new Engine(
+        root,
+        release,
+        database,
+        providers,
+        gitTransport,
+      );
+      for (const run of engine.db.all<{
+        pid: number;
+        process_identity: string;
+      }>(
+        "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.identity') FROM pr_repairs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM repair_publications WHERE status='pushing' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL",
+      )) {
+        if (
+          Number.isSafeInteger(run.pid) &&
+          run.pid > 1 &&
+          run.process_identity &&
+          (await processIdentity(run.pid)) === run.process_identity
+        )
+          terminateGroup(run.pid, "SIGKILL");
       }
+      for (const task of engine.db.tasks()) {
+        const operation = task.workspace_checkpoint?.operation;
+        if (
+          operation?.identity &&
+          (await processIdentity(operation.pid)) === operation.identity
+        )
+          terminateGroup(operation.pid, "SIGKILL");
+        if (task.workspace_checkpoint)
+          task.workspace_checkpoint.operation = null;
+        if (task.stage === 0 && task.worktree_path) {
+          try {
+            if (!(await exists(task.worktree_path)))
+              throw new AdeError(
+                "recovery",
+                "The task preparation worktree is missing. Resume explicitly to reconcile its owned branch; the checkpoint was retained.",
+              );
+            const ready = await engine.git.recoverTaskPreparation(
+              engine.db.repository(task.repo_id),
+              task,
+              (value) => engine.db.saveTask(value),
+            );
+            engine.db.saveTask({ ...task, stage: ready ? 1 : 0 });
+          } catch (error) {
+            engine.db.saveTask({
+              ...task,
+              status: "interrupted",
+              error: redact(String(error)),
+              updated_at: now(),
+            });
+          }
+        } else if (task.workspace_checkpoint) {
+          engine.db.saveTask(task);
+        }
+      }
+      engine.db.recover();
+      return engine;
+    } catch (error) {
+      database?.close();
+      await release();
+      throw error;
     }
-    engine.db.recover();
-    return engine;
   };
   publish = (e: CoreEvent) => {
     this.emit("event", e);
@@ -445,6 +487,10 @@ export class Engine extends EventEmitter {
           });
         this.active.set(t.id, { controller, promise });
       }
+    } catch (error) {
+      if (!(error instanceof AdeError && error.kind === "corrupt_record"))
+        throw error;
+      this.publish({ event: "core.error", text: error.message });
     } finally {
       this.draining = false;
     }
@@ -476,7 +522,7 @@ export class Engine extends EventEmitter {
         "repository_exists",
         "Repository is already registered",
       );
-    await checked("git", ["check-ref-format", "--branch", base], this.root);
+    await gitChecked(["check-ref-format", "--branch", base], this.root);
     if (discover && !localPath) await this.repositoryIndex.scan();
     const candidate = localPath
       ? await this.repositoryIndex.inspect(localPath)
@@ -538,6 +584,7 @@ export class Engine extends EventEmitter {
             );
           return;
         }
+        await managedPath(this.root, r.path);
         // A caller can wait behind the original clone's lock. Refresh its
         // marker before deciding whether an incomplete destination is removable.
         if (r.clone_status === "cloning") {
@@ -586,15 +633,13 @@ export class Engine extends EventEmitter {
           await this.git.clone(r.upstream_url, r.path, signal, onProgress);
           onProgress?.("Configuring remotes…");
           if (r.origin_url)
-            await checked(
-              "git",
+            await gitChecked(
               ["remote", "add", "origin", r.origin_url],
               r.path,
               signal,
             );
           await this.git.fetch(r, signal);
-          await checked(
-            "git",
+          await gitChecked(
             [
               "rev-parse",
               "--verify",
@@ -606,8 +651,10 @@ export class Engine extends EventEmitter {
           r.clone_status = "ready";
           this.db.saveRepository(r);
         } catch (error) {
-          if (inside(join(this.root, "repos"), r.path))
+          if (inside(join(this.root, "repos"), r.path)) {
+            await managedPath(this.root, r.path);
             await rm(r.path, { recursive: true, force: true });
+          }
           throw error;
         }
       }),
@@ -619,7 +666,9 @@ export class Engine extends EventEmitter {
     notes: string,
     scopeMode: "whole_issue" | "partial" = "partial",
     settings?: import("../domain").Settings,
+    requestId: string = randomUUID(),
   ) => {
+    this.assertAvailable();
     if (
       (scopeMode === "partial" && !scope.trim()) ||
       scope.length > 1000 ||
@@ -630,22 +679,76 @@ export class Engine extends EventEmitter {
         "Scope is required (max 1000 characters); notes max 32000",
       );
     const reference = parseIssue(url);
+    const configuration = settings ? SettingsSchema.parse(settings) : undefined;
+    const digest = createHash("sha256")
+      .update(
+        JSON.stringify({
+          repository_id: repositoryId,
+          issue_url: reference.url.toLowerCase(),
+          scope_mode: scopeMode,
+          claimed_scope: scopeMode === "partial" ? scope.trim() : "",
+          notes,
+          settings: configuration || null,
+        }),
+      )
+      .digest("hex");
+    const previous = this.existingTaskRequest(requestId, digest);
+    if (previous) return previous;
+    const active = this.creatingTasks.get(requestId);
+    if (active) {
+      if (active.digest !== digest)
+        throw new AdeError(
+          "invalid_input",
+          "This task request identity already belongs to a different payload.",
+        );
+      return active.promise;
+    }
     this.taskRepository(repositoryId, reference);
-    const context = await fetchIssue(reference, this.root);
-    const repo = {
-      ...this.taskRepository(repositoryId, reference),
-      selection: "explicit" as const,
-    };
-    this.db.saveRepository(repo);
-    return this.enqueue(
-      repo,
-      reference,
-      scope,
-      notes,
-      context,
-      scopeMode,
-      settings,
+    const promise = this.repositoryOperation(async () => {
+      const context = await fetchIssue(
+        reference,
+        this.root,
+        this.repositoryController.signal,
+      );
+      this.repositoryController.signal.throwIfAborted();
+      const repo = {
+        ...this.taskRepository(repositoryId, reference),
+        selection: "explicit" as const,
+      };
+      this.db.saveRepository(repo);
+      return this.enqueue(
+        repo,
+        reference,
+        scope,
+        notes,
+        context,
+        scopeMode,
+        configuration,
+        { id: requestId, digest },
+      );
+    }, "Issue context retrieval is running").finally(() =>
+      this.creatingTasks.delete(requestId),
     );
+    this.creatingTasks.set(requestId, { digest, promise });
+    return promise;
+  };
+  private existingTaskRequest = (id: string, digest: string) => {
+    const row = this.db.all<{ digest: string; task_id: string | null }>(
+      "SELECT digest,task_id FROM task_requests WHERE request_id=?",
+      id,
+    )[0];
+    if (!row) return undefined;
+    if (row.digest !== digest)
+      throw new AdeError(
+        "invalid_input",
+        "This task request identity already belongs to a different payload.",
+      );
+    if (!row.task_id)
+      throw new AdeError(
+        "request_completed",
+        "This request already created a task whose history was removed. Start a new explicit request to create another task.",
+      );
+    return this.db.task(row.task_id);
   };
   taskRepository = (id: string, reference: IssueRef) => {
     const repo = this.db.repository(id);
@@ -717,8 +820,7 @@ export class Engine extends EventEmitter {
           "invalid_input",
           "Upstream and fork must use different remotes. Choose None if there is no fork.",
         );
-      await checked(
-        "git",
+      await gitChecked(
         ["check-ref-format", "--branch", p.base_branch],
         current.path,
       );
@@ -825,35 +927,50 @@ export class Engine extends EventEmitter {
     issue: Record<string, unknown>,
     scopeMode: "whole_issue" | "partial" = "partial",
     settings?: import("../domain").Settings,
+    request?: { id: string; digest: string },
   ) => {
     this.assertAvailable();
-    const t: Task = {
-      id: randomUUID(),
-      repo_id: repo.id,
-      issue_number: reference.number,
-      issue_url: reference.url,
-      claimed_scope: scopeMode === "partial" ? scope.trim() : "",
-      scope_mode: scopeMode,
-      notes,
-      issue,
-      execution_settings: settings ?? this.db.settings(),
-      branch_name: "",
-      base_branch: repo.base_branch,
-      base_commit_sha: "",
-      worktree_path: "",
-      created_at: now(),
-      updated_at: now(),
-      status: "queued",
-      stage: 0,
-      error: null,
-    };
-    this.db.run(
-      "INSERT INTO issues VALUES(?,?,?) ON CONFLICT(repo_id,number) DO UPDATE SET data=excluded.data",
-      repo.id,
-      reference.number,
-      JSON.stringify(issue),
-    );
-    this.db.saveTask(t);
+    const t = this.db.transaction(() => {
+      const previous =
+        request && this.existingTaskRequest(request.id, request.digest);
+      if (previous) return previous;
+      const t: Task = {
+        id: randomUUID(),
+        repo_id: repo.id,
+        issue_number: reference.number,
+        issue_url: reference.url,
+        claimed_scope: scopeMode === "partial" ? scope.trim() : "",
+        scope_mode: scopeMode,
+        notes,
+        issue,
+        execution_settings: settings ?? this.db.settings(),
+        branch_name: "",
+        base_branch: repo.base_branch,
+        base_commit_sha: "",
+        worktree_path: "",
+        created_at: now(),
+        updated_at: now(),
+        status: "queued",
+        stage: 0,
+        error: null,
+      };
+      this.db.run(
+        "INSERT INTO issues VALUES(?,?,?) ON CONFLICT(repo_id,number) DO UPDATE SET data=excluded.data",
+        repo.id,
+        reference.number,
+        JSON.stringify(issue),
+      );
+      this.db.saveTask(t);
+      if (request)
+        this.db.run(
+          "INSERT INTO task_requests VALUES(?,?,?,?)",
+          request.id,
+          request.digest,
+          t.id,
+          now(),
+        );
+      return t;
+    });
     this.changed(t.id);
     void this.drain();
     return t;
@@ -947,12 +1064,21 @@ export class Engine extends EventEmitter {
         t.id,
       );
       if (queued.length) {
+        const message = queued.at(-1)!;
+        if (message.configuration)
+          t.followup_config = this.db.records.decode(
+            {
+              table: "task_messages",
+              id: message.id,
+              column: "configuration",
+              source: message.configuration,
+            },
+            FollowupConfigSchema.parse,
+          );
         this.db.run(
           "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status='queued'",
           t.id,
         );
-        const configuration = queued.at(-1)?.configuration;
-        if (configuration) t.followup_config = JSON.parse(configuration);
         if (t.stage >= 3) {
           t.stage = 2;
           t.continuation = "implementation";
@@ -1029,17 +1155,17 @@ export class Engine extends EventEmitter {
         "Reconnect the source repository before resuming this task.",
       );
     if (t.stage === 0 && t.worktree_path && !this.isActive(id)) {
-      if (await exists(t.worktree_path)) {
-        await this.git.assertTask(t);
+      if (
+        await this.git.recoverTaskPreparation(
+          this.db.repository(t.repo_id),
+          t,
+          (value) => this.db.saveTask(value),
+        )
+      )
         t.stage = 1;
-      } else {
-        t.worktree_path = "";
-        t.branch_name = "";
-        t.base_commit_sha = "";
-      }
     }
-    const pending = this.db.all<{ configuration: string | null }>(
-      "SELECT configuration FROM task_messages WHERE task_id=? AND status IN ('draft','queued') ORDER BY created_at,rowid",
+    const pending = this.db.all<{ id: string; configuration: string | null }>(
+      "SELECT id,configuration FROM task_messages WHERE task_id=? AND status IN ('draft','queued') ORDER BY created_at,rowid",
       id,
     );
     const target = restart
@@ -1075,8 +1201,17 @@ export class Engine extends EventEmitter {
     }
     if (target >= 3 && pending.length) {
       t.continuation = "implementation";
-      const configuration = pending.at(-1)?.configuration;
-      if (configuration) t.followup_config = JSON.parse(configuration);
+      const message = pending.at(-1)!;
+      if (message.configuration)
+        t.followup_config = this.db.records.decode(
+          {
+            table: "task_messages",
+            id: message.id,
+            column: "configuration",
+            source: message.configuration,
+          },
+          FollowupConfigSchema.parse,
+        );
     }
     this.db.run(
       "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status IN ('queued','draft')",
@@ -1207,21 +1342,36 @@ export class Engine extends EventEmitter {
         "busy",
         "Close task activity before using a planning draft.",
       );
-    const stored = this.db.all<{ content: string }>(
-      "SELECT content FROM task_artifacts WHERE task_id=? AND kind=? ORDER BY created_at DESC LIMIT 1",
+    const stored = this.db.all<{ id: string; content: string }>(
+      "SELECT id,content FROM task_artifacts WHERE task_id=? AND kind=? ORDER BY created_at DESC LIMIT 1",
       id,
       `draft:${runId}`,
     )[0];
-    const draft = stored ? object(JSON.parse(stored.content)) : null;
+    const draft = stored
+      ? this.db.records.decode({
+          table: "task_artifacts",
+          id: stored.id,
+          column: "content",
+          source: stored.content,
+        })
+      : null;
     let plan: unknown = draft?.plan;
     if (!plan) {
       const stream = new StreamedPlan(run.stage);
-      for (const event of this.db.all<{ data: string }>(
-        "SELECT data FROM agent_events WHERE task_id=? AND run_id=? AND kind='message' ORDER BY id",
+      for (const event of this.db.all<{ id: number; data: string }>(
+        "SELECT id,data FROM agent_events WHERE task_id=? AND run_id=? AND kind='message' ORDER BY id",
         id,
         runId,
       ))
-        plan = stream.observe(JSON.parse(event.data)) || plan;
+        plan =
+          stream.observe(
+            this.db.records.decode({
+              table: "agent_events",
+              id: event.id,
+              column: "data",
+              source: event.data,
+            }),
+          ) || plan;
     }
     if (!plan)
       throw new AdeError(
@@ -1242,25 +1392,19 @@ export class Engine extends EventEmitter {
         "The planning stage finished or changed. Review its current result instead.",
       );
     await this.git.assertTask(task);
-    if (draft?.source_hash) {
+    if (
+      typeof draft?.source_hash === "string" &&
+      draft.source_hash.startsWith("issue-v2:")
+    ) {
       if (draft.source_hash !== (await this.git.fingerprint(task)))
         throw new AdeError(
           "stale_plan",
           "The worktree changed after this draft. Retry planning against current files.",
         );
-    } else if (
-      run.stage !== 1 ||
-      (await checked(
-        "git",
-        ["status", "--porcelain=v1"],
-        task.worktree_path,
-      )) ||
-      (await checked("git", ["rev-parse", "HEAD"], task.worktree_path)) !==
-        task.base_commit_sha
-    ) {
+    } else {
       throw new AdeError(
         "stale_plan",
-        "This historical draft has no source fingerprint. Only an unchanged initial task worktree can recover it.",
+        "This historical draft has no comparable current integrity fingerprint. Retry planning against the current files; its saved output is preserved.",
       );
     }
     this.db.run(
@@ -1464,71 +1608,12 @@ export class Engine extends EventEmitter {
     this.active.set(id, { controller, promise });
     return output;
   };
-  analyzeScheduled = async (
-    id: string | null,
-    prompt: string,
-    verify: boolean,
-    jobId?: string,
-    signal?: AbortSignal,
-  ) => {
-    const saved = jobId
-      ? this.db.all<{ data: string }>(
-          "SELECT data FROM scheduled_jobs WHERE id=?",
-          jobId,
-        )[0]
-      : undefined;
-    if (!saved)
-      throw new AdeError(
-        "invalid_state",
-        "PR analysis requires a persisted watch",
-      );
-    if (
-      this.closed ||
-      this.active.size >= this.db.settings().concurrency ||
-      this.db.tasks().some((t) => t.status === "queued" && !t.archived)
-    )
-      return null;
-    const ref = parsePullRequest(JSON.parse(saved.data).url);
-    const request = {
-      purpose: "PR Review Analysis",
-      prompt,
-      schema: ActionSchema,
-      context: {
-        taskId: id || undefined,
-        jobId,
-        repository: `${ref.owner}/${ref.repo}`,
-      },
-    };
-    try {
-      signal?.throwIfAborted();
-      const analysis = await this.utility.run(request);
-      signal?.throwIfAborted();
-      const refinement = verify
-        ? await this.runUtility(
-            {
-              ...request,
-              purpose: "Scheduler Verification",
-              prompt:
-                "Independently verify this discussion decision. Do not edit files or perform remote actions.\n" +
-                prompt +
-                "\nPrevious utility decision:\n" +
-                JSON.stringify(analysis),
-            },
-            { ...this.db.settings().codex_plan, provider: "codex" },
-          )
-        : null;
-      signal?.throwIfAborted();
-      return { analysis, refinement };
-    } catch (error) {
-      if (error instanceof AdeError && error.kind === "busy") return null;
-      throw error;
-    }
-  };
   private runUtility = async (
     request: UtilityRequest,
     config: import("../domain").Settings["utility_ai"],
   ) => {
-    const id = request.context?.jobId || randomUUID();
+    const id =
+      request.context?.scanId || request.context?.jobId || randomUUID();
     const task =
       request.workspace && request.context?.taskId
         ? this.db.task(request.context.taskId)
@@ -1556,7 +1641,11 @@ export class Engine extends EventEmitter {
       );
     const controller = new AbortController();
     const output = Promise.resolve().then(async () => {
-      if (!task) await mkdir(workspace, { recursive: true, mode: 0o700 });
+      if (!task) {
+        await managedPath(this.root, workspace);
+        await mkdir(workspace, { recursive: true, mode: 0o700 });
+        await managedPath(this.root, workspace);
+      }
       return this.runner.run(
         task ? { ...task, stage: 1 } : { id, stage: 1 },
         this.db.settings(),
@@ -1570,6 +1659,8 @@ export class Engine extends EventEmitter {
           schema: request.schema,
           jobId: request.context?.jobId,
           analysisId: request.context?.analysisId,
+          watchId: request.context?.watchId,
+          scanId: request.context?.scanId,
           telemetryTaskId: request.context?.taskId,
           questionId: request.context?.questionId,
           telemetryRepository: request.context?.repository,
@@ -1597,14 +1688,23 @@ export class Engine extends EventEmitter {
     this.repositoryController.abort();
     for (const a of this.active.values()) a.controller.abort();
   };
-  close = async () => {
-    this.beginShutdown();
-    await Promise.allSettled([...this.active.values()].map((a) => a.promise));
-    await Promise.allSettled([...this.repositoryOperations.keys()]);
-    await this.repositoryIndex.close();
-    this.db.close();
-    await this.release();
-  };
+  close = () =>
+    (this.closing ??= (async () => {
+      this.beginShutdown();
+      try {
+        await Promise.allSettled(
+          [...this.active.values()].map((a) => a.promise),
+        );
+        await Promise.allSettled([...this.repositoryOperations.keys()]);
+        await this.repositoryIndex.close();
+      } finally {
+        try {
+          this.db.close();
+        } finally {
+          await this.release();
+        }
+      }
+    })());
   fetchRepository = (id: string) =>
     this.repositoryOperation(
       () => this.fetchRepositoryData(id),
@@ -1651,8 +1751,7 @@ export class Engine extends EventEmitter {
         "Upstream must match the managed repository",
       );
     if (configuration.origin_url) remoteIdentity(configuration.origin_url);
-    await checked(
-      "git",
+    await gitChecked(
       ["check-ref-format", "--branch", configuration.base_branch],
       this.root,
     );
@@ -1672,15 +1771,13 @@ export class Engine extends EventEmitter {
     const updated = { ...r, ...configuration };
     await this.git.withLock(id, async () => {
       if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
-        await checked(
-          "git",
+        await gitChecked(
           ["remote", "set-url", "upstream", updated.upstream_url],
           r.path,
         );
-        const remotes = (await checked("git", ["remote"], r.path)).split("\n");
+        const remotes = (await gitChecked(["remote"], r.path)).split("\n");
         if (updated.origin_url)
-          await checked(
-            "git",
+          await gitChecked(
             [
               "remote",
               remotes.includes("origin") ? "set-url" : "add",
@@ -1690,7 +1787,7 @@ export class Engine extends EventEmitter {
             r.path,
           );
         else if (remotes.includes("origin"))
-          await checked("git", ["remote", "remove", "origin"], r.path);
+          await gitChecked(["remote", "remove", "origin"], r.path);
       }
       this.db.saveRepository(updated);
     });

@@ -1,9 +1,13 @@
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import {
+  readWorktreeOwner,
+  writeWorktreeOwner,
+} from "../../workspace/ownership";
+import { gitExecute, gitChecked } from "../../workspace/git-command";
+import { mkdir, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { AdeError, now, remoteIdentity, type Repository } from "../../domain";
-import { checked, execute } from "../../execution/process";
 import { GitWorkspace } from "../../workspace/git";
-import { exists, inside, safeFile } from "../../workspace/paths";
+import { exists, inside, managedPath, safeFile } from "../../workspace/paths";
 import type { PRIdentity, RepairSession } from "./contracts";
 
 export const repairAssignment = (session: RepairSession) => ({
@@ -23,10 +27,10 @@ export class RepairWorkspaces {
   constructor(
     private readonly root: string,
     private readonly git: GitWorkspace,
-    private readonly transport = (
+    private readonly transport?: (
       identity: PRIdentity,
       side: "head" | "upstream",
-    ) => identity[side].url,
+    ) => string,
   ) {}
   private command = async (
     cwd: string,
@@ -36,8 +40,9 @@ export class RepairWorkspaces {
   ) => {
     let finished = false;
     try {
-      return await execute({
+      return await gitExecute({
         program: "git",
+        allowLocalTransport: !!this.transport,
         rawStdoutForIntegrity: true,
         args: [
           "-c",
@@ -101,7 +106,7 @@ export class RepairWorkspaces {
         "ls-remote",
         "--refs",
         "--",
-        this.transport(identity, "head"),
+        this.transport?.(identity, "head") ?? identity.head.url,
         `refs/heads/${identity.head.branch}`,
       ],
       signal,
@@ -119,6 +124,14 @@ export class RepairWorkspaces {
     return sha;
   };
   validateRepository = async (repo: Repository, identity: PRIdentity) => {
+    if (repo.source !== "imported") {
+      if (!inside(join(this.root, "repos"), repo.path))
+        throw new AdeError(
+          "isolation",
+          "Managed repository is outside its authorized root.",
+        );
+      await managedPath(this.root, repo.path);
+    }
     if (
       repo.connected === false ||
       repo.clone_status === "cloning" ||
@@ -129,7 +142,7 @@ export class RepairWorkspaces {
         "repository_mismatch",
         "Select a connected checkout of the PR's upstream repository.",
       );
-    const remotes = await checked("git", ["remote", "-v"], repo.path);
+    const remotes = await gitChecked(["remote", "-v"], repo.path);
     const matches = remotes.split("\n").some((line) => {
       try {
         const parsed = remoteIdentity(line.split(/\s+/)[1]);
@@ -165,10 +178,7 @@ export class RepairWorkspaces {
         "isolation",
         "Repair metadata is not an isolated worktree.",
       );
-    const marker = await readFile(
-      join(gitdir, "vibestar-repair-owner"),
-      "utf8",
-    ).catch(() => "");
+    const marker = await readWorktreeOwner(gitdir, "vibestar-repair-owner");
     const branchOwner = await this.command(cwd, [
       "config",
       "--local",
@@ -250,6 +260,7 @@ export class RepairWorkspaces {
   ) =>
     this.git.withLock(repo.id, async () => {
       const workspace = session.workspace;
+      await managedPath(this.root, workspace.worktree_path);
       const common = await this.validateRepository(repo, session.identity);
       if (workspace.git_common_dir && workspace.git_common_dir !== common)
         throw new AdeError(
@@ -338,7 +349,8 @@ export class RepairWorkspaces {
               "--no-tags",
               "--no-recurse-submodules",
               "--",
-              this.transport(session.identity, "head"),
+              this.transport?.(session.identity, "head") ??
+                session.identity.head.url,
               `refs/heads/${session.identity.head.branch}:refs/vibestar/repairs/${session.id}/head`,
             ],
             signal,
@@ -369,12 +381,7 @@ export class RepairWorkspaces {
               "Repair worktree must stay inside the managed root.",
             );
           await mkdir(dirname(workspace.worktree_path), { recursive: true });
-          const parent = await realpath(dirname(workspace.worktree_path));
-          if (!inside(await realpath(join(this.root, "worktrees")), parent))
-            throw new AdeError(
-              "isolation",
-              "Repair parent path escapes managed worktrees.",
-            );
+          await managedPath(this.root, workspace.worktree_path);
           workspace.preparation = "creating";
           checkpoint();
           await this.checked(
@@ -402,9 +409,7 @@ export class RepairWorkspaces {
             "isolation",
             "Unexpected repair metadata location.",
           );
-        await writeFile(join(gitdir, "vibestar-repair-owner"), session.id, {
-          mode: 0o600,
-        });
+        await writeWorktreeOwner(gitdir, "vibestar-repair-owner", session.id);
         await this.checked(repo.path, [
           "config",
           "--local",
@@ -434,7 +439,8 @@ export class RepairWorkspaces {
             "--no-tags",
             "--no-recurse-submodules",
             "--",
-            this.transport(session.identity, "upstream"),
+            this.transport?.(session.identity, "upstream") ??
+              session.identity.upstream.url,
             `refs/heads/${session.identity.base.branch}:refs/vibestar/repairs/${session.id}/base`,
           ],
           signal,

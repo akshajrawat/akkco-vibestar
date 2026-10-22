@@ -1,8 +1,8 @@
+import { createFixtureEngine } from "../fixtures";
 import { expect, it } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../../backend/execution/engine";
 import {
   capture,
   checked,
@@ -19,7 +19,7 @@ import { repairAssignment } from "../../backend/review/repair/workspace";
 
 it("reconciles an actual core restart during preparation without replaying a merge or inference", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-restart-"));
-  let engine = await Engine.create(join(dir, "ade"));
+  let engine = await createFixtureEngine(join(dir, "ade"));
   let service: RepairService | undefined;
   try {
     const { repo, session, checkpoint, fork, upstream } = await repairFixture(
@@ -61,7 +61,7 @@ it("reconciles an actual core restart during preparation without replaying a mer
     session.workspace.preparation = "merging";
     checkpoint();
     await engine.close();
-    engine = await Engine.create(join(dir, "ade"));
+    engine = await createFixtureEngine(join(dir, "ade"));
     await exited;
     expect(detached.signalCode).toBe("SIGKILL");
     const recovered = new RepairWorkspaces(
@@ -95,7 +95,7 @@ it("reconciles an actual core restart during preparation without replaying a mer
 
 it("protects source/repair ownership during cleanup and retains reviewed state only for unchanged file content", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-cleanup-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   let service: RepairService | undefined;
   try {
     const fixture = await repairFixture(engine, dir);
@@ -204,7 +204,7 @@ it("migrates a managed repair root while preserving ownership, checkpoints and s
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-migration-"));
   const oldRoot = join(dir, "old"),
     newRoot = join(dir, "new");
-  let engine = await Engine.create(oldRoot);
+  let engine = await createFixtureEngine(oldRoot);
   let service: RepairService | undefined;
   try {
     const { repo, session, checkpoint, fork, upstream } = await repairFixture(
@@ -225,7 +225,7 @@ it("migrates a managed repair root while preserving ownership, checkpoints and s
     );
     await engine.close();
     await migrateDataRoot(oldRoot, newRoot);
-    engine = await Engine.create(newRoot);
+    engine = await createFixtureEngine(newRoot);
     service = new RepairService(
       engine,
       async () => session.identity,
@@ -260,7 +260,7 @@ it("migrates a managed repair root while preserving ownership, checkpoints and s
 
 it("runs real repair PTYs with exclusive leases and prevents concurrent agent/Git operations", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-terminal-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   let service: RepairService | undefined, terminals: TaskTerminals | undefined;
   try {
     const { repo, session, checkpoint, fork, upstream } = await repairFixture(

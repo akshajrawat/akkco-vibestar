@@ -184,7 +184,7 @@ export const RepositoryPage = ({
                 </span>
               </div>
               <p className="subtle">
-                {r.environment === "windows" || r.path.startsWith("/mnt/")
+                {r.environment === "windows" || r.path?.startsWith("/mnt/")
                   ? "Windows"
                   : "WSL"}{" "}
                 ·{" "}

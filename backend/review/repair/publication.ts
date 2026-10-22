@@ -1,11 +1,12 @@
+import { gitExecute, gitCapture } from "../../workspace/git-command";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AdeError, now } from "../../domain";
 import type { Engine } from "../../execution/engine";
-import { capture, execute, redact } from "../../execution/process";
-import { safeFile } from "../../workspace/paths";
+import { execute, redact } from "../../execution/process";
+import { managedPath, safeFile } from "../../workspace/paths";
 import { RepairStore } from "./store";
 import { RepairWorkspaces, repairAssignment } from "./workspace";
 import type { PRIdentity, RepairSession } from "./contracts";
@@ -82,7 +83,7 @@ export class RepairPublisher {
       url: string,
       signal: AbortSignal,
     ) => Promise<PRIdentity>,
-    private readonly transport = (identity: PRIdentity) => identity.head.url,
+    private readonly transport?: (identity: PRIdentity) => string,
     private readonly push = execute,
   ) {}
   private save = (publication: RepairPublication) => {
@@ -108,7 +109,16 @@ export class RepairPublisher {
         "not_found",
         "Publication does not belong to this repair.",
       );
-    return PublicationSchema.parse(JSON.parse(row.data));
+    return this.engine.db.records.decode(
+      {
+        table: "repair_publications",
+        id,
+        column: "data",
+        source: row.data,
+        identity: "id",
+      },
+      PublicationSchema.parse,
+    );
   };
   private git = async (
     cwd: string,
@@ -118,8 +128,9 @@ export class RepairPublisher {
   ) => {
     let finished = false;
     try {
-      const result = await execute({
+      const result = await gitExecute({
         program: "git",
+        allowLocalTransport: !!this.transport,
         args: [
           "-c",
           "core.hooksPath=/dev/null",
@@ -164,8 +175,8 @@ export class RepairPublisher {
       this.engine.db.repository(session.repo_id),
     );
     if (
-      (await capture("git", ["rev-parse", "--verify", "MERGE_HEAD"], cwd))
-        .code === 0 ||
+      (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], cwd)).code ===
+        0 ||
       (await this.git(cwd, ["ls-files", "--unmerged"]))
     )
       throw new AdeError(
@@ -260,8 +271,7 @@ export class RepairPublisher {
             "review_changed",
             "Workspace changed while staging. Preserve the index and review again.",
           );
-        const checkedDiff = await capture(
-          "git",
+        const checkedDiff = await gitCapture(
           ["diff", "--cached", "--check"],
           cwd,
           signal,
@@ -349,12 +359,11 @@ export class RepairPublisher {
       );
     const head = await this.git(cwd, ["rev-parse", "HEAD"]);
     if (
-      (await capture("git", ["merge-base", "--is-ancestor", remote, head], cwd))
+      (await gitCapture(["merge-base", "--is-ancestor", remote, head], cwd))
         .code !== 0 ||
       !session.workspace.fetched_base ||
       (
-        await capture(
-          "git",
+        await gitCapture(
           ["merge-base", "--is-ancestor", session.workspace.fetched_base, head],
           cwd,
         )
@@ -372,8 +381,8 @@ export class RepairPublisher {
       "SELECT status FROM test_runs WHERE repair_id=?",
       session.id,
     );
-    const approval = this.engine.db.all<{ data: string }>(
-      "SELECT data FROM repair_activity WHERE repair_id=? AND kind='manual_approval' ORDER BY id DESC LIMIT 1",
+    const approval = this.engine.db.all<{ id: number; data: string }>(
+      "SELECT id,data FROM repair_activity WHERE repair_id=? AND kind='manual_approval' ORDER BY id DESC LIMIT 1",
       session.id,
     )[0];
     if (!approval)
@@ -381,7 +390,15 @@ export class RepairPublisher {
         "manual_review",
         "Manual approval evidence is missing.",
       );
-    const confirmation = JSON.parse(approval.data);
+    const confirmation = this.engine.db.records.decode(
+      {
+        table: "repair_activity",
+        id: approval.id,
+        column: "data",
+        source: approval.data,
+      },
+      PublicationSchema.shape.confirmation.omit({ confirmed_at: true }).parse,
+    );
     if (confirmation.viewer !== fresh.viewer)
       throw new AdeError(
         "permission",
@@ -499,7 +516,7 @@ export class RepairPublisher {
         "permission",
         "Publishing permission or authenticated identity changed.",
       );
-    const destination = this.transport(fresh);
+    const destination = this.transport?.(fresh) ?? fresh.head.url;
     // Reject repository-config URL rewrites rather than sending to a different host.
     if (
       (await this.git(cwd, ["ls-remote", "--get-url", "--", destination])) !==
@@ -520,8 +537,7 @@ export class RepairPublisher {
       );
     if (
       (
-        await capture(
-          "git",
+        await gitCapture(
           [
             "merge-base",
             "--is-ancestor",
@@ -532,8 +548,7 @@ export class RepairPublisher {
         )
       ).code !== 0 ||
       (
-        await capture(
-          "git",
+        await gitCapture(
           [
             "merge-base",
             "--is-ancestor",
@@ -548,9 +563,12 @@ export class RepairPublisher {
         "ancestry",
         "The approved publication is not a normal fast-forward descendant.",
       );
-    const hooks = join(this.engine.root, "artifacts", `push-${publication.id}`);
+    const hooks = await managedPath(
+      this.engine.root,
+      join("artifacts", `push-${publication.id}`),
+    );
     await mkdir(hooks, { mode: 0o700 });
-    const guard = join(hooks, "pre-push");
+    const guard = await managedPath(this.engine.root, join(hooks, "pre-push"));
     const expected = {
       destination,
       ref: `refs/heads/${publication.destination.branch}`,
@@ -568,33 +586,36 @@ export class RepairPublisher {
     this.save(publication);
     let sending = true;
     try {
-      const result = await this.push({
-        program: "git",
-        args: [
-          "-c",
-          `core.hooksPath=${hooks}`,
-          "-c",
-          "core.fsmonitor=false",
-          "-c",
-          "push.followTags=false",
-          "push",
-          "--porcelain",
-          "--no-follow-tags",
-          "--recurse-submodules=no",
-          "--",
-          destination,
-          `${publication.local_head}:refs/heads/${publication.destination.branch}`,
-        ],
-        cwd,
-        signal,
-        timeoutMs: 120000,
-        onSpawn: (pid, identity) => {
-          if (!sending || !identity) return;
-          publication.pid = pid;
-          publication.process_identity = identity;
-          this.save(publication);
+      const result = await gitExecute(
+        {
+          program: "git",
+          allowLocalTransport: !!this.transport,
+          hooksPath: hooks,
+          args: [
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "push.followTags=false",
+            "push",
+            "--porcelain",
+            "--no-follow-tags",
+            "--recurse-submodules=no",
+            "--",
+            destination,
+            `${publication.local_head}:refs/heads/${publication.destination.branch}`,
+          ],
+          cwd,
+          signal,
+          timeoutMs: 120000,
+          onSpawn: (pid, identity) => {
+            if (!sending || !identity) return;
+            publication.pid = pid;
+            publication.process_identity = identity;
+            this.save(publication);
+          },
         },
-      });
+        this.push,
+      );
       sending = false;
       if (result.code !== 0)
         publication.error = redact(result.stderr || result.stdout);
@@ -614,7 +635,10 @@ export class RepairPublisher {
       return this.reconcile(session, publication.id);
     } finally {
       sending = false;
-      await rm(hooks, { recursive: true, force: true });
+      await rm(await managedPath(this.engine.root, hooks), {
+        recursive: true,
+        force: true,
+      });
     }
   };
   reconcile = async (session: RepairSession, id: string) => {

@@ -1,3 +1,38 @@
+import { z } from "zod";
+export const GitHubRepositorySchema = z
+  .object({
+    id: z.number().int(),
+    full_name: z.string(),
+    owner: z.object({ login: z.string(), type: z.string() }),
+    name: z.string(),
+    description: z.string().nullable(),
+    default_branch: z.string(),
+    private: z.boolean(),
+    fork: z.boolean(),
+    clone_url: z.string(),
+    parent: z
+      .object({
+        full_name: z.string(),
+        clone_url: z.string(),
+        default_branch: z.string(),
+      })
+      .optional(),
+    updated_at: z.string(),
+  })
+  .loose();
+export const GitHubPullRequestSchema = z
+  .object({
+    url: z.string(),
+    repository: z.string(),
+    number: z.number().int().positive(),
+    title: z.string(),
+    state: z.string(),
+    head_branch: z.string(),
+    head_repository: z.string().nullable(),
+    updated_at: z.string(),
+    task_id: z.string().nullable(),
+  })
+  .loose();
 export interface GitHubRepository {
   id: number;
   full_name: string;

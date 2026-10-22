@@ -2,8 +2,9 @@ import { join } from "node:path";
 import { Editors } from "./workspace/editors";
 import { GitHubService } from "./github/service";
 import { GitHubClient } from "./github/client";
+import { IssueWatchService } from "./issue-watch/service";
 import { fetchIssue } from "./workspace/issue";
-import { StageConfigSchema } from "./domain";
+import { FollowupConfigSchema } from "./domain";
 import { StorageService } from "./storage/service";
 import { Usage } from "./execution/usage";
 import { TaskTerminals } from "./execution/task-terminals";
@@ -25,6 +26,7 @@ export class Rpc {
   private readonly auth: AuthSessions;
   readonly scheduler: Scheduler;
   readonly github: GitHubService;
+  readonly issueWatch: IssueWatchService;
   private readonly review: ReviewService;
   readonly repairs: RepairService;
   private readonly terminals: TaskTerminals;
@@ -37,6 +39,7 @@ export class Rpc {
   ) {
     this.scheduler = new Scheduler(engine, monitor);
     this.github = new GitHubService(engine, this.scheduler);
+    this.issueWatch = new IssueWatchService(engine, this.github.client);
     this.review = new ReviewService(engine);
     this.repairs = repairs;
     this.terminals = new TaskTerminals(engine);
@@ -51,6 +54,8 @@ export class Rpc {
   }
   call = async (method: string, input: unknown) => {
     const e = this.engine;
+    if (method.startsWith("issueWatch."))
+      return this.issueWatch.call(method.slice("issueWatch.".length), input);
     switch (method) {
       case "editors.list":
         return new Editors(e).list();
@@ -71,17 +76,18 @@ export class Rpc {
       case "usage.info":
         return {
           root: e.root,
+          capabilities: { manual_issue_watch: true, issue_watch_contract: 1 },
           database: join(e.root, "state", "vibestar.sqlite"),
           schema: e.db.all(
             "SELECT max(version) version FROM schema_migrations",
           )[0],
           runs: e.db.all("SELECT count(*) count FROM ai_usage")[0],
         };
-      case "snapshot":
-        return {
+      case "snapshot": {
+        const snapshot = {
           repositories: e.db.repositories(),
           tasks: e.db.tasks(),
-          settings: e.db.settings(),
+          settings: e.db.displaySettings(),
           root: e.root,
           execution_environment: {
             distro: process.env.WSL_DISTRO_NAME || "Linux",
@@ -115,6 +121,19 @@ export class Rpc {
           attention: this.scheduler.attention(),
           github: this.github.snapshot(),
         };
+        const persistence = e.db.records.diagnostics();
+        return {
+          ...snapshot,
+          persistence,
+          ...(persistence.length
+            ? {
+                warning: `${persistence.length} saved record(s) need recovery. Original data is preserved; open Settings for persistence diagnostics.`,
+              }
+            : {}),
+        };
+      }
+      case "persistence.diagnostics":
+        return e.db.records.diagnostics();
       case "github.status":
         return this.github.client.detect();
       case "github.sync":
@@ -215,12 +234,19 @@ export class Rpc {
           .object({
             task_id: z.string().uuid().optional(),
             job_id: z.string().uuid().optional(),
+            watch_id: z.string().uuid().optional(),
+            scan_id: z.string().uuid().optional(),
             days: z.number().int().min(1).max(3650).optional(),
           })
           .parse(input);
         return new Usage(e.db)
           .list(p.task_id, p.days)
-          .filter((r) => !p.job_id || r.job_id === p.job_id);
+          .filter(
+            (r) =>
+              (!p.job_id || r.job_id === p.job_id) &&
+              (!p.watch_id || r.watch_id === p.watch_id) &&
+              (!p.scan_id || r.scan_id === p.scan_id),
+          );
       }
       case "storage.info":
         return this.storage.info();
@@ -332,7 +358,17 @@ export class Rpc {
         return e.followUp(
           p.id,
           p.content || message.content,
-          message.configuration ? JSON.parse(message.configuration) : undefined,
+          message.configuration
+            ? e.db.records.decode(
+                {
+                  table: "task_messages",
+                  id: p.message_id,
+                  column: "configuration",
+                  source: message.configuration,
+                },
+                FollowupConfigSchema.parse,
+              )
+            : undefined,
         );
       }
       case "repair.terminal.status":
@@ -648,9 +684,9 @@ export class Rpc {
             ? e.db.all(
                 `SELECT * FROM agent_events WHERE id IN (
              SELECT MIN(id) FROM agent_events WHERE ${owner}=? AND run_id=? AND json_valid(data)
-             AND CAST(json_extract(data,'$.call_id') AS TEXT) IN (${calls.map(() => "?").join(",")}) GROUP BY json_extract(data,'$.call_id')
+             AND CAST(json_extract(CASE WHEN json_valid(data) THEN data END,'$.call_id') AS TEXT) IN (${calls.map(() => "?").join(",")}) GROUP BY json_extract(CASE WHEN json_valid(data) THEN data END,'$.call_id')
              UNION SELECT MAX(id) FROM agent_events WHERE ${owner}=? AND run_id=? AND json_valid(data)
-             AND CAST(json_extract(data,'$.call_id') AS TEXT) IN (${calls.map(() => "?").join(",")}) GROUP BY json_extract(data,'$.call_id')
+             AND CAST(json_extract(CASE WHEN json_valid(data) THEN data END,'$.call_id') AS TEXT) IN (${calls.map(() => "?").join(",")}) GROUP BY json_extract(CASE WHEN json_valid(data) THEN data END,'$.call_id')
              ) ORDER BY id`,
                 p.id,
                 p.run_id,
@@ -837,6 +873,7 @@ export class Rpc {
       case "task.create": {
         const p = z
           .object({
+            request_id: z.string().uuid().optional(),
             repository_id: z.string().uuid(),
             issue_url: z.string(),
             scope_mode: z.enum(["whole_issue", "partial"]).default("partial"),
@@ -858,6 +895,7 @@ export class Rpc {
           p.notes,
           p.scope_mode,
           p.settings,
+          p.request_id,
         );
       }
       case "task.cancel": {
@@ -889,12 +927,7 @@ export class Rpc {
           .extend({
             content: z.string().max(32000),
             save_only: z.boolean().default(false),
-            configuration: z
-              .object({
-                provider: z.enum(["codex", "antigravity"]),
-                config: StageConfigSchema,
-              })
-              .optional(),
+            configuration: FollowupConfigSchema.optional(),
           })
           .parse(input);
         return e.followUp(p.id, p.content, p.configuration, p.save_only);
@@ -907,12 +940,12 @@ export class Rpc {
             "Only Ready for Review tasks can be completed",
           );
         if (
-          t.final_review_hash &&
+          !t.final_review_hash?.startsWith("issue-v2:") ||
           t.final_review_hash !== (await e.git.fingerprint(t))
         )
           throw new AdeError(
             "stale_review",
-            "The worktree changed after final review. Retry Antigravity review before completing.",
+            "The worktree changed or its final review uses an older integrity method. Retry Antigravity review before completing.",
           );
         e.db.saveTask({ ...t, status: "completed", updated_at: now() });
         e.changed(t.id);
@@ -1015,6 +1048,7 @@ export class Rpc {
   };
   close = async () => {
     this.auth.dispose();
+    await this.issueWatch.close();
     await this.github.close();
     await this.scheduler.close();
     await this.repairTerminals.dispose();

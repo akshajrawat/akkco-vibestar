@@ -5,11 +5,15 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { defaultSettings, parseIssue } from "../backend/domain";
 import { AntigravityProvider } from "../backend/execution/providers/antigravity";
-import { fixtureRepository, FixtureProvider, plan1 } from "./fixtures";
+import {
+  createFixtureEngine,
+  fixtureRepository,
+  FixtureProvider,
+  plan1,
+} from "./fixtures";
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
@@ -20,7 +24,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
     await mkdir(evidence);
     const agy = new AntigravityProvider();
     const fixture = new FixtureProvider();
-    const engine = await Engine.create(join(dir, "fixture"), () => ({
+    const engine = await createFixtureEngine(join(dir, "fixture"), () => ({
       ...fixture,
       name: "antigravity",
       normalize: agy.normalize,
@@ -52,7 +56,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
     });
     const { repo } = await fixtureRepository(engine, dir);
     const emptyRoot = join(dir, "empty-core");
-    const empty = await Engine.create(emptyRoot);
+    const empty = await createFixtureEngine(emptyRoot);
     await empty.close();
     const home = join(dir, "isolated-home"),
       cli = join(dir, "blocked-cli");

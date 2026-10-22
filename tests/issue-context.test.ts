@@ -4,8 +4,8 @@ import { fetchIssue } from "../backend/workspace/issue";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   finishFixtureTask,
@@ -30,7 +30,7 @@ it("refreshes legacy fetched issue context before every approved provider stage"
     return [];
   });
   const dir = await mkdtemp(join(tmpdir(), "vibestar-context-refresh-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new FixtureProvider(),
   );

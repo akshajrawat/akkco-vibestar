@@ -1,14 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { checked } from "../backend/execution/process";
-import { now, type Repository } from "../backend/domain";
+import { now, type Repository, type Task } from "../backend/domain";
 import { Engine } from "../backend/execution/engine";
 import { CodexProvider } from "../backend/execution/providers/codex";
 import type {
   AgentRunRequest,
   ProviderDetection,
 } from "../backend/execution/providers/contracts";
+const fixtureTransport = (url: string) => {
+  if (!isAbsolute(url))
+    throw new Error(
+      "Fixture Git network is disabled; supply a local constructor transport.",
+    );
+  return url;
+};
+export const createFixtureEngine = (
+  root: string,
+  providers?: Parameters<typeof Engine.create>[1],
+  transport = fixtureTransport,
+) => Engine.create(root, providers, transport);
 export const fixtureRepository = async (engine: Engine, dir: string) => {
   const upstream = join(dir, "upstream");
   await mkdir(upstream);
@@ -199,4 +211,47 @@ export const finishFixtureTask = async (
     clearInterval(timer);
     engine.off("event", approve);
   }
+};
+
+export const prepareFixtureTask = async (
+  engine: Engine,
+  repo: Repository,
+  id: string,
+  issue = 1,
+) => {
+  const task: Task = {
+    id,
+    repo_id: repo.id,
+    issue_number: issue,
+    issue_url: `https://github.com/fixture/fixture/issues/${issue}`,
+    claimed_scope: id,
+    notes: "",
+    issue: {},
+    branch_name: "",
+    base_branch: "main",
+    base_commit_sha: "",
+    worktree_path: "",
+    stage: 1,
+    status: "cancelled",
+    error: null,
+    created_at: now(),
+    updated_at: now(),
+  };
+  engine.db.saveTask(task);
+  await engine.git.prepare(
+    repo,
+    task,
+    undefined,
+    (value) => engine.db.saveTask(value),
+    async (record) => {
+      engine.db.run(
+        "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'preparation',?,?)",
+        task.id,
+        JSON.stringify(record),
+        now(),
+      );
+    },
+  );
+  engine.db.saveTask(task);
+  return task;
 };

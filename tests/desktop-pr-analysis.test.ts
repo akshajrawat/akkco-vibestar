@@ -1,10 +1,10 @@
+import { createFixtureEngine } from "./fixtures";
 import { it, expect, vi } from "vitest";
 import { _electron } from "playwright-core";
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { Rpc } from "../backend/rpc";
 import { GitHubMonitor } from "../backend/scheduled/github";
 import { PRFixtureProvider, prSnapshot } from "./pr-fixtures";
@@ -16,7 +16,7 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
   "exercises manual tracking, explicit analysis, complete report/history and no startup inference through Electron IPC",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-desktop-"));
-    const engine = await Engine.create(
+    const engine = await createFixtureEngine(
       join(dir, "fixture"),
       () => new PRFixtureProvider(),
     );
@@ -24,7 +24,7 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
     vi.spyOn(monitor, "inspect").mockResolvedValue(structuredClone(prSnapshot));
     const rpc = new Rpc(engine, monitor);
     const emptyRoot = join(dir, "empty-core");
-    const empty = await Engine.create(emptyRoot);
+    const empty = await createFixtureEngine(emptyRoot);
     await empty.close();
     const home = join(dir, "isolated-home");
     const cli = join(dir, "blocked-cli");

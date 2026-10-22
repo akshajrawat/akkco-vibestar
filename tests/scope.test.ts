@@ -1,12 +1,13 @@
+import { ActionSchema } from "../backend/scheduled/action";
 import { it, expect } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { Engine } from "../backend/execution/engine";
 import { Scheduler } from "../backend/scheduled/scheduler";
 import { buildPrompt } from "../backend/execution/prompt";
 import { parseIssue, defaultSettings } from "../backend/domain";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   finishFixtureTask as waitForTask,
@@ -14,7 +15,7 @@ import {
 it("preserves whole vs partial scope through the user-approved pipeline and next-run provider configuration", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-scope-"));
   const order: number[] = [];
-  const engine = await Engine.create(join(dir, "ade"), (stage) => {
+  const engine = await createFixtureEngine(join(dir, "ade"), (stage) => {
     order.push(stage);
     return new FixtureProvider();
   });
@@ -105,7 +106,7 @@ it("preserves whole vs partial scope through the user-approved pipeline and next
 }, 30000);
 it("analyzes unlinked PR feedback in an isolated read-only workspace without cloning repositories or creating tasks", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-analysis-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     () => new FixtureProvider(),
   );
@@ -118,14 +119,13 @@ it("analyzes unlinked PR feedback in an isolated read-only workspace without clo
       verify_codex: true,
     });
     await scheduler.close();
-    const result = await engine.analyzeScheduled(
-      null,
-      "Assess this reviewer question without editing any files.",
-      true,
-      job.id,
-    );
-    expect(result?.analysis).toMatchObject({ manualActionRequired: true });
-    expect(result?.refinement).toMatchObject({ manualActionRequired: true });
+    const result = await engine.utility.run({
+      purpose: "PR Review Analysis",
+      prompt: "Assess this reviewer question without editing any files.",
+      schema: ActionSchema,
+      context: { jobId: job.id, repository: "fixture/fixture" },
+    });
+    expect(result).toMatchObject({ manualActionRequired: true });
     expect(engine.db.tasks()).toEqual([]);
     expect(engine.db.repositories()).toEqual([]);
     expect(
@@ -134,7 +134,6 @@ it("analyzes unlinked PR feedback in an isolated read-only workspace without clo
       ),
     ).toEqual([
       { stage: 1, status: "completed", purpose: "PR Review Analysis" },
-      { stage: 1, status: "completed", purpose: "Scheduler Verification" },
     ]);
   } finally {
     await scheduler.close();

@@ -85,7 +85,7 @@ export const Overview = ({
                     <div>
                       <strong>
                         {task.claimed_scope ||
-                          task.issue.title ||
+                          task.issue?.title ||
                           "Entire issue"}
                       </strong>
                       <span className="subtle">

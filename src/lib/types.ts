@@ -30,6 +30,11 @@ export interface Task {
   error: string | null;
 }
 export interface Snapshot {
+  capabilities?: {
+    manual_issue_watch: boolean;
+    issue_watch_contract: number | null;
+  };
+  persistence?: import("../../backend/storage/records").PersistenceDiagnostic[];
   repairs?: import("../../backend/review/repair/contracts").RepairSession[];
   pr_reports?: {
     job_id: string;
@@ -151,6 +156,9 @@ export interface CoreEvent {
   event: string;
   task_id?: string;
   repair_id?: string;
+  watch_id?: string;
+  scan_id?: string;
+  run_id?: string;
   session_id?: string;
   text?: string;
   stream?: string;
@@ -158,7 +166,13 @@ export interface CoreEvent {
   data?: unknown;
 }
 export type Page =
-  "Scheduled" | "Tasks" | "Repositories" | "Providers" | "Settings";
+  | "Scheduled"
+  | "Tasks"
+  | "Issue Watch"
+  | "Repositories"
+  | "Providers"
+  | "Usage"
+  | "Settings";
 export const stages = [
   "Prepare workspace",
   "Antigravity plan",

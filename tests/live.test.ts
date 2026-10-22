@@ -2,15 +2,14 @@ import { it, expect } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../backend/execution/engine";
 import { parseIssue, defaultSettings } from "../backend/domain";
-import { fixtureRepository } from "./fixtures";
+import { createFixtureEngine, fixtureRepository } from "./fixtures";
 import { AntigravityProvider } from "../backend/execution/providers/antigravity";
 it.skipIf(process.env.VIBESTAR_LIVE_TEST !== "1")(
   "executes the entire pipeline with REAL authenticated Antigravity and Codex CLIs",
   async () => {
     const dir = await mkdtemp(join(homedir(), "tmp/vibestar-live-"));
-    const engine = await Engine.create(join(dir, "ade"));
+    const engine = await createFixtureEngine(join(dir, "ade"));
     try {
       const detection = await new AntigravityProvider().detect(dir);
       const model =

@@ -2,12 +2,13 @@ import { it, expect, vi } from "vitest";
 import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../backend/execution/engine";
+import type { Engine } from "../backend/execution/engine";
 import { defaultSettings, parseIssue } from "../backend/domain";
 import { StreamedPlan } from "../backend/execution/streamed-plan";
 import { AntigravityProvider } from "../backend/execution/providers/antigravity";
 import { buildPrompt } from "../backend/execution/prompt";
 import {
+  createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   waitForTask,
@@ -36,7 +37,7 @@ it("persists each approval without starting the next provider, preserves isolati
     selected.push({ stage, provider: name });
     return new FixtureProvider();
   };
-  let engine = await Engine.create(root, provider);
+  let engine = await createFixtureEngine(root, provider);
   try {
     const { repo, upstream } = await fixtureRepository(engine, dir);
     const task = engine.enqueue(
@@ -74,7 +75,7 @@ it("persists each approval without starting the next provider, preserves isolati
     await expect(engine.retry(task.id)).rejects.toThrow("approve");
     await expect(engine.retry(task.id, 2)).rejects.toThrow("Approve");
     await engine.close();
-    engine = await Engine.create(root, provider);
+    engine = await createFixtureEngine(root, provider);
     expect(engine.db.task(task.id).approval_gate).toBe("antigravity_plan");
     expect(selected).toHaveLength(1);
     await engine.approveStage(task.id);
@@ -190,7 +191,7 @@ class DraftProvider extends FixtureProvider {
 }
 it("shows and explicitly recovers a streamed draft without another AI call, preserving the cancelled outcome and usage", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-draft-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new DraftProvider(),
   );
@@ -231,9 +232,9 @@ it("shows and explicitly recovers a streamed draft without another AI call, pres
   }
 }, 20000);
 
-it("recovers a historical cancelled initial plan from saved message events only when its worktree is unchanged", async () => {
+it("preserves historical cancelled drafts but requires fresh planning when integrity evidence cannot be compared", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-historical-draft-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new DraftProvider(),
   );
@@ -266,15 +267,24 @@ it("recovers a historical cancelled initial plan from saved message events only 
       "changed after planning\n",
     );
     await expect(engine.acceptDraft(task.id, String(run.id))).rejects.toThrow(
-      "unchanged initial task worktree",
+      "no comparable current integrity fingerprint",
     );
     await writeFile(
       join(engine.db.task(task.id).worktree_path, "source.txt"),
       "base\n",
     );
-    await engine.acceptDraft(task.id, String(run.id));
-    expect(engine.db.artifact(task.id, 1)).toEqual(plan1);
-    expect(engine.db.task(task.id).approval_gate).toBe("antigravity_plan");
+    await expect(engine.acceptDraft(task.id, String(run.id))).rejects.toThrow(
+      "no comparable current integrity fingerprint",
+    );
+    expect(() => engine.db.artifact(task.id, 1)).toThrow(
+      "No successful saved result",
+    );
+    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
+    expect(
+      engine.db
+        .detail(task.id)
+        .events.some((event) => event.kind === "message"),
+    ).toBe(true);
     expect(engine.db.detail(task.id).runs).toHaveLength(1);
     expect(engine.db.detail(task.id).usage[0].status).toBe("cancelled");
   } finally {
@@ -298,7 +308,7 @@ class EditingReviewProvider extends FixtureProvider {
 }
 it("prevents the final reviewer from editing the implementation and retains its failed run", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-review-isolation-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "data"),
     () => new EditingReviewProvider(),
   );

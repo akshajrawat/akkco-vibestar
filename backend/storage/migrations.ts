@@ -41,7 +41,7 @@ ALTER TABLE agent_runs ADD COLUMN purpose TEXT NOT NULL DEFAULT 'pipeline';
     version: 6,
     sql: `
 ALTER TABLE tasks ADD COLUMN scope_mode TEXT NOT NULL DEFAULT 'partial' CHECK(scope_mode IN ('whole_issue','partial'));
-UPDATE tasks SET data=json_set(data,'$.scope_mode','partial');
+UPDATE tasks SET data=json_set(data,'$.scope_mode','partial') WHERE json_valid(data);
 CREATE TABLE task_activity(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,kind TEXT NOT NULL,data TEXT NOT NULL,timestamp TEXT NOT NULL);
 CREATE TABLE github_repositories(id INTEGER PRIMARY KEY,full_name TEXT NOT NULL UNIQUE,data TEXT NOT NULL,synced_at TEXT NOT NULL);
 CREATE TABLE github_pull_requests(url TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at TEXT NOT NULL);
@@ -80,12 +80,12 @@ SELECT id,job_id,CASE stage WHEN 1 THEN 'PR Review Analysis' ELSE 'Scheduler Ver
     version: 11,
     sql: `
 UPDATE scheduled_attention SET dismissed=1 WHERE error='Cannot read properties of undefined (reading ''slice'')' AND job_id IN (
-SELECT id FROM scheduled_jobs WHERE json_extract(data,'$.status')='error' AND json_extract(data,'$.error')='Cannot read properties of undefined (reading ''slice'')' AND json_type(data,'$.pending_snapshot')='object' AND json_type(data,'$.action')='object' AND (json_type(data,'$.action.outstandingRequests') IS NULL OR json_type(data,'$.action.alreadyAddressed') IS NULL)
+SELECT id FROM scheduled_jobs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.status')='error' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.error')='Cannot read properties of undefined (reading ''slice'')' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.pending_snapshot')='object' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.action')='object' AND (json_type(CASE WHEN json_valid(data) THEN data END,'$.action.outstandingRequests') IS NULL OR json_type(CASE WHEN json_valid(data) THEN data END,'$.action.alreadyAddressed') IS NULL)
 );
 UPDATE scheduled_jobs SET data=json_set(data,'$.status','pending','$.error',NULL,'$.next_run_at',strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-WHERE json_extract(data,'$.status')='error' AND json_extract(data,'$.error')='Cannot read properties of undefined (reading ''slice'')' AND json_type(data,'$.pending_snapshot')='object' AND json_type(data,'$.action')='object' AND (json_type(data,'$.action.outstandingRequests') IS NULL OR json_type(data,'$.action.alreadyAddressed') IS NULL);
-UPDATE scheduled_jobs SET data=json_insert(data,'$.action.conversationState','neutral','$.action.outstandingRequests',json('[]'),'$.action.alreadyAddressed',json('[]'),'$.action.newActivity',json('[]')) WHERE json_type(data,'$.action')='object';
-UPDATE scheduled_jobs SET data=json_insert(data,'$.conversation_action.conversationState','neutral','$.conversation_action.outstandingRequests',json('[]'),'$.conversation_action.alreadyAddressed',json('[]'),'$.conversation_action.newActivity',json('[]')) WHERE json_type(data,'$.conversation_action')='object';
+WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.status')='error' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.error')='Cannot read properties of undefined (reading ''slice'')' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.pending_snapshot')='object' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.action')='object' AND (json_type(CASE WHEN json_valid(data) THEN data END,'$.action.outstandingRequests') IS NULL OR json_type(CASE WHEN json_valid(data) THEN data END,'$.action.alreadyAddressed') IS NULL);
+UPDATE scheduled_jobs SET data=json_insert(data,'$.action.conversationState','neutral','$.action.outstandingRequests',json('[]'),'$.action.alreadyAddressed',json('[]'),'$.action.newActivity',json('[]')) WHERE json_type(CASE WHEN json_valid(data) THEN data END,'$.action')='object';
+UPDATE scheduled_jobs SET data=json_insert(data,'$.conversation_action.conversationState','neutral','$.conversation_action.outstandingRequests',json('[]'),'$.conversation_action.alreadyAddressed',json('[]'),'$.conversation_action.newActivity',json('[]')) WHERE json_type(CASE WHEN json_valid(data) THEN data END,'$.conversation_action')='object';
 `,
   },
   {
@@ -93,10 +93,10 @@ UPDATE scheduled_jobs SET data=json_insert(data,'$.conversation_action.conversat
     foreign_keys_off: true,
     sql: `
 CREATE TABLE repositories_new(id TEXT PRIMARY KEY,owner TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL);
-INSERT INTO repositories_new SELECT id,owner,name,json_insert(data,'$.connected',json('true')) FROM repositories;
+INSERT INTO repositories_new SELECT id,owner,name,CASE WHEN json_valid(data) THEN json_insert(data,'$.connected',json('true')) ELSE data END FROM repositories;
 DROP TABLE repositories;
 ALTER TABLE repositories_new RENAME TO repositories;
-CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),json_extract(data,'$.path'));
+CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),json_extract(CASE WHEN json_valid(data) THEN data END,'$.path'));
 `,
   },
   {
@@ -112,11 +112,11 @@ CREATE INDEX code_questions_task ON code_questions(task_id,created_at);
   },
   {
     version: 14,
-    sql: `UPDATE tasks SET stage=6,data=json_set(data,'$.stage',6) WHERE stage=5 AND status IN ('ready_for_review','completed');`,
+    sql: `UPDATE tasks SET stage=6,data=json_set(data,'$.stage',6) WHERE json_valid(data) AND stage=5 AND status IN ('ready_for_review','completed');`,
   },
   {
     version: 15,
-    sql: `UPDATE tasks SET status='awaiting_approval',stage=5,data=json_set(data,'$.status','awaiting_approval','$.stage',5,'$.approval_gate','implementation') WHERE status='ready_for_review' AND NOT EXISTS(SELECT 1 FROM task_artifacts a WHERE a.task_id=tasks.id AND a.stage=5 AND a.kind='plan');`,
+    sql: `UPDATE tasks SET status='awaiting_approval',stage=5,data=json_set(data,'$.status','awaiting_approval','$.stage',5,'$.approval_gate','implementation') WHERE json_valid(data) AND status='ready_for_review' AND NOT EXISTS(SELECT 1 FROM task_artifacts a WHERE a.task_id=tasks.id AND a.stage=5 AND a.kind='plan');`,
   },
   {
     version: 16,
@@ -128,8 +128,8 @@ CREATE UNIQUE INDEX test_runs_provider_call ON test_runs(task_id,run_id,call_id)
   {
     version: 17,
     sql: `
-UPDATE settings SET value=json_set(value,'$.auto_watch',json('false')) WHERE key='github_watch';
-UPDATE scheduled_jobs SET data=json_set(data,'$.enabled',json('false'),'$.check_once',json('false'),'$.status',CASE WHEN json_extract(data,'$.status') IN ('polling','pending','analyzing') THEN 'interrupted' ELSE COALESCE(json_extract(data,'$.status'),'idle') END);
+UPDATE settings SET value=json_set(value,'$.auto_watch',json('false')) WHERE key='github_watch' AND json_valid(value);
+UPDATE scheduled_jobs SET data=json_set(data,'$.enabled',json('false'),'$.check_once',json('false'),'$.status',CASE WHEN json_extract(CASE WHEN json_valid(data) THEN data END,'$.status') IN ('polling','pending','analyzing') THEN 'interrupted' ELSE COALESCE(json_extract(CASE WHEN json_valid(data) THEN data END,'$.status'),'idle') END) WHERE json_valid(data);
 INSERT OR REPLACE INTO settings VALUES('pr_execution_policy','"manual_only_v1"');
 `,
   },
@@ -183,6 +183,43 @@ DROP TABLE terminal_sessions;
 ALTER TABLE terminal_sessions_new RENAME TO terminal_sessions;
 ALTER TABLE ai_usage ADD COLUMN repair_id TEXT REFERENCES pr_repairs(id) ON DELETE SET NULL;
 CREATE INDEX repair_usage ON ai_usage(repair_id,started_at);
+`,
+  },
+  {
+    version: 21,
+    sql: `
+CREATE TABLE persistence_diagnostics(table_name TEXT NOT NULL,record_id TEXT NOT NULL,column_name TEXT NOT NULL,source_hash TEXT NOT NULL,first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,resolved_at TEXT,PRIMARY KEY(table_name,record_id,column_name));
+CREATE TABLE task_requests(request_id TEXT PRIMARY KEY,digest TEXT NOT NULL,task_id TEXT UNIQUE REFERENCES tasks(id) ON DELETE SET NULL,created_at TEXT NOT NULL);
+DROP INDEX IF EXISTS repositories_checkout;
+CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),CASE WHEN json_valid(data) THEN json_extract(CASE WHEN json_valid(data) THEN data END,'$.path') END);
+`,
+  },
+  {
+    version: 22,
+    sql: `
+CREATE TABLE issue_watches(id TEXT PRIMARY KEY,name TEXT NOT NULL,repository_id TEXT NOT NULL,repository_full_name TEXT NOT NULL,current_revision INTEGER NOT NULL CHECK(current_revision>0),archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN(0,1)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_complete_scan_id TEXT REFERENCES issue_watch_scans(id),data TEXT NOT NULL CHECK(json_valid(data)));
+CREATE TABLE issue_watch_revisions(watch_id TEXT NOT NULL REFERENCES issue_watches(id),revision INTEGER NOT NULL CHECK(revision>0),request_id TEXT NOT NULL UNIQUE,request_digest TEXT NOT NULL,created_at TEXT NOT NULL,rules_digest TEXT NOT NULL,compiler_version INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,timeout_secs INTEGER NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(watch_id,revision));
+CREATE TABLE issue_watch_scans(id TEXT PRIMARY KEY,watch_id TEXT NOT NULL,revision INTEGER NOT NULL,request_id TEXT NOT NULL UNIQUE,request_digest TEXT NOT NULL,parent_scan_id TEXT REFERENCES issue_watch_scans(id),intent TEXT NOT NULL CHECK(intent IN('scan','retry','continue','recheck')),status TEXT NOT NULL CHECK(status IN('running','cancelling','completed','partial','blocked','failed','cancelled','interrupted')),phase TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,semantic_attempts INTEGER NOT NULL DEFAULT 0 CHECK(semantic_attempts IN(0,1)),utility_run_id TEXT REFERENCES utility_runs(id),data TEXT NOT NULL CHECK(json_valid(data)),FOREIGN KEY(watch_id,revision) REFERENCES issue_watch_revisions(watch_id,revision));
+CREATE UNIQUE INDEX issue_watch_active ON issue_watch_scans(watch_id) WHERE status IN('running','cancelling');
+CREATE INDEX issue_watch_scan_history ON issue_watch_scans(watch_id,started_at);
+CREATE TABLE issue_watch_sources(scan_id TEXT NOT NULL REFERENCES issue_watch_scans(id),source_key TEXT NOT NULL,kind TEXT NOT NULL,url TEXT NOT NULL,revision_digest TEXT NOT NULL,fetched_at TEXT NOT NULL,complete INTEGER NOT NULL CHECK(complete IN(0,1)),data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(scan_id,source_key));
+CREATE TABLE issue_watch_candidates(scan_id TEXT NOT NULL REFERENCES issue_watch_scans(id),issue_id TEXT NOT NULL,repository_id TEXT NOT NULL,number INTEGER NOT NULL CHECK(number>0),claim_state TEXT NOT NULL,semantic_state TEXT NOT NULL,checked_at TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(scan_id,issue_id));
+CREATE INDEX issue_watch_candidate_state ON issue_watch_candidates(scan_id,claim_state);
+CREATE INDEX issue_watch_candidate_identity ON issue_watch_candidates(repository_id,number);
+CREATE TABLE issue_watch_results(watch_id TEXT NOT NULL REFERENCES issue_watches(id),issue_id TEXT NOT NULL,last_evaluated_scan_id TEXT NOT NULL REFERENCES issue_watch_scans(id),last_complete_match_scan_id TEXT REFERENCES issue_watch_scans(id),classification TEXT NOT NULL,dismissed_at TEXT,first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(watch_id,issue_id));
+`,
+  },
+  {
+    version: 23,
+    sql: `
+ALTER TABLE utility_runs ADD COLUMN watch_id TEXT REFERENCES issue_watches(id) ON DELETE SET NULL;
+ALTER TABLE utility_runs ADD COLUMN scan_id TEXT REFERENCES issue_watch_scans(id) ON DELETE SET NULL;
+CREATE INDEX utility_scan_runs ON utility_runs(scan_id,started_at);
+ALTER TABLE ai_usage ADD COLUMN watch_id TEXT REFERENCES issue_watches(id) ON DELETE SET NULL;
+ALTER TABLE ai_usage ADD COLUMN scan_id TEXT REFERENCES issue_watch_scans(id) ON DELETE SET NULL;
+CREATE INDEX issue_watch_usage ON ai_usage(watch_id,scan_id,started_at);
+CREATE TABLE utility_events(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES utility_runs(id) ON DELETE CASCADE,timestamp TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),raw TEXT NOT NULL,stream TEXT NOT NULL);
+CREATE INDEX utility_run_events ON utility_events(run_id,id);
 `,
   },
 ];

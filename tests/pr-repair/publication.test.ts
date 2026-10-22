@@ -1,8 +1,17 @@
+import { createFixtureEngine } from "../fixtures";
 import { expect, it } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+  mkdir,
+  rename,
+  symlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Engine } from "../../backend/execution/engine";
+import type { Engine } from "../../backend/execution/engine";
 import { checked, execute } from "../../backend/execution/process";
 import { RepairService } from "../../backend/review/repair/service";
 import {
@@ -74,9 +83,51 @@ const preparedFixture = async (engine: Engine, dir: string, push = execute) => {
   return { ...fixture, service };
 };
 
+it("refuses publication hook creation through a redirected artifacts parent before any push", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-push-path-"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
+  let service: RepairService | undefined;
+  try {
+    const fixture = await preparedFixture(engine, dir);
+    service = fixture.service;
+    await service.approve(fixture.session.id, fixture.session.review_hash!);
+    await service.commit(
+      fixture.session.id,
+      fixture.session.review_hash!,
+      "Reviewed local change",
+    );
+    const plan = await service.preparePublication(fixture.session.id);
+    const external = join(dir, "external");
+    await mkdir(external);
+    await writeFile(join(external, "canary"), "preserve external artifacts");
+    await rename(
+      join(engine.root, "artifacts"),
+      join(engine.root, "artifacts-original"),
+    );
+    await symlink(external, join(engine.root, "artifacts"));
+    await expect(service.publish(fixture.session.id, plan.id)).rejects.toThrow(
+      "symlink",
+    );
+    expect(await readFile(join(external, "canary"), "utf8")).toBe(
+      "preserve external artifacts",
+    );
+    expect(
+      await checked(
+        "git",
+        ["rev-parse", "refs/heads/fix-translation-tests"],
+        fixture.fork,
+      ),
+    ).toBe(fixture.head);
+  } finally {
+    await service?.close();
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 30000);
+
 it("requires manual approval, commits only reviewed repair files and pushes the exact fork/ref through normal fast-forward", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-publish-"));
-  const engine = await Engine.create(
+  const engine = await createFixtureEngine(
     join(dir, "ade"),
     (_, provider) => new RepairFixtureProvider(provider!),
   );
@@ -169,7 +220,7 @@ it("requires manual approval, commits only reviewed repair files and pushes the 
 
 it("rejects stale remote heads, changed reviewed content, closed PRs and lost permissions", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-publish-guards-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   let service: RepairService | undefined;
   try {
     const fixture = await preparedFixture(engine, dir);
@@ -253,7 +304,7 @@ it("rejects stale remote heads, changed reviewed content, closed PRs and lost pe
 
 it("rejects a remote-head race at Git's pre-push handshake even when a normal push would fast-forward", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-push-race-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   let service: RepairService | undefined;
   try {
     let fork = "",
@@ -303,7 +354,7 @@ it("rejects a remote-head race at Git's pre-push handshake even when a normal pu
 
 it("reconciles an uncertain network outcome without retrying or duplicating publication after restart", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-push-reconcile-"));
-  let engine = await Engine.create(join(dir, "ade"));
+  let engine = await createFixtureEngine(join(dir, "ade"));
   let service: RepairService | undefined;
   try {
     let pushes = 0;
@@ -326,7 +377,7 @@ it("reconciles an uncertain network outcome without retrying or duplicating publ
     expect(pushes).toBe(1);
     await service.close();
     await engine.close();
-    engine = await Engine.create(join(dir, "ade"));
+    engine = await createFixtureEngine(join(dir, "ade"));
     service = new RepairService(
       engine,
       async () => fixture.session.identity,
@@ -352,7 +403,7 @@ it("reconciles an uncertain network outcome without retrying or duplicating publ
 
 it("keeps an approved local commit without requiring push permission or creating a publication attempt", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-local-only-"));
-  const engine = await Engine.create(join(dir, "ade"));
+  const engine = await createFixtureEngine(join(dir, "ade"));
   let service: RepairService | undefined;
   try {
     const fixture = await preparedFixture(engine, dir);

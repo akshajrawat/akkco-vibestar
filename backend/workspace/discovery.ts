@@ -1,9 +1,10 @@
+import { gitCapture, gitChecked } from "./git-command";
 import { homedir } from "node:os";
 import { join, resolve, isAbsolute } from "node:path";
 import { readdir, realpath, lstat } from "node:fs/promises";
 import { AdeError, now, remoteIdentity } from "../domain";
 import type { Database } from "../storage/database";
-import { capture, checked, redact } from "../execution/process";
+import { checked, redact } from "../execution/process";
 import { inside } from "./paths";
 import { z } from "zod";
 
@@ -56,6 +57,25 @@ export interface LocalRepository {
   environment: "wsl" | "windows";
   indexed_at: string;
 }
+const localRepositorySchema = z
+  .object({
+    path: z.string(),
+    origin: z.string().nullable(),
+    upstream: z.string().nullable(),
+    identities: z.array(z.string()),
+    branch: z.string(),
+    default_branch: z.string().nullable(),
+    environment: z.enum(["wsl", "windows"]),
+    indexed_at: z.string(),
+  })
+  .loose();
+const indexMetadataSchema = z
+  .object({
+    last_scan: z.string().nullable().optional(),
+    duration_ms: z.number().nonnegative().nullable().optional(),
+    warnings: z.array(z.string()).optional(),
+  })
+  .strict();
 const ignored = new Set([
   "node_modules",
   ".git",
@@ -127,16 +147,29 @@ export class RepositoryIndex {
       "SELECT value FROM settings WHERE key='repository_index'",
     )[0];
     return {
-      repositories: this.db
-        .all<{ data: string }>(
-          "SELECT data FROM local_repositories ORDER BY path",
-        )
-        .map((r) => JSON.parse(r.data) as LocalRepository),
+      repositories: this.db.records.list<LocalRepository>(
+        "local_repositories",
+        this.db.all<{ id: string; data: string }>(
+          "SELECT path AS id,data FROM local_repositories ORDER BY path",
+        ),
+        localRepositorySchema.parse,
+        "path",
+      ),
       scanning: !!this.running,
       last_scan: null as string | null,
       duration_ms: null as number | null,
       warnings: [] as string[],
-      ...(metadata ? JSON.parse(metadata.value) : {}),
+      ...(metadata
+        ? this.db.records.tryDecode(
+            {
+              table: "settings",
+              id: "repository_index",
+              column: "value",
+              source: metadata.value,
+            },
+            indexMetadataSchema.parse,
+          ) || {}
+        : {}),
     };
   };
   verifyLocal = async (
@@ -173,7 +206,7 @@ export class RepositoryIndex {
         `Choose the repository root: ${local.path}`,
       );
     const git = (args: string[]) =>
-      capture("git", ["-c", "core.fsmonitor=false", ...args], path);
+      gitCapture(["-c", "core.fsmonitor=false", ...args], path);
     const status = await git([
       "--no-optional-locks",
       "status",
@@ -184,7 +217,7 @@ export class RepositoryIndex {
       throw new AdeError("git_verify", "Couldn't read repository status.", {
         details: status.stderr,
       });
-    const names = await checked("git", ["remote"], path);
+    const names = await gitChecked(["remote"], path);
     const remotes = await Promise.all(
       names
         .split("\n")
@@ -214,8 +247,7 @@ export class RepositoryIndex {
           };
         }),
     );
-    const refs = await checked(
-      "git",
+    const refs = await gitChecked(
       ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
       path,
     );
@@ -258,7 +290,7 @@ export class RepositoryIndex {
     allowManaged = false,
   ): Promise<LocalRepository> => {
     const top = await realpath(
-      await checked("git", ["rev-parse", "--show-toplevel"], path, signal),
+      await gitChecked(["rev-parse", "--show-toplevel"], path, signal),
     );
     if (!allowManaged && (inside(this.root, top) || top === this.root))
       throw new AdeError(
@@ -266,8 +298,7 @@ export class RepositoryIndex {
         "Vibestar-managed directories cannot be imported.",
       );
     const git = async (args: string[]) => {
-      const result = await capture(
-        "git",
+      const result = await gitCapture(
         ["-c", "core.fsmonitor=false", ...args],
         top,
         signal,

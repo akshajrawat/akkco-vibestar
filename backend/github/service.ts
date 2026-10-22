@@ -8,10 +8,12 @@ import type { Engine } from "../execution/engine";
 import type { Scheduler } from "../scheduled/scheduler";
 import { parsePullRequest } from "../scheduled/contracts";
 import { GitHubClient } from "./client";
-import type {
-  GitHubRepository,
-  GitHubPullRequest,
-  GitHubStatus,
+import {
+  GitHubRepositorySchema,
+  GitHubPullRequestSchema,
+  type GitHubRepository,
+  type GitHubPullRequest,
+  type GitHubStatus,
 } from "./contracts";
 const watchSchema = z.object({
   auto_watch: z.boolean(),
@@ -189,24 +191,37 @@ export class GitHubService {
     this.client = new GitHubClient(engine.root);
   }
   catalog = () =>
-    this.engine.db
-      .all<{ data: string }>(
-        "SELECT data FROM github_repositories ORDER BY full_name",
-      )
-      .map((r) => JSON.parse(r.data) as GitHubRepository);
+    this.engine.db.records.list<GitHubRepository>(
+      "github_repositories",
+      this.engine.db.all<{ id: number; data: string }>(
+        "SELECT id,data FROM github_repositories ORDER BY full_name",
+      ),
+      GitHubRepositorySchema.parse,
+      "id",
+    );
   prs = () =>
-    this.engine.db
-      .all<{ data: string }>(
-        "SELECT data FROM github_pull_requests ORDER BY updated_at DESC",
-      )
-      .map((r) => JSON.parse(r.data) as GitHubPullRequest);
+    this.engine.db.records.list<GitHubPullRequest>(
+      "github_pull_requests",
+      this.engine.db.all<{ id: string; data: string }>(
+        "SELECT url AS id,data FROM github_pull_requests ORDER BY updated_at DESC",
+      ),
+      GitHubPullRequestSchema.parse,
+      "url",
+    );
   settings = () => {
     const row = this.engine.db.all<{ value: string }>(
       "SELECT value FROM settings WHERE key='github_watch'",
     )[0];
-    const saved = row
-      ? watchSchema.parse(JSON.parse(row.value))
-      : { auto_watch: false, interval_minutes: 60, verify_codex: false };
+    const saved = (row &&
+      this.engine.db.records.tryDecode(
+        {
+          table: "settings",
+          id: "github_watch",
+          column: "value",
+          source: row.value,
+        },
+        watchSchema.parse,
+      )) || { auto_watch: false, interval_minutes: 60, verify_codex: false };
     return { ...saved, auto_watch: false, verify_codex: false };
   };
   configure = (input: unknown) => {
