@@ -127,9 +127,16 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
     await expect(service.start(session.id)).rejects.toThrow(
       "Describe the further fix",
     );
+    const instructionRequest = randomUUID();
     await service.start(
       session.id,
       "Check the independent review again and retain the same worktree",
+      instructionRequest,
+    );
+    await service.start(
+      session.id,
+      "Check the independent review again and retain the same worktree",
+      instructionRequest,
     );
     await waitForRepair(service, session.id);
     expect(service.store.get(session.id).workspace.worktree_path).toBe(
@@ -144,6 +151,17 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
         session.id,
       ),
     ).toHaveLength(1);
+    await service.start(
+      session.id,
+      "Check the independent review again and retain the same worktree",
+      instructionRequest,
+    );
+    expect(
+      engine.db.all("SELECT * FROM agent_runs WHERE repair_id=?", session.id),
+    ).toHaveLength(4);
+    await expect(
+      service.start(session.id, "Changed payload", instructionRequest),
+    ).rejects.toThrow("different content");
     expect(repo.path).toBe(source);
   } finally {
     await service?.close();

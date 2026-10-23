@@ -1,6 +1,38 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { VerificationCheckSchema } from "../../backend/execution/verification";
 const resultValue = (value: unknown): React.ReactNode => {
+  const verification = VerificationCheckSchema.safeParse(value);
+  if (verification.success) {
+    const check = verification.data;
+    return (
+      <div className="agent-verification-item">
+        <strong
+          className={
+            check.outcome === "passed"
+              ? "success"
+              : check.outcome === "failed"
+                ? "failure"
+                : "warning"
+          }
+        >
+          {check.name} · {check.outcome.replaceAll("_", " ")}
+        </strong>
+        <small>
+          Provider reported · {check.kind} ·{" "}
+          {check.required ? "required" : "optional"}
+        </small>
+        <p>{check.detail}</p>
+        {check.prerequisite && <p>Prerequisite: {check.prerequisite}</p>}
+        {check.command && (
+          <details>
+            <summary>Reported command</summary>
+            <code>{check.command}</code>
+          </details>
+        )}
+      </div>
+    );
+  }
   if (typeof value === "string")
     return <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>;
   if (Array.isArray(value))

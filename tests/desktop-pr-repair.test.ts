@@ -196,6 +196,12 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
         .getByRole("button", { name: "Solve selected items", exact: true })
         .click();
       await page
+        .getByRole("button", {
+          name: "Review repair and publication options",
+          exact: true,
+        })
+        .click();
+      await page
         .getByRole("heading", {
           name: "PR Review Repair Complete — Manual Review Required",
           exact: true,
@@ -218,11 +224,12 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
           fixture.fork,
         ),
       ).toBe(fixture.head);
-      await page
-        .getByRole("button", { name: "Review Changes", exact: true })
-        .click();
+      await page.getByRole("tab", { name: "Changes", exact: true }).click();
       await page
         .getByRole("button", { name: "Upstream integration", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Open full diff review", exact: true })
         .click();
       await page
         .getByText("Latest upstream development", { exact: false })
@@ -234,9 +241,8 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await page
         .getByRole("button", { name: "Review repair changes", exact: true })
         .click();
-      await page
-        .getByRole("tab", { name: "Agent Output", exact: true })
-        .click();
+      await page.getByLabel("Return to chat").click();
+      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.getByRole("button", { name: "Raw", exact: true }).click();
       await page
         .getByText(/Independent read-only review/)
@@ -252,7 +258,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
         path: join(screenshots, "real-command-evidence.png"),
       });
       await page
-        .getByRole("button", { name: "Close repair dock", exact: true })
+        .getByRole("tab", { name: "Final review", exact: true })
         .click();
       await page
         .getByRole("button", { name: "Approve and Prepare Push", exact: true })

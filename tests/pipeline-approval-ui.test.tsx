@@ -110,7 +110,7 @@ it("shows a cancelled streamed draft and exact prompt with an explicit recovery 
   fireEvent.click(screen.getByRole("button", { name: "Use this draft…" }));
   expect(recover).toHaveBeenCalledWith(run);
 });
-it("shows review controls across tabs and approval RPC without a misleading Resume button", async () => {
+it("keeps compact review controls beside the composer without an automatic modal and preserves an independent draft on approval", async () => {
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     value: () => {},
     configurable: true,
@@ -148,20 +148,29 @@ it("shows review controls across tabs and approval RPC without a misleading Resu
   ).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
   expect(
-    screen.getByRole("dialog", { name: "Stage review required" }),
-  ).toBeTruthy();
+    screen.queryByRole("dialog", { name: "Stage review required" }),
+  ).toBeNull();
   expect(screen.queryByRole("tab", { name: "Changes" })).toBeNull();
   expect(
     screen.queryByRole("button", { name: "Split Changes beside chat" }),
   ).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Review plan" }));
+  const draft = screen.getByLabelText("Task follow-up") as HTMLTextAreaElement;
+  fireEvent.change(draft, {
+    target: { value: "Do not submit this draft on approval" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "View plan" }));
   expect(screen.getByText("Antigravity original plan")).toBeTruthy();
   fireEvent.click(
     screen.getByRole("button", { name: "Approve → Codex refinement" }),
   );
   await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith("task.approve", { id: task.id }),
+    expect(rpc).toHaveBeenCalledWith("task.approve", {
+      id: task.id,
+      artifact_id: "plan",
+    }),
   );
+  expect(draft.value).toBe("Do not submit this draft on approval");
+  expect(rpc).not.toHaveBeenCalledWith("task.followup", expect.anything());
 });
 it("populates actual model selectors and supported efforts in New Task", async () => {
   const rpc = vi.fn(async () => ({

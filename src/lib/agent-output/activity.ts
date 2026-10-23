@@ -1,5 +1,6 @@
 import type { AgentEvent, Run } from "../types";
 import { eventData } from "../api";
+import { commandVerification } from "../../../backend/execution/verification";
 
 export const agentEntries = (events: AgentEvent[], search = "") => {
   const entries: {
@@ -65,6 +66,25 @@ export const toolState = (
   const status = String(data.status || "").toLowerCase();
   if (["interrupted", "cancelled", "canceled"].includes(status))
     return "interrupted";
+  if (status === "blocked") return "blocked";
+  if (
+    event.kind.startsWith("command") &&
+    (typeof data.exit_code === "number" || ["failed", "error"].includes(status))
+  ) {
+    const verification = commandVerification({
+      id: String(event.id),
+      command: Array.isArray(data.command)
+        ? JSON.stringify(data.command)
+        : String(data.command || ""),
+      status: status === "error" ? "failed" : status,
+      exit_code: typeof data.exit_code === "number" ? data.exit_code : null,
+    });
+    if (
+      verification.kind === "setup" &&
+      ["blocked", "interrupted"].includes(verification.outcome)
+    )
+      return verification.outcome === "blocked" ? "blocked" : "interrupted";
+  }
   if (
     ["failed", "error"].includes(status) ||
     (typeof data.exit_code === "number" && data.exit_code !== 0)

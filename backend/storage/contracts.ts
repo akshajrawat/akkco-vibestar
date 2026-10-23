@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   SettingsSchema,
   FollowupConfigSchema,
+  PipelineStageSettingsSchema,
   taskStatuses,
   type Task,
   type Repository,
@@ -41,6 +42,7 @@ export const TaskRecordSchema = z
       })
       .optional(),
     execution_settings: SettingsSchema.optional(),
+    stage_settings: PipelineStageSettingsSchema.optional(),
     followup_config: FollowupConfigSchema.optional(),
     continuation: z.enum(["pipeline", "planning", "implementation"]).optional(),
     final_review_hash: z.string().optional(),

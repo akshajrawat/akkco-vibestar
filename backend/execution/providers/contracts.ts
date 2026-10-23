@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { NormalizedEvent, StageConfig } from "../../domain";
+import { VerificationCheckSchema } from "../verification";
 export interface ProviderDetection {
   provider: string;
   installed: boolean;
@@ -108,6 +109,7 @@ export const planSchemas = {
       testsFailed: list,
       testsSkipped: list,
       remainingRisks: list,
+      verification: z.array(VerificationCheckSchema).max(200).optional(),
     })
     .strict(),
   5: z

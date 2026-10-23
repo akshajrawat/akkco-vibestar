@@ -1,36 +1,30 @@
 import { RunPrompt } from "./RunPrompt";
 import { ChangesView } from "./ChangesView";
-import type { Run } from "../lib/types";
 import { CurrentRun } from "./CurrentRun";
 import { OpenInEditor } from "./OpenInEditor";
 import { containDialogFocus } from "../lib/keyboard";
 import { useState, useRef, useEffect } from "react";
 import {
   GitBranch,
-  FolderOpen,
-  ArrowUp,
   Square,
-  RotateCcw,
   Check,
   PanelBottom,
-  X,
-  Plus,
   ChevronRight,
   PanelRight,
-  Maximize2,
-  Minimize2,
 } from "lucide-react";
-import type { Detail, Repository, Diff, Message } from "../lib/types";
-import { activeStatuses, stages } from "../lib/types";
-import { rpc, errorMessage, duration } from "../lib/api";
+import type { Detail, Repository, Diff, Message, Run } from "../lib/types";
+import { activeStatuses } from "../lib/types";
+import { rpc, errorMessage } from "../lib/api";
 import { Button } from "./ui/button";
-import { Status } from "./Status";
 import { ComposerSettings, followupConfiguration } from "./ComposerSettings";
 import { TaskTerminal } from "./TaskTerminal";
-import { ResizeHandle } from "./ResizeHandle";
-import { usePaneSize } from "../lib/usePaneSize";
-import { useTaskView, updateTaskView } from "../lib/taskView";
-import { navigateTabs } from "../lib/keyboard";
+import {
+  useTaskView,
+  updateTaskView,
+  openWorkspaceTool,
+  type SecondarySection,
+} from "../lib/taskView";
+import { useWorkspaceKeys } from "../lib/useWorkspaceKeys";
 import { AgentTimeline } from "./AgentTimeline";
 import { AgentResponse } from "./AgentResponse";
 import { PlanView } from "./PlanView";
@@ -38,7 +32,15 @@ import { LogView } from "./LogView";
 import { TestsView } from "./TestsView";
 import { UsageView } from "./UsageView";
 import { RunError } from "./RunError";
-import { TaskCleanup } from "./TaskCleanup";
+import { detailVerification } from "../lib/verification";
+import { Composer, composerContent } from "./workspace/Composer";
+import { workspaceContext } from "./workspace/context";
+import { ActionTray } from "./workspace/ActionTray";
+import { ChatSurface } from "./workspace/ChatSurface";
+import { SecondaryWorkspace } from "./workspace/SecondaryWorkspace";
+import { BottomDock } from "./workspace/BottomDock";
+import { PipelineView, RunDetailsView } from "./workspace/TaskEngineering";
+
 export const TaskWorkspace = ({
   detail,
   repository,
@@ -49,35 +51,109 @@ export const TaskWorkspace = ({
   detail: Detail;
   repository?: Repository;
   revision: number;
-  onError: (s: string) => void;
+  onError: (message: string) => void;
   back: () => void;
 }) => {
   const t = detail.task;
   const view = useTaskView(t.id);
-  const tab = ["Chat", "Plan", "Usage"].includes(view.tab) ? view.tab : "Chat";
-  const [paneWidth, setPaneWidth] = usePaneSize("contextWidth", 360, 240, 1000);
-  const [dockHeight, setDockHeight] = usePaneSize("dockHeight", 260, 120, 500);
+  useWorkspaceKeys(t.id);
+  const shell = useRef<HTMLDivElement>(null);
   const [promptOpen, setPromptOpen] = useState(false);
   const [draftRun, setDraftRun] = useState<Run>();
   const [busy, setBusy] = useState(false);
-  const [addingContext, setAddingContext] = useState(false);
-  const [contextText, setContextText] = useState("");
-  const setSelectedRun = (id?: string) =>
-    updateTaskView(t.id, { outputRun: id || "" });
-  const [cleanup, setCleanup] = useState(false);
+  const noticeContext = `${t.id}:${t.stage}:${t.status}:${t.approval_gate}:${detail.runs.at(-1)?.id}:${detail.artifacts.at(-1)?.id}`;
+  const [statusNotice, setStatusNotice] = useState<{
+    message: string;
+    context: string;
+  }>();
+  const notice =
+    statusNotice?.context === noticeContext ? statusNotice.message : "";
+  const setNotice = (message: string) =>
+    setStatusNotice({ message, context: noticeContext });
+  const [instructionChoice, setInstructionChoice] = useState<{
+    ids: string;
+    disposition: "keep_saved" | "include_next_stage";
+  }>();
   const [finalizing, setFinalizing] = useState(false);
-  const [reviewSeen, setReviewSeen] = useState("");
-  const reviewKey = `${t.approval_gate}:${detail.artifacts.at(-1)?.created_at || t.updated_at}`;
   const [sent, setSent] = useState<Message[]>([]);
   const sending = useRef(false);
+  const acting = useRef(false);
   const [diff, setDiff] = useState<Diff | null>(null);
-  const timeline = useRef<HTMLDivElement>(null);
   const promptDialog = useRef<HTMLElement>(null);
-  const stick = useRef(true);
   const refreshDiff = useRef<(() => Promise<void>) | null>(null);
   const active = !!detail.executing || activeStatuses.includes(t.status);
   const occupied = !!detail.active;
   const watchChanges = active || occupied;
+  const feedbackStage =
+    t.stage <= 1
+      ? "Antigravity planning"
+      : t.stage === 2
+        ? "Codex plan refinement"
+        : "implementation";
+  const verification = detailVerification(detail);
+  const messages = [
+    ...detail.messages,
+    ...sent.filter(
+      (message) => !detail.messages.some((row) => row.id === message.id),
+    ),
+  ];
+  const pending = messages.filter((message) =>
+    ["draft", "queued"].includes(message.status || ""),
+  );
+  const pendingIds = pending.map((message) => message.id);
+  const approvalArtifact = [...detail.artifacts]
+    .reverse()
+    .find(
+      (artifact) =>
+        artifact.kind === "plan" &&
+        artifact.stage ===
+          (t.approval_gate === "antigravity_plan"
+            ? 1
+            : t.approval_gate === "codex_plan"
+              ? 2
+              : t.approval_gate === "implementation"
+                ? 3
+                : 5),
+    );
+  const pendingKey = `${t.approval_gate}:${approvalArtifact?.id}:${pendingIds.join(",")}`;
+  const chosenInstructions =
+    instructionChoice?.ids === pendingKey ? instructionChoice.disposition : "";
+  const currentDraft = useRef(view);
+  useEffect(() => {
+    currentDraft.current = view;
+  }, [view]);
+  const content = composerContent(view);
+  const saved =
+    (view.savedInstruction?.content === content
+      ? messages.find((message) => message.id === view.savedInstruction?.id)
+      : undefined) ||
+    pending.find(
+      (message) => message.status === "draft" && message.content === content,
+    );
+  const inspect = (name: string) => {
+    const sections: Record<string, SecondarySection> = {
+      Plan: "plans",
+      Tests: "tests",
+      Changes: "changes",
+      Usage: "usage",
+      Logs: "logs",
+      "Agent Output": "logs",
+      "Final review": "final-review",
+    };
+    openWorkspaceTool(t.id, sections[name] || "pipeline");
+  };
+  const dock = (dockTab: "Terminal" | "Problems") =>
+    updateTaskView(t.id, { terminalDock: true, dockTab });
+  const currentRun = () => {
+    updateTaskView(t.id, {
+      outputRun:
+        [...detail.runs].reverse().find((run) => run.status === "running")
+          ?.id ||
+        detail.runs.at(-1)?.id ||
+        "",
+    });
+    openWorkspaceTool(t.id, "run-details");
+  };
   useEffect(() => {
     if (!promptOpen) return;
     const previous = document.activeElement;
@@ -88,10 +164,6 @@ export const TaskWorkspace = ({
     };
   }, [promptOpen]);
   useEffect(() => {
-    if (stick.current)
-      timeline.current?.scrollTo({ top: timeline.current.scrollHeight });
-  }, [detail.events.length, detail.runs.length, detail.activity?.length]);
-  useEffect(() => {
     if (!t.worktree_path) return;
     let alive = true;
     let fetching = false;
@@ -100,9 +172,7 @@ export const TaskWorkspace = ({
       fetching = true;
       try {
         const value = await rpc<Diff>("task.diff", { id: t.id });
-        if (alive) {
-          setDiff(value);
-        }
+        if (alive) setDiff(value);
       } catch (e) {
         if (alive) onError(errorMessage(e));
       } finally {
@@ -124,30 +194,82 @@ export const TaskWorkspace = ({
     void refreshDiff.current?.();
   }, [revision]);
   const action = async (method: string, params: unknown = { id: t.id }) => {
+    if (acting.current) return;
+    acting.current = true;
     setBusy(true);
     try {
       await rpc(method, params);
+      return true;
     } catch (e) {
       onError(errorMessage(e));
     } finally {
+      acting.current = false;
       setBusy(false);
     }
   };
-  const dock = (dockTab: string) =>
-    updateTaskView(t.id, { terminalDock: true, dockTab });
-  const submit = async () => {
-    if (!view.draft.trim() || busy || sending.current) return;
+  const submit = async (saveOnly = false) => {
+    if (!content || content.length > 32000 || busy || sending.current) return;
+    if (saveOnly && saved) {
+      setNotice(
+        saved.status === "delivered"
+          ? "Instruction already delivered"
+          : "Instruction saved for later · no agent started",
+      );
+      return;
+    }
     const configuration = followupConfiguration(t, view);
+    const signature = JSON.stringify({ content, configuration, saveOnly });
+    const request_id =
+      view.messageRequest?.signature === signature
+        ? view.messageRequest.id
+        : crypto.randomUUID();
+    updateTaskView(t.id, { messageRequest: { id: request_id, signature } });
     sending.current = true;
     setBusy(true);
     try {
-      const result = await rpc<{ message: Message }>("task.followup", {
-        id: t.id,
-        content: view.draft,
-        configuration,
-      });
-      setSent((messages) => [...messages, result.message]);
-      updateTaskView(t.id, { draft: "" });
+      const result = await rpc<{ message?: Message; disposition: string }>(
+        saved && !saveOnly ? "task.message.send" : "task.followup",
+        saved && !saveOnly
+          ? {
+              id: t.id,
+              message_id: saved.id,
+              configuration,
+            }
+          : {
+              id: t.id,
+              content,
+              configuration,
+              save_only: saveOnly,
+              request_id,
+            },
+      );
+      if (result.message)
+        setSent((messages) => [
+          ...messages.filter((message) => message.id !== result.message!.id),
+          result.message!,
+        ]);
+      if (saveOnly || result.disposition === "draft") {
+        if (result.message)
+          updateTaskView(t.id, {
+            savedInstruction: { id: result.message.id, content },
+          });
+        setNotice("Instruction saved for later · no agent started");
+      } else {
+        setNotice(
+          saved && result.disposition === "delivered"
+            ? "Instruction already delivered · no new agent started"
+            : result.disposition === "queued"
+              ? "Feedback queued for the next safe stage boundary"
+              : "Feedback sent · continuation authorized",
+        );
+        // Preserve edits made while this request was in flight.
+        if (composerContent(currentDraft.current) === content)
+          updateTaskView(t.id, {
+            draft: "",
+            draftContext: [],
+            messageRequest: null,
+          });
+      }
     } catch (e) {
       onError(errorMessage(e));
     } finally {
@@ -157,11 +279,11 @@ export const TaskWorkspace = ({
   };
   return (
     <div
-      className={`workspace ${view.terminalDock && view.dockMaximized ? "dock-maximized" : ""}`}
+      ref={shell}
+      className={`workspace chat-workspace ${view.terminalDock && view.dockMaximized ? "dock-maximized" : ""}`}
       onKeyDown={(e) => {
-        if (e.key === "Escape" && view.dockMaximized) {
+        if (e.key === "Escape" && view.dockMaximized)
           updateTaskView(t.id, { dockMaximized: false });
-        }
       }}
     >
       <header className="workspace-header">
@@ -177,12 +299,9 @@ export const TaskWorkspace = ({
             #{t.issue_number}
           </button>
           <strong className="task-title" title={t.issue?.title}>
-            {t.scope_mode === "whole_issue"
-              ? t.issue?.title || "Entire issue"
-              : t.claimed_scope}
+            {t.claimed_scope || t.issue?.title || "Entire issue"}
           </strong>
-          <div className="spacer" />
-          <Status status={t.status} />
+          <span className="spacer" />
           {active && (
             <Button
               size="sm"
@@ -194,33 +313,6 @@ export const TaskWorkspace = ({
               Stop
             </Button>
           )}
-          {!occupied && !active && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                void action("task.archive", { id: t.id, archived: !t.archived })
-              }
-            >
-              {t.archived ? "Unarchive" : "Archive"}
-            </Button>
-          )}
-          {[
-            "completed",
-            "cancelled",
-            "failed",
-            "interrupted",
-            "ready_for_review",
-          ].includes(t.status) && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setCleanup(true)}
-            >
-              Delete task data
-            </Button>
-          )}
           <OpenInEditor
             id={t.id}
             kind="task"
@@ -228,172 +320,22 @@ export const TaskWorkspace = ({
             disabled={!t.worktree_path}
           />
           <Button
+            className="secondary-toggle"
             variant="ghost"
             size="icon"
-            aria-label="Open worktree"
-            disabled={!t.worktree_path}
+            aria-label="Toggle secondary workspace"
+            aria-expanded={view.secondaryOpen}
             onClick={() =>
-              void action("open.directory", { id: t.id, kind: "task" })
+              updateTaskView(t.id, {
+                secondaryOpen: !view.secondaryOpen,
+                expandedTool: false,
+              })
             }
           >
-            <FolderOpen size={14} />
+            <PanelRight size={15} />
           </Button>
-          {active || t.status === "queued" ? null : t.status ===
-            "ready_for_review" ? (
-            <Button
-              size="sm"
-              disabled={occupied || busy}
-              onClick={() => setFinalizing(true)}
-            >
-              <Check size={12} />
-              Finalize…
-            </Button>
-          ) : !["completed", "awaiting_approval"].includes(t.status) ? (
-            <Button
-              size="sm"
-              disabled={busy || occupied}
-              onClick={() => void action("task.retry")}
-            >
-              <RotateCcw size={12} />
-              Resume
-            </Button>
-          ) : null}
         </div>
       </header>
-      {t.status === "awaiting_approval" && t.approval_gate && (
-        <section
-          className="pipeline-approval"
-          aria-label="Pipeline review required"
-        >
-          <div>
-            <strong>
-              {t.approval_gate === "antigravity_plan"
-                ? "Antigravity plan is ready"
-                : t.approval_gate === "codex_plan"
-                  ? "Refined Codex plan is ready"
-                  : t.approval_gate === "implementation"
-                    ? "Implementation is ready to review"
-                    : "Antigravity review & tests are ready"}
-            </strong>
-            <small>
-              {t.approval_gate.endsWith("plan")
-                ? "Review the saved plan or send feedback before continuing."
-                : t.approval_gate === "implementation"
-                  ? "Inspect the changes and tests, then authorize Antigravity's final review."
-                  : "Inspect findings and tests not run before finalizing. Unresolved findings require changes."}
-            </small>
-          </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              if (t.approval_gate?.endsWith("plan"))
-                updateTaskView(t.id, { tab: "Plan" });
-              else if (t.approval_gate === "implementation") dock("Tests");
-              else dock("Final review");
-            }}
-          >
-            View{" "}
-            {t.approval_gate.endsWith("plan")
-              ? "plan"
-              : t.approval_gate === "implementation"
-                ? "tests"
-                : "review"}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              updateTaskView(t.id, { tab: "Chat" });
-            }}
-          >
-            Request changes
-          </Button>
-          <Button
-            size="sm"
-            variant="default"
-            disabled={
-              busy ||
-              occupied ||
-              (t.approval_gate === "final_review" &&
-                JSON.parse(
-                  [...detail.artifacts]
-                    .reverse()
-                    .find((a) => a.stage === 5 && a.kind === "plan")?.content ||
-                    "{}",
-                ).approval !== "approved")
-            }
-            onClick={() => void action("task.approve")}
-          >
-            {t.approval_gate === "antigravity_plan"
-              ? "Approve → Codex refinement"
-              : t.approval_gate === "codex_plan"
-                ? "Approve → Implement"
-                : t.approval_gate === "implementation"
-                  ? "Approve → Antigravity review & tests"
-                  : "Accept review"}
-          </Button>
-        </section>
-      )}
-      {t.status === "awaiting_approval" &&
-        t.approval_gate &&
-        reviewSeen !== reviewKey && (
-          <div className="modal-backdrop">
-            <section
-              className="modal compact-dialog"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Stage review required"
-            >
-              <h2>
-                {t.approval_gate === "antigravity_plan"
-                  ? "Review Antigravity's plan"
-                  : t.approval_gate === "codex_plan"
-                    ? "Review Codex's refined plan"
-                    : t.approval_gate === "implementation"
-                      ? "Review the implementation"
-                      : "Review Antigravity's final report"}
-              </h2>
-              <p>
-                The pipeline is paused.{" "}
-                {t.approval_gate.endsWith("plan")
-                  ? "Read the saved plan, request changes if needed, then explicitly approve the next stage."
-                  : "Review changes in VS Code and inspect the executed and skipped tests before approving."}{" "}
-                No next agent starts until you approve.
-              </p>
-              {!t.approval_gate.endsWith("plan") && (
-                <OpenInEditor
-                  id={t.id}
-                  kind="task"
-                  path={t.worktree_path}
-                  disabled={!t.worktree_path}
-                />
-              )}
-              <div className="actions">
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    setReviewSeen(reviewKey);
-                    if (t.approval_gate?.endsWith("plan"))
-                      updateTaskView(t.id, { tab: "Plan" });
-                    else
-                      dock(
-                        t.approval_gate === "implementation"
-                          ? "Tests"
-                          : "Final review",
-                      );
-                  }}
-                >
-                  {t.approval_gate.endsWith("plan")
-                    ? "Review plan"
-                    : t.approval_gate === "implementation"
-                      ? "Review implementation"
-                      : "Review final report"}
-                </Button>
-                <Button onClick={() => setReviewSeen(reviewKey)}>Later</Button>
-              </div>
-            </section>
-          </div>
-        )}
       {promptOpen && (
         <div
           className="modal-backdrop"
@@ -524,99 +466,21 @@ export const TaskWorkspace = ({
           </section>
         </div>
       )}
-      {cleanup && (
-        <TaskCleanup
-          id={t.id}
-          close={() => setCleanup(false)}
-          done={() => {
-            setCleanup(false);
-            back();
-          }}
-        />
-      )}
-      <div
-        className="workspace-tabs"
-        role="tablist"
-        aria-label="Task views"
-        onKeyDown={navigateTabs}
-      >
-        {["Chat", "Plan", "Usage"].map((tab) => (
-          <button
-            role="tab"
-            aria-label={tab}
-            aria-selected={view.tab === tab}
-            className={view.tab === tab ? "selected" : ""}
-            key={tab}
-            onClick={() => updateTaskView(t.id, { tab })}
-          >
-            {tab}
-          </button>
-        ))}
-        <div className="spacer" />
-        {["Changes", "Tests", "Agent Output"].map((name) => (
-          <Button
-            key={name}
-            size="sm"
-            variant="ghost"
-            onClick={() => dock(name)}
-          >
-            {name}
-          </Button>
-        ))}
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Toggle pipeline context"
-          aria-pressed={view.contextPane === "pipeline"}
-          onClick={() =>
-            updateTaskView(t.id, {
-              contextPane:
-                view.contextPane === "pipeline" ? "none" : "pipeline",
-            })
-          }
-        >
-          <PanelRight size={14} />
-          Run details
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Toggle utility dock"
-          onClick={() =>
-            updateTaskView(t.id, { terminalDock: !view.terminalDock })
-          }
-        >
-          <PanelBottom size={14} />
-        </Button>
-      </div>
-      <CurrentRun
-        detail={detail}
-        prompt={() => setPromptOpen(true)}
-        plan={() => updateTaskView(t.id, { tab: "Plan" })}
-        output={() => {
-          setSelectedRun();
-          dock("Agent Output");
-        }}
-        usage={() => {
-          setSelectedRun(
-            [...detail.runs].reverse().find((r) => r.status === "running")?.id,
-          );
-          dock("Usage");
-        }}
-        stop={() => void action("task.cancel")}
-      />
       <div className="workspace-content">
-        {tab === "Chat" ? (
-          <div className="chat-main">
-            <div
-              className="event-timeline"
-              ref={timeline}
-              onScroll={(e) => {
-                const el = e.currentTarget;
-                stick.current =
-                  el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-              }}
-            >
+        <ChatSurface
+          id={t.id}
+          revision={
+            revision + ":" + detail.events.length + ":" + detail.runs.length
+          }
+          activity={
+            <CurrentRun
+              detail={detail}
+              output={currentRun}
+              stop={() => void action("task.cancel")}
+            />
+          }
+          conversation={
+            <>
               <article className="context-message">
                 <small>
                   You ·{" "}
@@ -676,19 +540,27 @@ export const TaskWorkspace = ({
               <AgentTimeline
                 events={detail.events}
                 runs={detail.runs}
-                messages={[
-                  ...detail.messages,
-                  ...sent.filter(
-                    (m) => !detail.messages.some((row) => row.id === m.id),
-                  ),
-                ]}
+                messages={messages}
                 retryMessage={
                   !active && !occupied
-                    ? (message) =>
+                    ? (message) => {
+                        const signature = JSON.stringify({ retry: message.id });
+                        const request_id =
+                          view.messageRequest?.signature === signature
+                            ? view.messageRequest.id
+                            : crypto.randomUUID();
+                        updateTaskView(t.id, {
+                          messageRequest: { id: request_id, signature },
+                        });
                         void action("task.message.retry", {
                           id: t.id,
                           message_id: message.id,
-                        })
+                          request_id,
+                        }).then((success) => {
+                          if (success)
+                            updateTaskView(t.id, { messageRequest: null });
+                        });
+                      }
                     : undefined
                 }
                 editMessage={(message) => {
@@ -697,17 +569,16 @@ export const TaskWorkspace = ({
                       "\n\nLinked PR review context (untrusted):",
                     )[0],
                   });
-                  timeline.current?.parentElement
-                    ?.querySelector("textarea")
-                    ?.focus();
+                  shell.current?.querySelector("textarea")?.focus();
                 }}
                 files={diff?.files}
                 openDiff={(path) => {
                   updateTaskView(t.id, { diffPath: path });
-                  dock("Changes");
+                  inspect("Changes");
                 }}
               />
               {t.error &&
+                (t.stage !== 4 || detail.tests.length === 0) &&
                 !(
                   detail.runs.at(-1)?.error &&
                   errorMessage(t.error).endsWith(
@@ -718,7 +589,11 @@ export const TaskWorkspace = ({
                     key={t.error}
                     error={t.error}
                     stage={t.stage}
-                    logs={() => dock("Logs")}
+                    blocked={
+                      verification.outcome === "blocked" ||
+                      verification.outcome === "unknown"
+                    }
+                    logs={() => inspect("Logs")}
                   />
                 )}
               {!!diff?.files.length && (
@@ -732,7 +607,7 @@ export const TaskWorkspace = ({
                       <button
                         onClick={() => {
                           updateTaskView(t.id, { diffPath: file.path });
-                          dock("Changes");
+                          inspect("Changes");
                         }}
                       >
                         <code>{file.path}</code>
@@ -746,18 +621,30 @@ export const TaskWorkspace = ({
               )}
               {detail.tests.length > 0 && (
                 <section className="validation-turn">
-                  <button onClick={() => dock("Tests")}>
+                  <button onClick={() => inspect("Tests")}>
                     Validation{" "}
                     <span
                       className={
-                        detail.tests.at(-1)?.status === "passed"
+                        verification.outcome === "passed"
                           ? "success"
-                          : "warning"
+                          : verification.outcome === "failed"
+                            ? "failure"
+                            : "warning"
                       }
                     >
-                      {detail.tests.at(-1)?.status}
+                      {verification.summary}
                     </span>
                   </button>
+                  {t.stage === 4 && t.error && (
+                    <details>
+                      <summary>Host validation details</summary>
+                      <p>{t.error}</p>
+                      <small>
+                        Host validation launches no provider process. Inspect
+                        the recorded command for its actual exit and output.
+                      </small>
+                    </details>
+                  )}
                 </section>
               )}
               {t.status === "ready_for_review" && (
@@ -770,444 +657,331 @@ export const TaskWorkspace = ({
                   <ChevronRight size={14} />
                 </p>
               )}
-            </div>
-            <form
-              className="chat-input"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void submit();
-              }}
-            >
-              {addingContext && (
-                <div className="composer-context">
-                  <input
-                    autoFocus
-                    aria-label="Context file or note"
-                    placeholder="Worktree-relative file path or context note"
-                    value={contextText}
-                    onChange={(e) => setContextText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        e.preventDefault();
-                        setAddingContext(false);
-                      }
-                      if (e.key === "Enter") e.preventDefault();
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={!contextText.trim()}
-                    onClick={() => {
-                      updateTaskView(t.id, {
-                        draft: `${view.draft}${view.draft ? "\n" : ""}@${contextText.trim()}`,
-                      });
-                      setContextText("");
-                      setAddingContext(false);
-                    }}
-                  >
-                    Add
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Cancel context"
-                    onClick={() => setAddingContext(false)}
-                  >
-                    <X size={13} />
-                  </Button>
-                </div>
-              )}
-              <textarea
-                aria-label="Task follow-up"
-                rows={2}
-                value={view.draft}
-                placeholder={
-                  active
-                    ? "Draft your next message while the agent works…"
-                    : occupied
-                      ? "Save an instruction; close the terminal to resume…"
-                      : "Ask Vibestar…"
-                }
-                onChange={(e) =>
-                  updateTaskView(t.id, { draft: e.target.value })
-                }
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing
-                  ) {
-                    e.preventDefault();
-                    void submit();
+            </>
+          }
+          actions={
+            <>
+              {t.status === "awaiting_approval" && t.approval_gate && (
+                <ActionTray
+                  id={t.id}
+                  label="Pipeline review required"
+                  title={
+                    t.approval_gate === "antigravity_plan"
+                      ? "Antigravity plan is ready"
+                      : t.approval_gate === "codex_plan"
+                        ? "Refined Codex plan is ready"
+                        : t.approval_gate === "implementation"
+                          ? "Implementation is ready to review"
+                          : "Antigravity review & tests are ready"
                   }
-                }}
-              />
-              <div className="composer-toolbar">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-expanded={addingContext}
-                  onClick={() => setAddingContext((value) => !value)}
+                  detail={
+                    t.approval_gate.endsWith("plan")
+                      ? "Review the saved plan or send feedback before continuing."
+                      : t.approval_gate === "implementation"
+                        ? "Inspect changes and tests, then authorize Antigravity's final review."
+                        : "Inspect findings and tests not run. Final acceptance starts no agent."
+                  }
                 >
-                  <Plus size={13} />
-                  Context
-                </Button>
-                <div className="spacer" />
-                <ComposerSettings task={t} />
-                {active && (
                   <Button
-                    type="button"
-                    aria-label="Stop agent"
-                    onClick={() => void action("task.cancel")}
+                    size="sm"
+                    onClick={() => {
+                      if (t.approval_gate?.endsWith("plan")) {
+                        updateTaskView(t.id, {
+                          planStage: t.approval_gate === "codex_plan" ? 2 : 1,
+                        });
+                        openWorkspaceTool(t.id, "plans");
+                      } else if (t.approval_gate === "implementation")
+                        inspect("Tests");
+                      else inspect("Final review");
+                    }}
                   >
-                    <Square size={12} />
+                    View{" "}
+                    {t.approval_gate.endsWith("plan")
+                      ? "plan"
+                      : t.approval_gate === "implementation"
+                        ? "tests"
+                        : "review"}
                   </Button>
-                )}
-                <Button
-                  type="submit"
-                  variant="default"
-                  aria-label="Send follow-up"
-                  disabled={busy || !view.draft.trim()}
-                >
-                  <ArrowUp size={15} />
-                </Button>
-              </div>
-              {(active || occupied || t.stage < 3) && (
-                <small className="composer-note">
-                  {active
-                    ? "Enter queues this instruction for the next stage."
-                    : occupied
-                      ? "Enter saves this instruction. Close the terminal, then Retry the saved message to run it."
-                      : "Enter resumes planning with this instruction."}{" "}
-                  Shift+Enter adds a newline.
-                </small>
-              )}
-            </form>
-          </div>
-        ) : tab === "Usage" ? (
-          <UsageView taskId={t.id} records={detail.usage} />
-        ) : tab === "Plan" ? (
-          <PlanView
-            artifacts={detail.artifacts}
-            runs={detail.runs}
-            events={detail.events}
-            busy={busy || (occupied && !active)}
-            acceptDraft={setDraftRun}
-          />
-        ) : null}
-        {view.contextPane === "pipeline" && (
-          <>
-            <ResizeHandle
-              label="Resize context pane"
-              value={paneWidth}
-              onChange={setPaneWidth}
-              min={240}
-              max={1000}
-              reverse
-            />
-            <aside
-              className={`context-pane ${view.contextPane}`}
-              style={{ width: paneWidth, maxWidth: "60%" }}
-            >
-              <div className="context-heading">
-                <strong>Run details</strong>
-                <div className="spacer" />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close context pane"
-                  onClick={() => updateTaskView(t.id, { contextPane: "none" })}
-                >
-                  <X size={13} />
-                </Button>
-              </div>
-              <div className="run-details-scroll">
-                {!!detail.runs.length && (
-                  <button
-                    className="workspace-prompt-link"
-                    onClick={() => setPromptOpen(true)}
-                  >
-                    View sent prompts
-                  </button>
-                )}
-                <details className="workspace-repository-context">
-                  <summary>
-                    Repository source · {repository?.path || "Unavailable"}
-                  </summary>
-                  <dl className="repository-facts">
-                    <dt>Source</dt>
-                    <dd>
-                      <code>{repository?.path}</code> ·{" "}
-                      {repository?.source === "imported"
-                        ? "User-owned checkout"
-                        : "Vibestar-managed clone"}
-                    </dd>
-                    <dt>Worktree</dt>
-                    <dd>
-                      <code>
-                        {t.worktree_path || "Created when preparation starts"}
-                      </code>
-                    </dd>
-                    <dt>Branch</dt>
-                    <dd>
-                      <code>
-                        {t.branch_name || "Created during preparation"}
-                      </code>
-                    </dd>
-                    <dt>Base</dt>
-                    <dd>
-                      {repository?.upstream_remote || "upstream"}/
-                      {t.base_branch} <code>{t.base_commit_sha}</code>
-                    </dd>
-                  </dl>
-                </details>
-                <div className="stage-rail">
-                  <h3>Pipeline</h3>
-                  {stages.map((s, i) => {
-                    const run = [...detail.runs]
-                      .reverse()
-                      .find(
-                        (r) =>
-                          r.stage === i &&
-                          !["scheduled", "Code Review Ask AI"].includes(
-                            r.purpose || "",
-                          ),
-                      );
-                    return (
-                      <div className="stage-row" key={s}>
-                        <button
-                          onClick={() => {
-                            if (i === 1 || i === 2)
-                              updateTaskView(t.id, { tab: "Plan" });
-                            else if (i === 4) dock("Tests");
-                            else {
-                              setSelectedRun(run?.id || "preparation");
-                              dock("Logs");
-                            }
-                          }}
-                        >
-                          <span
-                            className={
-                              i < t.stage
-                                ? "success"
-                                : i === t.stage && active
-                                  ? "running"
-                                  : "subtle"
-                            }
-                          >
-                            {i < t.stage
-                              ? "✓"
-                              : i === t.stage && active
-                                ? "→"
-                                : "○"}
-                          </span>
-                          <div>
-                            {s}
-                            {run && (
-                              <small>
-                                {run.model || "CLI default"} · {run.effort} ·{" "}
-                                {run.status} ·{" "}
-                                {duration(run.started_at, run.ended_at)}
-                              </small>
-                            )}
-                          </div>
-                        </button>
-                        {i > 0 && i <= Math.min(t.stage, 5) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={active || busy}
-                            onClick={() =>
-                              void action("task.retry", { id: t.id, stage: i })
-                            }
-                          >
-                            Retry stage
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <details className="task-metadata">
-                    <summary>Worktree</summary>
-                    <p>
-                      Source: <code>{repository?.path}</code>
-                    </p>
-                    <code>{t.worktree_path}</code>
-                    <p>
-                      Base {t.base_commit_sha} · {t.base_branch}
-                    </p>
-                  </details>
                   <Button
                     size="sm"
                     variant="ghost"
-                    disabled={active || busy}
+                    onClick={() => {
+                      shell.current?.querySelector("textarea")?.focus();
+                    }}
+                  >
+                    Request changes
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    disabled={
+                      busy ||
+                      (pending.length > 0 && !chosenInstructions) ||
+                      occupied ||
+                      (t.approval_gate === "final_review" &&
+                        JSON.parse(
+                          [...detail.artifacts]
+                            .reverse()
+                            .find((a) => a.stage === 5 && a.kind === "plan")
+                            ?.content || "{}",
+                        ).approval !== "approved")
+                    }
                     onClick={() =>
-                      void action("task.retry", { id: t.id, restart: true })
+                      void action("task.approve", {
+                        id: t.id,
+                        ...(approvalArtifact
+                          ? { artifact_id: approvalArtifact.id }
+                          : {}),
+                        ...(pending.length
+                          ? {
+                              instructions: {
+                                disposition: chosenInstructions,
+                                message_ids: pendingIds,
+                              },
+                            }
+                          : {}),
+                      }).then((success) => {
+                        if (success)
+                          setNotice(
+                            t.approval_gate === "final_review"
+                              ? "Review accepted · no agent started"
+                              : "Approved · next pipeline stage authorized",
+                          );
+                      })
                     }
                   >
-                    Restart pipeline
+                    {t.approval_gate === "antigravity_plan"
+                      ? "Approve → Codex refinement"
+                      : t.approval_gate === "codex_plan"
+                        ? "Approve → Implement"
+                        : t.approval_gate === "implementation"
+                          ? "Approve → Antigravity review & tests"
+                          : "Accept review"}
                   </Button>
-                </div>
-              </div>
-            </aside>
-          </>
-        )}
-      </div>
-      {view.terminalDock && (
-        <>
-          {!view.dockMaximized && (
-            <ResizeHandle
-              label="Resize utility dock"
-              value={dockHeight}
-              onChange={setDockHeight}
-              min={120}
-              max={500}
-              vertical
-              reverse
-            />
-          )}
-          <div
-            className="utility-dock"
-            style={view.dockMaximized ? undefined : { height: dockHeight }}
-          >
-            <div
-              className="dock-tabs"
-              role="tablist"
-              aria-label="Utilities"
-              onKeyDown={navigateTabs}
-            >
-              {[
-                "Changes",
-                "Problems",
-                "Tests",
-                "Final review",
-                "Terminal",
-                "Agent Output",
-                "Logs",
-                "Usage",
-              ].map((tab) => (
-                <button
-                  role="tab"
-                  aria-selected={view.dockTab === tab}
-                  className={view.dockTab === tab ? "selected" : ""}
-                  key={tab}
-                  onClick={() => dock(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
-              <div className="spacer" />
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={
-                  view.dockMaximized
-                    ? "Restore utility dock"
-                    : "Maximize utility dock"
-                }
-                aria-pressed={view.dockMaximized}
-                onClick={() =>
-                  updateTaskView(t.id, { dockMaximized: !view.dockMaximized })
-                }
-              >
-                {view.dockMaximized ? (
-                  <Minimize2 size={13} />
-                ) : (
-                  <Maximize2 size={13} />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Hide utility dock"
-                onClick={() => updateTaskView(t.id, { terminalDock: false })}
-              >
-                <X size={13} />
-              </Button>
-            </div>
-            <div className="dock-content">
-              {view.dockTab === "Changes" ? (
-                <ChangesView
-                  task={t}
-                  diff={diff}
-                  revision={revision}
-                  onError={onError}
-                />
-              ) : view.dockTab === "Terminal" ? (
-                <TaskTerminal task={t} onError={onError} />
-              ) : view.dockTab === "Usage" ? (
-                <UsageView
-                  key={view.outputRun}
-                  taskId={t.id}
-                  records={detail.usage}
-                  runId={view.outputRun}
-                />
-              ) : view.dockTab === "Final review" ? (
-                <div className="final-review-panel">
-                  <AgentResponse
-                    expanded
-                    text={
-                      [...detail.artifacts]
-                        .reverse()
-                        .find((a) => a.stage === 5 && a.kind === "plan")
-                        ?.content || "Antigravity final review has not run yet."
-                    }
-                  />
-                  {detail.runs
-                    .filter((r) => r.stage === 5)
-                    .map((run) => (
-                      <RunPrompt key={run.id} run={run} />
-                    ))}
-                </div>
-              ) : view.dockTab === "Tests" ? (
-                <TestsView detail={detail} onError={onError} />
-              ) : view.dockTab === "Logs" || view.dockTab === "Agent Output" ? (
-                <LogView
-                  key={t.id}
-                  taskId={t.id}
-                  liveOutput={view.dockTab === "Agent Output"}
-                  runs={detail.runs}
-                  events={detail.events}
-                  selectedRun={view.outputRun || undefined}
-                />
-              ) : (
-                <div className="problems-panel">
-                  {t.error ? (
-                    <p className="failure">{errorMessage(t.error)}</p>
-                  ) : (
-                    <p className="subtle">No task problems</p>
+                  {pending.length > 0 && (
+                    <div className="instruction-choice">
+                      <details>
+                        <summary>
+                          {pending.length} saved pending{" "}
+                          {pending.length === 1
+                            ? "instruction"
+                            : "instructions"}
+                        </summary>
+                        {pending.map((message) => (
+                          <pre key={message.id}>{message.content}</pre>
+                        ))}
+                      </details>
+                      <label>
+                        Saved instructions on approval
+                        <select
+                          aria-label="Saved instructions on approval"
+                          value={chosenInstructions}
+                          onChange={(event) =>
+                            setInstructionChoice({
+                              ids: pendingKey,
+                              disposition: event.target.value as
+                                "keep_saved" | "include_next_stage",
+                            })
+                          }
+                        >
+                          <option value="">Choose explicitly…</option>
+                          <option value="keep_saved">
+                            Keep saved · approve current artifact
+                          </option>
+                          {t.approval_gate !== "final_review" && (
+                            <option value="include_next_stage">
+                              Include in the next pipeline stage
+                            </option>
+                          )}
+                        </select>
+                      </label>
+                      <small>
+                        Your unsent composer draft stays independent. Including
+                        saved instructions keeps the next stage's configured
+                        provider and model.
+                      </small>
+                    </div>
                   )}
-                  {detail.tests
-                    .filter((test) => test.status === "failed")
-                    .map((test) => (
-                      <p className="failure" key={test.id}>
-                        {test.command} · exit {test.exit_code}
-                      </p>
-                    ))}
-                </div>
+                </ActionTray>
               )}
+
+              {t.status === "verification_blocked" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => inspect("Tests")}
+                >
+                  Inspect unresolved verification
+                </Button>
+              )}
+              {t.status === "ready_for_review" && (
+                <Button size="sm" onClick={() => setFinalizing(true)}>
+                  Finalize…
+                </Button>
+              )}
+            </>
+          }
+          composer={
+            <Composer
+              id={t.id}
+              label="Task follow-up"
+              placeholder={
+                active ? "Write while the agent works…" : "Ask Vibestar…"
+              }
+              sendLabel="Send follow-up"
+              busy={busy}
+              disabled={occupied && !active}
+              onSend={() => void submit()}
+              save={{
+                label:
+                  saved?.status === "delivered"
+                    ? "Instruction delivered"
+                    : saved
+                      ? "Instruction saved"
+                      : "Save for later",
+                run: () => void submit(true),
+                disabled: !!saved,
+              }}
+              model={<ComposerSettings task={t} />}
+              notice={notice}
+              onEdit={() => setNotice("")}
+              hint={
+                active
+                  ? `Send queues feedback for ${feedbackStage} at the next safe boundary. Save for later starts no agent.`
+                  : occupied
+                    ? "Close the terminal before sending feedback. Save for later starts no agent."
+                    : t.approval_gate?.endsWith("plan")
+                      ? "Send feedback reruns the current planning stage. Save for later keeps the approval gate."
+                      : "Send starts an implementation follow-up. Save for later starts no agent."
+              }
+              context={workspaceContext({
+                id: t.id,
+                owner: "task",
+                files: diff?.files || [],
+                selected: view.diffPath,
+                plan: [...detail.artifacts]
+                  .reverse()
+                  .find(
+                    (artifact) =>
+                      artifact.kind === "plan" &&
+                      [1, 2].includes(artifact.stage),
+                  )?.content,
+                failures: verification.checks
+                  .filter((check) => check.outcome !== "passed")
+                  .map((check) => JSON.stringify(check))
+                  .join("\n"),
+              })}
+            />
+          }
+        />
+        <SecondaryWorkspace id={t.id}>
+          {view.secondarySection === "pipeline" ? (
+            <PipelineView
+              detail={detail}
+              busy={busy}
+              action={action}
+              finalize={() => setFinalizing(true)}
+            />
+          ) : view.secondarySection === "plans" ? (
+            <PlanView
+              compact={!view.expandedTool}
+              selectedStage={view.planStage}
+              selectStage={(planStage) => updateTaskView(t.id, { planStage })}
+              artifacts={detail.artifacts}
+              runs={detail.runs}
+              events={detail.events}
+              busy={busy || (occupied && !active)}
+              acceptDraft={setDraftRun}
+            />
+          ) : view.secondarySection === "changes" ? (
+            <ChangesView
+              task={t}
+              diff={diff}
+              revision={revision}
+              onError={onError}
+              compact={!view.expandedTool}
+            />
+          ) : view.secondarySection === "tests" ? (
+            <TestsView
+              detail={detail}
+              onError={onError}
+              terminal={() => dock("Terminal")}
+            />
+          ) : view.secondarySection === "usage" ? (
+            <UsageView taskId={t.id} records={detail.usage} />
+          ) : view.secondarySection === "logs" ? (
+            <LogView
+              taskId={t.id}
+              runs={detail.runs}
+              events={detail.events}
+              selectedRun={view.outputRun || undefined}
+            />
+          ) : view.secondarySection === "run-details" ? (
+            <RunDetailsView
+              detail={detail}
+              repository={repository}
+              prompts={() => setPromptOpen(true)}
+            />
+          ) : (
+            <div className="final-review-panel">
+              <AgentResponse
+                expanded
+                text={
+                  [...detail.artifacts]
+                    .reverse()
+                    .find((a) => a.stage === 5 && a.kind === "plan")?.content ||
+                  "Antigravity final review has not run yet."
+                }
+              />
+              {detail.runs
+                .filter((run) => run.stage === 5)
+                .map((run) => (
+                  <RunPrompt key={run.id} run={run} />
+                ))}
             </div>
+          )}
+        </SecondaryWorkspace>
+      </div>
+      <BottomDock
+        id={t.id}
+        terminal={<TaskTerminal task={t} onError={onError} />}
+        problems={
+          <div className="problems-panel">
+            {t.error ? (
+              <>
+                <p className="warning">{errorMessage(t.error)}</p>
+                <Button
+                  size="sm"
+                  onClick={() => inspect(t.stage === 4 ? "Tests" : "Logs")}
+                >
+                  Inspect evidence
+                </Button>
+              </>
+            ) : (
+              <p className="subtle">No task problems</p>
+            )}
           </div>
-        </>
-      )}
+        }
+      />
       <footer className="workspace-status">
         <GitBranch size={11} />
         <span>{t.branch_name || "Preparing worktree"}</span>
         <span className="spacer" />
-        <span>
-          {t.scope_mode === "whole_issue" ? "Entire issue" : "Partial scope"}
-        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label="Toggle utility dock"
+          onClick={() =>
+            updateTaskView(t.id, { terminalDock: !view.terminalDock })
+          }
+        >
+          <PanelBottom size={13} />
+          Terminal
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => dock("Problems")}>
+          Problems
+        </Button>
         <span>base {t.base_commit_sha.slice(0, 8) || "pending"}</span>
-        <span>
-          {["cancelled", "failed", "interrupted"].includes(t.status)
-            ? t.status.replace(/^./, (letter) => letter.toUpperCase())
-            : t.status === "awaiting_approval"
-              ? "Awaiting your review"
-              : stages[t.stage]}
-        </span>
       </footer>
     </div>
   );

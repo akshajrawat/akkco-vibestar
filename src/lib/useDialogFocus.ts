@@ -7,7 +7,7 @@ export const useDialogFocus = (enabled = true) => {
     const previous = document.activeElement as HTMLElement | null;
     dialog.current
       ?.querySelector<HTMLElement>(
-        "button:not(:disabled), input, select, textarea, [tabindex='0']",
+        "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex='0']:not(:disabled)",
       )
       ?.focus();
     return () => {

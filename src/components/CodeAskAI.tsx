@@ -230,8 +230,8 @@ export const CodeAskAI = ({
                   variant="ghost"
                   onClick={() =>
                     updateTaskView(task.id, {
-                      tab: "Chat",
-                      contextPane: "none",
+                      expandedTool: false,
+                      secondaryOpen: false,
                     })
                   }
                 >

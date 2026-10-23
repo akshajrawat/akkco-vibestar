@@ -10,6 +10,7 @@ export class CoreBridge extends EventEmitter {
   private checking = Promise.resolve();
   private warning: string | undefined;
   private approvalsAvailable = false;
+  private instructionChoicesAvailable = false;
   private manualPrAvailable = false;
   private repairAvailable = false;
   private issueWatchAvailable = false;
@@ -34,6 +35,7 @@ export class CoreBridge extends EventEmitter {
     this.repairAvailable = false;
     this.issueWatchAvailable = false;
     this.approvalsAvailable = false;
+    this.instructionChoicesAvailable = false;
     this.checking = this.launch().catch((error) => {
       this.warning = String(error);
       this.emit("event", { event: "core.error", text: this.warning });
@@ -108,6 +110,7 @@ export class CoreBridge extends EventEmitter {
       this.sendRequest<{
         build: string;
         pipeline_approvals?: boolean;
+        saved_instruction_choices?: boolean;
         manual_pr_analysis?: boolean;
         pr_repair?: boolean;
         manual_issue_watch?: boolean;
@@ -116,6 +119,8 @@ export class CoreBridge extends EventEmitter {
     ])
       .then(([bundle, info]) => {
         this.approvalsAvailable = info.pipeline_approvals === true;
+        this.instructionChoicesAvailable =
+          info.saved_instruction_choices === true;
         this.manualPrAvailable = info.manual_pr_analysis === true;
         this.repairAvailable = info.pr_repair === true;
         this.issueWatchAvailable =
@@ -190,6 +195,20 @@ export class CoreBridge extends EventEmitter {
       throw new Error(
         this.warning ||
           "Restart the updated core before starting task execution.",
+      );
+    if (
+      !this.instructionChoicesAvailable &&
+      [
+        "task.retry",
+        "task.followup",
+        "task.message.retry",
+        "task.message.send",
+        "task.approve",
+        "task.configureStage",
+      ].includes(method)
+    )
+      throw new Error(
+        "Update the execution helper before using saved instruction choices and future stage settings.",
       );
     try {
       const result = await this.sendRequest<T>(method, params);

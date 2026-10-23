@@ -269,6 +269,11 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
       analyze={vi.fn()}
     />,
   );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Review repair and publication options",
+    }),
+  );
   await screen.findByRole("heading", {
     name: "PR Review Repair Complete — Manual Review Required",
   });
@@ -285,7 +290,7 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
       ].includes(method),
     ),
   ).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Review Changes" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   fireEvent.click(screen.getByRole("button", { name: "Original PR changes" }));
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("repair.diff", {
@@ -300,19 +305,87 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
       layer: "upstream",
     }),
   );
-  fireEvent.click(screen.getByRole("tab", { name: "Agent Output" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Raw logs" }));
   expect(screen.getByRole("button", { name: "Readable" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy();
-  const tabs = screen.getByRole("tablist", { name: "PR repair utilities" });
-  const first = within(tabs).getByRole("tab", { name: "Changes" });
+  const tabs = screen.getByRole("tablist", { name: "Workspace tools" });
+  const first = within(tabs).getByRole("tab", {
+    name: "Pipeline",
+  });
   first.focus();
   fireEvent.keyDown(first, { key: "End" });
   expect(
     within(tabs)
-      .getByRole("tab", { name: "Terminal" })
+      .getByRole("tab", { name: "Raw logs" })
       .getAttribute("aria-selected"),
   ).toBe("true");
+  fireEvent.click(screen.getByLabelText("Toggle utility dock"));
+  expect(
+    within(screen.getByRole("tablist", { name: "Utilities" }))
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent),
+  ).toEqual(["Terminal", "Problems"]);
 });
+
+it.each([
+  ["active", true, "codex_implementing"],
+  ["published", false, "published"],
+  ["conflict", false, "merge_conflict"],
+  ["stale", false, "stale_remote_head"],
+  ["publication", false, "ready_to_publish"],
+] as const)(
+  "retains a local draft and rejects Enter-to-run in a %s repair",
+  async (label, active, status) => {
+    const id = `repair-draft-${label}`;
+    const detail: RepairDetail = {
+      session: { ...session, id, status },
+      active,
+      runs: [],
+      events: [],
+      messages: [],
+      tests: [],
+      usage: [],
+      activity: [],
+      publications: [],
+    };
+    const rpc = install((method) =>
+      method === "repair.detail"
+        ? detail
+        : method === "repair.reviewFiles"
+          ? []
+          : method === "repair.diff"
+            ? { files: [], insertions: 0, deletions: 0, base: "base" }
+            : {},
+    );
+    render(
+      <RepairWorkspace
+        id={id}
+        revision={0}
+        refresh={async () => {}}
+        back={vi.fn()}
+        analyze={vi.fn()}
+      />,
+    );
+    const input = (await screen.findByLabelText(
+      "PR repair follow-up",
+    )) as HTMLTextAreaElement;
+    fireEvent.change(input, {
+      target: { value: "Keep this instruction for later" },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe("Keep this instruction for later");
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Request Further Fix",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(rpc.mock.calls.some(([method]) => method === "repair.start")).toBe(
+      false,
+    );
+  },
+);
 
 it("shows exact publication values and requires separate commit and explicit push confirmation", async () => {
   const clean = { ...plan, dirty: false };

@@ -23,7 +23,13 @@ import { TaskNavigation } from "./components/TaskNavigation";
 import { CommandPalette } from "./components/CommandPalette";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { usePaneSize } from "./lib/usePaneSize";
-import { useTaskView, updateTaskView } from "./lib/taskView";
+import {
+  useTaskView,
+  updateTaskView,
+  openWorkspaceTool,
+  workspaceSections,
+  type SecondarySection,
+} from "./lib/taskView";
 import { rpc, errorMessage } from "./lib/api";
 import { ScheduledPage } from "./components/ScheduledPage";
 import { TitleBar } from "./components/TitleBar";
@@ -67,11 +73,13 @@ export const App = () => {
     180,
     380,
   );
-  const activeView = useTaskView(taskId || "");
+  const workspaceId = taskId || repairId;
+  const activeView = useTaskView(workspaceId || "");
   const { detail, error: detailError } = useDetail(taskId, revision);
   const onError = useCallback((s: string) => setError(s), [setError]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
       if (
         (e.ctrlKey || e.metaKey) &&
         e.shiftKey &&
@@ -238,6 +246,7 @@ export const App = () => {
                 tasks={snapshot?.tasks || []}
                 selected={taskId}
                 open={open}
+                onError={onError}
               />
               {!!snapshot?.repairs?.length && (
                 <div className="repair-navigation">
@@ -421,37 +430,49 @@ export const App = () => {
                 detail: task.branch_name,
                 run: () => open(task.id),
               })),
-              ...(taskId
+              ...(workspaceId
                 ? [
-                    ...[
-                      "Chat",
-                      "Plan",
-                      "Usage",
-                      "Agent Output",
-                      "Tests",
-                      "Terminal",
-                      "Logs",
-                    ].map((tab) => ({
-                      id: `tab-${tab}`,
-                      label: `Task: ${tab}`,
+                    {
+                      id: "task-chat",
+                      label: `${repairId ? "Repair" : "Task"}: Return to chat`,
                       run: () =>
-                        updateTaskView(
-                          taskId,
-                          [
-                            "Tests",
-                            "Terminal",
-                            "Logs",
-                            "Agent Output",
-                          ].includes(tab)
-                            ? { terminalDock: true, dockTab: tab }
-                            : { tab },
-                        ),
-                    })),
+                        updateTaskView(workspaceId, { expandedTool: false }),
+                    },
+                    ...Object.entries(workspaceSections).map(
+                      ([key, label]) => ({
+                        id: `task-tool-${key}`,
+                        label: `${repairId ? "Repair" : "Task"}: ${label}`,
+                        run: () =>
+                          openWorkspaceTool(
+                            workspaceId,
+                            key as SecondarySection,
+                          ),
+                      }),
+                    ),
+                    {
+                      id: "task-terminal",
+                      label: `${repairId ? "Repair" : "Task"}: Terminal`,
+                      detail: "Ctrl+backtick",
+                      run: () =>
+                        updateTaskView(workspaceId, {
+                          terminalDock: true,
+                          dockTab: "Terminal",
+                        }),
+                    },
+                    {
+                      id: "task-problems",
+                      label: `${repairId ? "Repair" : "Task"}: Problems`,
+                      run: () =>
+                        updateTaskView(workspaceId, {
+                          terminalDock: true,
+                          dockTab: "Problems",
+                        }),
+                    },
                     {
                       id: "dock",
                       label: "Toggle utility dock",
                       run: () =>
-                        updateTaskView(taskId, {
+                        updateTaskView(workspaceId, {
                           terminalDock: !activeView.terminalDock,
                         }),
                     },
@@ -460,8 +481,8 @@ export const App = () => {
                       label: "Open assigned task worktree",
                       run: () =>
                         void rpc("open.directory", {
-                          id: taskId,
-                          kind: "task",
+                          id: workspaceId,
+                          kind: repairId ? "repair" : "task",
                         }).catch((e) => onError(errorMessage(e))),
                     },
                   ]

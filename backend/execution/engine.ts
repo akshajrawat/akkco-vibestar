@@ -49,6 +49,7 @@ import {
 import type { z } from "zod";
 import { UtilityAI, type UtilityRequest } from "./utility-ai";
 import { continuationStage } from "./continuation";
+import { taskVerification } from "./task-verification";
 export class Engine extends EventEmitter {
   readonly db: Database;
   readonly git: GitWorkspace;
@@ -475,7 +476,9 @@ export class Engine extends EventEmitter {
                 ? this.closed
                   ? "interrupted"
                   : "cancelled"
-                : "failed",
+                : e instanceof AdeError && e.kind === "verification_blocked"
+                  ? "verification_blocked"
+                  : "failed",
               error: redact(e instanceof Error ? e.message : String(e)),
               updated_at: now(),
             });
@@ -1048,14 +1051,13 @@ export class Engine extends EventEmitter {
             "validation",
             "git diff --check failed. Inspect Tests.",
           );
-        const implementation = this.db.artifact(t.id, 3);
-        if (
-          Array.isArray(implementation.testsFailed) &&
-          implementation.testsFailed.length
-        )
+        const verification = taskVerification(this.db, t.id);
+        if (!verification.canReview)
           throw new AdeError(
-            "validation",
-            "Implementation reported failed tests. Review Tests and retry implementation.",
+            verification.outcome === "failed"
+              ? "validation"
+              : "verification_blocked",
+            verification.summary,
           );
       }
       if (t.stage === 5) t.final_review_hash = await this.git.fingerprint(t);
@@ -1165,7 +1167,7 @@ export class Engine extends EventEmitter {
         t.stage = 1;
     }
     const pending = this.db.all<{ id: string; configuration: string | null }>(
-      "SELECT id,configuration FROM task_messages WHERE task_id=? AND status IN ('draft','queued') ORDER BY created_at,rowid",
+      "SELECT id,configuration FROM task_messages WHERE task_id=? AND status='queued' ORDER BY created_at,rowid",
       id,
     );
     const target = restart
@@ -1199,7 +1201,7 @@ export class Engine extends EventEmitter {
       t.followup_config = undefined;
       t.continuation = "planning";
     }
-    if (target >= 3 && pending.length) {
+    if (target === 3 && pending.length) {
       t.continuation = "implementation";
       const message = pending.at(-1)!;
       if (message.configuration)
@@ -1213,10 +1215,11 @@ export class Engine extends EventEmitter {
           FollowupConfigSchema.parse,
         );
     }
-    this.db.run(
-      "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status IN ('queued','draft')",
-      id,
-    );
+    if (target <= 3)
+      this.db.run(
+        "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status='queued'",
+        id,
+      );
     if (target <= 3 || target === 5)
       this.db.run(
         "DELETE FROM task_artifacts WHERE task_id=? AND stage>=?",
@@ -1237,7 +1240,14 @@ export class Engine extends EventEmitter {
     void this.drain();
     return updated;
   };
-  approveStage = async (id: string) => {
+  approveStage = async (
+    id: string,
+    instructions?: {
+      disposition: "keep_saved" | "include_next_stage";
+      message_ids: string[];
+    },
+    artifactId?: string,
+  ) => {
     this.assertAvailable();
     const task = this.db.task(id);
     if (this.isActive(id) || this.taskMaintenance.has(id))
@@ -1275,6 +1285,23 @@ export class Engine extends EventEmitter {
       completedStage,
       this.db.artifact(id, completedStage),
     );
+    if (
+      artifactId &&
+      this.db.all<{ id: string }>(
+        "SELECT id FROM task_artifacts WHERE task_id=? AND stage=? AND kind='plan' ORDER BY created_at DESC,rowid DESC LIMIT 1",
+        id,
+        completedStage,
+      )[0]?.id !== artifactId
+    )
+      throw new AdeError(
+        "stale_review",
+        "The saved artifact changed. Open and review the current version before approving.",
+      );
+    if (completedStage === 3) {
+      const verification = taskVerification(this.db, id);
+      if (!verification.canReview)
+        throw new AdeError("verification_blocked", verification.summary);
+    }
     if (completedStage === 5 && object(result).approval !== "approved")
       throw new AdeError(
         "review_required",
@@ -1288,23 +1315,65 @@ export class Engine extends EventEmitter {
         "stale_review",
         "The worktree changed after Antigravity reviewed it. Run the final review again.",
       );
+    const pendingIds = () =>
+      this.db
+        .all<{ id: string }>(
+          "SELECT id FROM task_messages WHERE task_id=? AND status IN ('draft','queued') ORDER BY created_at,rowid",
+          id,
+        )
+        .map((message) => message.id);
+    const pending = pendingIds();
+    if (
+      (pending.length && !instructions) ||
+      (instructions &&
+        (new Set(instructions.message_ids).size !== pending.length ||
+          instructions.message_ids.length !== pending.length ||
+          pending.some(
+            (message) => !instructions.message_ids.includes(message),
+          )))
+    )
+      throw new AdeError(
+        "instruction_choice_required",
+        "Review the current saved instructions and choose whether to keep them saved or include them in the next stage.",
+      );
+    if (target === 6 && instructions?.disposition === "include_next_stage")
+      throw new AdeError(
+        "invalid_state",
+        "Final acceptance starts no agent. Keep instructions saved or send feedback explicitly.",
+      );
     const current = this.db.task(id);
     if (
       current.status !== "awaiting_approval" ||
       current.approval_gate !== task.approval_gate ||
+      JSON.stringify(pendingIds()) !== JSON.stringify(pending) ||
       this.isActive(id)
     )
       throw new AdeError(
         "invalid_state",
         "The task changed while approving. Refresh and review its current state.",
       );
-    this.db.saveTask({
-      ...task,
-      approval_gate: undefined,
-      stage: target,
-      status: target === 6 ? "ready_for_review" : "queued",
-      continuation: "pipeline",
-      updated_at: now(),
+    this.db.transaction(() => {
+      if (instructions?.disposition === "include_next_stage")
+        for (const message of pending)
+          this.db.run(
+            "UPDATE task_messages SET status='delivered' WHERE id=? AND task_id=?",
+            message,
+            id,
+          );
+      else
+        this.db.run(
+          "UPDATE task_messages SET status='draft' WHERE task_id=? AND status='queued'",
+          id,
+        );
+      this.db.saveTask({
+        ...current,
+        approval_gate: undefined,
+        stage: target,
+        status: target === 6 ? "ready_for_review" : "queued",
+        continuation: "pipeline",
+        followup_config: undefined,
+        updated_at: now(),
+      });
     });
     this.changed(id);
     if (target < 6) void this.drain();
@@ -1436,6 +1505,8 @@ export class Engine extends EventEmitter {
     content: string,
     configuration?: Task["followup_config"],
     saveOnly = false,
+    requestId: string = randomUUID(),
+    sendSaved = false,
   ) => {
     const t = this.db.task(id);
     if (!content.trim() || content.length > 32000)
@@ -1443,11 +1514,34 @@ export class Engine extends EventEmitter {
         "invalid_state",
         "Provide an instruction of 1–32000 characters.",
       );
+    const existing = this.db.all<{
+      id: string;
+      task_id: string;
+      content: string;
+      configuration: string | null;
+      status: string;
+      created_at: string;
+    }>("SELECT * FROM task_messages WHERE id=?", requestId)[0];
+    if (existing) {
+      if (
+        existing.task_id !== id ||
+        existing.content !== redact(content) ||
+        (existing.configuration !==
+          (configuration ? JSON.stringify(configuration) : null) &&
+          !(sendSaved && existing.status === "draft"))
+      )
+        throw new AdeError(
+          "invalid_state",
+          "This message request already belongs to a different instruction.",
+        );
+      if (!sendSaved || existing.status !== "draft")
+        return { message: existing, disposition: existing.status };
+    }
     const message = {
-      id: randomUUID(),
+      id: requestId,
       role: "user",
       content: redact(content),
-      created_at: now(),
+      created_at: existing?.created_at ?? now(),
       status:
         saveOnly ||
         this.interactive.has(id) ||
@@ -1459,45 +1553,85 @@ export class Engine extends EventEmitter {
             ? "queued"
             : "delivered",
     };
-    this.db.run(
-      "INSERT INTO task_messages(id,task_id,role,content,created_at,status,configuration) VALUES(?,?,?,?,?,?,?)",
-      message.id,
-      id,
-      message.role,
-      message.content,
-      message.created_at,
-      message.status,
-      configuration ? JSON.stringify(configuration) : null,
-    );
-    this.changed(id);
-    if (message.status !== "delivered")
-      return { message, disposition: message.status };
-    const target = continuationStage(this.db, t);
-    this.db.run(
-      "DELETE FROM task_artifacts WHERE task_id=? AND stage>=?",
-      id,
-      target,
-    );
-    this.db.run(
-      "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status IN ('draft','queued')",
-      id,
-    );
-    this.db.saveTask({
-      ...t,
-      followup_config: configuration,
-      approval_gate: undefined,
-      archived: false,
-      continuation: target >= 3 ? "implementation" : "planning",
-      stage: target,
-      status: "queued",
-      error: null,
-      updated_at: now(),
+    const disposition = this.db.transaction(() => {
+      if (existing)
+        this.db.run(
+          "UPDATE task_messages SET status=?,configuration=? WHERE id=? AND task_id=?",
+          message.status,
+          configuration ? JSON.stringify(configuration) : null,
+          message.id,
+          id,
+        );
+      else
+        this.db.run(
+          "INSERT INTO task_messages(id,task_id,role,content,created_at,status,configuration) VALUES(?,?,?,?,?,?,?)",
+          message.id,
+          id,
+          message.role,
+          message.content,
+          message.created_at,
+          message.status,
+          configuration ? JSON.stringify(configuration) : null,
+        );
+      if (message.status !== "delivered") return message.status;
+      const target = continuationStage(this.db, t);
+      this.db.run(
+        "DELETE FROM task_artifacts WHERE task_id=? AND stage>=?",
+        id,
+        target,
+      );
+      this.db.saveTask({
+        ...t,
+        followup_config: configuration,
+        approval_gate: undefined,
+        archived: false,
+        continuation: target >= 3 ? "implementation" : "planning",
+        stage: target,
+        status: "queued",
+        error: null,
+        updated_at: now(),
+      });
+      return target >= 3 ? "implementation" : "resume_planning";
     });
-    void this.drain();
-    return {
-      message,
-      disposition: target >= 3 ? "implementation" : "resume_planning",
-    };
+    this.changed(id);
+    if (message.status === "delivered") void this.drain();
+    return { message, disposition };
+  };
+  sendSavedMessage = (
+    id: string,
+    messageId: string,
+    configuration?: Task["followup_config"],
+  ) => {
+    const message = this.db.all<{
+      content: string;
+      status: string;
+      configuration: string | null;
+    }>(
+      "SELECT content,status,configuration FROM task_messages WHERE task_id=? AND id=?",
+      id,
+      messageId,
+    )[0];
+    if (!message) throw new AdeError("not_found", "Message not found");
+    if (message.status !== "draft") return { disposition: message.status };
+    if (configuration) message.configuration = JSON.stringify(configuration);
+    return this.followUp(
+      id,
+      message.content,
+      message.configuration
+        ? this.db.records.decode(
+            {
+              table: "task_messages",
+              id: messageId,
+              column: "configuration",
+              source: message.configuration,
+            },
+            FollowupConfigSchema.parse,
+          )
+        : undefined,
+      false,
+      messageId,
+      true,
+    );
   };
   manual = async (
     id: string,

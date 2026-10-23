@@ -61,6 +61,7 @@ const main = async () => {
             build,
             protocol: 3,
             pipeline_approvals: true,
+            saved_instruction_choices: true,
             manual_pr_analysis: true,
             pr_repair: true,
             manual_issue_watch: true,

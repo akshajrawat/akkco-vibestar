@@ -4,7 +4,7 @@ import { GitHubService } from "./github/service";
 import { GitHubClient } from "./github/client";
 import { IssueWatchService } from "./issue-watch/service";
 import { fetchIssue } from "./workspace/issue";
-import { FollowupConfigSchema } from "./domain";
+import { FollowupConfigSchema, StageConfigSchema } from "./domain";
 import { StorageService } from "./storage/service";
 import { Usage } from "./execution/usage";
 import { TaskTerminals } from "./execution/task-terminals";
@@ -14,6 +14,7 @@ import { RepairService } from "./review/repair/service";
 import { Scheduler } from "./scheduled/scheduler";
 import { GitHubMonitor } from "./scheduled/github";
 import { z } from "zod";
+import { taskVerification } from "./execution/task-verification";
 import { realpath, open } from "node:fs/promises";
 import { Engine } from "./execution/engine";
 import { AuthSessions } from "./execution/auth";
@@ -347,17 +348,24 @@ export class Rpc {
           .extend({
             message_id: z.string().uuid(),
             content: z.string().min(1).max(32000).optional(),
+            request_id: z.string().uuid().optional(),
           })
           .parse(input);
         const message = e.db.all<{
           content: string;
           configuration: string | null;
+          status: string;
         }>(
-          "SELECT content,configuration FROM task_messages WHERE id=? AND task_id=?",
+          "SELECT content,configuration,status FROM task_messages WHERE id=? AND task_id=?",
           p.message_id,
           p.id,
         )[0];
         if (!message) throw new AdeError("not_found", "Message not found");
+        if (
+          message.status !== "delivered" &&
+          (!p.content || p.content === message.content)
+        )
+          return e.sendSavedMessage(p.id, p.message_id);
         return e.followUp(
           p.id,
           p.content || message.content,
@@ -372,7 +380,19 @@ export class Rpc {
                 FollowupConfigSchema.parse,
               )
             : undefined,
+          false,
+          p.request_id,
         );
+      }
+      case "task.message.send": {
+        const p = idInput
+          .extend({
+            message_id: z.string().uuid(),
+            configuration: FollowupConfigSchema.optional(),
+          })
+          .strict()
+          .parse(input);
+        return e.sendSavedMessage(p.id, p.message_id, p.configuration);
       }
       case "repair.terminal.status":
         return this.repairTerminals.current(idInput.strict().parse(input).id);
@@ -454,6 +474,45 @@ export class Rpc {
         e.changed(p.id);
         return p.settings;
       }
+      case "task.configureStage": {
+        const p = idInput
+          .extend({
+            stage: z.union([
+              z.literal(1),
+              z.literal(2),
+              z.literal(3),
+              z.literal(5),
+            ]),
+            config: StageConfigSchema.strict(),
+          })
+          .strict()
+          .parse(input);
+        const task = e.db.task(p.id);
+        if (e.isActive(p.id) || task.status === "queued")
+          throw new AdeError(
+            "busy",
+            "Wait for execution and terminals to finish before editing a future stage.",
+          );
+        if (
+          task.stage > p.stage ||
+          e.db.all(
+            "SELECT id FROM agent_runs WHERE task_id=? AND stage=? LIMIT 1",
+            p.id,
+            p.stage,
+          ).length
+        )
+          throw new AdeError(
+            "invalid_state",
+            "Only stages that have never started can change their saved model configuration.",
+          );
+        e.db.saveTask({
+          ...task,
+          stage_settings: { ...task.stage_settings, [p.stage]: p.config },
+          updated_at: now(),
+        });
+        e.changed(p.id);
+        return p.config;
+      }
       case "repair.create":
         return this.repairs.create(input);
       case "repair.list": {
@@ -467,10 +526,13 @@ export class Rpc {
         return this.repairs.detail(idInput.strict().parse(input).id);
       case "repair.start": {
         const p = idInput
-          .extend({ instructions: z.string().max(16000).default("") })
+          .extend({
+            instructions: z.string().max(16000).default(""),
+            request_id: z.string().uuid().optional(),
+          })
           .strict()
           .parse(input);
-        return this.repairs.start(p.id, p.instructions);
+        return this.repairs.start(p.id, p.instructions, p.request_id);
       }
       case "repair.cancel":
         return this.repairs.cancel(idInput.strict().parse(input).id);
@@ -821,6 +883,7 @@ export class Rpc {
         const detail = e.db.detail(id);
         return {
           ...detail,
+          validation: taskVerification(e.db, id),
           task: {
             ...detail.task,
             execution_settings:
@@ -916,8 +979,22 @@ export class Rpc {
           .parse(input);
         return e.retry(p.id, p.stage, p.restart);
       }
-      case "task.approve":
-        return e.approveStage(idInput.strict().parse(input).id);
+      case "task.approve": {
+        const p = idInput
+          .extend({
+            artifact_id: z.string().uuid().optional(),
+            instructions: z
+              .object({
+                disposition: z.enum(["keep_saved", "include_next_stage"]),
+                message_ids: z.array(z.string().uuid()).max(1000),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .parse(input);
+        return e.approveStage(p.id, p.instructions, p.artifact_id);
+      }
       case "task.acceptDraft": {
         const p = idInput
           .extend({ run_id: z.string().uuid() })
@@ -931,9 +1008,16 @@ export class Rpc {
             content: z.string().max(32000),
             save_only: z.boolean().default(false),
             configuration: FollowupConfigSchema.optional(),
+            request_id: z.string().uuid().optional(),
           })
           .parse(input);
-        return e.followUp(p.id, p.content, p.configuration, p.save_only);
+        return e.followUp(
+          p.id,
+          p.content,
+          p.configuration,
+          p.save_only,
+          p.request_id,
+        );
       }
       case "task.complete": {
         const t = e.db.task(idInput.parse(input).id);

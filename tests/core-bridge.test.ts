@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreBridge } from "../electron/bridge";
 
-const helper = (manual = true, watch = false) => `
+const helper = (manual = true, watch = false, instructions = true) => `
 const {createInterface}=require('node:readline');
 const {createHash}=require('node:crypto');
 const {readFile}=require('node:fs/promises');
@@ -13,7 +13,7 @@ const build=createHash('sha256').update(bytes).digest('hex');
 const lines=createInterface({input:process.stdin});
 lines.on('line',line=>{
 const request=JSON.parse(line);
-const result=request.method==='core.info'?{build,pipeline_approvals:true,manual_pr_analysis:${manual},manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
+const result=request.method==='core.info'?{build,pipeline_approvals:true,saved_instruction_choices:${instructions},manual_pr_analysis:${manual},manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
 process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
 });
 lines.on('close',()=>process.exit(0));
@@ -148,6 +148,38 @@ it.skipIf(process.platform === "win32")(
       });
       await expect(bridge.request("issueWatch.create")).resolves.toEqual({
         accepted: "issueWatch.create",
+      });
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "refuses legacy helpers that cannot preserve saved instruction choices",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-instructions-"));
+    await writeFile(join(dir, "core.cjs"), helper(true, true, false));
+    const bridge = new CoreBridge(dir, {
+      distro: "",
+      data_home: dir,
+      helper_path: "",
+    });
+    try {
+      bridge.start();
+      for (const method of [
+        "task.followup",
+        "task.retry",
+        "task.approve",
+        "task.message.send",
+        "task.configureStage",
+      ])
+        await expect(bridge.request(method)).rejects.toThrow(
+          "saved instruction choices",
+        );
+      await expect(bridge.request("task.detail")).resolves.toEqual({
+        accepted: "task.detail",
       });
     } finally {
       await bridge.stop();

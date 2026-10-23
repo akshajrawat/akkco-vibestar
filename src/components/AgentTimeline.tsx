@@ -117,7 +117,7 @@ export const AgentTimeline = ({
       event.kind === "command.finished"
         ? duration(row.initial.timestamp, event.timestamp)
         : "";
-    const skipped = state === "skipped";
+    const skipped = state === "skipped" || state === "blocked";
     const Icon = edited
       ? FilePenLine
       : search || event.kind === "file.read"
@@ -146,13 +146,15 @@ export const AgentTimeline = ({
                 ? "Read failed"
                 : "Read file"
           : command
-            ? failed
-              ? "Command failed"
-              : interrupted
-                ? "Command interrupted"
-                : finished
-                  ? "Ran"
-                  : "Running command"
+            ? state === "blocked"
+              ? "Command blocked"
+              : failed
+                ? "Command failed"
+                : interrupted
+                  ? "Command interrupted"
+                  : finished
+                    ? "Ran"
+                    : "Running command"
             : event.kind === "test.result"
               ? `Test ${data.status || "result"}`
               : data.tool
@@ -375,11 +377,13 @@ export const AgentTimeline = ({
         <article className="user-message">
           <small>You</small>
           {message.status === "queued" && (
-            <small className="running">Queued for the next stage</small>
+            <small className="running">
+              Feedback queued · next safe stage boundary
+            </small>
           )}
           {message.status === "draft" && (
             <small className="warning">
-              Saved instruction · waiting to resume
+              Instruction saved for later · no agent started
             </small>
           )}
           <p>
@@ -407,7 +411,9 @@ export const AgentTimeline = ({
                 variant="ghost"
                 onClick={() => retryMessage(message)}
               >
-                Retry
+                {message.status === "draft"
+                  ? "Send saved instruction"
+                  : "Retry"}
               </Button>
             )}
             {editMessage && message.status !== "review_question" && (
@@ -454,7 +460,7 @@ export const AgentTimeline = ({
                 : filter === "errors"
                   ? e.event.stream === "stderr" ||
                     ["run.failed", "run.cancelled"].includes(e.event.kind) ||
-                    ["failed", "interrupted"].includes(
+                    ["failed", "interrupted", "blocked"].includes(
                       toolState(e.event, e.data, run),
                     )
                   : e.event.kind === "test.result")),

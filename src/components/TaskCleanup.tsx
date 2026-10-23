@@ -2,6 +2,8 @@ import { useState } from "react";
 import { rpc } from "../lib/api";
 import { CleanupError } from "./CleanupError";
 import { Button } from "./ui/button";
+import { containDialogFocus } from "../lib/keyboard";
+import { useDialogFocus } from "../lib/useDialogFocus";
 export const TaskCleanup = ({
   id,
   close,
@@ -19,6 +21,7 @@ export const TaskCleanup = ({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
+  const dialog = useDialogFocus();
   const remove = async () => {
     setBusy(true);
     setError(undefined);
@@ -34,10 +37,18 @@ export const TaskCleanup = ({
   return (
     <div className="modal-backdrop">
       <section
+        ref={dialog}
         className="modal compact-dialog"
         role="dialog"
         aria-modal="true"
         aria-label="Delete task data"
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !busy) {
+            e.stopPropagation();
+            close();
+          }
+          containDialogFocus(e);
+        }}
       >
         <h2>Delete task data</h2>
         <p>

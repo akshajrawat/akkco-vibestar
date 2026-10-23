@@ -55,10 +55,10 @@ export class RepairStore {
       JSON.stringify(data),
       now(),
     );
-  message = (id: string, content: string) =>
+  message = (id: string, content: string, requestId: string = randomUUID()) =>
     this.db.run(
       "INSERT INTO repair_messages VALUES(?,?,'user',?,?)",
-      randomUUID(),
+      requestId,
       id,
       content,
       now(),

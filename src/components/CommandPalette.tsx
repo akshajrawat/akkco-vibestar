@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Search } from "lucide-react";
+import { useDialogFocus } from "../lib/useDialogFocus";
 export interface PaletteAction {
   id: string;
   label: string;
@@ -16,12 +17,10 @@ export const CommandPalette = ({
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const dialog = useDialogFocus();
   const filtered = actions.filter((a) =>
     `${a.label} ${a.detail || ""}`.toLowerCase().includes(query.toLowerCase()),
   );
-  useEffect(() => {
-    input.current?.focus();
-  }, []);
   const execute = (action: PaletteAction) => {
     close();
     action.run();
@@ -34,6 +33,7 @@ export const CommandPalette = ({
       }}
     >
       <section
+        ref={dialog}
         role="dialog"
         aria-label="Command palette"
         aria-modal="true"

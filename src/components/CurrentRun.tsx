@@ -2,16 +2,12 @@ import { useEffect, useState } from "react";
 import type { Detail } from "../lib/types";
 import { duration } from "../lib/api";
 import { agentEntries, toolState } from "../lib/agent-output/activity";
-import { readLimits } from "../lib/usage";
 import { Button } from "./ui/button";
 
 export const CurrentRun = ({
   detail,
   output,
   stop,
-  prompt,
-  plan,
-  usage: openUsage,
 }: {
   detail: Pick<Detail, "runs" | "events" | "usage"> & {
     task?: Pick<Detail["task"], "status" | "updated_at">;
@@ -21,14 +17,13 @@ export const CurrentRun = ({
   };
   output: () => void;
   stop: () => void;
-  prompt?: () => void;
-  plan?: () => void;
-  usage?: () => void;
 }) => {
-  const run = [...detail.runs].reverse().find((r) => r.status === "running");
+  const runningRun = [...detail.runs]
+    .reverse()
+    .find((r) => r.status === "running");
   const status = detail.task?.status || detail.status || "";
   const active =
-    !!run ||
+    !!runningRun ||
     [
       "queued",
       "preparing",
@@ -40,6 +35,7 @@ export const CurrentRun = ({
       "codex_implementing",
       "antigravity_verifying",
     ].includes(status);
+  const run = runningRun || (!active ? detail.runs.at(-1) : undefined);
   const model = run?.model || "CLI default · model not reported";
   const [, tick] = useState(0);
   useEffect(() => {
@@ -47,7 +43,7 @@ export const CurrentRun = ({
     const timer = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(timer);
   }, [active]);
-  if (!active) return null;
+  if (!active && !run) return null;
   const labels: Record<string, string> = {
     queued: "Queued",
     preparing: "Preparing repository",
@@ -120,100 +116,58 @@ export const CurrentRun = ({
     toolState(entry.event, data, run) !== "running"
       ? `${toolState(entry.event, data, run)} · ${observedActivity}`
       : observedActivity;
-  const usage = detail.usage?.find((u) => u.id === run?.id);
-  const window = readLimits(usage?.subscription_limits)?.windows.find(
-    (w) => w.windowDurationMins === 300,
-  );
-  const reportedTokens =
-    usage?.total_tokens != null
-      ? `Tokens: ${usage.total_tokens.toLocaleString()} reported`
-      : [
-          usage?.input_tokens != null
-            ? `Input: ${usage.input_tokens.toLocaleString()}`
-            : "",
-          usage?.output_tokens != null
-            ? `Output: ${usage.output_tokens.toLocaleString()}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join(" · ");
   return (
     <section
-      className="current-run"
+      className="current-run compact-activity"
       aria-label="Current agent run"
-      aria-live="polite"
     >
-      <span className={`agent-avatar ${run?.provider || ""}`}>
-        {run ? (run.provider === "antigravity" ? "A" : "C") : "●"}
-      </span>
-      <div className="current-run-text">
+      <button
+        className="current-run-open"
+        onClick={output}
+        aria-label="Inspect current run"
+      >
         <div>
           <strong>
-            {run
-              ? run.provider === "antigravity"
-                ? "Antigravity"
-                : run.provider === "codex"
-                  ? "Codex"
-                  : run.provider
-              : stage}
+            {run?.provider === "antigravity"
+              ? "Antigravity"
+              : run?.provider === "codex"
+                ? "Codex"
+                : run?.provider || stage}
           </strong>
           {run && (
             <span>
               {" "}
-              · {stage} · {model} · {run.effort}
+              · {stage} · {model} · {run.effort} ·{" "}
+              {active ? "running" : run.status}
             </span>
           )}
           <time aria-label="Run runtime">
             {" "}
             ·{" "}
-            {duration(
-              run?.started_at ||
-                detail.task?.updated_at ||
-                detail.updated_at ||
-                new Date().toISOString(),
-            )}
+            {run && !active && !run.ended_at
+              ? "duration unreported"
+              : duration(
+                  run?.started_at ||
+                    detail.task?.updated_at ||
+                    detail.updated_at ||
+                    new Date().toISOString(),
+                  active ? undefined : run?.ended_at,
+                )}
           </time>
         </div>
-        {run && (
+        {active && run && (
           <small title={activity}>
             {activity.trim().startsWith("{")
-              ? "Structured output streaming · View plan or Agent Output"
+              ? "Structured output streaming"
               : activity}
           </small>
         )}
-        {(reportedTokens || window) && (
-          <small>
-            {reportedTokens}
-            {window
-              ? `${reportedTokens ? " · " : ""}5h window: ${window.usedPercent}% used at start`
-              : ""}
-          </small>
-        )}
-      </div>
-      {plan &&
-        run &&
-        [1, 2].includes(run.stage) &&
-        detail.artifacts?.some((a) => a.kind === `draft:${run.id}`) && (
-          <Button size="sm" onClick={plan}>
-            View streamed plan
-          </Button>
-        )}
-      {prompt && (
-        <Button size="sm" variant="ghost" disabled={!run} onClick={prompt}>
-          View prompt
+      </button>
+      {active && (
+        <Button size="sm" variant="ghost" onClick={stop}>
+          Stop
         </Button>
       )}
-      <Button size="sm" variant="ghost" disabled={!run} onClick={output}>
-        Agent Output
-      </Button>
-      {openUsage && (
-        <Button size="sm" variant="ghost" disabled={!run} onClick={openUsage}>
-          Run usage
-        </Button>
-      )}
-      <Button size="sm" onClick={stop}>
-        Stop
-      </Button>
     </section>
   );
 };

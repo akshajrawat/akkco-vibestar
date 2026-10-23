@@ -1,5 +1,96 @@
 # Verification — latest checkpoint October 22, 2026
 
+## Chat-first workspace — final milestone, October 22, 2026
+
+All five phases are implemented and verified against baseline 5411c9e58d8bb2a64fb1b56c7b336dd7acbfa11e plus the current working tree. [Delivery, acceptance audit, API changes, file inventory, manual checks and limits](CHAT-FIRST-WORKSPACE.md) records the result. Historical checkpoints below are retained.
+
+| Command                                              | Final result                                                                  |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------- |
+| npm run format:check                                 | Passed                                                                        |
+| npm run lint                                         | Passed                                                                        |
+| npm run typecheck                                    | Passed                                                                        |
+| npm test -- --maxWorkers=2                           | **446 passed, 14 opt-in skipped; 65 passing files / 79 total**, 75.38 seconds |
+| npm run test:integration                             | **7 passed**, 11.69 seconds                                                   |
+| npm run test:tui                                     | **3 passed**, real PTYs, 2.91 seconds                                         |
+| npm run build                                        | Passed, Vite 4.20 seconds                                                     |
+| Six built Electron fixtures                          | **6 passed**, 56.28 seconds                                                   |
+| Nested documentation formatting and git diff --check | Passed after final documentation update                                       |
+
+The final run used Linux x64, Node 22.22.1, npm 9.2.0 and Electron 41.10.7. Existing jsdom canvas notices and Zod/Rollup annotation messages remain non-fatal. Real subscription/native Windows/GitHub/package opt-ins were not enabled. Fixture publication uses a local bare fork only.
+
+The Electron command was:
+
+```bash
+VIBESTAR_WORKSPACE_DESKTOP_TEST=1 VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 VIBESTAR_PR_DESKTOP_TEST=1 \
+VIBESTAR_REPAIR_DESKTOP_TEST=1 VIBESTAR_WATCH_DESKTOP_TEST=1 \
+VIBESTAR_KEEP_EVIDENCE=1 xvfb-run -a -s '-screen 0 2000x1200x24' \
+  npm test -- tests/desktop-chat-workspace.test.ts \
+  tests/desktop-pipeline-approval.test.ts tests/desktop-agent-output.test.ts \
+  tests/desktop-pr-analysis.test.ts tests/desktop-pr-repair.test.ts \
+  tests/desktop-issue-watch.test.ts --maxWorkers=1
+```
+
+Workspace evidence is /home/aksha/tmp/vibestar-chat-workspace-6dF3HG/screenshots/; repair evidence is /home/aksha/tmp/vibestar-pr-repair-desktop-5MhxDm/screenshots/; Issue Watch evidence is /home/aksha/tmp/vibestar-watch-evidence-9sgJVE/. The final three blocker window sizes, unified/split review with aligned checkbox, saved-instruction approval, narrow drawer, repair integration/publication confirmation and Issue Watch handoff were visually inspected. Direct screenshot links are included in the delivery report. No renderer errors were reported by the acceptance fixtures.
+
+The first new desktop review-mark assertion assumed an immediate checkbox change before its asynchronous persistence completed. The mark was saved and visible in its failure screenshot; the final fixture clicks, then waits for both the actual database row and checked UI state. No backend check was relaxed. Earlier full suites passed 440 and 445 tests before the final shared-classifier/context regressions. A saved-configuration test initially retried a UUID with a changed payload, correctly triggering the idempotency guard; it now repeats the exact request and proves the saved Antigravity/high selection cannot override the approved Codex/low implementation stage. Historical failed attempts and earlier layout/notice findings remain documented below.
+
+## Chat-first workspace Phase C — October 22, 2026
+
+The checkpoint passed format/lint/type checks, **429 normal tests with 14 opt-in skipped (63 passing files, 77 total)**, integration **7**, PTY **3**, production build and all **5** built Electron fixtures (50.63 seconds). New coverage verifies save/feedback/retry separation, exact pending-ID and artifact approval, idempotent message requests, atomic scheduling, future-stage overrides, context snapshots, IME/long-paste handling and provider/account visibility.
+
+Workspace evidence: `/home/aksha/tmp/vibestar-chat-workspace-0Aastp/screenshots/`; repair evidence: `/home/aksha/tmp/vibestar-pr-repair-desktop-gE7Yld/screenshots/`. Refined-plan approval with saved-instruction choice, the 1280×720 browser blocker with retained draft/context, and manual pre-commit publication were inspected. The normal/Electron runs passed before a final notice-scoping refinement: screenshot review found a previous approval-success notice surviving into a later blocker. That refinement passed type/lint checks and **19** relevant renderer tests; refreshed screenshots will be captured with the diff/final checkpoint. The earlier model focus test used a synthetic click without focusing its opener; it was corrected to model actual keyboard/mouse focus, then the complete suite passed.
+
+No real model inference or GitHub publication was used. PR repair publication remains fixture-local and requires its original independent manual decisions. Diff modernization remains incomplete at this checkpoint.
+
+## Chat-first workspace Phase B — October 22, 2026
+
+The shared chat/sidebar/dock shell passed `npm run format:check`, `npm run lint`, `npm run typecheck`, the complete normal suite, integration (7), real PTY (3), production build and all five built Electron fixtures. The final Electron run passed in 50.72 seconds. This is a checkpoint, not completion of the full redesign.
+
+Latest workspace evidence: `/home/aksha/tmp/vibestar-chat-workspace-XCXAT8/screenshots/`. Validation blockers at 1920×1080, 1440×900 and 1280×720 were visually inspected: independent chat/tools scroll, retained composer, accurate interrupted setup and blocked browser evidence, with no duplicate host error. Expanded review, approval gates, narrow drawer, reload and actual PTY retention passed fixture assertions. Latest repair evidence: `/home/aksha/tmp/vibestar-pr-repair-desktop-5FFSlG/screenshots/`; the explicit push-confirmation screenshot was inspected. Publication targets a local bare fixture only; no real GitHub write or provider subscription is consumed.
+
+Regression coverage includes exact required host diff evidence, expanded-tool/hidden-terminal focus restoration, queued repair submit guards and disabled cleanup-control autofocus. Earlier shell integration failures exposed selectors scoped to the old layout and a task-menu button width intercepting its row; these were fixed and the entire checkpoint rerun. Native Windows and real subscription behavior remain outside this fixture run.
+
+## Chat-first workspace — Phase A validation checkpoint
+
+The new [workspace milestone](CHAT-FIRST-WORKSPACE.md) starts from `5411c9e58d8bb2a64fb1b56c7b336dd7acbfa11e`. Phase A changes validation classification and reporting. The chat/sidebar/composer/diff redesign remains in progress; historical completed milestones below are separate.
+
+The regression provider writes a multiplication table in `index.html`, `script.js` and `style.css`, then runs actual JavaScript syntax, generated-table and source-structure checks inside the task sandbox. A sandbox-local fake installer exits 130; no dependency is installed or downloaded. A second scenario runs a genuinely failing table assertion while the provider claims success. Observed failure retains `failed`; setup interruption and blocked browser checks retain `verification_blocked`. Backend tests also cover restart, validation-only retry, undelivered instructions and an invalid implementation approval.
+
+The new opt-in fixture is `tests/desktop-chat-workspace.test.ts`, enabled with `VIBESTAR_WORKSPACE_DESKTOP_TEST=1`. It runs the built Electron renderer through real IPC, explicitly approves the two plans, inspects the exact interrupted setup command, retries only host validation, captures 1920×1080 / 1440×900 / 1280×720 windows and checks draft persistence after reload. Its normal core has an empty isolated data root/HOME and blocked Codex, Antigravity and gh executables. No real model allowance or GitHub writes are used.
+
+Final source verification on the settled working tree:
+
+| Command                                                   | Result                                                         |
+| --------------------------------------------------------- | -------------------------------------------------------------- |
+| `npm run format:check`                                    | Passed                                                         |
+| `npm run lint`                                            | Passed                                                         |
+| `npm run typecheck`                                       | Passed                                                         |
+| `npm test -- --maxWorkers=2`                              | **402 passed, 14 opt-in skipped**, 59 passing files / 73 total |
+| `npm run test:integration`                                | **7 passed**                                                   |
+| `npm run test:tui`                                        | **3 passed**, actual PTYs                                      |
+| `npm run build`                                           | Passed                                                         |
+| Five built Electron fixtures                              | **5 passed**                                                   |
+| Changed nested Markdown formatting and `git diff --check` | Passed                                                         |
+
+The 32 new normal tests cover setup interruption versus assertions, required skipped/unknown checks, lint/type/build failures, provider/observed disagreement, missing exits, explicit cancellation with exit zero, legacy compatibility, strict nullable schema transport, exact-command retry, custom setup roles, restart, invalid approval and undelivered saved instructions. Existing security, Issue Watch, issue execution and PR repair/publication tests remain green. Existing jsdom canvas diagnostics and third-party Zod annotation warnings are non-fatal. One earlier full run overlapped a fixture edit and loaded mismatched provider/test versions, failing during planning; the final 402-test run used stable source and passed.
+
+The final desktop command was:
+
+```bash
+VIBESTAR_WORKSPACE_DESKTOP_TEST=1 VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 VIBESTAR_PR_DESKTOP_TEST=1 \
+VIBESTAR_REPAIR_DESKTOP_TEST=1 VIBESTAR_KEEP_EVIDENCE=1 \
+xvfb-run -a -s '-screen 0 2000x1200x24' npm test -- \
+  tests/desktop-chat-workspace.test.ts tests/desktop-pipeline-approval.test.ts \
+  tests/desktop-agent-output.test.ts tests/desktop-pr-analysis.test.ts \
+  tests/desktop-pr-repair.test.ts --maxWorkers=1
+```
+
+All five passed in 50.02 seconds. Final blocker evidence is `/home/aksha/tmp/vibestar-chat-workspace-5DikfV/screenshots/`, containing `results.json` and `validation-blocker-{1920x1080,1440x900,1280x720}.png`. All three screenshots were visually inspected. They show amber persisted task/navigation state, readable provider check summaries and separate passing diff hygiene without green overall success. Composer and scroll areas remain accessible without document horizontal overflow. The current legacy dock still uses substantial vertical space and chat still has old top tabs; those are explicit Phase B work, not completed redesign evidence. The fixture also asserts exact setup output/exit, no extra provider on retry and unsent-draft persistence after reload. Final repair regression evidence is `/home/aksha/tmp/vibestar-pr-repair-desktop-kIbmwt/screenshots/`.
+
+Current limits: arbitrary shell chains/custom commands are not guessed to be setup; unsupported evidence remains unknown. Legacy failure strings remain ambiguous and cannot be waived into review. Required gaps must be resolved before approval; no acknowledgment-based review bypass is added. Native Windows/DPI and live account/tool behavior were not tested. Workspace layout migration, compact approvals, the new composer/model/context UI, shared repair layout and modern diff review remain pending under the original goal.
+
 ## S1 security checkpoint — October 20, 2026
 
 S1 of the approved [Issue Watch/security plan](ISSUE-WATCH-SECURITY-PLAN.md) passed. At this checkpoint S2–S5 remained in progress; their completed verification is recorded below. The unrestricted pre-change baseline passed 227 tests with 10 opt-in skipped; the initial restricted invocation lost nested child-process output and was independently reproduced without source changes.

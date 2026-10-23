@@ -556,9 +556,13 @@ export class StorageService {
         (t) =>
           e.isActive(t.id) ||
           t.status === "queued" ||
-          !["completed", "cancelled", "failed", "interrupted"].includes(
-            t.status,
-          ),
+          ![
+            "completed",
+            "cancelled",
+            "failed",
+            "interrupted",
+            "verification_blocked",
+          ].includes(t.status),
       )
     )
       throw new AdeError(

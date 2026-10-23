@@ -8,16 +8,20 @@ export const RunError = ({
   stage = run?.stage ?? 0,
   retry,
   logs,
+  blocked = false,
 }: {
   error: string;
   run?: Run;
   stage?: number;
   retry?: () => void;
   logs?: () => void;
+  blocked?: boolean;
 }) => {
   const [dismissed, setDismissed] = useState(false);
   const cancelled =
-    run?.status === "cancelled" || /cancelled|stopped|interrupt/i.test(error);
+    run?.status === "cancelled" ||
+    (stage !== 4 && /cancelled|stopped|interrupt/i.test(error));
+  const validation = stage === 4;
   const provider =
     run?.provider === "antigravity" || (!run && [1, 5].includes(stage))
       ? "Antigravity"
@@ -43,20 +47,29 @@ export const RunError = ({
   if (dismissed) return null;
   return (
     <section
-      className={`run-error ${cancelled ? "run-error-cancelled" : "run-error-failed"}`}
+      className={`run-error ${cancelled || blocked ? "run-error-cancelled" : "run-error-failed"}`}
       aria-label={cancelled ? "Cancelled run" : "Run failure"}
     >
       <div className="run-error-status">
-        <span className={cancelled ? "warning" : "failure"} aria-hidden="true">
-          {cancelled ? "●" : "×"}
+        <span
+          className={cancelled || blocked ? "warning" : "failure"}
+          aria-hidden="true"
+        >
+          {cancelled || blocked ? "●" : "×"}
         </span>
         <strong>
-          {cancelled ? "Run cancelled" : `${provider} ${stageName} failed`}
+          {validation
+            ? "Verification needs attention"
+            : cancelled
+              ? "Run cancelled"
+              : `${provider} ${stageName} failed`}
         </strong>
         <span className="subtle">
-          {cancelled
-            ? `${provider} ${stageName} was stopped.`
-            : "This stage couldn't finish. Review the technical details before retrying."}
+          {validation
+            ? error
+            : cancelled
+              ? `${provider} ${stageName} was stopped.`
+              : "This stage couldn't finish. Review the technical details before retrying."}
         </span>
       </div>
       {retry && !cancelled && (
@@ -67,8 +80,14 @@ export const RunError = ({
       <details className="run-error-details">
         <summary>Technical details</summary>
         <p>
-          Provider: {run?.provider || provider} · Stage: {stage} · Exit:{" "}
-          {run?.exit_code ?? "unavailable"}
+          {validation ? (
+            "Host validation · no provider process is launched"
+          ) : (
+            <>
+              Provider: {run?.provider || provider} · Stage: {stage} · Exit:{" "}
+              {run?.exit_code ?? "unavailable"}
+            </>
+          )}
         </p>
         {run?.id && <code>Run {run.id}</code>}
         <pre>{error}</pre>

@@ -138,24 +138,28 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         },
       );
       await page.locator(".tree-task").first().click();
-      await page.getByLabel("Toggle pipeline context").click();
       await page.getByRole("region", { name: "Current agent run" }).waitFor();
-      expect(await page.locator(".current-run").innerText()).toContain(
-        "Antigravity",
-      );
+      await expect
+        .poll(() => page.locator(".current-run").innerText())
+        .toContain("Antigravity");
       await page.screenshot({ path: join(evidence, "current-run.png") });
       await page
         .getByRole("button", { name: "Approve → Codex refinement" })
         .waitFor();
       expect(engine.db.detail(task.id).runs).toHaveLength(1);
-      await page
-        .getByRole("dialog", { name: "Stage review required" })
-        .waitFor();
+      expect(
+        await page
+          .getByRole("dialog", { name: "Stage review required" })
+          .count(),
+      ).toBe(0);
       await page.screenshot({ path: join(evidence, "review-required.png") });
       await page
-        .getByRole("button", { name: "Review plan", exact: true })
+        .getByRole("button", { name: "View plan", exact: true })
         .click();
-      await page.getByText("Fixture plan", { exact: true }).waitFor();
+      await page
+        .locator(".secondary-content")
+        .getByText("Fixture plan", { exact: true })
+        .waitFor();
       await page
         .locator(".plan-comparison .run-prompt summary")
         .first()
@@ -174,11 +178,13 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         .click();
       await page.getByRole("button", { name: "Approve → Implement" }).waitFor();
       expect(engine.db.detail(task.id).runs).toHaveLength(2);
+      expect(
+        await page
+          .getByRole("dialog", { name: "Stage review required" })
+          .count(),
+      ).toBe(0);
       await page
-        .getByRole("dialog", { name: "Stage review required" })
-        .waitFor();
-      await page
-        .getByRole("button", { name: "Review plan", exact: true })
+        .getByRole("button", { name: "View plan", exact: true })
         .click();
       await page.screenshot({ path: join(evidence, "codex-plan-gate.png") });
       await page.getByRole("button", { name: "Approve → Implement" }).click();
@@ -186,7 +192,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         .getByRole("button", { name: "Approve → Antigravity review & tests" })
         .waitFor();
       await page
-        .getByRole("button", { name: "Review implementation", exact: true })
+        .getByRole("button", { name: "View tests", exact: true })
         .click();
       expect(
         await page.getByRole("tab", { name: "Changes", exact: true }).count(),
@@ -205,10 +211,16 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         .getByRole("button", { name: "Accept review", exact: true })
         .waitFor();
       await page
-        .getByRole("button", { name: "Review final report", exact: true })
+        .getByRole("button", { name: "View review", exact: true })
         .click();
-      await page.getByText("Fixture final review", { exact: true }).waitFor();
-      await page.getByText("remote CI", { exact: true }).waitFor();
+      await page
+        .locator(".secondary-content")
+        .getByText("Fixture final review", { exact: true })
+        .waitFor();
+      await page
+        .locator(".secondary-content")
+        .getByText("remote CI", { exact: true })
+        .waitFor();
       await page.screenshot({ path: join(evidence, "final-review.png") });
       await page
         .getByRole("button", { name: "Accept review", exact: true })
@@ -216,25 +228,29 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Finalize…" }).waitFor();
       await page.getByRole("tab", { name: "Changes", exact: true }).click();
       await page
+        .getByRole("button", { name: "Open full diff review", exact: true })
+        .click();
+      await page
         .getByLabel("Task changes")
-        .getByText("+A", { exact: true })
+        .getByText("A", { exact: true })
         .waitFor();
-      await page.getByLabel("Maximize utility dock").click();
       const fullHeight = await page
-        .locator(".utility-dock")
+        .locator(".secondary-expanded")
         .evaluate((element) => element.getBoundingClientRect().height);
       const workspaceHeight = await page
         .locator(".workspace")
         .evaluate((element) => element.getBoundingClientRect().height);
       expect(fullHeight).toBeGreaterThan(workspaceHeight * 0.85);
       await page.screenshot({ path: join(evidence, "changes-maximized.png") });
-      await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+      await page.getByLabel("Return to chat").click();
+      await page.getByLabel("Toggle utility dock").click();
       await page
         .getByRole("button", { name: "Start task terminal", exact: true })
         .click();
       await page
         .getByRole("button", { name: "Close shell", exact: true })
         .waitFor();
+      await page.getByLabel("Maximize utility dock").click();
       const terminalBefore = await rpc.call("terminal.status", { id: task.id });
       await page.getByLabel("Restore utility dock").click();
       await page.getByLabel("Maximize utility dock").click();
@@ -262,11 +278,11 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
       expect(
         await page.getByLabel("Selected command output").innerText(),
       ).toContain("verification stderr retained");
-      await page.getByLabel("Maximize utility dock").click();
+      await page.getByLabel("Expand workspace tool").click();
       await page.screenshot({
         path: join(evidence, "test-output-maximized.png"),
       });
-      await page.getByLabel("Restore utility dock").click();
+      await page.getByLabel("Return to chat").click();
       await page
         .getByRole("tab", { name: "Usage", exact: true })
         .first()
@@ -276,6 +292,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         .first()
         .waitFor();
       await page.screenshot({ path: join(evidence, "task-usage.png") });
+      await page.getByRole("tab", { name: "Run details", exact: true }).click();
       await page
         .getByRole("button", { name: "View sent prompts", exact: true })
         .click();
@@ -291,7 +308,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         .getByRole("dialog", { name: "Agent prompts" })
         .getByRole("button", { name: "Close", exact: true })
         .click();
-      await page.getByLabel("Close context pane").click();
+      await page.getByLabel("Collapse secondary workspace").click();
       await page.screenshot({ path: join(evidence, "sidebar-collapsed.png") });
       const emptyAudit = new Sqlite(
         join(emptyRoot, "state", "vibestar.sqlite"),

@@ -157,10 +157,10 @@ it("shows real provider/model/stage/activity and elapsed time, changes stages an
     />,
   );
   expect(screen.getByText("Checking selected code…")).toBeTruthy();
-  expect(screen.getByText("Input: 42 · Output: 7")).toBeTruthy();
+  expect(screen.queryByText("Input: 42 · Output: 7")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Stop" }));
   expect(stop).toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Agent Output" }));
+  fireEvent.click(screen.getByRole("button", { name: "Inspect current run" }));
   expect(output).toHaveBeenCalled();
   ui.rerender(
     <CurrentRun
@@ -198,7 +198,10 @@ it("shows real provider/model/stage/activity and elapsed time, changes stages an
       output={output}
     />,
   );
-  expect(screen.queryByLabelText("Current agent run")).toBeNull();
+  expect(screen.getByLabelText("Current agent run").textContent).toContain(
+    "cancelled",
+  );
+  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
 });
 it("keeps failed/cancelled runs visible, sums reported fields only and exposes official matching-window deltas", async () => {
   const before = {

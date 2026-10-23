@@ -300,7 +300,7 @@ it("uses typed preload window controls and reflects maximize state", async () =>
   expect(controls.close).toHaveBeenCalledOnce();
 });
 it("renders a searchable directory diff tree with per-file statistics", async () => {
-  const { DiffFileTree } = await import("../src/components/DiffFileTree");
+  const { DiffFileTree } = await import("../src/components/diff/DiffFileTree");
   const select = vi.fn();
   render(
     <DiffFileTree

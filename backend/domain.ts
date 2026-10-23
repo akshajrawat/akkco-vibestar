@@ -49,6 +49,14 @@ export const FollowupConfigSchema = z.object({
   provider: z.enum(["codex", "antigravity"]),
   config: StageConfigSchema,
 });
+export const PipelineStageSettingsSchema = z
+  .object({
+    1: StageConfigSchema.optional(),
+    2: StageConfigSchema.optional(),
+    3: StageConfigSchema.optional(),
+    5: StageConfigSchema.optional(),
+  })
+  .strict();
 export const SettingsSchema = z
   .object({
     concurrency: z.number().int().min(1).max(4),
@@ -154,6 +162,7 @@ export const taskStatuses = [
   "awaiting_approval",
   "ready_for_review",
   "failed",
+  "verification_blocked",
   "cancelled",
   "interrupted",
   "completed",
@@ -201,6 +210,7 @@ export interface Task {
   notes: string;
   issue: Record<string, unknown>;
   execution_settings?: Settings;
+  stage_settings?: z.infer<typeof PipelineStageSettingsSchema>;
   branch_name: string;
   branch_owned?: boolean;
   workspace_checkpoint?: {

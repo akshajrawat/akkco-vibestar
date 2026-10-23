@@ -17,6 +17,7 @@ export interface Task {
   notes: string;
   issue: { title?: string; body?: string };
   execution_settings?: Settings;
+  stage_settings?: import("../../backend/domain").Task["stage_settings"];
   branch_name: string;
   base_branch: string;
   base_commit_sha: string;
@@ -118,6 +119,9 @@ export interface TestRun {
   stderr: string;
 }
 export interface Detail {
+  validation?: ReturnType<
+    typeof import("../../backend/execution/verification").verificationSummary
+  >;
   active?: boolean;
   executing?: boolean;
   task: Task;

@@ -4,15 +4,19 @@ import type { Detail } from "../lib/types";
 import { rpc, errorMessage, parseArgv } from "../lib/api";
 import { CommandRuns } from "./CommandRuns";
 import { Button } from "./ui/button";
+import { VerificationSummary } from "./VerificationSummary";
 export const TestsView = ({
   detail,
   onError,
+  terminal,
 }: {
   detail: Detail;
   onError: (s: string) => void;
+  terminal?: () => void;
 }) => {
   const [argv, setArgv] = useState('["git", "status", "--short"]');
   const [busy, setBusy] = useState(false);
+  const [commandId, setCommandId] = useState("");
   const result = [...detail.artifacts]
     .reverse()
     .find((a) => a.stage === 3 && a.kind === "plan");
@@ -27,6 +31,24 @@ export const TestsView = ({
     : null;
   return (
     <div className="tests-panel">
+      <VerificationSummary
+        detail={detail}
+        inspect={setCommandId}
+        terminal={terminal}
+        retry={
+          detail.task.stage === 4 &&
+          !detail.active &&
+          !detail.executing &&
+          !busy
+            ? () => {
+                setBusy(true);
+                void rpc("task.retry", { id: detail.task.id, stage: 4 })
+                  .catch((e) => onError(errorMessage(e)))
+                  .finally(() => setBusy(false));
+              }
+            : undefined
+        }
+      />
       <div className="cwd-banner">
         <SquareTerminal size={14} />
         <span>All commands execute in</span>
@@ -90,7 +112,7 @@ export const TestsView = ({
           </Button>
         </form>
       </details>
-      <CommandRuns detail={detail} />
+      <CommandRuns key={commandId} detail={detail} selectedId={commandId} />
       <details className="provider-test-reports">
         <summary>Agent verification reports</summary>
         {report && (

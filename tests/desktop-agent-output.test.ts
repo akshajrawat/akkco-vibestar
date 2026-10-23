@@ -164,17 +164,16 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
           timeout: 10000,
         })
         .toContain("reported-fixture-model");
+      if (await page.getByLabel("Collapse secondary workspace").count())
+        await page.getByLabel("Collapse secondary workspace").click();
       expect(await page.locator("aside.context-pane").count()).toBe(0);
-      await page.getByRole("tab", { name: "Plan", exact: true }).click();
+      await page.getByLabel("Toggle secondary workspace").click();
+      await page.getByRole("tab", { name: "Plans", exact: true }).click();
       expect(await page.getByLabel("Current agent run").innerText()).toContain(
         "high",
       );
-      await page.getByRole("tab", { name: "Chat", exact: true }).click();
-      await page
-        .getByLabel("Current agent run")
-        .getByRole("button", { name: "Agent Output", exact: true })
-        .click();
-      await page.getByLabel("Maximize utility dock").click();
+      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
+      await page.getByRole("button", { name: "Readable", exact: true }).click();
       await page
         .locator(".logs-panel .tool-event")
         .filter({ hasText: "npm test" })
@@ -217,18 +216,12 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         })
         .toContain("[REDACTED]");
       await page.screenshot({ path: join(evidence, "active-raw-stderr.png") });
-      await page.getByLabel("Restore utility dock").click();
       await page
         .getByRole("button", { name: "Approve → Codex refinement" })
         .waitFor();
-      await page
-        .getByRole("button", { name: "Review plan", exact: true })
-        .click();
-      await page
-        .getByRole("tab", { name: "Agent Output", exact: true })
-        .click();
+      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.getByRole("button", { name: "Readable", exact: true }).click();
-      await page.getByLabel("Maximize utility dock").click();
+      await page.getByLabel("Expand workspace tool").click();
       const interrupted = page
         .locator(".logs-panel .tool-event[data-state=interrupted]")
         .filter({ hasText: "pending-check" });
@@ -244,7 +237,10 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         path: join(evidence, "completed-and-interrupted-tools.png"),
       });
       await page.getByLabel("Select run").selectOption(historic);
-      await page.getByText("Nested review evidence", { exact: true }).waitFor();
+      await page
+        .locator(".logs-panel")
+        .getByText("Nested review evidence", { exact: true })
+        .waitFor();
       await page
         .getByRole("button", { name: "Saved prompt", exact: true })
         .click();
@@ -280,7 +276,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       await page.screenshot({
         path: join(evidence, "historical-raw-paused.png"),
       });
-      await page.getByLabel("Restore utility dock").click();
+      await page.getByLabel("Return to chat").click();
       await page
         .getByRole("tab", { name: "Usage", exact: true })
         .first()
@@ -290,16 +286,11 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         .first()
         .waitFor();
       await page.screenshot({ path: join(evidence, "reported-usage.png") });
-      await page.getByRole("tab", { name: "Chat", exact: true }).click();
+      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.reload();
       await page.locator(".tree-task").first().waitFor();
       expect(await page.locator(".tree-task.selected").count()).toBe(1);
-      await page
-        .getByRole("button", { name: "Review plan", exact: true })
-        .click();
-      await page
-        .getByRole("tab", { name: "Agent Output", exact: true })
-        .click();
+      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       expect(await page.getByLabel("Select run").inputValue()).toBe(historic);
       expect(await page.getByLabel("Raw output stream").inputValue()).toBe(
         "stdout",

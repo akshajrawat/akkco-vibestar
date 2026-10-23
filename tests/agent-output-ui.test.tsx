@@ -82,6 +82,37 @@ const detail = (id: string): Detail => ({
   artifacts: [],
   tests: [],
 });
+
+it.each([
+  ["npm install --save-dev @playwright/test", 130, "interrupted"],
+  ["npm ci", 1, "blocked"],
+  ["npm run lint", 1, "failed"],
+  ["node --test", 130, "failed"],
+  ["npm install && npm test", 130, "failed"],
+])(
+  "keeps command cards consistent with conservative setup classification: %s",
+  (command, exit_code, state) => {
+    const ui = render(
+      <AgentTimeline
+        events={[
+          event(1, "command.finished", {
+            command,
+            exit_code,
+            status: "failed",
+          }),
+        ]}
+        runs={[run]}
+      />,
+    );
+    const card = ui.container.querySelector(
+      `.tool-event[data-state="${state}"]`,
+    );
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain(`Exit ${exit_code}`);
+    expect(card?.textContent).toContain('"status": "failed"');
+    expect(card?.querySelector(".success")).toBeNull();
+  },
+);
 const bridge = (
   handler: (
     method: string,
@@ -214,20 +245,20 @@ it("shows actual execution independently from follow-up selection and keeps the 
   expect(current.textContent).toContain("actual-model");
   expect(current.textContent).toContain("xhigh");
   expect(current.textContent).not.toContain("composer-model");
-  const chat = screen.getByRole("tab", { name: "Chat" });
-  chat.focus();
-  fireEvent.keyDown(chat, { key: "ArrowRight" });
+  expect(screen.queryByRole("tab", { name: "Chat" })).toBeNull();
+  fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
+  const pipeline = screen.getByRole("tab", { name: "Pipeline" });
+  pipeline.focus();
+  fireEvent.keyDown(pipeline, { key: "ArrowRight" });
   expect(document.activeElement).toBe(
-    screen.getByRole("tab", { name: "Plan" }),
+    screen.getByRole("tab", { name: "Plans" }),
   );
   expect(
-    screen.getByRole("tab", { name: "Plan" }).getAttribute("aria-selected"),
+    screen.getByRole("tab", { name: "Plans" }).getAttribute("aria-selected"),
   ).toBe("true");
-  fireEvent.click(screen.getByRole("tab", { name: "Plan" }));
   expect(screen.getByLabelText("Current agent run")).toBe(current);
-  fireEvent.click(screen.getByLabelText("Toggle pipeline context"));
   expect(ui.container.querySelector("aside")?.contains(current)).toBe(false);
-  fireEvent.click(screen.getByLabelText("Close context pane"));
+  fireEvent.click(screen.getByLabelText("Collapse secondary workspace"));
   expect(screen.getByLabelText("Current agent run")).toBe(current);
   ui.rerender(
     <TaskWorkspace
@@ -241,7 +272,12 @@ it("shows actual execution independently from follow-up selection and keeps the 
       back={vi.fn()}
     />,
   );
-  expect(screen.queryByLabelText("Current agent run")).toBeNull();
+  expect(screen.getByLabelText("Current agent run").textContent).toContain(
+    "completed",
+  );
+  expect(screen.getByLabelText("Current agent run").textContent).not.toContain(
+    "running",
+  );
 });
 it("shows provider-emitted failures and status text while the CLI is still running without synthesizing progress", () => {
   bridge();
@@ -544,9 +580,8 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
   expect(
     (screen.getByLabelText("Raw output stream") as HTMLSelectElement).value,
   ).toBe("stderr");
-  const opener = screen.getByRole("button", {
-    name: "View prompt",
-  });
+  fireEvent.click(screen.getByRole("tab", { name: "Run details" }));
+  const opener = screen.getByRole("button", { name: "View sent prompts" });
   opener.focus();
   fireEvent.click(opener);
   const dialog = screen.getByRole("dialog", { name: "Agent prompts" });

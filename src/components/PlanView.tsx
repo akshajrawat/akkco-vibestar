@@ -10,15 +10,40 @@ export const PlanView = ({
   events = [],
   acceptDraft,
   busy = false,
+  compact = false,
+  selectedStage = 1,
+  selectStage,
 }: {
   artifacts: Artifact[];
   runs?: Run[];
   events?: AgentEvent[];
   acceptDraft?: (run: Run) => void;
   busy?: boolean;
+  compact?: boolean;
+  selectedStage?: 1 | 2;
+  selectStage?: (stage: 1 | 2) => void;
 }) => (
   <div className="plan-comparison">
-    {[1, 2].map((stage) => {
+    {compact && (
+      <div
+        className="plan-version-picker"
+        role="group"
+        aria-label="Plan version"
+      >
+        {([1, 2] as const).map((stage) => (
+          <Button
+            key={stage}
+            size="sm"
+            variant={selectedStage === stage ? "secondary" : "ghost"}
+            aria-pressed={selectedStage === stage}
+            onClick={() => selectStage?.(stage)}
+          >
+            {stage === 1 ? "Antigravity original" : "Codex refined"}
+          </Button>
+        ))}
+      </div>
+    )}
+    {(compact ? [selectedStage] : [1, 2]).map((stage) => {
       const saved = [...artifacts]
         .reverse()
         .find((a) => a.stage === stage && a.kind === "plan");

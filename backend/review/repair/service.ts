@@ -478,9 +478,31 @@ export class RepairService {
       release();
     }
   };
-  start = async (id: string, instructions = "") => {
+  start = async (id: string, instructions = "", requestId?: string) => {
     await this.ready;
     const session = this.store.get(id);
+    if (requestId) {
+      if (!instructions.trim())
+        throw new AdeError(
+          "invalid_input",
+          "An instruction request must contain text.",
+        );
+      const previous = this.engine.db.all<{
+        repair_id: string;
+        content: string;
+      }>(
+        "SELECT repair_id,content FROM repair_messages WHERE id=?",
+        requestId,
+      )[0];
+      if (previous) {
+        if (previous.repair_id !== id || previous.content !== instructions)
+          throw new AdeError(
+            "invalid_input",
+            "This repair instruction request already belongs to different content.",
+          );
+        return session;
+      }
+    }
     if (session.workspace.preparation === "removed")
       throw new AdeError(
         "invalid_state",
@@ -502,12 +524,8 @@ export class RepairService {
         "merge_conflict",
         "Resolve and recover the preserved merge before starting agents.",
       );
-    if (instructions) {
-      this.store.message(id, instructions);
-      session.instructions += `\n\nUser-requested follow-up:\n${instructions}`;
-      session.implementation = null;
-      session.verification = null;
-    } else if (
+    if (
+      !instructions &&
       ["awaiting_manual_review", "verification_blocked"].includes(
         session.status,
       )
@@ -516,9 +534,17 @@ export class RepairService {
         "invalid_input",
         "Describe the further fix before requesting another model run.",
       );
-    session.review_hash = null;
-    session.approved_hash = null;
-    this.transition(session, "preparing");
+    this.engine.db.transaction(() => {
+      if (instructions) {
+        this.store.message(id, instructions, requestId);
+        session.instructions += `\n\nUser-requested follow-up:\n${instructions}`;
+        session.implementation = null;
+        session.verification = null;
+      }
+      session.review_hash = null;
+      session.approved_hash = null;
+      this.transition(session, "preparing");
+    });
     void this.exclusive(
       id,
       "PR repair preparation and agents are running",

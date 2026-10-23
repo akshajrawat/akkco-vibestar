@@ -8,6 +8,8 @@ import {
 import { useProviders } from "../lib/useWorkspace";
 import { useTaskView, updateTaskView } from "../lib/taskView";
 import { Button } from "./ui/button";
+import { useDialogFocus } from "../lib/useDialogFocus";
+import { containDialogFocus } from "../lib/keyboard";
 export const followupConfiguration = (
   task: Task,
   view: ReturnType<typeof useTaskView>,
@@ -31,6 +33,7 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
   const { provider, config } = followupConfiguration(task, view);
   const { providers, loading, refresh } = useProviders();
   const [open, setOpen] = useState(false);
+  const dialog = useDialogFocus(open);
   const container = useRef<HTMLDivElement>(null);
   const detected = providers.find((p) => p.provider === provider);
   const efforts = supportedEfforts(detected, config.model);
@@ -63,24 +66,47 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
         variant="ghost"
         size="sm"
         aria-label="Choose chat model"
-        title="Provider for implementation follow-ups. Planning and final review use the saved stage configuration."
+        title="Chat implementation model. Planning and final review use their saved stage settings."
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        Follow-up: {provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
+        {provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
         {detected?.models.find((m) =>
           config.model ? m.id === config.model : m.isDefault,
         )?.label ||
           config.model ||
           "CLI default"}{" "}
-        · {config.effort}
+        · {config.effort.toUpperCase()}
       </Button>
       {open && (
-        <div
+        <section
+          ref={dialog}
           className="model-picker"
           role="dialog"
+          aria-modal="true"
           aria-label="Chat model configuration"
+          onKeyDown={containDialogFocus}
         >
+          <p>
+            Applies to explicit implementation follow-ups. Planning and final
+            review retain their pipeline models.
+          </p>
+          <small
+            className={
+              detected?.installed === false || detected?.connected === false
+                ? "warning"
+                : "subtle"
+            }
+          >
+            {!detected
+              ? "Discover models to confirm CLI and account availability."
+              : detected.installed === false
+                ? "Official CLI is not installed."
+                : detected.connected === false
+                  ? "Account is disconnected. Connect it before sending."
+                  : detected.accountLabel ||
+                    "Availability reported by the official CLI"}
+          </small>
           <strong>Provider</strong>
           <div className="library-tabs">
             {(["codex", "antigravity"] as const).map((name) => (
@@ -144,7 +170,7 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
           <Button size="sm" onClick={() => setOpen(false)}>
             Done
           </Button>
-        </div>
+        </section>
       )}
     </div>
   );

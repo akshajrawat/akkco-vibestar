@@ -99,7 +99,7 @@ const bridge = () => {
         ? {
             original: "old",
             modified: "new",
-            unified: "--- source.ts\n+++ source.ts\n-old\n+new",
+            unified: "--- source.ts\n+++ source.ts\n@@ -1 +1 @@\n-old\n+new\n",
             binary: false,
           }
         : method === "editors.list"
@@ -158,13 +158,14 @@ it("keeps active execution visible with the right sidebar closed and restores th
   expect(screen.getByLabelText("Current agent run")).toBeTruthy();
   expect(screen.queryByText("View sent prompts")).toBeNull();
   expect(screen.getAllByLabelText("Stop agent").length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByLabelText("Toggle pipeline context"));
+  fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
   const sidebar = ui.container.querySelector("aside.context-pane")!;
   expect(sidebar.contains(screen.getByLabelText("Current agent run"))).toBe(
     false,
   );
+  fireEvent.click(screen.getByRole("tab", { name: "Run details" }));
   expect(sidebar.contains(screen.getByText("View sent prompts"))).toBe(true);
-  fireEvent.click(screen.getByLabelText("Close context pane"));
+  fireEvent.click(screen.getByLabelText("Collapse secondary workspace"));
   fireEvent.click(screen.getByLabelText("Toggle utility dock"));
   expect(await screen.findByText("Attached terminal session")).toBeTruthy();
   const height =
@@ -183,12 +184,23 @@ it("keeps active execution visible with the right sidebar closed and restores th
     ui.container.querySelector<HTMLElement>(".utility-dock")!.style.height,
   ).toBe(height);
   expect(terminal.mounts).toBe(1);
-  fireEvent.click(screen.getByRole("button", { name: /^Changes$/ }));
-  expect(await screen.findByText("+new")).toBeTruthy();
-  expect(screen.getByLabelText("Task changes").textContent).toContain("-old");
-  fireEvent.click(screen.getByLabelText("Maximize utility dock"));
-  expect(ui.container.querySelector(".workspace.dock-maximized")).toBeTruthy();
-  fireEvent.click(screen.getByLabelText("Restore utility dock"));
+  fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
+  fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open full diff review" }),
+  );
+  await screen.findByText("new");
+  expect(
+    ui.container.querySelector('.diff-code[data-side="working"][data-line="1"]')
+      ?.textContent,
+  ).toBe("new");
+  expect(
+    ui.container.querySelector('.diff-code[data-side="base"][data-line="1"]')
+      ?.textContent,
+  ).toBe("old");
+  expect(ui.container.querySelector(".secondary-expanded")).toBeTruthy();
+  fireEvent.click(screen.getByLabelText("Return to chat"));
+  expect(terminal.mounts).toBe(1);
 });
 
 it("separates command transcripts by attempt and stage, highlights failures, keeps both streams and updates live output", () => {

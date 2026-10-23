@@ -128,7 +128,7 @@ export class FixtureProvider extends CodexProvider {
                 filesChanged: ["source.txt"],
                 testsPassed: [],
                 testsFailed: [],
-                testsSkipped: ["fixture"],
+                testsSkipped: [],
                 remainingRisks: [],
               };
     let action = "";

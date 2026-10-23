@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Detail } from "../lib/types";
 import { duration, parseArgv } from "../lib/api";
 import { Status } from "./Status";
+import { commandVerification } from "../../backend/execution/verification";
 
 const displayCommand = (command: string) => {
   if (!command.trim().startsWith("[")) return command;
@@ -16,19 +17,31 @@ const displayCommand = (command: string) => {
 
 export const CommandRuns = ({
   detail,
+  selectedId = "",
 }: {
   detail: Pick<Detail, "tests" | "runs">;
+  selectedId?: string;
 }) => {
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(selectedId);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [stage, setStage] = useState("all");
   const [stream, setStream] = useState("all");
+  const transcript = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedId) {
+      transcript.current?.focus();
+      transcript.current?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [selectedId]);
   const commands = detail.tests.filter((test) => {
     const run = detail.runs.find((r) => r.id === test.run_id);
     return (
       test.command.toLowerCase().includes(query.toLowerCase()) &&
-      (status === "all" || test.status === status) &&
+      (status === "all" ||
+        (test.status === "running"
+          ? "running"
+          : commandVerification(test).outcome) === status) &&
       (stage === "all" ||
         (stage === "manual" ? !run : String(run?.stage) === stage))
     );
@@ -36,6 +49,7 @@ export const CommandRuns = ({
   const command =
     commands.find((test) => test.id === selected) || commands.at(-1);
   const run = detail.runs.find((r) => r.id === command?.run_id);
+  const evidence = command ? commandVerification(command) : null;
   const label = (runId?: string | null) => {
     const run = detail.runs.find((r) => r.id === runId);
     return run
@@ -67,9 +81,9 @@ export const CommandRuns = ({
             "running",
             "passed",
             "failed",
-            "completed",
+            "blocked",
+            "unknown",
             "interrupted",
-            "cancelled",
           ].map((value) => (
             <option key={value}>{value}</option>
           ))}
@@ -80,7 +94,7 @@ export const CommandRuns = ({
           onChange={(e) => setStage(e.target.value)}
         >
           <option value="all">All stages</option>
-          <option value="1">Gemini planning</option>
+          <option value="1">Antigravity planning</option>
           <option value="2">Codex refinement</option>
           <option value="3">Implementation</option>
           <option value="5">Final review</option>
@@ -98,12 +112,18 @@ export const CommandRuns = ({
               key={test.id}
               aria-current={command?.id === test.id ? "true" : undefined}
               onClick={() => setSelected(test.id)}
-              className={`command-row ${test.status === "failed" ? "command-failed" : ""}`}
+              className={`command-row ${commandVerification(test).outcome === "failed" ? "command-failed" : ""}`}
             >
               {test.status === "completed" ? (
                 <span className="subtle">Completed · exit unreported</span>
               ) : (
-                <Status status={test.status} />
+                <Status
+                  status={
+                    test.status === "running"
+                      ? "running"
+                      : commandVerification(test).outcome
+                  }
+                />
               )}
               <code title={test.command}>{displayCommand(test.command)}</code>
               <small>
@@ -122,11 +142,12 @@ export const CommandRuns = ({
           )}
         </div>
         {command && (
-          <div className="command-transcript">
+          <div className="command-transcript" ref={transcript} tabIndex={-1}>
             <div className="command-log-heading">
               <strong>{label(command.run_id)}</strong>
               <span>
-                {command.status} · exit{" "}
+                {command.status === "running" ? "running" : evidence?.outcome} ·
+                exit{" "}
                 {command.exit_code ??
                   (command.ended_at ? "unreported" : "pending")}
               </span>
@@ -147,6 +168,17 @@ export const CommandRuns = ({
                 <option value="stderr">stderr</option>
               </select>
             </div>
+            {evidence?.outcome !== command.status && (
+              <small className="subtle">
+                Original command status: {command.status}. Verification
+                classification uses command purpose and exit evidence.
+              </small>
+            )}
+            {evidence &&
+              evidence.outcome !== "passed" &&
+              command.status !== "running" && (
+                <p className="warning">{evidence.detail}</p>
+              )}
             {command.call_id && (
               <small className="subtle">
                 Provider command output may combine streams. Agent Output

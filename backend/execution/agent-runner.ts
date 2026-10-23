@@ -93,6 +93,7 @@ export class AgentRunner {
     const config =
       options?.config ??
       followup?.config ??
+      task?.stage_settings?.[t.stage as 1 | 2 | 3 | 5] ??
       (t.stage === 1 || t.stage === 5
         ? settings.antigravity
         : t.stage === 2
