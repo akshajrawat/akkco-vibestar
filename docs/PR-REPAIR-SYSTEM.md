@@ -1,5 +1,18 @@
 # PR review repair system
 
+The [October 23 workspace update](PREMIUM-UX-GIT-FINALIZATION.md) replaces the
+primary manual URL/Track form with a saved GitHub PR list. Refresh retrieves
+metadata; opening a discovered PR creates an inactive compatible review record.
+Analyze PR remains explicit. Legacy tracking RPCs/data and the repair workflow
+described below retain their existing contracts.
+
+The current publisher shares the independent host fast-forward/SHA boundary with
+ordinary-task Git Finalization. Its private pre-push hook remains defense in depth;
+the exact-ref lease plus immutable ancestry proof closes the race independently.
+Repair commits share exact UTF-8 object creation, preserving multiline bodies,
+spaces and absence of a final newline. Repair still publishes only to its freshly
+verified actual PR head repository/branch; task presets cannot change that destination.
+
 Milestones 3–5 extend the existing manual analysis and IDE harness into a complete existing-PR repair workflow. A PR created outside Vibestar can be repaired without an issue task. The user selects saved source-linked concerns, runs Codex implementation followed by independent Antigravity verification, reviews the result and chooses a local-only commit or a separately confirmed push to the original fork/branch.
 
 ## Architecture and boundaries

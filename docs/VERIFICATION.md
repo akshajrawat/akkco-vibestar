@@ -1,4 +1,137 @@
-# Verification — latest checkpoint October 22, 2026
+# Verification — October 24, 2026
+
+## Premium workspace and Git Finalization — complete
+
+The combined seven-phase brief is implemented against HEAD
+`47ffb1175fe6ae2f690904fbeb6cd8199caebee1` plus the working tree.
+[Delivery, numbered acceptance audit, contracts and limits](PREMIUM-UX-GIT-FINALIZATION.md)
+records the complete scope. All source checks below executed locally; no hosted
+GitHub Actions run or live-account publication is claimed.
+
+| Command                                                                    | Observed final result                                                                   |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `npm run format:check`                                                     | Passed                                                                                  |
+| `npm run lint`                                                             | Passed                                                                                  |
+| `npm run typecheck`                                                        | Passed                                                                                  |
+| `npm test -- --maxWorkers=2`                                               | **491 passed, 16 opt-in skipped; 73 passing files / 88 total**, 95.86 seconds           |
+| `npm run test:integration`                                                 | **7 passed**, 11.18 seconds                                                             |
+| `npm run test:tui`                                                         | **3 passed**, real PTYs, 2.81 seconds                                                   |
+| `npm run build`                                                            | Passed; Vite 4.79 seconds, local Sans/Mono fonts 69.56/71.10 kB                         |
+| `npm run test:browser:environment`                                         | **2 passed**, 3.53 seconds; actual installed Chromium/Playwright file and HTTP fixtures |
+| Seven built Electron fixtures                                              | **7 passed**, 75.08 seconds                                                             |
+| Workspace fixture with explicit partial token samples and at-rest captures | **1 passed**, 12.37 seconds; refreshes screenshots without changing production code     |
+| `npm run test:windows`                                                     | Passed on two actual displays at **125% and 150% DPI**                                  |
+| Workflow/nested docs Prettier, actionlint 1.7.7 and `git diff --check`     | Passed locally                                                                          |
+
+The final normal suite includes the full task/repair/Watch/security/verification
+regressions, the ordinary-task Git policy and recovery matrix, shared publication
+boundary races, exact messages and the version-23 to version-24 migration fixture.
+The migration asserts a private pre-upgrade backup, unchanged prior data,
+foreign-key validity and idempotent reopening. Counts above are separate executed
+commands, not additive unique-test totals.
+
+The environment was WSL2 Linux x64, Node 22.22.1, npm 9.2.0 and Electron 41.10.7.
+The project still declares npm 10+ for installation; CI uses Node 22's bundled npm.
+Existing jsdom canvas and Zod/Rollup annotation notices are non-fatal. Source behavior
+was unchanged after the full suite; later edits refine opt-in screenshot fixtures
+and documentation and were checked separately.
+
+### Built desktop acceptance
+
+The seven-fixture command was:
+
+```bash
+TMPDIR=/home/aksha/tmp \
+VIBESTAR_WORKSPACE_DESKTOP_TEST=1 VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 VIBESTAR_PR_DESKTOP_TEST=1 \
+VIBESTAR_REPAIR_DESKTOP_TEST=1 VIBESTAR_WATCH_DESKTOP_TEST=1 \
+VIBESTAR_GIT_DESKTOP_TEST=1 VIBESTAR_KEEP_EVIDENCE=1 \
+xvfb-run -a -s '-screen 0 2000x1200x24' npm test -- \
+  tests/desktop-chat-workspace.test.ts tests/desktop-pipeline-approval.test.ts \
+  tests/desktop-agent-output.test.ts tests/desktop-pr-analysis.test.ts \
+  tests/desktop-pr-repair.test.ts tests/desktop-issue-watch.test.ts \
+  tests/desktop-git-finalization.test.ts --maxWorkers=1
+```
+
+The built renderer uses actual Electron IPC with isolated data/HOME and blocked real
+AI/GitHub executables. No real model allowance or real GitHub writes were used.
+Publication transports are disposable local bare remotes. Fixtures assert unchanged
+source bytes/index, explicit manual inference/publication gates and no renderer errors.
+
+Retained evidence:
+
+- Main pages/workspace: `/home/aksha/tmp/vibestar-chat-workspace-s5Xi7h/screenshots/`.
+  All seven redesigned pages, empty/populated usage and focused chart captures are
+  recorded at 1920×1080, 1440×900 and 1280×720, alongside planning approval,
+  blocker/interruption/browser environment, diff review and narrow drawer captures.
+  The usage samples are explicitly test-only: two rows report selected channels,
+  only one reports a total, and the third remains unavailable. The results JSON
+  labels these values; they are not live subscription measurements.
+- Git Finalization: `/home/aksha/tmp/vibestar-issue-git-Q0E2LB/screenshots/`.
+  Three-size picker, exact message, destination confirmation and published history.
+  `results.json` records published commit
+  `d387648f48f4592df1b74d7689cc1550c96413f0`, unchanged source/index,
+  one explicit fixture review, no renderer errors and no real inference/GitHub writes.
+- PR repair: `/home/aksha/tmp/vibestar-pr-repair-desktop-lHaocR/screenshots/`.
+  Existing observation selection, upstream integration, actual command evidence,
+  exact local message, separate destination confirmation and published repair remain usable.
+- Issue Watch: `/home/aksha/tmp/vibestar-watch-evidence-AkXUWG/screenshots/`.
+  Actual fixture scan phases, initial/new results, tracker exclusions, cancellation,
+  evidence/raw history and task handoff are retained.
+- Output: `/home/aksha/tmp/vibestar-output-desktop-s71sfX/`.
+  Existing bounded readable/raw output, logs and saved run interactions passed.
+- Native Windows: `/home/aksha/tmp/vibestar-windows-eyGXch/screenshots/`.
+  Fullscreen/maximized captures on the actual displays accompany
+  `/home/aksha/tmp/vibestar-final-windows.log`.
+
+Visual inspection covered each main page, including narrow repository/provider
+actions, the four separate Settings stages, usage channel coverage and focused
+chart tooltip. Text and controls remain readable; pages scroll within the
+workspace without document overflow. Git selection shows staged/unsafe exclusions
+and accessible confirmations at 1280×720; destination/history retain real identity
+and exact commit state. Tests keeps blocked browser setup separate from application
+failures and labels provider reports. Fresh screenshots finish finite animations
+before capture so transitional opacity is not mistaken for at-rest contrast.
+
+The native Windows regression used the current Vite renderer and official native
+Electron host with a temporary WSL data root. It passed maximize/fullscreen/
+restore/resize, actual Win32 titlebar dragging and double-click, viewport/DPI and
+bridge configuration on both displays. Scale 1.25 produced a 1536×864 fullscreen
+viewport; scale 1.5 produced 1280×720. This verifies current window behavior,
+not an installer/update or live-account workflow.
+
+### Attempts and limits
+
+The unchanged-source baseline passed 445 tests and timed out in an existing
+transport-retry UI test; that file passed all five tests on bounded-concurrency
+rerun. Earlier UI checkpoints passed 462 normal tests, integration 7, PTY 3 and six
+Electron fixtures. Focused finalization/repair checkpoints passed 54 tests before
+the final history/migration additions. These historical counts are not added to
+the final suite.
+
+The first final full run passed 489 tests and failed two stale assertions: the
+schema list stopped at 23 and the usage label expected the old lowercase text.
+Expectations now include migration 24 and explicit channel coverage. The first
+seven-fixture attempt passed six and failed an immediate sidebar-removal assertion.
+The test now checks immediate inert state and then completed exit instead of
+assuming a zero-duration transition. Production guards were not relaxed. Initial
+migration fixture setup also used a duplicate migration row and wrong scope enum;
+its corrected backup/preservation assertions passed in the final normal suite.
+Earlier Git desktop selector/deadline attempts remain in the retained checkpoint
+logs; they did not authorize any real publication or waive checks.
+
+No known application assertion failures remain in the tested scenarios. Live
+Codex/Antigravity semantics, live GitHub permissions/publication, installer/update,
+signing and packaged native Windows installation were not rerun. Read-only hooks
+that write files or live outside the authorized projection require an explicit skip
+or compatible configuration. Unknown/changed ownership and early pre-marker crashes
+are preserved for manual inspection; uncertain remote outcomes require reconciliation.
+External editor/Git writers retain their documented lease limitations.
+
+The added push/PR/manual CI workflow passed local Prettier and actionlint validation.
+It runs npm ci, format, lint, typecheck, normal, integration, PTY and build with
+read-only permissions. No hosted run was triggered because these changes were not
+pushed. Final local logs are `/home/aksha/tmp/vibestar-final-*.log`.
 
 ## Chat-first workspace — final milestone, October 22, 2026
 

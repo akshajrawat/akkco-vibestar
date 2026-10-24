@@ -162,6 +162,11 @@ export class GitHubClient {
           );
         rows.push(...part.items);
       }
+      if (new Set(rows.map((row) => row.html_url)).size !== first.total_count)
+        throw new AdeError(
+          "github",
+          "GitHub PR results changed or were truncated during pagination; retry sync. Saved results were preserved.",
+        );
       return rows;
     };
     return [

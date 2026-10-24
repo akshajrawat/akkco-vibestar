@@ -70,6 +70,22 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       () => fixture.fork,
     );
     const rpc = new Rpc(engine, monitor, repairs);
+    engine.db.run(
+      "INSERT INTO github_pull_requests VALUES(?,?,?)",
+      fixture.session.identity.url,
+      JSON.stringify({
+        url: fixture.session.identity.url,
+        repository: fixture.session.identity.upstream.name,
+        number: fixture.session.identity.number,
+        title: "Repair contribution",
+        state: "OPEN",
+        head_branch: fixture.session.identity.head.branch,
+        head_repository: fixture.session.identity.head.name,
+        updated_at: "2026-10-23T12:00:00Z",
+        task_id: null,
+      }),
+      "2026-10-23T12:00:00Z",
+    );
     const emptyRoot = join(dir, "empty-core");
     const empty = await createFixtureEngine(emptyRoot);
     await empty.close();
@@ -157,8 +173,14 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await page
         .getByRole("button", { name: "Pull Requests", exact: true })
         .click();
-      await page.getByLabel("PR URL").fill(fixture.session.identity.url);
-      await page.getByRole("button", { name: "Track PR", exact: true }).click();
+      expect(await page.getByLabel("PR URL").count()).toBe(0);
+      await page
+        .getByRole("button", { name: "Repair contribution", exact: true })
+        .click();
+      await page
+        .getByRole("dialog", { name: "Pull request details" })
+        .waitFor();
+      await page.getByRole("button", { name: "Close PR details" }).click();
       expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
       await page
         .getByRole("button", { name: "Analyze PR", exact: true })
@@ -274,6 +296,9 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await page.screenshot({
         path: join(screenshots, "manual-publication-before-commit.png"),
       });
+      await page
+        .getByLabel("Local commit message", { exact: true })
+        .fill("Keep my exact repair title\n\nReviewed contribution.\n");
       await page
         .getByRole("dialog", { name: "Confirm PR publication" })
         .getByRole("button", { name: "Commit Locally", exact: true })

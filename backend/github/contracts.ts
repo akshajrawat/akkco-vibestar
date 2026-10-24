@@ -27,6 +27,7 @@ export const GitHubPullRequestSchema = z
     number: z.number().int().positive(),
     title: z.string(),
     state: z.string(),
+    draft: z.boolean().optional(),
     head_branch: z.string(),
     head_repository: z.string().nullable(),
     updated_at: z.string(),
@@ -52,6 +53,7 @@ export interface GitHubPullRequest {
   number: number;
   title: string;
   state: string;
+  draft?: boolean;
   head_branch: string;
   head_repository: string | null;
   updated_at: string;

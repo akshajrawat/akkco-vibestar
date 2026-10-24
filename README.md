@@ -1,5 +1,13 @@
 # akkco vibestar
 
+The [premium workspace and Git Finalization delivery](docs/PREMIUM-UX-GIT-FINALIZATION.md)
+adds a cohesive charcoal interface, bundled Geist typography, GitHub-first PR inbox,
+clearer verification and local usage charts. Ordinary tasks support reviewed file
+selection, exact commit messages, typed hook presets, separately confirmed guarded
+publication and durable history/recovery. [Verification](docs/VERIFICATION.md)
+records 491 passing normal tests, seven built Electron fixtures and native Windows
+window checks at 125%/150% DPI. Pushes and pull requests run the new GitHub CI workflow.
+
 The [chat-first workspace milestone](docs/CHAT-FIRST-WORKSPACE.md) is implemented and verified. Validation distinguishes tooling blockers from failing checks, and the shared task/repair shell keeps chat central with a collapsible engineering sidebar and a secondary Terminal / Problems dock. Saved-instruction choices, the shared expanding composer/model picker and numbered unified/split diff review are available. Existing reports remain readable; ambiguous historical failures are not rewritten as successes.
 
 A local Electron Agent Development Environment for independent open-source contributions. Each whole issue or claimed subtask owns its pinned Git branch, worktree, conversation and sequential Antigravity → Codex planning → Codex implementation pipeline. Existing GitHub PRs have a separate manual analysis and repair workflow: isolated branch preparation, Codex fixes, independent Antigravity review and confirmed publication to the original fork/branch. GitHub access uses the official CLI. Nothing is automatically pushed, posted or merged.
@@ -99,7 +107,13 @@ Settings has separate Agents, GitHub & PR Watch, Repositories, Storage, Usage an
 
 Connect a local repository explicitly by WSL path or Windows drive path; Windows paths are converted with `wslpath` inside the configured distro. Optional discovery searches configured roots with bounded depth and offers candidates to connect. Imported checkouts remain references; tasks use isolated worktrees under the data root. Storage cleanup never deletes an imported source repository. Existing `~/.akkco-ade` data presents Migrate, Use old location or Start fresh; migration preserves the old root and repairs copied worktree metadata.
 
-In **Settings**, configure **three independent** models, effort values and deadlines. Empty model uses the official CLI default deliberately. Antigravity models come from `agy models`; a model with an effort suffix must match its selected effort. Codex accepts an explicit configured slug and reports provider rejection without silently substituting another model or effort.
+In **Settings → Agents**, configure each of the four pipeline stages: Antigravity
+planning, Codex refinement, Codex implementation and Antigravity final review.
+Each stage has its own model, effort and deadline controls. Older settings fall
+back to the planning configuration for final review until you change it; existing
+tasks retain their saved settings. Empty model uses the official CLI default.
+Antigravity models come from `agy models`; effort suffixes must match the selected
+effort. Rejected Codex models/efforts are reported without silent substitution.
 
 Codex uses its verified `exec` structured-output interface, read-only planning and workspace-write implementation. Antigravity uses its verified headless plan-mode and stream-json interface. Neither adapter uses a dangerous permission bypass flag. Provider sessions are recorded when exposed; follow-ups reconstruct saved context as a fresh run rather than pretending to resume an unsupported session.
 
@@ -117,7 +131,7 @@ The SQLite migration preserves existing V1 tasks as partial tasks. Whole issue t
 
 For an imported Oppia checkout, verification reads `origin` as `akshajrawat/oppia`, `upstream` as `oppia/oppia`, and the remote HEAD as `develop`. The source checkout can remain on its own feature branch. Multiple checkout paths for the same upstream have separate registry IDs; task creation uses exactly the selected ID.
 
-Every new task fetches upstream under a repository lock, saves the exact base SHA and creates a fresh isolated branch/worktree. Imported checkouts supply Git object storage; agents execute only in their task worktree, never in the source directory. At Ready for Review, **Finalize…** offers Review changes, Open worktree, Mark complete or Keep task in worktree. It never automatically commits, switches or modifies the source checkout. Duplicate branches receive deterministic suffixes; existing task bases remain pinned.
+Every new task fetches upstream under a repository lock, saves the exact base SHA and creates a fresh isolated branch/worktree. Imported checkouts supply Git object storage; agents execute only in their task worktree. After final acceptance, **Git Finalization** offers reviewed file selection, an exact message editor, local commits and separately confirmed publication. Ready and completed tasks retain this action. The source checkout's branch, index and working files remain unchanged. Duplicate branches receive deterministic suffixes; existing task bases remain pinned.
 
 ## Task workspace
 
@@ -137,12 +151,32 @@ The optional **Terminal** utility dock provide a real xterm.js PTY shell restric
 
 Manual commands are explicit argv JSON arrays, for example `["npm","test","--","specific.spec.ts"]`. No shell is implicitly invoked. The assigned working directory remains visible. Results include stdout, stderr, duration, exit code and Passed/Failed status; provider-reported skipped tests are separate.
 
+## Git Finalization
+
+1. Open **Git Finalization** after the independent final review. Inspect every changed file, its status, size and staged state. Unsafe paths/content are excluded; implementation-reported files are selected by default.
+2. **Prepare staged preview** copies only the selected literal paths into an owned review worktree/index. A subset requires an explicit fresh Antigravity review. Required verification and manual approval still apply.
+3. Type your own **Exact commit message**. It starts empty, supports multiple lines and retains a local draft. **Use original issue text** is an optional convenience. Confirm the exact message and approved files.
+4. Choose **Local only**, **Standard**, **Normal commit + no-verify push**, or typed custom hook options. Normal mode honors repository/worktree hook configuration inside the authorized read-only sandbox; global/system executable settings stay disabled. Skipping hooks never skips Vibestar's authorization, review, ancestry, destination or remote-SHA checks.
+5. Create the local commit. For publication, inspect the verified contribution repository, upstream, remote, branch, account, local commit and expected remote SHA, then explicitly confirm the push. A changed destination requires a new check and confirmation.
+
+The task's unrelated staged content is preserved. Selecting a file with staged hunks requires an explicit choice to use its complete reviewed contents. Existing task commits are included in publication and cannot be silently omitted. Messages retain exact UTF-8 contents, including trailing spaces and absence of a final newline. There is no generated title or trailer.
+
+The host proves fast-forward ancestry and binds publication atomically to the exact remote SHA. It permits creation of an explicitly confirmed absent feature branch; it never permits a non-fast-forward update. A preset cannot authorize publication. Cancelled or disconnected pushes are reconciled against the actual remote before retry. Real redacted output, exits and saved history are available in the dialog. Explicit preview removal keeps the task branch/local commit and is required before deleting its task history.
+
+Publication requires the configured contribution fork and current GitHub write permission. It does not create a PR. Existing PR repairs retain their verified PR head destination and separate approval flow. See [the delivery and contract record](docs/PREMIUM-UX-GIT-FINALIZATION.md).
+
+## Browser verification environment
+
+Tests includes a collapsed **Browser verification environment** panel. Opening it runs nothing. An explicit **Use environment** choice can expose installed Playwright browser caches and Chrome read-only for manual verification; provider-internal sandboxes remain separate. **Inspect browser environment** reports installed tooling, DNS, loopback socket support and separate direct-file/HTTP fixture capability without downloading packages or starting a model. It never changes application verification results or waives a required check.
+
+The installed-toolchain fixture runs with `npm run test:browser:environment` and uses disposable worktrees. Saved diagnostics identify their environment and timestamp.
+
 ## Manual PR review analysis
 
 PR review is manual only. Startup, authentication, opening the inbox, tracking and GitHub metadata synchronization never invoke PR-analysis models. Legacy enabled watches are disabled on upgrade while their snapshots, conversations, decisions, provider logs and usage remain available. The existing issue queue and recovery behavior are preserved.
 
 1. **Refresh PR List** retrieves authored PR metadata through official gh; no inference or tracking starts.
-2. **Track PR** saves a PR from the list or a pasted GitHub URL. It does not start inspection or a timer.
+2. Open a discovered PR to view its saved metadata and create an inactive review record. It does not start inspection or a timer; the main page has no URL/Track form.
 3. **Analyze PR / Analyze Again** retrieves fresh complete discussion/context and invokes the displayed Utility AI provider/model/effort only when semantic classification is needed. Cancellation and errors require an explicit new request; restart never retries PR analysis.
 4. **Review report** shows PR/fork/head/base identity, complete original Markdown reviews/replies, independently tracked observations, unanswered questions, response evidence, positive feedback, checks, patches and analysis history. Replies, commits, dismissed reviews and resolved threads do not prove code correctness.
 
@@ -179,6 +213,12 @@ The window keeps its dark frameless titlebar and native resizing, and its initia
 
 ## Verification
 
+GitHub Actions runs [CI](.github/workflows/ci.yml) on every push and pull request,
+and supports manual runs from the Actions tab. It installs Node.js 22 and the Linux
+sandbox/build dependencies, then checks formatting, lint, types, the normal test
+suite, integration tests, real PTY tests and the production build. Live-provider,
+real GitHub publication and desktop opt-ins remain separate local checks.
+
 ```bash
 npm run format:check
 npm run lint
@@ -189,6 +229,7 @@ npm run test:tui
 npm run build
 npm run test:desktop:watch
 npm run test:desktop:output
+npm run test:desktop:git
 npm run test:desktop:pr
 npm run test:desktop:repair
 npm run desktop:build

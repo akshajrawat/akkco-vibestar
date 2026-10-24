@@ -127,3 +127,42 @@ it("does not describe a host-side blocker as a cancelled provider run or missing
   ).toBeTruthy();
   expect(screen.queryByText(/Exit: unavailable/)).toBeNull();
 });
+
+it("groups a recorded DNS setup failure with browser prerequisites without changing evidence or marking them passed", () => {
+  const failed = {
+    ...setup,
+    exit_code: 1,
+    stderr: "npm error getaddrinfo EAI_AGAIN registry.npmjs.org",
+  };
+  const value = {
+    ...detail,
+    tests: [failed],
+    validation: verificationSummary(
+      {
+        verification: [
+          {
+            name: "Browser layout",
+            command: "npx playwright test",
+            kind: "check",
+            outcome: "blocked",
+            required: true,
+            detail: "Not executed",
+            prerequisite: "Playwright installation",
+          },
+        ],
+      },
+      [failed],
+    ),
+  };
+  const before = structuredClone(value);
+  render(<TestsView detail={value} onError={vi.fn()} />);
+  expect(screen.getByText("Browser tooling unavailable")).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Cannot resolve registry.npmjs.org. Installation did not complete.",
+    ),
+  ).toBeTruthy();
+  expect(screen.getByText("Browser layout · blocked")).toBeTruthy();
+  expect(value).toEqual(before);
+  expect(value.validation.canReview).toBe(false);
+});

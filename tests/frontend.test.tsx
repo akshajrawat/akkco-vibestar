@@ -167,7 +167,7 @@ it("keeps implementation config independent of planning", () => {
   const settings = changed.mock.calls[0][0];
   expect(settings.codex_plan.model).toBe("requested-plan-model");
   expect(settings.codex_implementation.model).toBe("");
-  expect(screen.getAllByText(/models not loaded/)).toHaveLength(1);
+  expect(screen.getAllByText(/models not loaded/)).toHaveLength(2);
 });
 it("shows both locally persisted plans", () => {
   render(
@@ -773,16 +773,31 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
 it("keeps finalization explicit and shows source/worktree metadata without moving the user's checkout", async () => {
   const { TaskWorkspace } = await import("../src/components/TaskWorkspace");
   const rpc = vi.fn(async (method: string) =>
-    method === "providers.detect"
-      ? []
-      : method === "task.diff"
-        ? {
-            files: [{ path: "source.txt" }],
-            insertions: 1,
-            deletions: 1,
-            base: "sha",
-          }
-        : null,
+    method === "git.inspect"
+      ? {
+          files: [],
+          ignored: [],
+          fingerprint: "fixture",
+          preset: {
+            name: "Local only",
+            commit_hooks: "normal",
+            push: "none",
+            remote: "origin",
+            branch: "akkco/26831-task-a",
+          },
+          history: [],
+          active: false,
+        }
+      : method === "providers.detect"
+        ? []
+        : method === "task.diff"
+          ? {
+              files: [{ path: "source.txt" }],
+              insertions: 1,
+              deletions: 1,
+              base: "sha",
+            }
+          : null,
   );
   Object.defineProperty(window, "vibestar", {
     value: { rpc },
@@ -832,20 +847,18 @@ it("keeps finalization explicit and shows source/worktree metadata without movin
       back={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Finalize…" }));
-  expect(screen.getByRole("dialog", { name: "Finalize task" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Git Finalization" }));
+  expect(screen.getByRole("dialog", { name: "Git Finalization" })).toBeTruthy();
   expect(
     screen.getByText(
-      /Marking this task complete preserves its branch and worktree/,
+      /Select reviewed files, keep your exact message and confirm the destination/,
     ),
   ).toBeTruthy();
   expect(rpc).not.toHaveBeenCalledWith("task.complete", expect.anything());
-  fireEvent.click(
-    screen.getByRole("button", { name: "Keep task in worktree" }),
-  );
-  expect(screen.queryByRole("dialog", { name: "Finalize task" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Finalize…" }));
-  fireEvent.click(screen.getByRole("button", { name: "Mark complete" }));
+  fireEvent.click(screen.getByRole("button", { name: "Keep local and close" }));
+  expect(screen.queryByRole("dialog", { name: "Git Finalization" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Git Finalization" }));
+  fireEvent.click(screen.getByRole("button", { name: "Mark task complete" }));
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.complete", { id: "finalize-test" }),
   );

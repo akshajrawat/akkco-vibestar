@@ -100,3 +100,51 @@ export const toolState = (
   if (run && run.status !== "running") return "interrupted";
   return "running";
 };
+
+export const runActivity = (events: AgentEvent[], run?: Run) => {
+  const entries = agentEntries(
+    events.filter((e) => e.run_id === run?.id && e.stream !== "stderr"),
+  );
+  const runningTool = [...entries]
+    .reverse()
+    .find(
+      (e) =>
+        (e.data.tool ||
+          e.event.kind.startsWith("command.") ||
+          e.event.kind.startsWith("file.")) &&
+        (e.data.status != null || e.event.kind === "command.started") &&
+        toolState(e.event, e.data, run) === "running",
+    );
+  const entry =
+    runningTool ||
+    [...entries]
+      .reverse()
+      .find((e) =>
+        [e.data.text, e.data.query, e.data.command, e.data.path].some(
+          (value) => typeof value === "string" && value.trim(),
+        ),
+      );
+  const event = entry?.event;
+  const data = entry?.data || {};
+  const path =
+    data.path || (Array.isArray(data.files) ? data.files.join(", ") : "");
+  const observedActivity =
+    typeof data.query === "string"
+      ? `Searching: ${data.query}${path ? " · " + path : ""}`
+      : event?.kind === "file.changed"
+        ? `Editing: ${path || "file change reported"}`
+        : event?.kind === "file.read"
+          ? `Reading: ${path || "file read reported"}`
+          : typeof data.command === "string"
+            ? data.command
+            : typeof data.text === "string"
+              ? data.text
+              : typeof data.text_delta === "string"
+                ? data.text_delta
+                : "Waiting for provider activity…";
+  return entry &&
+    event?.kind !== "message" &&
+    toolState(entry.event, data, run) !== "running"
+    ? `${toolState(entry.event, data, run)} · ${observedActivity}`
+    : observedActivity;
+};

@@ -7,11 +7,17 @@ import { exists, taskRoot, inside, managedPath } from "../workspace/paths";
 import type { Database } from "../storage/database";
 import { checked, cleanEnvironment } from "./process";
 import { taskRuntime } from "../workspace/runtime";
+import type { VerificationEnvironment } from "./browser/contracts";
 export const sandboxInvocation = async (
   root: string,
   db: Database,
   task: WorkspaceAssignment | null,
-  invocation: { program: string; args: string[]; input?: string },
+  invocation: {
+    program: string;
+    args: string[];
+    input?: string;
+    verificationEnvironment?: VerificationEnvironment;
+  },
   readOnly: boolean,
   schemaPath?: string,
   provider?: string,
@@ -78,6 +84,27 @@ export const sandboxInvocation = async (
     "TMPDIR",
     "/tmp",
   ];
+  if (invocation.verificationEnvironment === "installed_browsers") {
+    if (provider)
+      throw new AdeError(
+        "sandbox",
+        "Installed browser mounts are limited to explicit manual verification.",
+      );
+    const cacheParent = join(home, ".cache");
+    const cache = join(cacheParent, "ms-playwright");
+    const parent = await lstat(cacheParent).catch(() => null);
+    const entry = await lstat(cache).catch(() => null);
+    if (parent?.isSymbolicLink() || entry?.isSymbolicLink())
+      throw new AdeError(
+        "sandbox",
+        "The installed browser cache must be a physical directory, not a symlink.",
+      );
+    if (entry?.isDirectory()) args.push("--ro-bind", cache, cache);
+    const chrome = "/opt/google/chrome";
+    const installation = await lstat(chrome).catch(() => null);
+    if (installation?.isDirectory() && (await realpath(chrome)) === chrome)
+      args.push("--ro-bind", chrome, chrome);
+  }
   // Bubblewrap starts with an empty root. Only reviewed system installations
   // and individual runtime configuration files are visible, never the host /.
   for (const path of ["/usr", "/bin", "/sbin", "/lib", "/lib64"]) {

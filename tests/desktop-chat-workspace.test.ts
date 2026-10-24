@@ -87,9 +87,11 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         "fixtureRpc",
         async (method: string, params: unknown) =>
           method === "providers.detect"
-            ? ["antigravity", "codex"].map((provider) => ({
+            ? ["antigravity", "codex", "github"].map((provider) => ({
                 ...detection,
                 provider,
+                accountLabel: `${provider} fixture account`,
+                models: provider === "github" ? [] : detection.models,
               }))
             : rpc.call(method, params),
       );
@@ -122,6 +124,53 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
           .catch(() => {});
       };
       engine.on("event", forward);
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      for (const [navigation, heading, file] of [
+        ["Pull Requests", "Pull requests", "premium-pull-requests"],
+        ["Issue Watch", "Issue Watch", "premium-issue-watch"],
+        ["Repositories", "Repositories", "premium-repositories"],
+        ["Providers", "Providers", "premium-providers"],
+        ["Usage", "Local AI usage", "premium-usage-empty"],
+        ["Settings", "Settings", "premium-settings"],
+        ["Tasks", "Tasks", "premium-tasks"],
+      ]) {
+        await page
+          .getByRole("button", { name: navigation, exact: true })
+          .click();
+        await page
+          .getByRole("heading", { name: heading, exact: true })
+          .waitFor();
+        await page.evaluate(() => document.fonts.ready);
+        for (const [width, height] of [
+          [1920, 1080],
+          [1440, 900],
+          [1280, 720],
+        ]) {
+          await app.evaluate(
+            ({ BrowserWindow }, dimensions) =>
+              BrowserWindow.getAllWindows()[0].setSize(
+                ...(dimensions as [number, number]),
+              ),
+            [width, height],
+          );
+          await expect
+            .poll(() => page.evaluate(() => window.innerWidth))
+            .toBe(width);
+          expect(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= window.innerWidth,
+            ),
+          ).toBe(true);
+          await page.screenshot({
+            animations: "disabled",
+            path: join(evidence, `${file}-${width}x${height}.png`),
+          });
+        }
+      }
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].setSize(1440, 900),
+      );
+      expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
       const task = engine.enqueue(
         repo,
         parseIssue("https://github.com/fixture/fixture/issues/7"),
@@ -227,7 +276,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       );
       expect(await draft.inputValue()).toContain("Keep this independent");
       await expect
-        .poll(() => engine.db.task(task.id).status)
+        .poll(() => engine.db.task(task.id).status, { timeout: 30000 })
         .toBe("verification_blocked");
       await expect
         .poll(() => page.locator(".validation-turn").innerText())
@@ -260,6 +309,20 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Retry validation only" }).click();
       await expect.poll(() => engine.db.detail(task.id).tests.length).toBe(6);
       expect(engine.db.detail(task.id).runs).toHaveLength(3);
+      await page.locator(".browser-environment > summary").click();
+      await page
+        .getByRole("button", {
+          name: "Inspect browser environment",
+          exact: true,
+        })
+        .click();
+      await page.getByLabel("Observed browser capabilities").waitFor();
+      expect(engine.db.task(task.id).status).toBe("verification_blocked");
+      expect(engine.db.detail(task.id).runs).toHaveLength(3);
+      await page.screenshot({
+        path: join(evidence, "browser-environment.png"),
+      });
+      await page.locator(".browser-environment > summary").click();
       for (const [width, height] of [
         [1920, 1080],
         [1440, 900],
@@ -335,9 +398,12 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await page.getByLabel("Hide utility dock").click();
       await draft.focus();
       await page.keyboard.press("Control+b");
-      expect(await page.locator(".sidebar").count()).toBe(0);
+      await expect
+        .poll(() => page.locator(".sidebar:not([inert])").count())
+        .toBe(0);
+      await expect.poll(() => page.locator(".sidebar").count()).toBe(0);
       await page.keyboard.press("Control+b");
-      expect(await page.locator(".sidebar").count()).toBe(1);
+      await expect.poll(() => page.locator(".sidebar").count()).toBe(1);
       await draft.evaluate((element) =>
         element.dispatchEvent(
           new KeyboardEvent("keydown", {
@@ -400,6 +466,65 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
           .getAttribute("aria-selected"),
       ).toBe("true");
       expect(engine.db.detail(task.id).runs).toHaveLength(3);
+      // Explicit fixture telemetry exercises partial coverage without live inference.
+      const usage = engine.db.all<{ id: string }>(
+        "SELECT id FROM ai_usage WHERE task_id=? ORDER BY started_at,id",
+        task.id,
+      );
+      expect(usage).toHaveLength(3);
+      engine.db.run(
+        "UPDATE ai_usage SET input_tokens=100,output_tokens=20,cached_input_tokens=10,reasoning_tokens=4,total_tokens=120 WHERE id=?",
+        usage[0].id,
+      );
+      engine.db.run(
+        "UPDATE ai_usage SET input_tokens=42,output_tokens=8 WHERE id=?",
+        usage[1].id,
+      );
+      await page.getByRole("button", { name: "Usage", exact: true }).click();
+      await page.getByRole("table").waitFor();
+      expect(await page.locator(".usage-table tbody tr").count()).toBe(3);
+      await expect
+        .poll(() => page.locator(".usage-tokens").textContent())
+        .toContain("Input142");
+      expect(await page.locator(".usage-tokens").textContent()).toContain(
+        "Total1201/3 runs reported",
+      );
+      for (const [width, height] of [
+        [1920, 1080],
+        [1440, 900],
+        [1280, 720],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, dimensions) =>
+            BrowserWindow.getAllWindows()[0].setSize(
+              ...(dimensions as [number, number]),
+            ),
+          [width, height],
+        );
+        await expect
+          .poll(() => page.evaluate(() => window.innerWidth))
+          .toBe(width);
+        await page.screenshot({
+          animations: "disabled",
+          path: join(
+            evidence,
+            `premium-usage-populated-${width}x${height}.png`,
+          ),
+        });
+        await page.locator(".usage-charts").scrollIntoViewIfNeeded();
+        await page
+          .getByRole("button", {
+            name: /120 tokens.*1\/3 runs reported totals/,
+          })
+          .focus();
+        await page.screenshot({
+          animations: "disabled",
+          path: join(evidence, `premium-usage-charts-${width}x${height}.png`),
+        });
+        await page
+          .getByRole("heading", { name: "Local AI usage", exact: true })
+          .scrollIntoViewIfNeeded();
+      }
       expect(errors).toEqual([]);
       await writeFile(
         join(evidence, "results.json"),
@@ -409,6 +534,8 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
             detail: await rpc.call("task.detail", { id: task.id }),
             inference:
               "Fixture processes only; no subscription or GitHub operations",
+            usage_fixture_note:
+              "Two saved fixture rows have explicit token samples (120 reported total; one partial row). The third remains unavailable. These are test values, not real subscription usage.",
           },
           null,
           2,
@@ -430,5 +557,5 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await engine.close();
     }
   },
-  90000,
+  120000,
 );

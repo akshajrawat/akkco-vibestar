@@ -1,4 +1,8 @@
 import { z } from "zod";
+import type {
+  VerificationEnvironment,
+  BrowserEnvironmentReport,
+} from "./execution/browser/contracts";
 export interface ActivityBlocker {
   id: string;
   kind:
@@ -61,6 +65,7 @@ export const SettingsSchema = z
   .object({
     concurrency: z.number().int().min(1).max(4),
     antigravity: StageConfigSchema,
+    antigravity_review: StageConfigSchema.optional(),
     codex_plan: StageConfigSchema,
     codex_implementation: StageConfigSchema,
     utility_ai: StageConfigSchema.extend({
@@ -92,17 +97,21 @@ export const SettingsSchema = z
       }),
   })
   .superRefine((settings, context) => {
-    const error = modelEffortError(
-      "antigravity",
-      settings.antigravity.model,
-      settings.antigravity.effort,
-    );
-    if (error)
-      context.addIssue({
-        code: "custom",
-        path: ["antigravity", "effort"],
-        message: error,
-      });
+    for (const key of ["antigravity", "antigravity_review"] as const) {
+      const config = settings[key];
+      if (!config) continue;
+      const error = modelEffortError(
+        "antigravity",
+        config.model,
+        config.effort,
+      );
+      if (error)
+        context.addIssue({
+          code: "custom",
+          path: [key, "effort"],
+          message: error,
+        });
+    }
     if (settings.review_ai) {
       const reviewError = modelEffortError(
         settings.review_ai.provider,
@@ -195,6 +204,8 @@ export interface Repository {
   origin_remote?: string | null;
 }
 export interface Task {
+  verification_environment?: VerificationEnvironment;
+  browser_environment_report?: BrowserEnvironmentReport;
   runtime?: {
     python: string | null;
     dependencies: string[];

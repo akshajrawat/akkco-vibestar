@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useIsPresent,
+  useReducedMotion,
+} from "motion/react";
 import {
   ListTodo,
   GitPullRequest,
@@ -19,6 +25,7 @@ import { TaskWorkspace } from "./components/TaskWorkspace";
 import { ProvidersPage } from "./components/ProvidersPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { Button } from "./components/ui/button";
+import { ListSkeleton, PageHeader } from "./components/ui/PageHeader";
 import { TaskNavigation } from "./components/TaskNavigation";
 import { CommandPalette } from "./components/CommandPalette";
 import { ResizeHandle } from "./components/ResizeHandle";
@@ -47,6 +54,31 @@ const navigation = [
   ["Usage", Activity],
   ["Settings", Settings],
 ] as const;
+const NavigationPane = ({
+  width,
+  children,
+}: {
+  width: number;
+  children: ReactNode;
+}) => {
+  const present = useIsPresent();
+  const reduced = useReducedMotion();
+  return (
+    <motion.aside
+      className="sidebar"
+      style={{ width }}
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -8 }}
+      transition={{ duration: reduced ? 0 : 0.16 }}
+      inert={!present}
+      aria-hidden={!present}
+    >
+      {children}
+    </motion.aside>
+  );
+};
+
 export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
   const [page, setPage] = useState<Page>("Tasks");
@@ -128,6 +160,7 @@ export const App = () => {
     page === "Scheduled" && snapshot ? (
       <ScheduledPage
         snapshot={snapshot}
+        connectGitHub={() => navigate("Providers")}
         refresh={refresh}
         open={open}
         openRepair={openRepair}
@@ -142,7 +175,19 @@ export const App = () => {
         }}
       />
     ) : page === "Usage" ? (
-      <UsageView />
+      <UsageView
+        openRun={(row) => {
+          const id = row.task_id || row.repair_id;
+          if (!id) return;
+          if (row.task_id) open(id);
+          else openRepair(id);
+          updateTaskView(id, {
+            secondaryOpen: true,
+            secondarySection: "run-details",
+            outputRun: row.id,
+          });
+        }}
+      />
     ) : page === "Settings" ? (
       <SettingsPage
         settings={snapshot?.settings}
@@ -199,10 +244,22 @@ export const App = () => {
       />
     ) : (
       <div className="page">
-        <h1>Connecting execution environment…</h1>
-        {error && (
-          <Button onClick={() => navigate("Settings")}>Open Settings</Button>
-        )}
+        <PageHeader
+          title={
+            error
+              ? "Execution environment unavailable"
+              : "Connecting execution environment…"
+          }
+          description={
+            error
+              ? "Inspect the execution settings and reconnect the helper to load your saved workspace."
+              : "Starting the local core and loading saved tasks, repositories and settings."
+          }
+          actions={
+            <Button onClick={() => navigate("Settings")}>Open Settings</Button>
+          }
+        />
+        {!error && <ListSkeleton label="Loading the saved workspace" />}
       </div>
     );
   return (
@@ -220,9 +277,9 @@ export const App = () => {
         {snapshot?.migration && (
           <DataMigration migration={snapshot.migration} refresh={refresh} />
         )}
-        {sidebar && (
-          <>
-            <aside className="sidebar" style={{ width: sidebarWidth }}>
+        <AnimatePresence initial={false}>
+          {sidebar && (
+            <NavigationPane width={sidebarWidth}>
               <div className="brand">
                 VIBESTAR <small>LOCAL</small>
               </div>
@@ -291,8 +348,21 @@ export const App = () => {
                       aria-label={
                         label === "Scheduled" ? "Pull Requests" : label
                       }
+                      aria-current={page === label ? "page" : undefined}
                       onClick={() => navigate(label)}
                     >
+                      {page === label && (
+                        <motion.span
+                          className="nav-selection"
+                          layoutId="navigation-selection"
+                          transition={{
+                            type: "spring",
+                            stiffness: 500,
+                            damping: 40,
+                          }}
+                          aria-hidden="true"
+                        />
+                      )}
                       <Icon size={14} />
                       {label === "Scheduled" ? "Pull Requests" : label}
                       {label === "Scheduled" && (
@@ -313,15 +383,17 @@ export const App = () => {
                   : "Local workspace"}
                 <small>{snapshot?.settings.concurrency || 2} agent slots</small>
               </div>
-            </aside>
-            <ResizeHandle
-              label="Resize navigation pane"
-              value={sidebarWidth}
-              onChange={setSidebarWidth}
-              min={180}
-              max={380}
-            />
-          </>
+            </NavigationPane>
+          )}
+        </AnimatePresence>
+        {sidebar && (
+          <ResizeHandle
+            label="Resize navigation pane"
+            value={sidebarWidth}
+            onChange={setSidebarWidth}
+            min={180}
+            max={380}
+          />
         )}
         <main className="main-area">
           {snapshot?.warning && (

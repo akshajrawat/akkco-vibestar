@@ -3,7 +3,10 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { AdeError } from "../domain";
 
-type OwnerFile = "vibestar-task-owner" | "vibestar-repair-owner";
+type OwnerFile =
+  | "vibestar-task-owner"
+  | "vibestar-repair-owner"
+  | "vibestar-finalization-owner";
 
 export const readWorktreeOwner = async (directory: string, name: OwnerFile) => {
   const handle = await open(

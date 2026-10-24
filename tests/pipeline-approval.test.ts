@@ -52,7 +52,14 @@ it("persists each approval without starting the next provider, preserves isolati
         linkedPullRequests: [{ title: "Related PR" }],
       },
       "partial",
-      settings,
+      {
+        ...settings,
+        antigravity_review: {
+          model: "next-model",
+          effort: "high",
+          timeout_secs: 40,
+        },
+      },
     );
     const gate = async (name: string) => {
       await waitForTask(
@@ -116,7 +123,7 @@ it("persists each approval without starting the next provider, preserves isolati
     expect(engine.db.detail(task.id).usage.at(-1)).toMatchObject({
       purpose: "Antigravity Final Review",
       status: "completed",
-      effort: "low",
+      effort: "high",
     });
     expect(
       buildPrompt(engine.db, { ...engine.db.task(task.id), stage: 5 }),

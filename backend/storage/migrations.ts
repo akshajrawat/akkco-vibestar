@@ -222,4 +222,14 @@ CREATE TABLE utility_events(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT
 CREATE INDEX utility_run_events ON utility_events(run_id,id);
 `,
   },
+  {
+    version: 24,
+    sql: `
+CREATE TABLE git_finalizations(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX git_finalizations_task ON git_finalizations(task_id,created_at);
+CREATE TABLE git_operation_events(id INTEGER PRIMARY KEY AUTOINCREMENT,finalization_id TEXT NOT NULL REFERENCES git_finalizations(id),phase TEXT NOT NULL,output TEXT NOT NULL,exit_code INTEGER,timestamp TEXT NOT NULL);
+CREATE INDEX git_operation_history ON git_operation_events(finalization_id,id);
+CREATE TABLE task_git_presets(task_id TEXT PRIMARY KEY REFERENCES tasks(id),data TEXT NOT NULL CHECK(json_valid(data)));
+`,
+  },
 ];

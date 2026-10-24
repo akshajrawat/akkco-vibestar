@@ -225,7 +225,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
       await page
         .getByRole("button", { name: "Accept review", exact: true })
         .click();
-      await page.getByRole("button", { name: "Finalize…" }).waitFor();
+      await page.getByRole("button", { name: "Git Finalization" }).waitFor();
       await page.getByRole("tab", { name: "Changes", exact: true }).click();
       await page
         .getByRole("button", { name: "Open full diff review", exact: true })

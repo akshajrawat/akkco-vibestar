@@ -8,6 +8,7 @@ export const useIssueWatch = (
   initialWatchId?: string | null,
 ) => {
   const [watches, setWatches] = useState<SavedWatch[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [watchId, setWatchId] = useState(
     initialWatchId ||
       localStorage.getItem("vibestar.issueWatch.selected") ||
@@ -45,6 +46,7 @@ export const useIssueWatch = (
       }
       if (request !== sequence.current) return;
       setWatches(list);
+      setLoaded(true);
       setMoreWatches(watchPage.length === 100);
       const selected = list.find((watch) => watch.id === watchId);
       if (!selected) {
@@ -99,7 +101,10 @@ export const useIssueWatch = (
       } else setScan(null);
       setError("");
     } catch (e) {
-      if (request === sequence.current) setError(errorMessage(e));
+      if (request === sequence.current) {
+        setError(errorMessage(e));
+        setLoaded(true);
+      }
     }
   }, [enabled, archived, watchId, scanId, watchPages, historyPages]);
   useEffect(() => setWatchPages(1), [archived]);
@@ -148,6 +153,7 @@ export const useIssueWatch = (
     setScan(null);
   };
   return {
+    loading: !loaded,
     watches,
     watchId,
     select,

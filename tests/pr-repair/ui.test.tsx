@@ -411,6 +411,13 @@ it("shows exact publication values and requires separate commit and explicit pus
       .disabled,
   ).toBe(true);
   expect(rpc).not.toHaveBeenCalled();
+  expect(
+    (screen.getByLabelText("Local commit message") as HTMLTextAreaElement)
+      .value,
+  ).toBe("");
+  fireEvent.change(screen.getByLabelText("Local commit message"), {
+    target: { value: "  Exact title  \n\nDetails\n" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Commit Locally" }));
   await waitFor(() =>
     expect(
@@ -447,6 +454,13 @@ it("makes local-only approval and commit explicit without preparing or confirmin
     />,
   );
   expect(rpc).not.toHaveBeenCalled();
+  expect(
+    (screen.getByLabelText("Local-only commit message") as HTMLTextAreaElement)
+      .value,
+  ).toBe("");
+  fireEvent.change(screen.getByLabelText("Local-only commit message"), {
+    target: { value: "  Local title  \n\nDetails\n" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Confirm Local Commit" }));
   await waitFor(() => expect(close).toHaveBeenCalled());
   expect(rpc.mock.calls.map(([method]) => method)).toEqual([
@@ -458,6 +472,7 @@ it("makes local-only approval and commit explicit without preparing or confirmin
     "repair.commit",
     expect.objectContaining({
       expected_hash: session.review_hash,
+      message: "  Local title  \n\nDetails\n",
       confirmed: true,
     }),
   );

@@ -46,7 +46,7 @@ export const AuthDialog = ({
     };
     const term = new Terminal({
       fontSize: 12,
-      fontFamily: "Cascadia Code, Consolas, monospace",
+      fontFamily: terminalTheme().fontFamily,
       convertEol: true,
       theme: terminalTheme(),
     });

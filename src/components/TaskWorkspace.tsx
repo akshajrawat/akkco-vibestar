@@ -1,4 +1,5 @@
 import { RunPrompt } from "./RunPrompt";
+import { GitFinalization } from "./finalization/GitFinalization";
 import { ChangesView } from "./ChangesView";
 import { CurrentRun } from "./CurrentRun";
 import { OpenInEditor } from "./OpenInEditor";
@@ -406,65 +407,13 @@ export const TaskWorkspace = ({
         </div>
       )}
       {finalizing && (
-        <div className="modal-backdrop">
-          <section
-            className="modal compact-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="finalize-task-title"
-          >
-            <h2 id="finalize-task-title">Finalize task</h2>
-            <dl className="repository-facts">
-              <dt>Source repository</dt>
-              <dd>
-                <code>{repository?.path}</code>
-              </dd>
-              <dt>Task worktree</dt>
-              <dd>
-                <code>{t.worktree_path}</code>
-              </dd>
-              <dt>Task branch</dt>
-              <dd>
-                <code>{t.branch_name}</code>
-              </dd>
-              <dt>Changed files</dt>
-              <dd>{diff?.files.length ?? "Unavailable"}</dd>
-            </dl>
-            <p>
-              Changes stay in the task worktree. Marking this task complete
-              preserves its branch and worktree. It does not commit changes or
-              switch the source checkout.
-            </p>
-            <div className="actions">
-              <OpenInEditor
-                id={t.id}
-                kind="task"
-                path={t.worktree_path}
-                disabled={!t.worktree_path}
-              />
-              <Button
-                onClick={() =>
-                  void action("open.directory", { id: t.id, kind: "task" })
-                }
-              >
-                Open worktree
-              </Button>
-              <Button
-                variant="default"
-                disabled={busy || occupied}
-                onClick={async () => {
-                  await action("task.complete");
-                  setFinalizing(false);
-                }}
-              >
-                Mark complete
-              </Button>
-              <Button variant="ghost" onClick={() => setFinalizing(false)}>
-                Keep task in worktree
-              </Button>
-            </div>
-          </section>
-        </div>
+        <GitFinalization
+          task={t}
+          repository={repository}
+          revision={revision}
+          close={() => setFinalizing(false)}
+          complete={() => action("task.complete")}
+        />
       )}
       <div className="workspace-content">
         <ChatSurface
@@ -814,9 +763,9 @@ export const TaskWorkspace = ({
                   Inspect unresolved verification
                 </Button>
               )}
-              {t.status === "ready_for_review" && (
+              {["ready_for_review", "completed"].includes(t.status) && (
                 <Button size="sm" onClick={() => setFinalizing(true)}>
-                  Finalize…
+                  Git Finalization
                 </Button>
               )}
             </>

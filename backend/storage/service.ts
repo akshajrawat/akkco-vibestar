@@ -482,6 +482,13 @@ export class StorageService {
       );
     const repo = e.db.repository(task.repo_id);
     if (options.worktree || options.history) {
+      if (
+        e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", id).length
+      )
+        throw new AdeError(
+          "git_history",
+          "Remove this task's owned Git Finalization previews explicitly before deleting its workspace or history.",
+        );
       await this.removeTaskWorkspace(task, repo);
       task = {
         ...task,
@@ -507,6 +514,7 @@ export class StorageService {
           "task_reviewed_files",
           "code_questions",
           "task_activity",
+          "task_git_presets",
         ])
           e.db.run(`DELETE FROM ${table} WHERE task_id=?`, id);
       }

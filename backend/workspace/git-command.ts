@@ -31,6 +31,8 @@ const commands = new Set([
   "show",
   "show-ref",
   "status",
+  "write-tree",
+  "hash-object",
   "symbolic-ref",
   "update-ref",
   "worktree",
@@ -72,7 +74,7 @@ const safeKey = (key: string) =>
   /^(?:core\.(?:repositoryformatversion|bare|worktree|logallrefupdates|filemode|ignorecase|symlinks|precomposeunicode|protecthfs|protectntfs|quotepath|autocrlf|eol|safecrlf|checkstat|trustctime|untrackedcache|ignorestat|abbrev|bigfilethreshold|compression|loosecompression|packedgitlimit|packedgitwindowsize|deltabasecachelimit)|extensions\.(?:objectformat|worktreeconfig|refstorage|partialclone)|user\.(?:name|email)|init\.defaultbranch)$/.test(
     key,
   ) ||
-  /^branch\..+\.(?:remote|merge|rebase|description|vibestartask|vibestarrepair)$/.test(
+  /^branch\..+\.(?:remote|merge|rebase|description|vibestartask|vibestarrepair|vibestarfinalization)$/.test(
     key,
   ) ||
   /^remote\..+\.(?:url|pushurl|fetch|push|tagopt|promisor|partialclonefilter)$/.test(
@@ -95,7 +97,7 @@ export const githubTransport = (url: string) => {
 
 interface GitRequest extends ProcessRequest {
   allowLocalTransport?: boolean;
-  // Only RepairPublisher supplies this private per-publication capability.
+  // Host publishers supply private per-publication defense-in-depth hooks only.
   hooksPath?: string;
 }
 

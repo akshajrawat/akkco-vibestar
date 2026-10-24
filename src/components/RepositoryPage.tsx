@@ -5,6 +5,7 @@ import { Search, RefreshCw, Plus } from "lucide-react";
 import type { Snapshot } from "../lib/types";
 import type { LocalRepository } from "../../backend/workspace/discovery";
 import { Button } from "./ui/button";
+import { PageHeader } from "./ui/PageHeader";
 import { rpc, errorMessage } from "../lib/api";
 import { ConnectLocalRepository } from "./ConnectLocalRepository";
 import { remoteIdentity } from "../../backend/domain";
@@ -95,27 +96,43 @@ export const RepositoryPage = ({
   };
   return (
     <div className="page repository-library">
-      <div className="page-title">
-        <h1>Repositories</h1>
-        <div className="spacer" />
-        <Button variant="default" onClick={() => setConnection({ path: "" })}>
-          <Plus size={14} />
-          Connect local repository
-        </Button>
-        <Button
-          disabled={!!busy}
-          onClick={() => void action("repositories.scan", {}, "scan")}
-        >
-          {busy === "scan" ? "Scanning…" : "Scan local"}
-        </Button>
-        <Button
-          disabled={!!busy}
-          onClick={() => void action("github.sync", {}, "sync")}
-        >
-          <RefreshCw size={13} />
-          {busy === "sync" ? "Syncing…" : "Sync GitHub"}
-        </Button>
-      </div>
+      <PageHeader
+        title="Repositories"
+        description="Connect local checkouts or prepare managed clones. Tasks get their own worktree."
+        actions={
+          <>
+            <Button
+              variant="default"
+              onClick={() => setConnection({ path: "" })}
+            >
+              <Plus size={14} />
+              Connect local repository
+            </Button>
+            <Button
+              busy={busy === "scan"}
+              disabled={!!busy}
+              onClick={() => void action("repositories.scan", {}, "scan")}
+            >
+              {busy === "scan" ? "Scanning…" : "Scan local"}
+            </Button>
+            <Button
+              busy={busy === "sync" || !!snapshot.github?.phase}
+              disabled={!!busy}
+              onClick={() => void action("github.sync", {}, "sync")}
+            >
+              {busy !== "sync" && !snapshot.github?.phase && (
+                <RefreshCw size={13} />
+              )}
+              {busy === "sync" ? "Syncing…" : "Sync GitHub"}
+            </Button>
+          </>
+        }
+      />
+      {snapshot.github?.phase && (
+        <p className="operation-status" role="status">
+          {snapshot.github.phase}
+        </p>
+      )}
       <div className="library-search">
         <Search size={14} />
         <input

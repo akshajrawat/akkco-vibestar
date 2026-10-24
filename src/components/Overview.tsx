@@ -1,8 +1,9 @@
-import { Plus, ArrowUpRight } from "lucide-react";
+import { Plus, ArrowUpRight, ListTodo } from "lucide-react";
 import type { Snapshot } from "../lib/types";
 import { activeStatuses } from "../lib/types";
 import { Status } from "./Status";
 import { Button } from "./ui/button";
+import { PageHeader, EmptyState } from "./ui/PageHeader";
 import { ScheduledAttention } from "./ScheduledPage";
 import { useState } from "react";
 export const Overview = ({
@@ -36,31 +37,36 @@ export const Overview = ({
   ];
   return (
     <div className="page task-library">
-      <div className="page-title">
-        <h1>Tasks</h1>
-        <Button variant="ghost" onClick={() => setArchived(!archived)}>
-          {archived ? "Hide archived" : "Show archived"}
-        </Button>
-        <Button onClick={newTask}>
-          <Plus size={13} />
-          New task
-        </Button>
-      </div>
+      <PageHeader
+        title="Tasks"
+        description="Plan, build and review contributions in isolated worktrees."
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setArchived(!archived)}>
+              {archived ? "Hide archived" : "Show archived"}
+            </Button>
+            <Button variant="default" onClick={newTask}>
+              <Plus size={13} />
+              New task
+            </Button>
+          </>
+        }
+      />
       {!!snapshot.attention?.length && (
         <ScheduledAttention snapshot={snapshot} refresh={refresh} open={open} />
       )}
       {!snapshot.tasks.length && (
-        <div className="task-start">
-          <h2>Start from a GitHub issue</h2>
-          <p>
-            Vibestar prepares an isolated worktree, plans with Antigravity,
-            refines with Codex, and implements with Codex.
-          </p>
-          <Button variant="default" onClick={newTask}>
-            New task
-            <ArrowUpRight size={13} />
-          </Button>
-        </div>
+        <EmptyState
+          icon={<ListTodo size={26} />}
+          title="Start from a GitHub issue"
+          description="Bring an issue and your instructions. Vibestar prepares an isolated worktree and guides each plan, implementation and review through your approval."
+          action={
+            <Button variant="default" onClick={newTask}>
+              New task
+              <ArrowUpRight size={13} />
+            </Button>
+          }
+        />
       )}
       {groups
         .filter((g) => g.tasks.length)

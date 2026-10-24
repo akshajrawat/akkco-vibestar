@@ -23,6 +23,22 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
     const monitor = new GitHubMonitor(dir);
     vi.spyOn(monitor, "inspect").mockResolvedValue(structuredClone(prSnapshot));
     const rpc = new Rpc(engine, monitor);
+    engine.db.run(
+      "INSERT INTO github_pull_requests VALUES(?,?,?)",
+      "https://github.com/upstream/project/pull/1",
+      JSON.stringify({
+        url: "https://github.com/upstream/project/pull/1",
+        repository: "upstream/project",
+        number: 1,
+        title: "Review fixture",
+        state: "OPEN",
+        head_branch: "existing-pr",
+        head_repository: "contributor/project",
+        updated_at: "2026-10-23T12:00:00Z",
+        task_id: null,
+      }),
+      "2026-10-23T12:00:00Z",
+    );
     const emptyRoot = join(dir, "empty-core");
     const empty = await createFixtureEngine(emptyRoot);
     await empty.close();
@@ -97,10 +113,14 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
         .waitFor();
       expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
       expect(engine.db.all("SELECT * FROM scheduled_jobs")).toEqual([]);
+      expect(await page.getByLabel("PR URL").count()).toBe(0);
       await page
-        .getByLabel("PR URL")
-        .fill("https://github.com/upstream/project/pull/1");
-      await page.getByRole("button", { name: "Track PR", exact: true }).click();
+        .getByRole("button", { name: "Review fixture", exact: true })
+        .click();
+      await page
+        .getByRole("dialog", { name: "Pull request details" })
+        .waitFor();
+      await page.getByRole("button", { name: "Close PR details" }).click();
       await page
         .getByRole("button", { name: "Analyze PR", exact: true })
         .waitFor();

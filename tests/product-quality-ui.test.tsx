@@ -236,10 +236,10 @@ it("keeps failed/cancelled runs visible, sums reported fields only and exposes o
   expect(screen.getByText("failed")).toBeTruthy();
   expect(screen.getByText("cancelled")).toBeTruthy();
   expect(ui.container.querySelector(".usage-tokens")?.textContent).toContain(
-    "input100",
+    "Input1001/2 runs reported",
   );
   expect(ui.container.querySelector(".usage-tokens")?.textContent).toContain(
-    "totalUnavailable",
+    "TotalUnavailable0/2 runs reported",
   );
   expect(
     screen.getByText(/Subscription window usage delta.*\+6 percentage points/),
@@ -271,12 +271,14 @@ it("refreshes global usage on local events and filters provider/model/purpose/re
   ).toBeTruthy();
   rows = [record("one", "codex"), record("two", "antigravity", "cancelled")];
   listener({ event: "usage.changed" });
-  expect(await screen.findByText("cancelled")).toBeTruthy();
+  expect(await screen.findByRole("cell", { name: "cancelled" })).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Usage provider filter"), {
     target: { value: "codex" },
   });
-  expect(screen.queryByText("cancelled")).toBeNull();
-  expect(ui.container.querySelectorAll(".usage-run")).toHaveLength(1);
+  expect(screen.queryByRole("cell", { name: "cancelled" })).toBeNull();
+  expect(ui.container.querySelectorAll(".usage-table tbody tr")).toHaveLength(
+    1,
+  );
   expect(screen.getByLabelText("Usage model filter")).toBeTruthy();
   expect(screen.getByLabelText("Usage purpose filter")).toBeTruthy();
   expect(screen.getByLabelText("Usage repository filter")).toBeTruthy();

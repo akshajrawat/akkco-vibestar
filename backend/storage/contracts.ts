@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+  VerificationEnvironmentSchema,
+  BrowserEnvironmentReportSchema,
+} from "../execution/browser/contracts";
+import {
   SettingsSchema,
   FollowupConfigSchema,
   PipelineStageSettingsSchema,
@@ -43,6 +47,8 @@ export const TaskRecordSchema = z
       .optional(),
     execution_settings: SettingsSchema.optional(),
     stage_settings: PipelineStageSettingsSchema.optional(),
+    verification_environment: VerificationEnvironmentSchema.optional(),
+    browser_environment_report: BrowserEnvironmentReportSchema.optional(),
     followup_config: FollowupConfigSchema.optional(),
     continuation: z.enum(["pipeline", "planning", "implementation"]).optional(),
     final_review_hash: z.string().optional(),

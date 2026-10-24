@@ -1,4 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  LoaderCircle,
+  AlertTriangle,
+  XCircle,
+  Circle,
+  CircleSlash,
+  CircleHelp,
+  Clock3,
+} from "lucide-react";
 import type { Detail, Repository, StageConfig } from "../../lib/types";
 import { defaultSettings } from "../../../backend/domain";
 import { configurationError } from "../../../backend/execution/providers/contracts";
@@ -13,6 +23,8 @@ import {
 import { Button } from "../ui/button";
 import { RunPrompt } from "../RunPrompt";
 import { AgentConfiguration } from "../StageSettings";
+import { runActivity } from "../../lib/agent-output/activity";
+import { detailVerification } from "../../lib/verification";
 
 const FutureStageSettings = ({
   stage,
@@ -105,6 +117,22 @@ export const PipelineView = ({
     !activeStatuses.includes(task.status) &&
     task.status !== "queued";
   const config = task.execution_settings || defaultSettings;
+  const [, tick] = useState(0);
+  const running = detail.runs.some((run) => run.status === "running");
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(() => tick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+  const verification = detailVerification(detail);
+  const approvalStage = task.approval_gate
+    ? {
+        antigravity_plan: 1,
+        codex_plan: 2,
+        implementation: 3,
+        final_review: 5,
+      }[task.approval_gate]
+    : undefined;
   return (
     <div className="engineering-panel">
       <p className="eyebrow">{task.status.replaceAll("_", " ")}</p>
@@ -120,29 +148,101 @@ export const PipelineView = ({
             .find(
               (run) =>
                 run.stage === stage &&
-                !["scheduled", "Code Review Ask AI"].includes(
-                  run.purpose || "",
-                ),
+                ![
+                  "scheduled",
+                  "Code Review Ask AI",
+                  "git-finalization-review",
+                ].includes(run.purpose || ""),
             );
           const saved =
             task.stage_settings?.[stage as 1 | 2 | 3 | 5] ||
-            (stage === 1 || stage === 5
-              ? config?.antigravity
-              : stage === 2
-                ? config?.codex_plan
-                : config?.codex_implementation);
+            (stage === 5
+              ? config?.antigravity_review || config?.antigravity
+              : stage === 1
+                ? config?.antigravity
+                : stage === 2
+                  ? config?.codex_plan
+                  : config?.codex_implementation);
+          const status =
+            task.status === "awaiting_approval" && stage === approvalStage
+              ? "awaiting_approval"
+              : stage === 4 && task.stage >= 4
+                ? task.status === "validating"
+                  ? "running"
+                  : verification.outcome === "passed"
+                    ? "completed"
+                    : verification.outcome
+                : run
+                  ? run.status === "completed" && run.exit_code !== 0
+                    ? "unknown"
+                    : run.status
+                  : stage === task.stage &&
+                      [
+                        "failed",
+                        "cancelled",
+                        "interrupted",
+                        "verification_blocked",
+                      ].includes(task.status)
+                    ? task.status === "verification_blocked"
+                      ? "blocked"
+                      : task.status
+                    : stage === 0 && task.stage > 0 && task.base_commit_sha
+                      ? "completed"
+                      : stage === task.stage && !idle
+                        ? "running"
+                        : stage < task.stage
+                          ? "unknown"
+                          : "not_started";
+          const tone =
+            status === "completed"
+              ? "success"
+              : status === "failed"
+                ? "failure"
+                : status === "running"
+                  ? "running"
+                  : ["awaiting_approval", "blocked", "unknown"].includes(status)
+                    ? "warning"
+                    : "muted";
+          const Icon =
+            status === "completed"
+              ? CheckCircle2
+              : status === "running"
+                ? LoaderCircle
+                : status === "failed"
+                  ? XCircle
+                  : status === "awaiting_approval"
+                    ? Clock3
+                    : status === "blocked"
+                      ? AlertTriangle
+                      : status === "unknown"
+                        ? CircleHelp
+                        : ["cancelled", "interrupted"].includes(status)
+                          ? CircleSlash
+                          : Circle;
           return (
-            <li key={stage}>
-              <div>
+            <li
+              key={stage}
+              className={`pipeline-step ${status}`}
+              aria-current={
+                status === "running" ||
+                status === "awaiting_approval" ||
+                (stage === task.stage && status === "blocked")
+                  ? "step"
+                  : undefined
+              }
+            >
+              <span className={`pipeline-icon ${tone}`} aria-hidden="true">
+                <Icon
+                  size={18}
+                  className={status === "running" ? "spinning" : ""}
+                />
+              </span>
+              <div className="pipeline-stage-heading">
                 <strong>{label}</strong>
-                <small>
-                  {run
-                    ? run.status
-                    : stage < task.stage
-                      ? "Completed"
-                      : stage === task.stage
-                        ? task.status.replaceAll("_", " ")
-                        : "Not started"}
+                <small className={tone}>
+                  {status === "unknown"
+                    ? "Evidence unavailable"
+                    : status.replaceAll("_", " ")}
                 </small>
               </div>
               {[1, 2, 3, 5].includes(stage) && (
@@ -152,8 +252,13 @@ export const PipelineView = ({
                   · {run?.model || saved?.model || "Official CLI default"} ·{" "}
                   {run?.effort || saved?.effort || "Unavailable"}
                   {run
-                    ? ` · ${duration(run.started_at, run.ended_at)}`
+                    ? ` · ${run.ended_at || run.status === "running" ? duration(run.started_at, run.ended_at) : "Duration unavailable"}`
                     : " · saved stage configuration"}
+                </p>
+              )}
+              {run && status === "running" && (
+                <p className="pipeline-current-action">
+                  {runActivity(detail.events, run)}
                 </p>
               )}
               <div className="actions">
@@ -175,18 +280,20 @@ export const PipelineView = ({
                 >
                   Inspect
                 </Button>
-                {stage > 0 && stage <= Math.min(task.stage, 5) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={!idle || busy}
-                    onClick={() =>
-                      void action("task.retry", { id: task.id, stage })
-                    }
-                  >
-                    {stage === 4 ? "Retry validation only" : "Retry stage"}
-                  </Button>
-                )}
+                {stage > 0 &&
+                  stage <= Math.min(task.stage, 5) &&
+                  status !== "awaiting_approval" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!idle || busy}
+                      onClick={() =>
+                        void action("task.retry", { id: task.id, stage })
+                      }
+                    >
+                      {stage === 4 ? "Retry validation only" : "Retry stage"}
+                    </Button>
+                  )}
                 {[1, 2, 3, 5].includes(stage) &&
                   !run &&
                   stage >= task.stage && (
@@ -226,9 +333,9 @@ export const PipelineView = ({
         implementation follow-ups.
       </p>
       <div className="actions">
-        {task.status === "ready_for_review" && (
+        {["ready_for_review", "completed"].includes(task.status) && (
           <Button disabled={!idle || busy} onClick={finalize}>
-            Finalize…
+            Git Finalization
           </Button>
         )}
         {![

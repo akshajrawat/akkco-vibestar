@@ -181,6 +181,7 @@ export class GitHubService {
   private status: GitHubStatus | null = null;
   private lastSync: string | null = null;
   private error: string | null = null;
+  private phase: string | null = null;
   private stopping = false;
   private closed = false;
   readonly client: GitHubClient;
@@ -189,6 +190,25 @@ export class GitHubService {
     private readonly scheduler: Scheduler,
   ) {
     this.client = new GitHubClient(engine.root);
+    const saved = engine.db.all<{ value: string }>(
+      "SELECT value FROM settings WHERE key='github_sync'",
+    )[0];
+    const metadata =
+      saved &&
+      engine.db.records.tryDecode(
+        {
+          table: "settings",
+          id: "github_sync",
+          column: "value",
+          source: saved.value,
+        },
+        z.object({
+          last_sync: z.string().nullable(),
+          error: z.string().nullable(),
+        }).parse,
+      );
+    this.lastSync = metadata?.last_sync || null;
+    this.error = metadata?.error || null;
   }
   catalog = () =>
     this.engine.db.records.list<GitHubRepository>(
@@ -243,6 +263,7 @@ export class GitHubService {
     status: this.status,
     last_sync: this.lastSync,
     error: this.error,
+    phase: this.phase,
     settings: this.settings(),
     repositories: this.catalog(),
     pull_requests: this.prs(),
@@ -375,38 +396,42 @@ export class GitHubService {
   };
   private performSync = async () => {
     try {
+      this.phase = "Checking GitHub connection";
+      this.engine.changed();
       this.status = await this.client.detect(this.controller.signal);
       this.engine.changed();
       if (!this.status.connected || !this.status.username)
-        return this.snapshot();
+        throw new AdeError(
+          "github_auth",
+          this.status.error ||
+            "Connect GitHub through Providers, then retry Refresh PR List.",
+        );
+      this.phase = "Retrieving repository catalog";
+      this.engine.changed();
       const repos = await this.client.pages<GitHubRepository>(
         "user/repos?affiliation=owner,collaborator,organization_member&sort=pushed",
         this.controller.signal,
       );
-      const catalogTime = now();
-      for (const repo of repos)
-        this.engine.db.run(
-          "INSERT INTO github_repositories VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET full_name=excluded.full_name,data=excluded.data,synced_at=excluded.synced_at",
-          repo.id,
-          repo.full_name,
-          JSON.stringify(repo),
-          catalogTime,
-        );
-      this.engine.db.run(
-        "DELETE FROM github_repositories WHERE synced_at<>?",
-        catalogTime,
-      );
+      this.phase = "Discovering authored pull requests";
+      this.engine.changed();
       const found = await this.client.authored(
         this.status.username,
         this.controller.signal,
       );
       const urls = new Set(found.map((p) => p.html_url));
+      const savedPRs = this.prs();
+      const updates: GitHubPullRequest[] = [];
       for (const pr of found) {
+        this.phase = `Retrieving pull request details · ${updates.length + 1} of ${found.length}`;
+        this.engine.changed();
         const ref = parsePullRequest(pr.html_url);
         const info = await this.client.api<{
           head: { ref: string; repo: { full_name: string } | null };
           state: string;
           merged: boolean;
+          draft?: boolean;
+          title?: string;
+          updated_at?: string;
         }>(
           `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
           this.controller.signal,
@@ -426,24 +451,28 @@ export class GitHubService {
               `https://github.com/${info.head.repo?.full_name}`.toLowerCase()
           );
         });
-        const saved = this.prs().find((p) => p.url === pr.html_url);
         const value: GitHubPullRequest = {
           url: pr.html_url,
           repository,
           number: pr.number,
-          title: pr.title,
-          state: "OPEN",
+          title: info.title || pr.title,
+          state: info.merged
+            ? "MERGED"
+            : info.state === "closed"
+              ? "CLOSED"
+              : "OPEN",
+          draft: info.draft,
           head_branch: info.head.ref,
           head_repository: info.head.repo?.full_name || null,
-          updated_at: pr.updated_at,
-          task_id:
-            saved?.task_id || (matches.length === 1 ? matches[0].id : null),
+          updated_at: info.updated_at || pr.updated_at,
+          task_id: matches.length === 1 ? matches[0].id : null,
         };
-        this.savePR(value);
-        this.scheduler.discovered(value);
+        updates.push(value);
       }
       // Missing search results are not proof of closure. Confirm each known PR.
-      for (const old of this.prs().filter(
+      this.phase = "Checking previously discovered pull requests";
+      this.engine.changed();
+      for (const old of savedPRs.filter(
         (p) => p.state === "OPEN" && !urls.has(p.url),
       )) {
         const ref = parsePullRequest(old.url);
@@ -457,10 +486,26 @@ export class GitHubService {
             state: info.merged ? "MERGED" : "CLOSED",
             updated_at: now(),
           };
-          this.savePR(value);
-          this.scheduler.discovered(value);
+          updates.push(value);
         }
       }
+      const catalogTime = now();
+      this.engine.db.transaction(() => {
+        for (const repo of repos)
+          this.engine.db.run(
+            "INSERT INTO github_repositories VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET full_name=excluded.full_name,data=excluded.data,synced_at=excluded.synced_at",
+            repo.id,
+            repo.full_name,
+            JSON.stringify(repo),
+            catalogTime,
+          );
+        this.engine.db.run(
+          "DELETE FROM github_repositories WHERE synced_at<>?",
+          catalogTime,
+        );
+        for (const value of updates) this.savePR(value);
+      });
+      for (const value of updates) this.scheduler.discovered(value);
       this.lastSync = now();
       this.error = null;
     } catch (e) {
@@ -469,6 +514,12 @@ export class GitHubService {
         : e instanceof Error
           ? e.message
           : String(e);
+    } finally {
+      this.phase = null;
+      this.engine.db.run(
+        "INSERT INTO settings VALUES('github_sync',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        JSON.stringify({ last_sync: this.lastSync, error: this.error }),
+      );
     }
     this.engine.changed();
     return this.snapshot();

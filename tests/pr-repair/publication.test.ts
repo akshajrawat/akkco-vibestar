@@ -170,10 +170,21 @@ it("requires manual approval, commits only reviewed repair files and pushes the 
     await expect(service.publish(session.id, dirtyPlan.id)).rejects.toThrow(
       "clean, committed",
     );
-    const commit = await service.commit(
-      session.id,
-      session.review_hash!,
-      "Fix original review requests",
+    const message =
+      "  Keep this exact title  \n\nDetailed explanation.  \n# This is message text.  ";
+    const commit = (await rpc.call("repair.commit", {
+      id: session.id,
+      expected_hash: session.review_hash!,
+      message,
+      confirmed: true,
+    })) as { head: string; fingerprint: string };
+    const object = await execute({
+      program: "git",
+      args: ["cat-file", "commit", commit.head],
+      cwd: session.workspace.worktree_path,
+    });
+    expect(object.stdout.slice(object.stdout.indexOf("\n\n") + 2)).toBe(
+      message,
     );
     expect(commit.head).not.toBe(session.workspace.integrated_head);
     expect(await readFile(join(source, ".git", "index"))).toEqual(index);
@@ -311,7 +322,12 @@ it("rejects a remote-head race at Git's pre-push handshake even when a normal pu
       raceHead = "",
       repairPath = "";
     const fixture = await preparedFixture(engine, dir, async (request) => {
-      expect(request.args.some((arg) => arg.includes("--force"))).toBe(false);
+      expect(request.args.some((arg) => /^--force(?:=|$)/.test(arg))).toBe(
+        false,
+      );
+      expect(
+        request.args.filter((arg) => arg.startsWith("--force-with-lease=")),
+      ).toHaveLength(1);
       await checked(
         "git",
         ["fetch", "--no-write-fetch-head", repairPath, "HEAD"],

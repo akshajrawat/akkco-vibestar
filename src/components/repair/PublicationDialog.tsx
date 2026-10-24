@@ -15,9 +15,7 @@ export const PublicationDialog = ({
   refresh: () => Promise<void>;
 }) => {
   const [plan, setPlan] = useState(publication);
-  const [message, setMessage] = useState(
-    `Address review feedback for PR ${publication.pr_url.split("/").at(-1)}`,
-  );
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dialog = useDialogFocus();
@@ -143,8 +141,10 @@ export const PublicationDialog = ({
         {plan.dirty && (
           <label>
             Local commit message
-            <input
+            <textarea
               aria-label="Local commit message"
+              rows={5}
+              disabled={busy}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
             />
@@ -170,7 +170,7 @@ export const PublicationDialog = ({
           </Button>
           {plan.dirty && (
             <Button
-              disabled={busy || !message.trim()}
+              disabled={busy || !message.length}
               onClick={() => void action("commit")}
             >
               Commit Locally

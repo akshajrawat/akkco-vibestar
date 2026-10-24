@@ -20,9 +20,11 @@
     "start": "electron .",
     "test:live": "VIBESTAR_LIVE_TEST=1 vitest run tests/live.test.ts",
     "test:tui": "vitest run tests/pty.test.ts tests/task-terminal.test.ts",
+    "test:browser:environment": "VIBESTAR_BROWSER_TEST=1 vitest run tests/verification/browser-environment.test.ts",
     "test:desktop": "VIBESTAR_DESKTOP_TEST=1 vitest run tests/desktop.test.ts",
     "test:desktop:pr": "VIBESTAR_PR_DESKTOP_TEST=1 vitest run tests/desktop-pr-analysis.test.ts",
     "test:desktop:repair": "VIBESTAR_REPAIR_DESKTOP_TEST=1 vitest run tests/desktop-pr-repair.test.ts",
+    "test:desktop:git": "VIBESTAR_GIT_DESKTOP_TEST=1 vitest run tests/desktop-git-finalization.test.ts",
     "test:desktop:output": "VIBESTAR_OUTPUT_DESKTOP_TEST=1 vitest run tests/desktop-agent-output.test.ts",
     "test:desktop:watch": "VIBESTAR_WATCH_DESKTOP_TEST=1 vitest run tests/desktop-issue-watch.test.ts",
     "test:windows": "node scripts/test-windows.mjs"
@@ -118,6 +120,7 @@
   },
   "desktopName": "akkco-vibestar.desktop",
   "dependencies": {
+    "motion": "^14.6.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Settings, Snapshot } from "../lib/types";
 import type { DesktopInfo } from "../../electron/contracts";
 import { useProviders } from "../lib/useWorkspace";
@@ -8,6 +8,8 @@ import { StageSettings, AgentConfiguration } from "./StageSettings";
 import { StoragePage } from "./StoragePage";
 import { DiscoverySettings } from "./DiscoverySettings";
 import { UsageView } from "./UsageView";
+import { PageHeader } from "./ui/PageHeader";
+import { SettingsSchema } from "../../backend/domain";
 export const SettingsPage = ({
   settings,
   root,
@@ -21,6 +23,8 @@ export const SettingsPage = ({
 }) => {
   const [value, setValue] = useState(settings);
   const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
+  const [savedDesktop, setSavedDesktop] = useState<DesktopInfo["config"]>();
+  const settingsBaseline = useRef(settings);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,7 +35,10 @@ export const SettingsPage = ({
   useEffect(() => {
     void window.vibestar
       .desktopSettings()
-      .then(setDesktop)
+      .then((info) => {
+        setDesktop(info);
+        setSavedDesktop(info.config);
+      })
       .catch((e) => setError(errorMessage(e)));
     const subscription = subscribe((e) => {
       if (e.event === "install.output")
@@ -47,14 +54,26 @@ export const SettingsPage = ({
       .catch((e) => setError(errorMessage(e)));
   }, []);
   useEffect(() => {
-    setValue(settings);
+    const previous = settingsBaseline.current;
+    settingsBaseline.current = settings;
+    setValue((current) =>
+      JSON.stringify(current) === JSON.stringify(previous) ? settings : current,
+    );
   }, [settings]);
+  useEffect(() => {
+    setNotice("");
+  }, [value, desktop?.config]);
+  const dirty =
+    JSON.stringify(value) !== JSON.stringify(settings) ||
+    JSON.stringify(desktop?.config) !== JSON.stringify(savedDesktop);
+  const validation = value && SettingsSchema.safeParse(value);
   const save = async () => {
     setBusy(true);
     setError("");
     try {
       if (desktop) await window.vibestar.saveDesktopSettings(desktop.config);
       if (value) await rpc("settings.save", value);
+      setSavedDesktop(desktop?.config);
       setNotice("Settings saved.");
       await refresh();
     } catch (e) {
@@ -88,15 +107,32 @@ export const SettingsPage = ({
           </ul>
         </details>
       )}
-      <div className="page-title">
-        <div>
-          <span className="eyebrow">LOCAL EXECUTION CONFIGURATION</span>
-          <h1>Settings</h1>
-        </div>
-        <Button variant="default" disabled={busy} onClick={() => void save()}>
-          {busy ? "Saving…" : "Save settings"}
-        </Button>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="Configure your workspace, agent stages and execution environment."
+        actions={
+          <>
+            <span className="settings-save-state" role="status">
+              {dirty ? "Unsaved changes" : "All changes saved"}
+            </span>
+            <Button
+              variant="default"
+              busy={busy}
+              disabled={!dirty || (!!validation && !validation.success)}
+              onClick={() => void save()}
+            >
+              {busy ? "Saving…" : "Save settings"}
+            </Button>
+          </>
+        }
+      />
+      {validation && !validation.success && (
+        <p className="error-box" role="alert">
+          {validation.error.issues
+            .map((issue) => `${issue.path.join(" · ")}: ${issue.message}`)
+            .join("\n")}
+        </p>
+      )}
       {error && <div className="error-box">{error}</div>}
       {notice && <div className="notice">{notice}</div>}
       <div className="settings-layout">
@@ -104,6 +140,7 @@ export const SettingsPage = ({
           {[
             "General",
             "Agents",
+            "Models",
             "GitHub & PR Watch",
             "Repositories",
             "Storage",
@@ -114,6 +151,7 @@ export const SettingsPage = ({
               type="button"
               key={name}
               className={section === name ? "selected" : ""}
+              aria-current={section === name ? "page" : undefined}
               onClick={() => {
                 setSection(name);
                 setNotice("");
@@ -299,6 +337,10 @@ export const SettingsPage = ({
                     onChange={setValue}
                     providers={providers}
                   />
+                </section>
+              )}
+              {section === "Models" && (
+                <section className="settings-section">
                   <h2>Review / explain AI</h2>
                   <p className="subtle">
                     Read-only questions about selected code. Each query appears
@@ -425,14 +467,14 @@ export const SettingsPage = ({
               <h2>GitHub & PR review</h2>
               <p>
                 PR inspection is manual only. Refresh PR List reads GitHub
-                metadata; Track PR saves a record. Only Analyze PR can request
-                semantic review analysis.
+                metadata; opening a discovered PR saves its workspace. Only
+                Analyze PR can request semantic review analysis.
               </p>
               <p className="subtle">
                 Automatic watches, recurring inspections and legacy optional
                 second-model verification are disabled. Existing PR history and
                 usage are preserved. Configure the analysis provider/model under
-                Agents → Utility AI.
+                Models → Utility AI.
               </p>
             </section>
           )}

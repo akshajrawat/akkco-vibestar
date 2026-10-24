@@ -21,6 +21,7 @@ import { usePaneSize } from "../../lib/usePaneSize";
 import { useDialogFocus } from "../../lib/useDialogFocus";
 import { containDialogFocus, navigateTabs } from "../../lib/keyboard";
 import { Button } from "../ui/button";
+import { EmptyState, ListSkeleton, PageHeader } from "../ui/PageHeader";
 import { ResizeHandle } from "../ResizeHandle";
 import { UsageView } from "../UsageView";
 import { LogView } from "../LogView";
@@ -200,34 +201,31 @@ export const IssueWatchPage = ({
     );
   return (
     <section className="issue-watch-page">
-      <header className="watch-page-heading">
-        <div>
-          <span className="eyebrow">DISCOVER YOUR NEXT CONTRIBUTION</span>
-          <h1>
-            <Search size={19} />
-            Issue Watch
-          </h1>
-          <p>Saved criteria. Fresh evidence. Scans only when you choose.</p>
-        </div>
-        <div className="watch-toolbar-actions">
-          {active && (
-            <Button
-              className="watch-mobile-cancel"
-              variant="destructive"
-              disabled={busy}
-              onClick={() => void cancel()}
-              aria-label="Cancel active scan"
-            >
-              <Square size={12} />
-              Cancel scan
+      <PageHeader
+        className="watch-page-heading"
+        title="Issue Watch"
+        description="Find contributions that match your criteria, with current source evidence."
+        actions={
+          <>
+            {active && (
+              <Button
+                className="watch-mobile-cancel"
+                variant="destructive"
+                disabled={busy}
+                onClick={() => void cancel()}
+                aria-label="Cancel active scan"
+              >
+                <Square size={12} />
+                Cancel scan
+              </Button>
+            )}
+            <Button variant="default" onClick={() => setEditor("new")}>
+              <Plus size={14} />
+              New watch
             </Button>
-          )}
-          <Button variant="default" onClick={() => setEditor("new")}>
-            <Plus size={14} />
-            New watch
-          </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
       {state.error && (
         <div className="error-box watch-error" role="alert">
           <span>{state.error}</span>
@@ -242,19 +240,21 @@ export const IssueWatchPage = ({
         </div>
       )}
       <div className="watch-layout">
-        <div className="watch-panel-toggles">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={
-              showWatches ? "Collapse saved watches" : "Show saved watches"
-            }
-            onClick={() => setShowWatches(!showWatches)}
-          >
-            {showWatches ? <ChevronLeft size={14} /> : <Bookmark size={14} />}
-          </Button>
-        </div>
-        {showWatches && (
+        {(state.watches.length > 0 || state.archived) && (
+          <div className="watch-panel-toggles">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={
+                showWatches ? "Collapse saved watches" : "Show saved watches"
+              }
+              onClick={() => setShowWatches(!showWatches)}
+            >
+              {showWatches ? <ChevronLeft size={14} /> : <Bookmark size={14} />}
+            </Button>
+          </div>
+        )}
+        {showWatches && (state.watches.length > 0 || state.archived) && (
           <>
             <aside
               className="watch-saved"
@@ -708,21 +708,31 @@ export const IssueWatchPage = ({
                 )}
               </div>
             </>
+          ) : !state.error &&
+            (state.loading || (state.watchId && state.watches.length > 0)) ? (
+            <ListSkeleton label="Opening saved watches" />
           ) : (
-            <div className="watch-empty watch-welcome">
-              <Search size={30} />
-              <h2>Your next contribution starts with evidence.</h2>
-              <p>
-                Save a repository and your criteria. Scan manually, inspect
-                claimability and source evidence, then choose whether to create
-                a task.
-              </p>
-              <Button variant="default" onClick={() => setEditor("new")}>
-                <Plus size={14} />
-                Create a watch
-              </Button>
-              <small>No timers · No automatic claims · No clone required</small>
-            </div>
+            <EmptyState
+              icon={<Search size={26} />}
+              title="Find your next open-source contribution"
+              description="Save a repository, choose your filters, and scan when you want. Inspect claimability and source evidence before starting a task."
+              action={
+                <>
+                  <Button variant="default" onClick={() => setEditor("new")}>
+                    <Plus size={14} />
+                    Create a watch
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => state.setArchived(!state.archived)}
+                  >
+                    {state.archived
+                      ? "Show active watches"
+                      : "Show archived watches"}
+                  </Button>
+                </>
+              }
+            />
           )}
         </main>
         {showDetails && selected && scan && tab === "Results" && (

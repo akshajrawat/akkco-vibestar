@@ -3,6 +3,8 @@ export type { Repository, Settings, StageConfig } from "../../backend/domain";
 export type Detection =
   import("../../backend/execution/providers/contracts").ProviderDetection;
 export interface Task {
+  verification_environment?: import("../../backend/execution/browser/contracts").VerificationEnvironment;
+  browser_environment_report?: import("../../backend/execution/browser/contracts").BrowserEnvironmentReport;
   runtime?: {
     python: string | null;
     dependencies: string[];
@@ -55,6 +57,7 @@ export interface Snapshot {
     status: import("../../backend/github/contracts").GitHubStatus | null;
     last_sync: string | null;
     error: string | null;
+    phase?: string | null;
     settings: import("../../backend/github/contracts").WatchSettings;
     repositories: import("../../backend/github/contracts").GitHubRepository[];
     pull_requests: import("../../backend/github/contracts").GitHubPullRequest[];

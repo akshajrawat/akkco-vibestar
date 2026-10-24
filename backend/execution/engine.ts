@@ -2,6 +2,7 @@ import { gitChecked } from "../workspace/git-command";
 import { StreamedPlan } from "./streamed-plan";
 import { validatePlan, object } from "./providers/contracts";
 import { sandboxInvocation } from "./sandbox";
+import type { VerificationEnvironment } from "./browser/contracts";
 import { EventEmitter } from "node:events";
 import { randomUUID, createHash } from "node:crypto";
 import { join } from "node:path";
@@ -38,6 +39,7 @@ import { fetchIssue } from "../workspace/issue";
 import { taskRuntime } from "../workspace/runtime";
 import { execute, processIdentity, terminateGroup, redact } from "./process";
 import { AgentRunner } from "./agent-runner";
+import { FinalizationStore } from "../finalization/store";
 import { CodexProvider } from "./providers/codex";
 import { AntigravityProvider } from "./providers/antigravity";
 import type { AgentProvider } from "./providers/contracts";
@@ -65,7 +67,7 @@ export class Engine extends EventEmitter {
       purpose?: string;
     }
   >();
-  private readonly interactive = new Set<string>();
+  private readonly interactive = new Map<string, string>();
   private readonly creatingTasks = new Map<
     string,
     { digest: string; promise: Promise<Task> }
@@ -128,6 +130,8 @@ export class Engine extends EventEmitter {
     };
     const blockers: ActivityBlocker[] = [];
     for (const [id, activity] of this.active) {
+      if (activity.taskId && this.activities.has(`git:${activity.taskId}`))
+        continue;
       if (
         id.startsWith("utility:") &&
         (this.activities.has(`pr-watch:${id.slice(8)}`) ||
@@ -145,14 +149,16 @@ export class Engine extends EventEmitter {
         stoppable: true,
       });
     }
-    for (const id of this.interactive)
+    for (const [id, activity] of this.interactive) {
+      if (this.activities.has(`git:${id}`)) continue;
       blockers.push({
         id: `terminal:${id}`,
         kind: "terminal",
         task_id: id,
-        label: `${label(id)} terminal session is open`,
+        label: `${label(id)} ${activity} is open`,
         stoppable: true,
       });
+    }
     for (const task of tasks.filter(
       (t) => t.status === "queued" && !t.archived && !this.active.has(t.id),
     ))
@@ -246,44 +252,25 @@ export class Engine extends EventEmitter {
         "Vibestar storage is being maintained. Try again when it finishes.",
       );
   };
-  runRepair = async (
-    assignment: WorkspaceAssignment,
-    provider: "codex" | "antigravity",
-    config: StageConfig,
-    prompt: string,
-    schema: z.ZodType,
-    contextPaths: string[],
+  private withExecutionSlot = async <T>(
+    key: string,
+    purpose: string,
     signal: AbortSignal,
+    run: (signal: AbortSignal) => Promise<T>,
+    taskId?: string,
   ) => {
     this.assertAvailable();
-    const key = `repair:${assignment.id}`;
     if (
       this.active.has(key) ||
       this.active.size >= this.db.settings().concurrency
     )
       throw new AdeError(
         "busy",
-        "The configured execution slots are occupied. Start this repair explicitly when a slot is available.",
+        "The configured execution slots are occupied. Retry this action explicitly when a slot is available.",
       );
     const controller = new AbortController();
     const result = Promise.resolve().then(() =>
-      this.runner.run(
-        { id: assignment.id, stage: provider === "codex" ? 3 : 5 },
-        this.db.settings(),
-        AbortSignal.any([signal, controller.signal]),
-        {
-          repair: assignment,
-          prompt,
-          purpose:
-            provider === "codex"
-              ? "PR Repair Implementation"
-              : "PR Repair Verification",
-          provider,
-          config,
-          schema,
-          contextPaths,
-        },
-      ),
+      run(AbortSignal.any([signal, controller.signal])),
     );
     const promise = result
       .then(
@@ -292,16 +279,48 @@ export class Engine extends EventEmitter {
       )
       .finally(() => {
         this.active.delete(key);
-        this.changed();
+        this.changed(taskId);
         void this.drain();
       });
-    this.active.set(key, { controller, promise, purpose: "PR repair" });
+    this.active.set(key, { controller, promise, purpose, taskId });
     try {
       return await result;
     } finally {
       await promise;
     }
   };
+  runRepair = (
+    assignment: WorkspaceAssignment,
+    provider: "codex" | "antigravity",
+    config: StageConfig,
+    prompt: string,
+    schema: z.ZodType,
+    contextPaths: string[],
+    signal: AbortSignal,
+  ) =>
+    this.withExecutionSlot(
+      `repair:${assignment.id}`,
+      "PR repair",
+      signal,
+      (combined) =>
+        this.runner.run(
+          { id: assignment.id, stage: provider === "codex" ? 3 : 5 },
+          this.db.settings(),
+          combined,
+          {
+            repair: assignment,
+            prompt,
+            purpose:
+              provider === "codex"
+                ? "PR Repair Implementation"
+                : "PR Repair Verification",
+            provider,
+            config,
+            schema,
+            contextPaths,
+          },
+        ),
+    );
   private constructor(
     readonly root: string,
     private readonly release: () => Promise<void>,
@@ -373,7 +392,7 @@ export class Engine extends EventEmitter {
         pid: number;
         process_identity: string;
       }>(
-        "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.identity') FROM pr_repairs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM repair_publications WHERE status='pushing' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL",
+        "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.identity') FROM pr_repairs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM repair_publications WHERE status='pushing' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM git_finalizations WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL",
       )) {
         if (
           Number.isSafeInteger(run.pid) &&
@@ -417,6 +436,23 @@ export class Engine extends EventEmitter {
           engine.db.saveTask(task);
         }
       }
+      const finalizations = new FinalizationStore(engine.db);
+      for (const task of engine.db.tasks())
+        for (const record of finalizations.list(task.id)) {
+          if (
+            ["preparing", "reviewing", "committing", "pushing"].includes(
+              record.status,
+            )
+          ) {
+            record.status =
+              record.status === "pushing" ? "uncertain" : "interrupted";
+            record.error =
+              "The execution core restarted. Reconcile this saved Git operation before continuing.";
+            record.pid = null;
+            record.process_identity = null;
+            finalizations.save(record);
+          }
+        }
       engine.db.recover();
       return engine;
     } catch (error) {
@@ -432,7 +468,7 @@ export class Engine extends EventEmitter {
   isActive = (id: string) => this.active.has(id) || this.interactive.has(id);
   isExecuting = (id: string) => this.active.has(id);
   hasActive = () => this.cleanupBlockers().length > 0;
-  acquireTerminal = (id: string) => {
+  acquireTaskWorkspace = (id: string, label: string) => {
     this.assertAvailable();
     if (this.taskMaintenance.has(id))
       throw new AdeError("busy", "Task data cleanup is running");
@@ -441,7 +477,7 @@ export class Engine extends EventEmitter {
         "busy",
         "Wait for task execution to finish before opening its terminal",
       );
-    this.interactive.add(id);
+    this.interactive.set(id, label);
     this.changed(id);
     return () => {
       this.interactive.delete(id);
@@ -449,6 +485,8 @@ export class Engine extends EventEmitter {
       void this.drain();
     };
   };
+  acquireTerminal = (id: string) =>
+    this.acquireTaskWorkspace(id, "terminal session");
   start = () => {
     void this.drain();
   };
@@ -1639,6 +1677,11 @@ export class Engine extends EventEmitter {
     signal?: AbortSignal,
     internal = false,
     repair?: WorkspaceAssignment,
+    verification?: {
+      environment?: VerificationEnvironment;
+      readOnly?: boolean;
+      timeoutMs?: number;
+    },
   ) => {
     if (
       !argv.length ||
@@ -1671,14 +1714,18 @@ export class Engine extends EventEmitter {
         this.root,
         this.db,
         t,
-        { program: argv[0], args: argv.slice(1) },
-        false,
+        {
+          program: argv[0],
+          args: argv.slice(1),
+          verificationEnvironment: verification?.environment,
+        },
+        verification?.readOnly || false,
       );
       const output = await execute({
         ...invocation,
         cwd,
         signal,
-        timeoutMs: 1800000,
+        timeoutMs: verification?.timeoutMs || 1800000,
         onSpawn: (pid, identity) =>
           this.db.run(
             "UPDATE test_runs SET pid=?,process_identity=? WHERE id=?",
@@ -1721,7 +1768,7 @@ export class Engine extends EventEmitter {
       this.publish({ event: "changed", ...owner });
     }
   };
-  runCommand = async (id: string, argv: string[]) => {
+  runCommand = async (id: string, argv: string[], diagnostic = false) => {
     this.assertAvailable();
     if (this.taskMaintenance.has(id))
       throw new AdeError("busy", "Task data cleanup is running");
@@ -1729,7 +1776,11 @@ export class Engine extends EventEmitter {
       throw new AdeError("invalid_state", "Task already has an active process");
     const controller = new AbortController();
     const output = Promise.resolve().then(() =>
-      this.manual(id, argv, controller.signal, true),
+      this.manual(id, argv, controller.signal, true, undefined, {
+        environment: this.db.task(id).verification_environment,
+        readOnly: diagnostic,
+        timeoutMs: diagnostic ? 25000 : undefined,
+      }),
     );
     const promise = output
       .then(() => {})
@@ -1817,6 +1868,20 @@ export class Engine extends EventEmitter {
     });
     return completed;
   };
+  reviewFinalization = (task: Task, prompt: string, signal: AbortSignal) =>
+    this.withExecutionSlot(
+      `git-review:${task.id}`,
+      "Selected-file review",
+      signal,
+      (combined) =>
+        this.runner.run(
+          { ...task, stage: 5 },
+          task.execution_settings ?? this.db.settings(),
+          combined,
+          { prompt, purpose: "git-finalization-review" },
+        ),
+      task.id,
+    );
   beginShutdown = () => {
     this.closed = true;
     this.repositoryController.abort();

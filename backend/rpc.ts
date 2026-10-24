@@ -15,6 +15,13 @@ import { Scheduler } from "./scheduled/scheduler";
 import { GitHubMonitor } from "./scheduled/github";
 import { z } from "zod";
 import { taskVerification } from "./execution/task-verification";
+import {
+  BrowserEnvironmentReportSchema,
+  VerificationEnvironmentSchema,
+} from "./execution/browser/contracts";
+import { browserEnvironmentProbe } from "./execution/browser/probe";
+import { CommitMessageSchema } from "./workspace/commit-message";
+import { FinalizationService } from "./finalization/service";
 import { realpath, open } from "node:fs/promises";
 import { Engine } from "./execution/engine";
 import { AuthSessions } from "./execution/auth";
@@ -38,6 +45,7 @@ export class Rpc {
     monitor = new GitHubMonitor(engine.root),
     repairs = new RepairService(engine),
     issueWatch?: IssueWatchService,
+    readonly finalization = new FinalizationService(engine),
   ) {
     this.scheduler = new Scheduler(engine, monitor);
     this.github = new GitHubService(engine, this.scheduler);
@@ -57,6 +65,8 @@ export class Rpc {
   }
   call = async (method: string, input: unknown) => {
     const e = this.engine;
+    if (method.startsWith("git."))
+      return this.finalization.call(method.slice("git.".length), input);
     if (method.startsWith("issueWatch."))
       return this.issueWatch.call(method.slice("issueWatch.".length), input);
     switch (method) {
@@ -513,6 +523,76 @@ export class Rpc {
         e.changed(p.id);
         return p.config;
       }
+      case "task.browser.configure": {
+        const p = idInput
+          .extend({
+            environment: VerificationEnvironmentSchema,
+            confirmed: z.literal(true),
+          })
+          .strict()
+          .parse(input);
+        e.assertAvailable();
+        const task = e.db.task(p.id);
+        if (e.isActive(p.id) || task.status === "queued")
+          throw new AdeError(
+            "busy",
+            "Wait for this task's run and terminal to stop before changing verification environments.",
+          );
+        await e.git.assertTask(task);
+        const latest = e.db.task(p.id);
+        if (e.isActive(p.id) || latest.status === "queued")
+          throw new AdeError(
+            "busy",
+            "This task became active while its verification environment was being checked.",
+          );
+        e.db.saveTask({
+          ...latest,
+          verification_environment: p.environment,
+          browser_environment_report: undefined,
+          updated_at: now(),
+        });
+        e.changed(p.id);
+        return { environment: p.environment };
+      }
+      case "task.browser.inspect": {
+        const p = idInput.strict().parse(input);
+        const task = e.db.task(p.id);
+        await e.git.assertTask(task);
+        const result = await e.runCommand(
+          p.id,
+          [
+            process.execPath,
+            "-e",
+            browserEnvironmentProbe,
+            e.db.task(p.id).verification_environment || "isolated",
+          ],
+          true,
+        );
+        if (result.code !== 0)
+          throw new AdeError(
+            "browser_environment",
+            result.stderr ||
+              "Browser environment probe failed. Inspect the saved command evidence.",
+          );
+        const report = BrowserEnvironmentReportSchema.parse(
+          JSON.parse(result.stdout),
+        );
+        const latest = e.db.task(p.id);
+        if (
+          (latest.verification_environment || "isolated") !== report.environment
+        )
+          throw new AdeError(
+            "stale_environment",
+            "The verification environment changed. Inspect it again explicitly.",
+          );
+        e.db.saveTask({
+          ...latest,
+          browser_environment_report: report,
+          updated_at: now(),
+        });
+        e.changed(p.id);
+        return report;
+      }
       case "repair.create":
         return this.repairs.create(input);
       case "repair.list": {
@@ -560,7 +640,7 @@ export class Rpc {
         const p = idInput
           .extend({
             expected_hash: z.string().regex(/^[a-f0-9]{64}$/),
-            message: z.string().trim().min(1).max(4000),
+            message: CommitMessageSchema,
             confirmed: z.literal(true),
           })
           .strict()
@@ -1135,6 +1215,7 @@ export class Rpc {
   };
   close = async () => {
     this.auth.dispose();
+    await this.finalization.close();
     await this.issueWatch.close();
     await this.github.close();
     await this.scheduler.close();

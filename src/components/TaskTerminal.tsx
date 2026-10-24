@@ -45,7 +45,7 @@ export const TaskTerminal = ({
   useEffect(() => {
     const term = new Terminal({
       fontSize: 12,
-      fontFamily: "Cascadia Code, Consolas, monospace",
+      fontFamily: terminalTheme().fontFamily,
       scrollback: 3000,
       theme: terminalTheme(),
     });

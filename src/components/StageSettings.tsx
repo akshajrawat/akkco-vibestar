@@ -111,9 +111,10 @@ export const StageSettings = ({
   <div className="stage-settings">
     {(
       [
-        ["antigravity", "ANTIGRAVITY PLAN & FINAL REVIEW", "antigravity"],
-        ["codex_plan", "CODEX REVIEW PLAN", "codex"],
-        ["codex_implementation", "CODEX IMPLEMENTATION", "codex"],
+        ["antigravity", "1 · Antigravity plan", "antigravity"],
+        ["codex_plan", "2 · Codex refinement", "codex"],
+        ["codex_implementation", "3 · Codex implementation", "codex"],
+        ["antigravity_review", "4 · Antigravity final review", "antigravity"],
       ] as const
     ).map(([key, label, provider]) => (
       <AgentConfiguration
@@ -122,7 +123,7 @@ export const StageSettings = ({
         label={label}
         provider={provider}
         providers={providers}
-        config={settings[key]}
+        config={settings[key] || settings.antigravity}
         onChange={(config) => onChange({ ...settings, [key]: config })}
       />
     ))}

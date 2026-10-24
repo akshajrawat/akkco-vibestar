@@ -1,21 +1,35 @@
 import { useState } from "react";
-import { RefreshCw, CheckCircle2, Plug } from "lucide-react";
+import {
+  RefreshCw,
+  CheckCircle2,
+  Plug,
+  Terminal,
+  Github,
+  Sparkles,
+} from "lucide-react";
 import { useProviders } from "../lib/useWorkspace";
 import { AuthDialog } from "./AuthDialog";
 import { Button } from "./ui/button";
+import { PageHeader, ListSkeleton } from "./ui/PageHeader";
 export const ProvidersPage = () => {
   const { providers, loading, error, refresh } = useProviders();
   const [login, setLogin] = useState("");
   return (
     <div className="page providers-page">
-      <div className="page-title">
-        <h1>Providers</h1>
-        <Button disabled={loading} onClick={() => void refresh()}>
-          <RefreshCw size={13} />
-          {loading ? "Detecting…" : "Refresh"}
-        </Button>
-      </div>
+      <PageHeader
+        title="Providers"
+        description="Connect your developer tools through their official command-line sign-in."
+        actions={
+          <Button busy={loading} onClick={() => void refresh()}>
+            {!loading && <RefreshCw size={14} />}
+            {loading ? "Detecting installed CLIs…" : "Refresh"}
+          </Button>
+        }
+      />
       {error && <p className="error-box">{error}</p>}
+      {loading && !providers.length && (
+        <ListSkeleton label="Detecting providers" />
+      )}
       <div className="provider-list">
         {providers.map((p) => {
           const name =
@@ -25,10 +39,18 @@ export const ProvidersPage = () => {
                 ? "OpenAI Codex"
                 : "Google Antigravity";
           const connected = p.connected;
+          const Icon =
+            p.provider === "github"
+              ? Github
+              : p.provider === "codex"
+                ? Terminal
+                : p.provider === "antigravity"
+                  ? Sparkles
+                  : Plug;
           return (
             <section className="provider-row" key={p.provider}>
               <div className="provider-icon">
-                <Plug size={18} />
+                <Icon size={20} />
               </div>
               <div className="provider-info">
                 <h2>{name}</h2>
@@ -41,12 +63,17 @@ export const ProvidersPage = () => {
                       : "CLI not installed"}
                 </p>
                 {p.accountLabel && <p className="subtle">{p.accountLabel}</p>}
+                <p className="subtle">{p.version || "CLI not installed"}</p>
+                {p.error && <p className="warning">{p.error}</p>}
+                <p className="subtle">
+                  {p.capabilities.join(" · ") || "Capabilities unavailable"}
+                </p>
                 <details>
                   <summary>
-                    {p.version || "CLI not installed"}
-                    {p.models.length ? ` · ${p.models.length} models` : ""}
+                    {p.models.length
+                      ? `${p.models.length} available models`
+                      : "Model availability"}
                   </summary>
-                  {p.error && <p className="warning-box">{p.error}</p>}
                   {p.models.length > 0 && (
                     <pre>
                       {p.models
@@ -57,7 +84,9 @@ export const ProvidersPage = () => {
                         .join("\n")}
                     </pre>
                   )}
-                  <p className="subtle">{p.capabilities.join(" · ")}</p>
+                  {!p.models.length && (
+                    <p className="subtle">No models reported by this CLI.</p>
+                  )}
                 </details>
               </div>
               <Button

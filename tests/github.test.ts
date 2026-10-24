@@ -105,6 +105,45 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
       archived: false,
       enabled: false,
     });
+    const before = service.snapshot();
+    vi.mocked(service.client.pages).mockResolvedValue([]);
+    authored.mockResolvedValue([
+      {
+        html_url: "https://github.com/upstream/repo/pull/43",
+        number: 43,
+        title: "New",
+        updated_at: "later",
+      },
+      {
+        html_url: "https://github.com/upstream/repo/pull/44",
+        number: 44,
+        title: "Unavailable",
+        updated_at: "later",
+      },
+    ]);
+    api
+      .mockResolvedValueOnce({
+        head: { ref: "new", repo: { full_name: "viewer/repo" } },
+        state: "closed",
+        merged: true,
+      })
+      .mockRejectedValueOnce(new Error("GitHub rate limit reached"));
+    await service.sync();
+    expect(service.prs()).toEqual(before.pull_requests);
+    expect(service.catalog()).toEqual(before.repositories);
+    expect(service.snapshot()).toMatchObject({
+      last_sync: before.last_sync,
+      error: "GitHub rate limit reached",
+      phase: null,
+    });
+    const reopened = new GitHubService(engine, scheduler);
+    expect(reopened.snapshot()).toMatchObject({
+      last_sync: before.last_sync,
+      error: "GitHub rate limit reached",
+    });
+    await reopened.close();
+    expect(scheduler.jobs()).toHaveLength(1);
+    expect(db.all("SELECT * FROM ai_usage")).toEqual([]);
   } finally {
     await service.close();
     await scheduler.close();
@@ -160,4 +199,46 @@ it("paginates repository catalogs instead of limiting them to 100", async () => 
     .mockResolvedValueOnce([{ id: 100 }]);
   expect(await client.pages("user/repos")).toHaveLength(101);
   expect(api.mock.calls[1][0]).toContain("page=2");
+});
+
+it("refuses truncated or duplicate authored PR pages instead of advancing partial discovery", async () => {
+  const client = new GitHubClient("/tmp");
+  const items = Array.from({ length: 100 }, (_, i) => ({
+    html_url: `https://github.com/upstream/repo/pull/${i + 1}`,
+    number: i + 1,
+    title: "Contribution",
+    updated_at: "now",
+  }));
+  const api = vi
+    .spyOn(client, "api")
+    .mockResolvedValueOnce({
+      total_count: 101,
+      incomplete_results: false,
+      items,
+    })
+    .mockResolvedValueOnce({
+      total_count: 101,
+      incomplete_results: false,
+      items: [items[0]],
+    });
+  await expect(client.authored("viewer")).rejects.toThrow(/truncated/);
+  expect(api.mock.calls[1][0]).toContain("page=2");
+  api
+    .mockResolvedValueOnce({
+      total_count: 101,
+      incomplete_results: false,
+      items,
+    })
+    .mockResolvedValueOnce({
+      total_count: 101,
+      incomplete_results: false,
+      items: [
+        {
+          ...items[0],
+          html_url: "https://github.com/upstream/repo/pull/101",
+          number: 101,
+        },
+      ],
+    });
+  expect(await client.authored("viewer")).toHaveLength(101);
 });

@@ -11,6 +11,10 @@ export class CoreBridge extends EventEmitter {
   private warning: string | undefined;
   private approvalsAvailable = false;
   private instructionChoicesAvailable = false;
+  private finalReviewSettingsAvailable = false;
+  private browserVerificationAvailable = false;
+  private exactCommitMessagesAvailable = false;
+  private gitFinalizationAvailable = false;
   private manualPrAvailable = false;
   private repairAvailable = false;
   private issueWatchAvailable = false;
@@ -36,6 +40,10 @@ export class CoreBridge extends EventEmitter {
     this.issueWatchAvailable = false;
     this.approvalsAvailable = false;
     this.instructionChoicesAvailable = false;
+    this.finalReviewSettingsAvailable = false;
+    this.browserVerificationAvailable = false;
+    this.exactCommitMessagesAvailable = false;
+    this.gitFinalizationAvailable = false;
     this.checking = this.launch().catch((error) => {
       this.warning = String(error);
       this.emit("event", { event: "core.error", text: this.warning });
@@ -111,6 +119,10 @@ export class CoreBridge extends EventEmitter {
         build: string;
         pipeline_approvals?: boolean;
         saved_instruction_choices?: boolean;
+        independent_final_review?: boolean;
+        browser_verification_environment?: boolean;
+        exact_commit_messages?: boolean;
+        git_finalization?: number;
         manual_pr_analysis?: boolean;
         pr_repair?: boolean;
         manual_issue_watch?: boolean;
@@ -121,6 +133,12 @@ export class CoreBridge extends EventEmitter {
         this.approvalsAvailable = info.pipeline_approvals === true;
         this.instructionChoicesAvailable =
           info.saved_instruction_choices === true;
+        this.finalReviewSettingsAvailable =
+          info.independent_final_review === true;
+        this.browserVerificationAvailable =
+          info.browser_verification_environment === true;
+        this.exactCommitMessagesAvailable = info.exact_commit_messages === true;
+        this.gitFinalizationAvailable = info.git_finalization === 1;
         this.manualPrAvailable = info.manual_pr_analysis === true;
         this.repairAvailable = info.pr_repair === true;
         this.issueWatchAvailable =
@@ -147,6 +165,37 @@ export class CoreBridge extends EventEmitter {
   };
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (!this.gitFinalizationAvailable && method.startsWith("git."))
+      throw new Error(
+        "Update the execution helper before using Git Finalization.",
+      );
+    if (!this.exactCommitMessagesAvailable && method === "repair.commit")
+      throw new Error(
+        "Update the execution helper before committing exact multiline messages.",
+      );
+    if (
+      !this.browserVerificationAvailable &&
+      method.startsWith("task.browser.")
+    )
+      throw new Error(
+        "Update the execution helper before selecting or inspecting browser verification environments.",
+      );
+    const settings =
+      method === "settings.save"
+        ? params
+        : params && typeof params === "object" && "settings" in params
+          ? params.settings
+          : undefined;
+    if (
+      !this.finalReviewSettingsAvailable &&
+      settings &&
+      typeof settings === "object" &&
+      "antigravity_review" in settings &&
+      settings.antigravity_review !== undefined
+    )
+      throw new Error(
+        "Update the execution helper before saving independent final review settings.",
+      );
     if (!this.issueWatchAvailable && method.startsWith("issueWatch."))
       throw new Error(
         "Update the execution helper before using manual Issue Watch.",

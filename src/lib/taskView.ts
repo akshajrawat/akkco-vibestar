@@ -18,6 +18,7 @@ export interface ContextAttachment {
 }
 interface TaskView {
   draft: string;
+  gitMessageDraft: string;
   draftContext: ContextAttachment[];
   messageRequest: { id: string; signature: string } | null;
   savedInstruction: { id: string; content: string } | null;
@@ -100,6 +101,8 @@ const savedLayout = (id: string): Partial<TaskView> => {
       legacySection(saved.tab) ||
       (saved.terminalDock ? legacySection(saved.dockTab) : null);
     return {
+      gitMessageDraft:
+        typeof saved.gitMessageDraft === "string" ? saved.gitMessageDraft : "",
       savedInstruction:
         saved.savedInstruction &&
         typeof saved.savedInstruction === "object" &&
@@ -252,6 +255,7 @@ const state = (id: string) => {
   if (!value) {
     value = {
       draft: read(`vibestar.draft.${id}`) || "",
+      gitMessageDraft: "",
       draftContext: [],
       messageRequest: null,
       savedInstruction: null,

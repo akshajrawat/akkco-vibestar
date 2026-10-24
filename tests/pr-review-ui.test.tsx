@@ -110,7 +110,7 @@ it("shows the configured analysis model and performs no inspection/inference mer
   expect(rpc).not.toHaveBeenCalled();
 });
 
-it("separates Refresh PR List and Track PR from explicit analysis, with no form navigation", async () => {
+it("refreshes GitHub metadata without a manual tracking form or inference", async () => {
   const rpc = install();
   const refresh = vi.fn().mockResolvedValue(undefined);
   render(
@@ -122,24 +122,120 @@ it("separates Refresh PR List and Track PR from explicit analysis, with no form 
   );
   fireEvent.click(screen.getByRole("button", { name: "Refresh PR List" }));
   await waitFor(() => expect(rpc).toHaveBeenCalledWith("github.sync", {}));
-  fireEvent.change(screen.getByLabelText("PR URL"), {
-    target: { value: job.url },
-  });
-  const form = screen.getByLabelText("PR URL").closest("form")!;
-  const submit = new Event("submit", { bubbles: true, cancelable: true });
-  fireEvent(form, submit);
-  expect(submit.defaultPrevented).toBe(true);
-  await waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith("scheduled.add", {
-      url: job.url,
-      task_id: null,
-      interval_minutes: 60,
-      verify_codex: false,
-    }),
-  );
+  expect(screen.queryByLabelText("PR URL")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Track PR" })).toBeNull();
   expect(
     rpc.mock.calls.some(([method]) => method === "scheduled.analyze"),
   ).toBe(false);
+});
+
+const discoveredPR = {
+  url: job.url,
+  repository: "upstream/project",
+  number: 1,
+  title: "Discovered contribution",
+  state: "OPEN",
+  draft: true,
+  head_branch: "contribution",
+  head_repository: "viewer/project",
+  updated_at: "2026-10-23T12:00:00Z",
+  task_id: null,
+};
+const discoveredSnapshot: Snapshot = {
+  ...snapshot,
+  scheduled: [],
+  github: {
+    status: {
+      installed: true,
+      connected: true,
+      username: "viewer",
+      version: "gh",
+      error: null,
+    },
+    error: null,
+    last_sync: "2026-10-23T12:00:00Z",
+    repositories: [],
+    settings: { auto_watch: false, interval_minutes: 60, verify_codex: false },
+    pull_requests: [discoveredPR],
+  },
+};
+
+it("opens discovered PRs through an inactive saved record without analyzing them", async () => {
+  const rpc = install();
+  rpc.mockImplementation(async (method) =>
+    method === "scheduled.add" ? job : {},
+  );
+  const refresh = vi.fn().mockResolvedValue(undefined);
+  const { rerender } = render(
+    <ScheduledPage
+      snapshot={discoveredSnapshot}
+      refresh={refresh}
+      open={vi.fn()}
+    />,
+  );
+  expect(rpc).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: discoveredPR.title }));
+  await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  expect(rpc).toHaveBeenCalledWith("scheduled.add", {
+    url: job.url,
+    task_id: null,
+    interval_minutes: 60,
+    verify_codex: false,
+  });
+  rerender(
+    <ScheduledPage
+      snapshot={{ ...discoveredSnapshot, scheduled: [job] }}
+      refresh={refresh}
+      open={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getByRole("dialog", { name: "Pull request details" }),
+  ).toBeTruthy();
+  expect(
+    rpc.mock.calls.some(
+      ([method]) =>
+        method === "scheduled.analyze" || method === "scheduled.run",
+    ),
+  ).toBe(false);
+});
+
+it("merges duplicate discoveries, filters saved metadata and retains rows after a failed refresh", () => {
+  const rpc = install();
+  render(
+    <ScheduledPage
+      snapshot={{
+        ...discoveredSnapshot,
+        scheduled: [job],
+        github: {
+          ...discoveredSnapshot.github!,
+          error: "GitHub rate limit reached",
+        },
+      }}
+      refresh={vi.fn()}
+      open={vi.fn()}
+    />,
+  );
+  expect(
+    screen.getAllByRole("button", { name: discoveredPR.title }),
+  ).toHaveLength(1);
+  expect(screen.getByRole("alert").textContent).toContain(
+    "GitHub rate limit reached",
+  );
+  expect(screen.getByRole("button", { name: "Retry refresh" })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Search pull requests"), {
+    target: { value: "not found" },
+  });
+  expect(
+    screen.getByRole("heading", { name: "No matching pull requests" }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+  expect(screen.getByRole("button", { name: discoveredPR.title })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Filter by status"), {
+    target: { value: "MERGED" },
+  });
+  expect(screen.queryByRole("button", { name: discoveredPR.title })).toBeNull();
+  expect(rpc).not.toHaveBeenCalled();
 });
 
 it("launches one explicit analysis and reads local saved details when opening its report", async () => {

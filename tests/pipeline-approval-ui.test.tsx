@@ -183,10 +183,11 @@ it("populates actual model selectors and supported efforts in New Task", async (
     configurable: true,
   });
   render(<NewTask close={vi.fn()} created={vi.fn()} />);
-  await screen.findByText("Gemini fixture · Low");
+  expect(await screen.findAllByText("Gemini fixture · Low")).toHaveLength(2);
   const models = screen
     .getAllByRole("combobox", { hidden: true })
     .filter((e) => e.id.endsWith("-models"));
+  expect(models).toHaveLength(4);
   fireEvent.change(models[0], { target: { value: "gemini-fixture-low" } });
   expect((models[0] as HTMLSelectElement).value).toBe("gemini-fixture-low");
   expect(screen.queryByText(/discovering/)).toBeNull();

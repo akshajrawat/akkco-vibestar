@@ -1,5 +1,4 @@
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownContent } from "./ui/MarkdownContent";
 import { VerificationCheckSchema } from "../../backend/execution/verification";
 const resultValue = (value: unknown): React.ReactNode => {
   const verification = VerificationCheckSchema.safeParse(value);
@@ -33,8 +32,7 @@ const resultValue = (value: unknown): React.ReactNode => {
       </div>
     );
   }
-  if (typeof value === "string")
-    return <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>;
+  if (typeof value === "string") return <MarkdownContent text={value} />;
   if (Array.isArray(value))
     return value.length ? (
       <ul>
@@ -80,7 +78,7 @@ export const AgentResponse = ({
     const summary = summaryKey ? String(fields[summaryKey]) : "Provider result";
     return (
       <div className="agent-response markdown">
-        <Markdown remarkPlugins={[remarkGfm]}>{summary}</Markdown>
+        <MarkdownContent text={summary} />
         <details open={expanded || undefined}>
           <summary>View result details</summary>
           {Object.entries(fields)
@@ -104,7 +102,7 @@ export const AgentResponse = ({
     );
   return (
     <div className="agent-response markdown">
-      <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+      <MarkdownContent text={text} />
     </div>
   );
 };

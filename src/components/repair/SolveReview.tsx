@@ -184,8 +184,10 @@ export const SolveReview = ({
           Codex · {settings.codex_implementation.model || "CLI default"} ·{" "}
           {settings.codex_implementation.effort}
           <br />
-          Antigravity · {settings.antigravity.model || "CLI default"} ·{" "}
-          {settings.antigravity.effort}
+          Antigravity ·{" "}
+          {(settings.antigravity_review || settings.antigravity).model ||
+            "CLI default"}{" "}
+          · {(settings.antigravity_review || settings.antigravity).effort}
         </p>
         {error && (
           <p className="error-box" role="alert">

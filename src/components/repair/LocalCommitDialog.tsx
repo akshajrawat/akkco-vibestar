@@ -14,9 +14,7 @@ export const LocalCommitDialog = ({
   close: () => void;
   refresh: () => Promise<void>;
 }) => {
-  const [message, setMessage] = useState(
-    `Address review feedback for PR #${session.identity.number}`,
-  );
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dialog = useDialogFocus();
@@ -76,8 +74,10 @@ export const LocalCommitDialog = ({
         </dl>
         <label>
           Commit message
-          <input
+          <textarea
             aria-label="Local-only commit message"
+            rows={5}
+            disabled={busy}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />
@@ -92,7 +92,8 @@ export const LocalCommitDialog = ({
             Cancel
           </Button>
           <Button
-            disabled={busy || !message.trim()}
+            busy={busy}
+            disabled={!message.length}
             onClick={() => void commit()}
           >
             {busy ? "Committing…" : "Confirm Local Commit"}

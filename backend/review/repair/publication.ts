@@ -1,4 +1,9 @@
 import { gitExecute, gitCapture } from "../../workspace/git-command";
+import {
+  CommitMessageSchema,
+  createExactCommit,
+} from "../../workspace/commit-message";
+import { publishFastForward } from "../../workspace/publication";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
@@ -224,6 +229,7 @@ export class RepairPublisher {
     message: string,
     signal: AbortSignal,
   ) => {
+    CommitMessageSchema.parse(message);
     if (
       session.status !== "ready_to_publish" ||
       session.approved_hash !== expectedHash
@@ -281,19 +287,17 @@ export class RepairPublisher {
             "commit_validation",
             checkedDiff.stdout || checkedDiff.stderr,
           );
+        const tree = await this.git(cwd, ["write-tree"], signal, session);
+        const commit = await createExactCommit(
+          cwd,
+          tree,
+          parent,
+          message,
+          signal,
+        );
         await this.git(
           cwd,
-          [
-            "-c",
-            "user.name=Vibestar",
-            "-c",
-            "user.email=vibestar@localhost",
-            "-c",
-            "commit.gpgSign=false",
-            "commit",
-            "-m",
-            message,
-          ],
+          ["update-ref", "HEAD", commit, parent],
           signal,
           session,
         );
@@ -586,27 +590,16 @@ export class RepairPublisher {
     this.save(publication);
     let sending = true;
     try {
-      const result = await gitExecute(
+      const result = await publishFastForward(
         {
-          program: "git",
           allowLocalTransport: !!this.transport,
           hooksPath: hooks,
-          args: [
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            "push.followTags=false",
-            "push",
-            "--porcelain",
-            "--no-follow-tags",
-            "--recurse-submodules=no",
-            "--",
-            destination,
-            `${publication.local_head}:refs/heads/${publication.destination.branch}`,
-          ],
+          destination,
+          branch: publication.destination.branch,
+          expectedRemote: publication.expected_remote_head,
+          localHead: publication.local_head,
           cwd,
           signal,
-          timeoutMs: 120000,
           onSpawn: (pid, identity) => {
             if (!sending || !identity) return;
             publication.pid = pid;

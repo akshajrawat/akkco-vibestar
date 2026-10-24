@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoreBridge } from "../electron/bridge";
 
-const helper = (manual = true, watch = false, instructions = true) => `
+const helper = (
+  manual = true,
+  watch = false,
+  instructions = true,
+  finalReview = true,
+) => `
 const {createInterface}=require('node:readline');
 const {createHash}=require('node:crypto');
 const {readFile}=require('node:fs/promises');
@@ -13,11 +18,49 @@ const build=createHash('sha256').update(bytes).digest('hex');
 const lines=createInterface({input:process.stdin});
 lines.on('line',line=>{
 const request=JSON.parse(line);
-const result=request.method==='core.info'?{build,pipeline_approvals:true,saved_instruction_choices:${instructions},manual_pr_analysis:${manual},manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
+const result=request.method==='core.info'?{build,pipeline_approvals:true,saved_instruction_choices:${instructions},independent_final_review:${finalReview},manual_pr_analysis:${manual},manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
 process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
 });
 lines.on('close',()=>process.exit(0));
 });`;
+
+it.skipIf(process.platform === "win32")(
+  "refuses independent final-review configuration on helpers that would silently discard it",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-final-review-"));
+    await writeFile(join(dir, "core.cjs"), helper(true, true, true, false));
+    const bridge = new CoreBridge(dir, {
+      distro: "",
+      data_home: dir,
+      helper_path: "",
+    });
+    try {
+      bridge.start();
+      await expect(bridge.request("git.preview", {})).rejects.toThrow(
+        "Git Finalization",
+      );
+      const settings = {
+        antigravity_review: {
+          model: "review",
+          effort: "low",
+          timeout_secs: 30,
+        },
+      };
+      await expect(bridge.request("settings.save", settings)).rejects.toThrow(
+        "independent final review",
+      );
+      await expect(bridge.request("task.create", { settings })).rejects.toThrow(
+        "independent final review",
+      );
+      await expect(bridge.request("settings.save", {})).resolves.toEqual({
+        accepted: "settings.save",
+      });
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 it.skipIf(process.platform === "win32")(
   "blocks legacy PR actions independently of issue execution capability",
@@ -42,6 +85,12 @@ it.skipIf(process.platform === "win32")(
       });
       await expect(bridge.request("issueWatch.scan")).rejects.toThrow(
         "manual Issue Watch",
+      );
+      await expect(bridge.request("task.browser.inspect")).rejects.toThrow(
+        "browser verification environments",
+      );
+      await expect(bridge.request("repair.commit")).rejects.toThrow(
+        "exact multiline messages",
       );
     } finally {
       await bridge.stop();

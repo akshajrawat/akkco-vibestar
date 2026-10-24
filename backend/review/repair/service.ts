@@ -433,7 +433,7 @@ export class RepairService {
         instructions: request.instructions,
         configuration: {
           codex: settings.codex_implementation,
-          antigravity: settings.antigravity,
+          antigravity: settings.antigravity_review || settings.antigravity,
         },
         workspace: {
           branch_name: `akkco/pr-${identity.number}-${request.request_id}`,

@@ -5,6 +5,7 @@ import { rpc, errorMessage, parseArgv } from "../lib/api";
 import { CommandRuns } from "./CommandRuns";
 import { Button } from "./ui/button";
 import { VerificationSummary } from "./VerificationSummary";
+import { BrowserEnvironment } from "./BrowserEnvironment";
 export const TestsView = ({
   detail,
   onError,
@@ -48,6 +49,11 @@ export const TestsView = ({
               }
             : undefined
         }
+      />
+      <BrowserEnvironment
+        task={detail.task}
+        unavailable={busy || !!detail.active || !!detail.executing}
+        onError={onError}
       />
       <div className="cwd-banner">
         <SquareTerminal size={14} />

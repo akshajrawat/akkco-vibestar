@@ -1,5 +1,191 @@
 # akkco vibestar architecture
 
+## Premium workspace and Git Finalization
+
+The October 24 delivery retains the Electron renderer / Linux or WSL core boundary
+and existing chat-first task/repair architecture.
+[Delivery contracts and acceptance](docs/PREMIUM-UX-GIT-FINALIZATION.md) and
+[measured verification](docs/VERIFICATION.md) describe the implementation and limits.
+Earlier milestone sections below remain historical records. Current acceptance
+passed normal/integration/PTY/build, seven built Electron fixtures, actual installed
+browser checks and native Windows window checks on two displays at 125%/150% DPI.
+
+### Renderer foundations and pages
+
+Desktop navigation checks verify immediate inert state and then completed exit,
+matching the short presence transition while preserving keyboard shortcut checks.
+Desktop analytics captures also use explicitly labelled fixture token samples with
+partial coverage, retaining a missing-total row and no invented production totals.
+Acceptance screenshots finish finite animations before capture so at-rest contrast
+and layout are evaluated independently of transition timing.
+
+Semantic charcoal surface/text/status/focus/spacing/radius tokens in src/styles.css
+serve shared Button, PageHeader, EmptyState and ListSkeleton components and native
+labelled controls. Bundled local Geist Sans/Mono WOFF2 assets serve UI, code, diffs
+and xterm; Vite copies public/Geist-OFL.txt into dist. Lucide remains the icon family.
+Motion handles navigation presence and selected navigation/workspace indicators;
+CSS handles short surface/result/control transitions. Exiting navigation becomes
+inert immediately. MotionConfig and CSS honor reduced motion. Stable saved keys,
+bounded code highlighting and paged logs/history avoid per-event layout animation.
+Existing per-task pane state and PTY mount/lease lifetime remain authoritative.
+
+ScheduledPage merges saved GitHub PR discoveries and legacy records, with search,
+repository/status/review filters, metrics and distinct connection/loading/error/
+empty states. Opening a discovered PR creates only an inactive analysis record;
+Analyze is explicit. GitHubService retains paginated/partitioned authored discovery,
+commits catalog changes only after complete retrieval, persists last-sync/error
+and preserves earlier data on partial failure. REST detail state wins over search
+state; task links require a current unique upstream/fork/head association. Existing
+analysis/repair identity and manual-only inference contracts are unchanged.
+
+Issue Watch hides empty panes during onboarding and retains its real scan phases,
+grounded counts, candidate groups/filters/evidence and explicit Scan Now authority.
+Repositories retains local import/scanning, managed-clone progress and identities.
+Providers displays actual connection/account/CLI/model/capability/error information.
+Settings groups controls with validation and dirty/save feedback; background
+snapshots do not replace dirty edits. Optional antigravity_review settings fall back
+to antigravity for old JSON, while new tasks and repair sessions snapshot separate
+final-review configuration. Existing task stage overrides still take precedence.
+
+Usage aggregates only reported telemetry. Independent token channels show coverage
+and overlapping cached/reasoning semantics without deriving missing totals. UTC
+daily charts, runtime/task distributions and official allowance snapshots retain
+unavailable states. Global history searches/filters/pages every matching saved run
+in groups of fifty; scoped task/repair collections retain their disclosure history.
+Background retrieval keeps prior rows and prevents overlapping polls.
+
+MarkdownContent renders safe GFM without raw repository HTML, bounds lexical code
+highlighting and copies exact fenced text. Pipeline derives stages from persisted
+runs/approval gates, shares runActivity with CurrentRun, and treats missing exits as
+unknown. Tests separates observed commands from provider reports, highlights root
+prerequisites and groups required failures, blocked/not-run/passed checks and
+optional evidence without altering transcripts or approval classifications.
+
+### Browser verification environment
+
+backend/execution/browser owns strict environment/report contracts and a fixed
+20-second host-authored diagnostic. Task JSON optionally persists isolated or
+installed_browsers mode and a validated capability report. Only explicitly selected
+manual commands apply that profile; provider and terminal mounts stay unchanged.
+Existing physical Playwright cache and Chrome directories can be mounted read-only;
+aliases/private directories are refused. Probe observations distinguish installed
+packages/binaries, DNS, loopback socket, direct-file and HTTP loading. No install,
+inference or application-check waiver occurs.
+
+Tests opens the disclosure without a probe. Use environment explicitly configures
+the choice; Inspect separately records diagnostic commands through the existing
+lifecycle. Unapplied choices survive snapshots; changing the choice clears stale
+reports. Prompts inspect installed tools before downloads and distinguish manual
+capability from provider-internal restrictions. Browser capability success cannot
+satisfy required application verification.
+
+### Selected-file Git finalization
+
+backend/finalization groups strict contracts, store, files, workspaces and service.
+Inspection verifies positively owned task worktrees/branches against the registered
+Git common directory and records source/content/index fingerprints. Physical
+bounded no-follow file inspection rejects credential/provider/cloud/private-key
+paths and detected secret patterns, unexpected binaries, generated/debug additions,
+aliases, links and submodules. Ignored files remain unselectable.
+
+Preview creates an owned vibestar-finalization/<UUID> worktree/branch and stages
+only exact literal selected paths in a separate index. Task/source files and index
+remain intact. Selected existing staged content requires an explicit decision;
+excluded index entries survive local commit, including rename/deletion cases.
+The cumulative projected patch includes prior task commits. Full identical content
+can reuse its final review; subsets/fingerprint changes require an explicit
+read-only Antigravity review with git-finalization-review purpose. AgentRunner and
+the engine's shared execution-slot reservation provide telemetry, cancellation and
+provider limits without replacing canonical pipeline artifacts.
+
+taskVerification is checked before selection, approval, commit and publication.
+A fresh review must settle original required application commands; missing evidence
+persists as verification_gap separately from the original provider verdict.
+Host projected diff hygiene executes independently. Manual approval binds the exact
+reviewed tree. Exact commit creation in workspace/commit-message.ts writes immutable
+UTF-8 Git objects without trimming, templates, trailers or a final newline. Both
+repair and ordinary tasks use it. The journal precedes compare-and-swap branch and
+selected-index restoration; original/projected index snapshots support recovery.
+
+Normal optional hooks use only authorized repository/worktree core.hooksPath or
+shared hooks. The effective configuration is captured with the preview and
+rechecked; changes require a new preview or explicit skip. /dev/null is visibly
+repository-disabled policy. Hooks run in the read-only sandbox without provider
+state, with the exact message mounted read-only and a 1 MiB / 2,048-line budget.
+Unsupported paths/missing configured hooks/mutating behavior stop clearly.
+Typed per-task presets contain only name, hook/push policy, remote and branch;
+arbitrary command strings cannot execute. Optional skip never waives host gates.
+
+Preparation verifies actual fetch/push URLs, canonical configured contribution
+fork/upstream, current viewer, stable GitHub repository ID, permission and exact
+remote SHA/absence. Upstream destinations are refused. The same local commit may
+be rebound to another safe feature branch after fresh preparation. Publication has
+a separate explicit destination/commit/SHA confirmation, rechecks all authority
+and content, shares workspace/repository/branch/destination leases with other writers
+and verifies the resulting remote object before claiming success.
+
+workspace/publication.ts is the independent shared final boundary for tasks and
+repair. It proves proposed immutable commit ancestry against the exact expected
+remote object, then applies one explicit ref/object compare-and-swap lease. Git
+names this force-with-lease; host ancestry proof permits only fast-forward updates.
+New branches require a pinned ancestor and an exact absent-ref lease. Broad force,
+plus refspecs and wildcard leases are prohibited. The repair private pre-push hook
+is defense in depth; --no-verify cannot bypass this host boundary.
+
+### Persistence, recovery and API
+
+Migration 24 adds git_finalizations, git_operation_events and task_git_presets
+with task/operation foreign keys and history indexes. Database.open retains its
+private backup-before-migration behavior. A dedicated version-23 upgrade/reopen
+fixture checks unchanged task/review/PR/usage/settings and valid foreign keys.
+Strict records check JSON ID/task owner against persisted ownership; globally
+colliding request IDs cannot overwrite another task's journal. Renderer views omit
+internal index snapshots, process identities and request digests.
+
+Redacted events retain real phases, exits and timestamps. Each event has a UTF-8
+safe 64 KiB tail limit with omission marker; journal pages return 200 events plus
+an older cursor. git.output reads only saved history. git.detail adds bounded staged
+diff or a separate diff_error, so missing preview files cannot hide diagnostics or
+be presented as a clean tree. These limits do not truncate integrity inputs.
+
+Cancellation terminates the tracked process group. Startup checks saved process
+start identity, interrupts incomplete local mutations and marks pushes uncertain.
+Reconciliation is read-only. Explicit resumeCommit applies only the original
+journaled branch/index transition without duplicating commits. Ambiguous publication
+must reconcile before new preparation/confirmation. Cleanup refuses unresolved
+journals, changed previews and unknown ownership. Explicit remove deletes only its
+unchanged positively owned preview/branch/history, preserving task/local commits;
+task cleanup cannot orphan previews. Early pre-marker crashes remain preserved for
+manual inspection.
+
+core.info advertises git_finalization:1, exact_commit_messages,
+browser_verification_environment and independent_final_review. The bridge blocks
+unsupported mutations on older helpers. RPCs cover inspect, preview, explicit review
+and approval, exact commit, prepare/publish, typed presets, paged detail/output,
+cancel/reconcile/resumeCommit and confirmed removal. Browser configure is confirmed;
+browser inspect is a separate diagnostic action. GitFinalization is a focus-contained
+ready/completed-task dialog with path search, selected diff, exact persisted message
+draft, review/approval, presets, verified destination, separate push confirmation,
+real progress/cancel/recovery/history and explicit removal. Ordered inspection
+responses cannot overwrite newer state; progress uses lightweight output reads.
+
+### Continuous integration and evidence
+
+.github/workflows/ci.yml runs on push, pull_request and manual dispatch. Ubuntu
+22.04/Node 22 installs bubblewrap/native build prerequisites and uses npm ci, format,
+lint, typecheck, normal regression, integration, PTY and build scripts. Official
+actions are pinned to verified commits, contents permission is read-only, checkout
+retains no credentials and superseded same-ref runs cancel. Hosted CI starts no live
+model or real GitHub write. Desktop/browser/platform opt-ins remain separate.
+
+Disposable local bare-remotes tests cover normal/skip policies, exact messages,
+selection and staged preservation, remote/permission/ancestry races, network
+ambiguity, ownership, idempotency and recovery. Built Electron fixtures use isolated
+roots, real renderer/IPC and blocked live service executables, capture main pages/
+Git at three sizes and assert unchanged source data. Native Windows/WSL compatibility
+is reviewed through the existing shared renderer/bridge/core boundary; native DPI,
+installer and live-account behavior require separate environment evidence.
+
 ## Chat-first coding workspace — complete
 
 The persistent conversation is the primary surface for issue tasks and PR repairs. Shared components in src/components/workspace own the chat surface, independently scrolling secondary workspace, expanding composer, compact action tray and Terminal / Problems dock. Pipeline, Plans, Changes, Tests, Final review, Usage, Run details and Raw logs are distinct tools in the right panel. The panel preserves selection, width and per-tool scrolling, expands for focused review and becomes a dismissible focus-contained drawer on narrow workspaces. An attached PTY remains mounted while hidden; its existing worktree lease and explicit close semantics remain authoritative.
@@ -284,7 +470,16 @@ Tests cover URL/branch/path/state parsing, event normalization, argv handling, S
 
 Settings use a local IDE navigation for General, Agents, GitHub/PR Watch, Repositories, Storage, Usage and Execution. Utility AI configuration is independent from all coding stages; PR use requires explicit Analyze. Local scan statistics, owned storage categories and confirmed cleanup actions are visible. Global, task and PR usage views show actual runs and each provider-reported token field independently; missing totals do not hide available input/output counts. Provider views and temporary auth dialogs render connected booleans and explicit success; they never derive state from display text or invent subscription tiers/limits.
 
-Palette: app #151515, sidebar #181818, conversation #1f1f1f, elevated surfaces #252526, and separators #333333. Named background, border, text and semantic accent tokens keep the neutral charcoal layers consistent; xterm authentication and task shells read those same tokens. Blue indicates selection/activity, green success, amber attention and red failure. Segoe UI/system UI serves navigation and conversation; Cascadia Code/Consolas serves technical information. Dense 12–14px controls, 3px radii, tab strips and thin separators keep conversation dominant. Status colors encode actual outcomes. The application shell delegates code review to the installed editor. No third-party IDE source or proprietary assets were copied. react-markdown and remark-gfm render readable agent responses; their dependency licenses remain in npm metadata/package distributions.
+Palette: app #17181b, sidebar #1b1c20, conversation #1f2025, elevated surfaces #27292f,
+and subdued borders #34363e. Named surface, focus, text, spacing, radius and semantic
+tokens keep the charcoal layers consistent; xterm authentication and task shells
+read the same colors and Geist Mono family. Geist Sans serves interface prose.
+Controls use 8px radii, inputs 10px, panels 12px and the composer 18px. Elevation,
+spacing and typography distinguish sections. Blue indicates selection/activity,
+green success, amber attention and red failure. Motion handles discrete navigation
+selection; CSS handles simple control/dialog transitions. Both honor reduced motion.
+No third-party IDE source or proprietary assets were copied. react-markdown and
+remark-gfm render readable responses without raw HTML.
 
 ## Desktop window milestone
 
