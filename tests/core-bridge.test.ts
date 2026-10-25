@@ -18,7 +18,7 @@ const build=createHash('sha256').update(bytes).digest('hex');
 const lines=createInterface({input:process.stdin});
 lines.on('line',line=>{
 const request=JSON.parse(line);
-const result=request.method==='core.info'?{build,pipeline_approvals:true,saved_instruction_choices:${instructions},independent_final_review:${finalReview},manual_pr_analysis:${manual},manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
+const result=request.method==='core.info'?{build,pipeline_approvals:true,workflow_first:1,saved_instruction_choices:${instructions},independent_final_review:${finalReview},manual_pr_analysis:${manual},manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
 process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
 });
 lines.on('close',()=>process.exit(0));

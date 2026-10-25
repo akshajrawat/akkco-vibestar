@@ -113,33 +113,22 @@ const bridge = () => {
   return rpc;
 };
 
-it("makes worktree and branch deletion mandatory when deleting task history", async () => {
+it("removes task history while preserving work through a distinct explicit choice", async () => {
   const rpc = bridge();
   const done = vi.fn();
   render(<TaskCleanup id="owned-task" close={vi.fn()} done={done} />);
-  const worktree = screen.getByRole("checkbox", {
-    name: "Remove Vibestar worktree and owned branch",
-  }) as HTMLInputElement;
-  const history = screen.getByRole("checkbox", {
-    name: "Remove task history, worktree and owned local branch",
-  });
-  expect(worktree.disabled).toBe(true);
-  expect(worktree.checked).toBe(true);
-  fireEvent.click(history);
-  expect(worktree.disabled).toBe(false);
-  fireEvent.click(worktree);
-  expect(worktree.checked).toBe(false);
-  fireEvent.click(history);
-  expect(worktree.checked).toBe(true);
-  expect(worktree.disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Delete selected data" }));
+  expect(screen.getAllByRole("radio")).toHaveLength(3);
+  expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  expect(rpc).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole("radio", { name: /^Remove task history, preserve work/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Remove history and preserve work" }),
+  );
   await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
-  expect(rpc).toHaveBeenCalledWith("task.cleanup", {
+  expect(rpc).toHaveBeenCalledWith("task.disposal.preserve", {
     id: "owned-task",
-    history: true,
-    worktree: false,
-    logs: true,
-    artifacts: true,
     confirmed: true,
   });
 });

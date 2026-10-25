@@ -114,15 +114,24 @@ export class GitHubClient {
   authored = async (username: string, signal?: AbortSignal) => {
     // Search upstream PRs across the account, including PRs whose heads are forks.
     // GitHub search caps any single query at 1,000; partition by creation time.
+    let requests = 0;
+    const read = async <T>(endpoint: string) => {
+      if (++requests > 200)
+        throw new AdeError(
+          "github",
+          "Authored PR search reached its 200-request budget. Saved results remain; this refresh is incomplete.",
+        );
+      return this.api<T>(endpoint, signal);
+    };
     const search = async (
       from: number,
       until: number,
     ): Promise<
       { html_url: string; title: string; number: number; updated_at: string }[]
     > => {
-      const q = `is:pr is:open author:${username} created:${new Date(from).toISOString()}..${new Date(until).toISOString()}`;
+      const q = `is:pr author:${username} created:${new Date(from).toISOString()}..${new Date(until).toISOString()}`;
       const endpoint = `search/issues?q=${encodeURIComponent(q)}&per_page=100`;
-      const first = await this.api<{
+      const first = await read<{
         total_count: number;
         incomplete_results: boolean;
         items: {
@@ -131,7 +140,7 @@ export class GitHubClient {
           number: number;
           updated_at: string;
         }[];
-      }>(`${endpoint}&page=1`, signal);
+      }>(`${endpoint}&page=1`);
       if (first.incomplete_results)
         throw new AdeError(
           "github",
@@ -151,10 +160,7 @@ export class GitHubClient {
       }
       const rows = first.items;
       for (let page = 2; page <= Math.ceil(first.total_count / 100); page++) {
-        const part = await this.api<typeof first>(
-          `${endpoint}&page=${page}`,
-          signal,
-        );
+        const part = await read<typeof first>(`${endpoint}&page=${page}`);
         if (part.incomplete_results)
           throw new AdeError(
             "github",

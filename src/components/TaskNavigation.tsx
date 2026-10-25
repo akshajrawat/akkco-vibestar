@@ -293,7 +293,7 @@ export const TaskNavigation = ({
           </button>
           <button
             role="menuitem"
-            disabled={running}
+            disabled={running || task.status === "preserved"}
             onClick={() =>
               action(() =>
                 rpc("task.archive", { id: task.id, archived: !task.archived }),
@@ -311,7 +311,7 @@ export const TaskNavigation = ({
               setCleanup(task.id);
             }}
           >
-            Delete task data…
+            Manage task…
           </button>
         </div>
       )}

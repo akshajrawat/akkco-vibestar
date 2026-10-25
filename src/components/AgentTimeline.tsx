@@ -371,13 +371,26 @@ export const AgentTimeline = ({
     );
   };
   const blocks: { time: string; key: string; content: React.ReactNode }[] = [];
-  for (const message of messages)
+  for (const message of messages.filter(
+    (message) =>
+      message.role !== "assistant" ||
+      !runs.some((run) => run.id === message.run_id),
+  ))
     blocks.push({
       time: message.created_at,
       key: message.id,
       content: (
         <article className="user-message">
-          <small>You</small>
+          <small>
+            {message.role === "assistant" ? "Agent" : "You"}
+            {message.purpose === "chat" ? " · Read-only conversation" : ""}
+          </small>
+          {message.status?.startsWith("chat_") &&
+            message.status !== "chat_completed" && (
+              <small className="subtle">
+                {message.status.replace("chat_", "").replaceAll("_", " ")}
+              </small>
+            )}
           {message.status === "queued" && (
             <small className="running">
               Feedback queued · next safe stage boundary
@@ -407,26 +420,30 @@ export const AgentTimeline = ({
             >
               Copy
             </Button>
-            {retryMessage && message.status !== "review_question" && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => retryMessage(message)}
-              >
-                {message.status === "draft"
-                  ? "Send saved instruction"
-                  : "Retry"}
-              </Button>
-            )}
-            {editMessage && message.status !== "review_question" && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => editMessage(message)}
-              >
-                Edit &amp; retry
-              </Button>
-            )}
+            {retryMessage &&
+              message.status !== "review_question" &&
+              message.purpose !== "chat" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => retryMessage(message)}
+                >
+                  {message.status === "draft"
+                    ? "Send saved instruction"
+                    : "Retry"}
+                </Button>
+              )}
+            {editMessage &&
+              message.status !== "review_question" &&
+              message.role !== "assistant" && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => editMessage(message)}
+                >
+                  Edit &amp; retry
+                </Button>
+              )}
           </div>
         </article>
       ),
@@ -481,17 +498,19 @@ export const AgentTimeline = ({
                 {run.provider === "antigravity" ? "Antigravity" : "Codex"}
               </strong>
               <span className="subtle">
-                {run.purpose === "Code Review Ask AI"
-                  ? "Code review · read-only"
-                  : run.purpose === "scheduled"
-                    ? "PR review"
-                    : run.stage === 1
-                      ? "Planning"
-                      : run.stage === 2
-                        ? "Reviewing plan"
-                        : run.stage === 5
-                          ? "Reviewing changes & tests"
-                          : "Implementing"}
+                {run.purpose === "Read-only conversation"
+                  ? "Conversation · read-only"
+                  : run.purpose === "Code Review Ask AI"
+                    ? "Code review · read-only"
+                    : run.purpose === "scheduled"
+                      ? "PR review"
+                      : run.stage === 1
+                        ? "Planning"
+                        : run.stage === 2
+                          ? "Reviewing plan"
+                          : run.stage === 5
+                            ? "Reviewing changes & tests"
+                            : "Implementing"}
               </span>
               <small>
                 {run.model || "CLI default"} · {run.effort}
@@ -529,15 +548,18 @@ export const AgentTimeline = ({
               ) : (
                 <>
                   {run.status === "completed" ? <Check size={12} /> : null}
-                  {run.status === "completed"
-                    ? run.stage === 1
-                      ? "Plan completed"
-                      : run.stage === 2
-                        ? "Plan refined"
-                        : run.stage === 5
-                          ? "Final review completed"
-                          : "Implementation completed"
-                    : run.status}{" "}
+                  {run.status === "completed" &&
+                  run.purpose === "Read-only conversation"
+                    ? "Answer completed"
+                    : run.status === "completed"
+                      ? run.stage === 1
+                        ? "Plan completed"
+                        : run.stage === 2
+                          ? "Plan refined"
+                          : run.stage === 5
+                            ? "Final review completed"
+                            : "Implementation completed"
+                      : run.status}{" "}
                   · {duration(run.started_at, run.ended_at)}
                 </>
               )}

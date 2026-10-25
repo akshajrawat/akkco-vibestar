@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   LoaderCircle,
@@ -115,6 +115,9 @@ export const PipelineView = ({
 }) => {
   const task = detail.task;
   const [editing, setEditing] = useState<number>();
+  const [instructions, setInstructions] = useState<string[]>([]);
+  const [summary, setSummary] = useState("");
+  const startRequest = useRef({ signature: "", id: "" });
   const idle =
     !detail.active &&
     !detail.executing &&
@@ -139,9 +142,89 @@ export const PipelineView = ({
         final_review: 5,
       }[task.approval_gate]
     : undefined;
+  if (task.status === "preserved")
+    return (
+      <div className="engineering-panel">
+        <h2>Work preserved</h2>
+        <p>
+          Conversation and execution history were removed. The retained
+          ownership record protects this worktree and branch. Open it in your
+          editor to continue outside this task.
+        </p>
+      </div>
+    );
   return (
     <div className="engineering-panel">
       <p className="eyebrow">{task.status.replaceAll("_", " ")}</p>
+      {task.status === "not_started" && (
+        <section className="workflow-start">
+          <h2>Workflow not started</h2>
+          <p>
+            Your task is ready. You can discuss the issue before running the
+            workflow.
+          </p>
+          <details>
+            <summary>Include reviewed conversation instructions</summary>
+            <p className="subtle">
+              Only selected messages and the summary below reach the workflow.
+            </p>
+            {detail.messages
+              .filter(
+                (message) =>
+                  message.purpose === "chat" &&
+                  message.status === "chat_completed",
+              )
+              .map((message) => (
+                <label className="checkbox-label" key={message.id}>
+                  <input
+                    type="checkbox"
+                    checked={instructions.includes(message.id)}
+                    onChange={(event) =>
+                      setInstructions(
+                        event.target.checked
+                          ? [...instructions, message.id]
+                          : instructions.filter((id) => id !== message.id),
+                      )
+                    }
+                  />
+                  <span>
+                    {message.role === "user" ? "You" : "Agent"}:{" "}
+                    {message.content.slice(0, 240)}
+                  </span>
+                </label>
+              ))}
+            <label>
+              Reviewed summary or instructions
+              <textarea
+                rows={3}
+                maxLength={32000}
+                value={summary}
+                onChange={(event) => setSummary(event.target.value)}
+              />
+            </label>
+          </details>
+          <Button
+            variant="default"
+            disabled={!idle || busy}
+            onClick={() => {
+              const signature = JSON.stringify({
+                message_ids: instructions,
+                summary,
+              });
+              if (startRequest.current.signature !== signature)
+                startRequest.current = { signature, id: crypto.randomUUID() };
+              void action("task.startWorkflow", {
+                id: task.id,
+                request_id: startRequest.current.id,
+                message_ids: instructions,
+                summary,
+              });
+            }}
+          >
+            {busy ? "Checking workflow startup…" : "Start workflow"}
+          </Button>
+        </section>
+      )}
       {task.approval_gate && (
         <p className="warning">
           Approval required · {task.approval_gate.replaceAll("_", " ")}
@@ -158,6 +241,7 @@ export const PipelineView = ({
                   "scheduled",
                   "Code Review Ask AI",
                   "git-finalization-review",
+                  "Read-only conversation",
                 ].includes(run.purpose || ""),
             );
           const saved =
@@ -170,37 +254,39 @@ export const PipelineView = ({
                   ? config?.codex_plan
                   : config?.codex_implementation);
           const status =
-            stage === 5 && task.final_review_verdict === "changes_requested"
-              ? "changes_requested"
-              : task.status === "awaiting_approval" && stage === approvalStage
-                ? "awaiting_approval"
-                : stage === 4 && task.stage >= 4
-                  ? task.status === "validating"
-                    ? "running"
-                    : verification.outcome === "passed"
-                      ? "completed"
-                      : verification.outcome
-                  : run
-                    ? run.status === "completed" && run.exit_code !== 0
-                      ? "unknown"
-                      : run.status
-                    : stage === task.stage &&
-                        [
-                          "failed",
-                          "cancelled",
-                          "interrupted",
-                          "verification_blocked",
-                        ].includes(task.status)
-                      ? task.status === "verification_blocked"
-                        ? "blocked"
-                        : task.status
-                      : stage === 0 && task.stage > 0 && task.base_commit_sha
+            task.status === "not_started"
+              ? "not_started"
+              : stage === 5 && task.final_review_verdict === "changes_requested"
+                ? "changes_requested"
+                : task.status === "awaiting_approval" && stage === approvalStage
+                  ? "awaiting_approval"
+                  : stage === 4 && task.stage >= 4
+                    ? task.status === "validating"
+                      ? "running"
+                      : verification.outcome === "passed"
                         ? "completed"
-                        : stage === task.stage && !idle
-                          ? "running"
-                          : stage < task.stage
-                            ? "unknown"
-                            : "not_started";
+                        : verification.outcome
+                    : run
+                      ? run.status === "completed" && run.exit_code !== 0
+                        ? "unknown"
+                        : run.status
+                      : stage === task.stage &&
+                          [
+                            "failed",
+                            "cancelled",
+                            "interrupted",
+                            "verification_blocked",
+                          ].includes(task.status)
+                        ? task.status === "verification_blocked"
+                          ? "blocked"
+                          : task.status
+                        : stage === 0 && task.stage > 0 && task.base_commit_sha
+                          ? "completed"
+                          : stage === task.stage && !idle
+                            ? "running"
+                            : stage < task.stage
+                              ? "unknown"
+                              : "not_started";
           const tone =
             status === "completed"
               ? "success"
@@ -249,7 +335,9 @@ export const PipelineView = ({
               </span>
               <div className="pipeline-stage-heading">
                 <strong>
-                  {stage === 4 && verification.outcome === "blocked"
+                  {stage === 4 &&
+                  task.stage >= 4 &&
+                  verification.outcome === "blocked"
                     ? "Verification incomplete"
                     : label}
                 </strong>
@@ -424,8 +512,8 @@ export const PipelineView = ({
         )}
       <p className="subtle">
         Stage settings were saved with this task. Completed runs show their
-        effective model and effort. The chat model applies to explicit
-        implementation follow-ups.
+        effective model and effort. Composer model choices apply to the next
+        explicit question or code-changing follow-up.
       </p>
       <div className="actions">
         {["ready_for_review", "completed"].includes(task.status) && (
@@ -440,6 +528,7 @@ export const PipelineView = ({
           "queued",
           "verification_blocked",
           "reviewed_with_gaps",
+          "not_started",
         ].includes(task.status) && (
           <Button
             disabled={!idle || busy}
@@ -448,16 +537,18 @@ export const PipelineView = ({
             Resume
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!idle || busy}
-          onClick={() =>
-            void action("task.retry", { id: task.id, restart: true })
-          }
-        >
-          Restart pipeline
-        </Button>
+        {task.status !== "not_started" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!idle || busy}
+            onClick={() =>
+              void action("task.retry", { id: task.id, restart: true })
+            }
+          >
+            Restart pipeline
+          </Button>
+        )}
       </div>
     </div>
   );

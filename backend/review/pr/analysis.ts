@@ -69,12 +69,21 @@ export class PRAnalysis {
     );
     this.engine.changed();
   };
+  canReuse = (jobId: string, snapshot: PullRequestState) => {
+    const session = this.history(jobId).find((session) => session.report);
+    return !!(
+      session?.report?.complete &&
+      session.snapshot &&
+      contextHash(session.snapshot) === contextHash(snapshot)
+    );
+  };
 
   analyze = async (
     session: PRAnalysisSession,
     snapshot: PullRequestState,
     url: string,
     signal: AbortSignal,
+    authorizeInference?: () => void,
   ) => {
     signal.throwIfAborted();
     const sources = discussionEntries(snapshot);
@@ -239,6 +248,7 @@ export class PRAnalysis {
         warnings: retrievalWarnings,
       };
     } else {
+      authorizeInference?.();
       const workspace = join(
         this.engine.root,
         "cache",

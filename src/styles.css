@@ -2223,7 +2223,7 @@ details > pre {
 }
 .command-row[aria-current="true"] {
   background: var(--background-hover);
-  box-shadow: inset 2px 0 var(--accent-blue);
+  box-shadow: none;
 }
 .command-row code {
   overflow-wrap: anywhere;
@@ -2967,9 +2967,9 @@ details > pre {
   color: var(--foreground);
 }
 .settings-nav button.selected {
-  background: var(--background-selected);
-  color: var(--accent-blue);
-  box-shadow: inset 2px 0 var(--accent-blue);
+  background: var(--background-elevated);
+  color: var(--text-primary);
+  box-shadow: none;
 }
 .settings-content {
   flex: 1;
@@ -3431,7 +3431,7 @@ details > pre {
   border-color: var(--border-strong);
 }
 .user-message {
-  border-left: 2px solid var(--border-strong);
+  border-left: 0;
 }
 @media (max-width: 1100px) {
   .pr-inbox-row {
@@ -3466,12 +3466,13 @@ details > pre {
   border: 1px solid var(--border-default);
 }
 .active-repository-row {
-  border-left: 3px solid var(--accent-green);
+  border-radius: var(--radius-panel);
 }
 .active-repository-heading {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .active-repository-heading strong {
   font-size: 13px;
@@ -5127,26 +5128,35 @@ progress::-webkit-progress-value {
   font-size: 13px;
 }
 .chat-workspace .chat-main {
+  --chat-reading-width: 1050px;
+  --chat-gutter: clamp(20px, 4vw, 64px);
   background: var(--background-panel);
 }
 .chat-workspace .event-timeline {
-  padding: 22px clamp(20px, 4vw, 64px) 28px;
+  padding: 22px var(--chat-gutter) 28px;
   overscroll-behavior: contain;
 }
 .chat-workspace .event-timeline > * {
-  max-width: 1050px;
+  max-width: var(--chat-reading-width);
   margin-left: auto;
   margin-right: auto;
 }
 .chat-actions {
   flex-shrink: 0;
+  padding: 0 var(--chat-gutter);
+}
+.chat-actions > * {
+  max-width: var(--chat-reading-width);
+  margin-left: auto;
+  margin-right: auto;
 }
 .chat-actions > .button {
-  margin: 5px 18px;
+  margin-top: 5px;
+  margin-bottom: 5px;
 }
 .chat-workspace .chat-input {
-  width: calc(100% - 36px);
-  max-width: 1100px;
+  width: calc(100% - var(--chat-gutter) - var(--chat-gutter));
+  max-width: var(--chat-reading-width);
   margin: 8px auto 16px;
   padding: 12px 14px 9px;
   border-radius: 18px;
@@ -5155,6 +5165,13 @@ progress::-webkit-progress-value {
 }
 .chat-workspace .chat-input:focus-within {
   border-color: var(--border-strong);
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.chat-workspace .chat-input textarea:focus {
+  outline: none;
+  box-shadow: none;
 }
 .chat-workspace .chat-input textarea {
   color: var(--text-primary);
@@ -5274,7 +5291,8 @@ progress::-webkit-progress-value {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  margin: 6px 18px;
+  margin-top: 6px;
+  margin-bottom: 6px;
   padding: 9px 12px;
   border: 1px solid var(--border-default);
   border-radius: 12px;
@@ -5477,7 +5495,8 @@ progress::-webkit-progress-value {
 .verification-recovery {
   margin: 10px 0;
 }
-.verification-recovery > .actions {
+.verification-recovery .actions,
+.secondary-workspace .actions {
   flex-wrap: wrap;
   gap: 6px;
 }
@@ -5867,8 +5886,7 @@ progress::-webkit-progress-value {
   gap: 8px;
 }
 .git-finalization-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: block;
   min-width: 0;
 }
 .git-files-panel,
@@ -5877,7 +5895,68 @@ progress::-webkit-progress-value {
   min-width: 0;
 }
 .git-files-panel {
-  border-right: 1px solid var(--border);
+  border-right: 0;
+}
+.git-journey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 26px 0;
+}
+.git-files-panel,
+.git-commit-panel {
+  max-width: 860px;
+  margin: 0 auto;
+}
+.task-disposal-choices {
+  padding: 12px 0;
+}
+.repository-details-popover {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  margin: auto;
+  padding: 20px;
+  color: var(--text-primary);
+  background: var(--background-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 8px 24px var(--shadow);
+}
+.repository-details-popover::backdrop {
+  background: rgb(0 0 0 / 30%);
+}
+.task-disposal-choices small,
+.batch-selection small {
+  display: block;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+.batch-selection {
+  max-height: 240px;
+  overflow: auto;
+}
+.pr-batch-progress {
+  padding: 12px 16px;
+  border-radius: var(--radius-panel);
+  background: var(--background-panel);
+  margin-bottom: 12px;
+}
+.label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.label-chips .context-chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.conversation-mode {
+  margin: 0;
+}
+.workflow-start {
+  padding-bottom: 18px;
 }
 .git-finalization .muted {
   color: var(--text-secondary);

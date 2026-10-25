@@ -494,7 +494,7 @@ it.skipIf(process.env.VIBESTAR_PRODUCT_DESKTOP_TEST !== "1")(
           "Product acceptance test only, not implementation of the historical issue. ONLY create .vibestar-managed-quality.txt with exactly: managed clone verified followed by a newline. Do not change any existing file. Use concise plans, minimal inspection and git diff --check for validation. No dependency installation, no remote writes.",
         );
       await newTask
-        .getByRole("button", { name: "Start task", exact: true })
+        .getByRole("button", { name: "Create task", exact: true })
         .click();
       await newTask.waitFor({ state: "hidden" });
       await expect

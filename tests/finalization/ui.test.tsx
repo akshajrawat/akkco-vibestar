@@ -176,6 +176,17 @@ it("requires explicit subset review, exact-message confirmation and a separate d
   render(
     <GitFinalization
       task={task}
+      repository={{
+        id: task.repo_id,
+        owner: "upstream",
+        name: "fixture",
+        path: "/imported/source",
+        upstream_url: "https://github.com/upstream/fixture.git",
+        origin_url: "https://github.com/contributor/fixture.git",
+        base_branch: "main",
+        last_fetched: null,
+        created_at: task.created_at,
+      }}
       revision={0}
       close={vi.fn()}
       complete={vi.fn()}
@@ -224,7 +235,10 @@ it("requires explicit subset review, exact-message confirmation and a separate d
     ),
   );
   const message = "  My exact title  \n\n# Literal message text  ";
+  fireEvent.click(screen.getByRole("button", { name: "Continue to commit" }));
   fireEvent.change(editor, { target: { value: message } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue to publish" }));
+  fireEvent.click(screen.getByRole("button", { name: "Review operation" }));
   await waitFor(() =>
     expect(
       (
@@ -251,7 +265,7 @@ it("requires explicit subset review, exact-message confirmation and a separate d
   fireEvent.click(
     screen.getByRole("button", { name: "Commit and prepare push" }),
   );
-  await screen.findByText("contributor/fixture");
+  await screen.findByRole("button", { name: "Confirm push" });
   expect(
     rpc.mock.calls.find(([method]) => method === "git.commit")?.[1],
   ).toMatchObject({ message, skip_hooks: false, confirmed: true });

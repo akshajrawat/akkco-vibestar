@@ -688,8 +688,13 @@ export const UsageView = ({
       )}
       <small className="subtle usage-source">
         Local telemetry only · no analytics sent
-        {info?.database ? ` · Database: ${info.database}` : ""}
       </small>
+      {info?.database && (
+        <details className="usage-diagnostics">
+          <summary>Storage information</summary>
+          <code>{info.database}</code>
+        </details>
+      )}
     </div>
   );
 };

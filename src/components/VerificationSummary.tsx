@@ -41,17 +41,13 @@ export const VerificationSummary = ({
       ),
     ],
     [
-      "Blocked",
+      "Needs verification",
       verification.checks.filter(
         (check) =>
           check.required &&
-          ["blocked", "interrupted", "unknown"].includes(check.outcome),
-      ),
-    ],
-    [
-      "Not run",
-      verification.checks.filter(
-        (check) => check.required && check.outcome === "not_run",
+          ["blocked", "interrupted", "unknown", "not_run"].includes(
+            check.outcome,
+          ),
       ),
     ],
     [
@@ -60,47 +56,60 @@ export const VerificationSummary = ({
         (check) => check.required && check.outcome === "passed",
       ),
     ],
-    ["Optional", verification.checks.filter((check) => !check.required)],
   ] as const;
   return (
     <section
       className="verification-summary"
       aria-label="Verification evidence"
     >
-      <p
-        className={
-          verification.outcome === "failed"
-            ? "failure"
-            : verification.outcome === "passed" && reported === 0
-              ? "success"
-              : "warning"
-        }
-      >
-        {failures
-          ? `${failures} required checks failed.`
-          : gaps
-            ? `${gaps} required checks remain unverified.`
-            : verification.outcome === "passed"
-              ? observed
-                ? "Recorded checks passed. Coverage is limited to the evidence below."
-                : "Provider reports checks passed; no observed check evidence."
-              : "Verification outcome unknown. No successful check evidence is available."}
-      </p>
-      <p className="subtle">
-        {observed} observed passes · {reported} provider-reported passes
-      </p>
-      <small className="subtle">
-        Required blocked, interrupted, not-run and unknown checks remain
-        unverified.{" "}
+      <h2>
         {verification.canReview
-          ? "Required checks are satisfied. Optional unexecuted checks remain recorded below."
-          : verification.canReviewWithGaps
-            ? "Independent review can start after explicit approval and acknowledgment of environmental gaps."
-            : "Resolve failures and ambiguous evidence before independent review."}
-      </small>
+          ? "Verification complete"
+          : failures
+            ? "Checks failed"
+            : "Verification incomplete"}
+      </h2>
+      <p>
+        {observed} passed · {failures} failed · {gaps} need verification
+      </p>
+      {roots[0] && <p>{roots[0].reason}</p>}
       <details>
-        <summary>Evaluation details</summary>
-        <p>{verification.summary}</p>
+        <summary>Evidence interpretation</summary>
+        <p
+          className={
+            verification.outcome === "failed"
+              ? "failure"
+              : verification.outcome === "passed" && reported === 0
+                ? "success"
+                : "warning"
+          }
+        >
+          {failures
+            ? `${failures} required checks failed.`
+            : gaps
+              ? `${gaps} required checks remain unverified.`
+              : verification.outcome === "passed"
+                ? observed
+                  ? "Recorded checks passed. Coverage is limited to the evidence below."
+                  : "Provider reports checks passed; no observed check evidence."
+                : "Verification outcome unknown. No successful check evidence is available."}
+        </p>
+        <p className="subtle">
+          {observed} observed passes · {reported} provider-reported passes
+        </p>
+        <small className="subtle">
+          Required blocked, interrupted, not-run and unknown checks remain
+          unverified.{" "}
+          {verification.canReview
+            ? "Required checks are satisfied. Optional unexecuted checks remain recorded below."
+            : verification.canReviewWithGaps
+              ? "Independent review can start after explicit approval and acknowledgment of environmental gaps."
+              : "Resolve failures and ambiguous evidence before independent review."}
+        </small>
+        <details>
+          <summary>Evaluation details</summary>
+          <p>{verification.summary}</p>
+        </details>
       </details>
       {roots.length > 0 && (
         <div className="verification-blockers" aria-label="Root blockers">
@@ -195,6 +204,30 @@ export const VerificationSummary = ({
             </ul>
           </details>
         ))}
+      {verification.checks.some((check) => !check.required) && (
+        <details>
+          <summary>Optional evidence</summary>
+          <ul>
+            {verification.checks
+              .filter((check) => !check.required)
+              .map((check, index) => (
+                <li key={index}>
+                  <strong>
+                    {check.name} ·{" "}
+                    {check.optionalReason &&
+                    !["passed", "failed"].includes(check.outcome)
+                      ? "skipped (optional)"
+                      : check.outcome.replaceAll("_", " ")}
+                  </strong>
+                  <p>{check.optionalReason || check.detail}</p>
+                  <small>
+                    Recorded outcome: {check.outcome.replaceAll("_", " ")}
+                  </small>
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
       <div className="actions">
         {retry && (
           <Button size="sm" onClick={retry}>

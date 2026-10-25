@@ -274,7 +274,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
         path: join(screenshots, "repair-raw-output.png"),
       });
       await page.getByRole("button", { name: "Readable", exact: true }).click();
-      await page.getByRole("tab", { name: "Tests", exact: true }).click();
+      await page.getByRole("tab", { name: "Checks", exact: true }).click();
       await page.getByRole("heading", { name: /Command executions/ }).waitFor();
       await page.screenshot({
         path: join(screenshots, "real-command-evidence.png"),

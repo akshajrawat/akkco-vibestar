@@ -11,6 +11,7 @@ export class CoreBridge extends EventEmitter {
   private warning: string | undefined;
   private approvalsAvailable = false;
   private instructionChoicesAvailable = false;
+  private workflowFirstAvailable = false;
   private finalReviewSettingsAvailable = false;
   private browserVerificationAvailable = false;
   private pipelineVerificationAvailable = false;
@@ -42,6 +43,7 @@ export class CoreBridge extends EventEmitter {
     this.issueWatchAvailable = false;
     this.approvalsAvailable = false;
     this.instructionChoicesAvailable = false;
+    this.workflowFirstAvailable = false;
     this.finalReviewSettingsAvailable = false;
     this.browserVerificationAvailable = false;
     this.pipelineVerificationAvailable = false;
@@ -123,6 +125,7 @@ export class CoreBridge extends EventEmitter {
         build: string;
         pipeline_approvals?: boolean;
         saved_instruction_choices?: boolean;
+        workflow_first?: number;
         independent_final_review?: boolean;
         browser_verification_environment?: boolean;
         pipeline_verification?: number;
@@ -139,6 +142,7 @@ export class CoreBridge extends EventEmitter {
         this.approvalsAvailable = info.pipeline_approvals === true;
         this.instructionChoicesAvailable =
           info.saved_instruction_choices === true;
+        this.workflowFirstAvailable = info.workflow_first === 1;
         this.finalReviewSettingsAvailable =
           info.independent_final_review === true;
         this.browserVerificationAvailable =
@@ -280,6 +284,13 @@ export class CoreBridge extends EventEmitter {
     )
       throw new Error(
         "Update the execution helper before using saved instruction choices and future stage settings.",
+      );
+    if (
+      !this.workflowFirstAvailable &&
+      ["task.create", "task.chat", "task.startWorkflow"].includes(method)
+    )
+      throw new Error(
+        "Update the execution helper before creating idle tasks or using read-only task conversations.",
       );
     try {
       const result = await this.sendRequest<T>(method, params);

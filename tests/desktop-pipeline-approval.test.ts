@@ -275,7 +275,10 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         "-e",
         "console.log('desktop verification passed'); console.error('verification stderr retained')",
       ]);
-      await page.getByRole("tab", { name: "Tests", exact: true }).click();
+      await page.getByRole("tab", { name: "Checks", exact: true }).click();
+      await page
+        .getByText("Advanced evidence and tools", { exact: true })
+        .click();
       await expect
         .poll(() => page.getByLabel("Selected command output").innerText())
         .toContain("desktop verification passed");

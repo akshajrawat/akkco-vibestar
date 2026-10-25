@@ -240,7 +240,9 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
       back={vi.fn()}
     />,
   );
-  const input = screen.getByLabelText("Task follow-up") as HTMLTextAreaElement;
+  const input = screen.getByLabelText(
+    "Task conversation",
+  ) as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: content } });
   fireEvent.click(screen.getByRole("button", { name: "Save for later" }));
   await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));

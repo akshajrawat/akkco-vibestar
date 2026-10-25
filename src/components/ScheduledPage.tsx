@@ -6,6 +6,7 @@ import { rpc, errorMessage } from "../lib/api";
 import { Button } from "./ui/button";
 import { PageHeader, EmptyState, ListSkeleton } from "./ui/PageHeader";
 import { PrDetails, PrState, prTone } from "./PrDetails";
+import { PRBatchDialog } from "./PRBatchDialog";
 
 export const ScheduledAttention = ({
   snapshot,
@@ -100,6 +101,7 @@ export const ScheduledPage = ({
   connectGitHub?: () => void;
 }) => {
   const [selected, setSelected] = useState<string>();
+  const [batchOpen, setBatchOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -163,6 +165,8 @@ export const ScheduledPage = ({
           ].includes(check.state.toUpperCase()),
         ),
         checksKnown: !!saved?.checks.length,
+        actionState: report?.action_state || "Not analyzed",
+        analyzedHead: report?.analyzed_head,
       };
     })
     .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
@@ -243,8 +247,78 @@ export const ScheduledPage = ({
       <PageHeader
         title="Pull requests"
         description="Your contributions and review conversations, together in one workspace."
-        actions={refreshButton}
+        actions={
+          <>
+            {refreshButton}
+            <Button
+              variant="default"
+              disabled={
+                !rows.length ||
+                !!busy ||
+                snapshot.pr_batches?.some((batch) => batch.status === "running")
+              }
+              onClick={() => setBatchOpen(true)}
+            >
+              Analyze All
+            </Button>
+          </>
+        }
       />
+      {batchOpen && (
+        <PRBatchDialog
+          rows={rows.map((row) => ({
+            url: row.url,
+            title: row.title,
+            state: row.state,
+            jobId: row.job?.id,
+            attention: row.attention,
+            stale: row.actionState === "Analysis stale",
+          }))}
+          configuration={configuration}
+          close={() => setBatchOpen(false)}
+          refresh={refresh}
+        />
+      )}
+      {snapshot.pr_batches?.slice(0, 3).map((batch) => (
+        <section
+          className="pr-batch-progress"
+          key={batch.id}
+          aria-label="PR batch progress"
+        >
+          <strong>Analyze All · {batch.status}</strong>
+          <p>
+            {batch.items.filter((item) => item.status === "completed").length}{" "}
+            completed of {batch.items.length} · {batch.analyses_used} of{" "}
+            {batch.max_analyses} AI attempts used
+          </p>
+          {batch.status === "running" && (
+            <Button
+              size="sm"
+              onClick={() =>
+                void action(
+                  "scheduled.batch.cancel",
+                  { id: batch.id },
+                  batch.id,
+                )
+              }
+            >
+              Cancel batch
+            </Button>
+          )}
+          <details>
+            <summary>Per-PR progress</summary>
+            {batch.items.map((item) => (
+              <p key={item.job_id}>
+                {jobs.find((job) => job.id === item.job_id)?.title ||
+                  jobs.find((job) => job.id === item.job_id)?.url ||
+                  item.job_id}{" "}
+                · {item.status}
+                {item.error ? ` · ${item.error}` : ""}
+              </p>
+            ))}
+          </details>
+        </section>
+      ))}
       {(error || github?.error) && (
         <div className="error-box page-error" role="alert">
           <div>
@@ -455,11 +529,7 @@ export const ScheduledPage = ({
                     {row.pr?.head_branch && (
                       <span className="mono">{row.pr.head_branch}</span>
                     )}
-                    <span>
-                      {row.decision === "UNKNOWN"
-                        ? "Review not inspected"
-                        : row.decision.toLowerCase().replaceAll("_", " ")}
-                    </span>
+                    <span>{row.actionState}</span>
                     <span className={row.failedCI ? "failure" : ""}>
                       {row.failedCI
                         ? "CI needs attention"
@@ -477,6 +547,12 @@ export const ScheduledPage = ({
                     <div className="pr-metadata">
                       <span>{row.outstanding} observations to consider</span>
                       <span>{row.questions} unanswered questions</span>
+                      {row.analyzedHead && (
+                        <span>
+                          Analyzed head{" "}
+                          <code>{row.analyzedHead.slice(0, 12)}</code>
+                        </span>
+                      )}
                       <span>
                         Last analyzed{" "}
                         {job.last_analyzed_at
@@ -495,6 +571,14 @@ export const ScheduledPage = ({
                     <p className="warning">
                       {errorMessage(job.error)} · Request analysis explicitly to
                       retry.
+                    </p>
+                  )}
+                  {row.pr?.access_error && (
+                    <p className="warning">
+                      GitHub state unavailable: {row.pr.access_error}
+                      {row.pr.last_known_state
+                        ? ` · Last known ${row.pr.last_known_state.toLowerCase()}`
+                        : ""}
                     </p>
                   )}
                   {job?.action?.reason && (

@@ -33,6 +33,20 @@ import {
   type AgentProvider,
   configurationError,
 } from "./providers/contracts";
+const stageConfiguration = (
+  stage: number,
+  settings: Settings,
+  task: Task | null,
+) =>
+  task?.stage_settings?.[stage as 1 | 2 | 3 | 5] ??
+  (stage === 5
+    ? settings.antigravity_review || settings.antigravity
+    : stage === 1
+      ? settings.antigravity
+      : stage === 2
+        ? settings.codex_plan
+        : settings.codex_implementation);
+
 export class AgentRunner {
   constructor(
     private readonly root: string,
@@ -44,6 +58,33 @@ export class AgentRunner {
       provider?: "codex" | "antigravity",
     ) => AgentProvider,
   ) {}
+  /** Checks the saved pipeline's provider capabilities without consuming inference or starting a stage. */
+  validateWorkflow = async (task: Task, signal: AbortSignal) => {
+    const settings = task.execution_settings || this.db.settings();
+    for (const stage of [1, 2, 3, 5]) {
+      const provider = this.providers(
+        stage,
+        stage === 5 ? "antigravity" : undefined,
+      );
+      const detection = await provider.detect(this.root, signal);
+      signal.throwIfAborted();
+      if (
+        !detection.installed ||
+        !detection.connected ||
+        !detection.capabilities.length
+      )
+        throw new AdeError(
+          "provider_unavailable",
+          detection.error ||
+            `Connect ${provider.name} before starting the workflow.`,
+        );
+      const invalid = configurationError(
+        detection,
+        stageConfiguration(stage, settings, task),
+      );
+      if (invalid) throw new AdeError("model", invalid);
+    }
+  };
   run = async (
     t: Task | { id: string; stage: 1 | 2 | 3 | 5 },
     settings: Settings,
@@ -61,6 +102,7 @@ export class AgentRunner {
       scanId?: string;
       telemetryTaskId?: string;
       telemetryRepository?: string;
+      messageId?: string;
       questionId?: string;
       repair?: WorkspaceAssignment;
       contextPaths?: string[];
@@ -95,14 +137,7 @@ export class AgentRunner {
     const config =
       options?.config ??
       followup?.config ??
-      task?.stage_settings?.[t.stage as 1 | 2 | 3 | 5] ??
-      (t.stage === 5
-        ? settings.antigravity_review || settings.antigravity
-        : t.stage === 1
-          ? settings.antigravity
-          : t.stage === 2
-            ? settings.codex_plan
-            : settings.codex_implementation);
+      stageConfiguration(t.stage, settings, task);
     const id = randomUUID();
     if (options?.scanId || options?.watchId) {
       if (
@@ -249,6 +284,13 @@ export class AgentRunner {
         task.id,
       );
     }
+    if (task && options?.messageId)
+      this.db.run(
+        "UPDATE task_messages SET run_id=? WHERE id=? AND task_id=? AND purpose='chat'",
+        id,
+        options.messageId,
+        task.id,
+      );
     if (task && !options)
       this.db.run(
         "UPDATE task_messages SET run_id=? WHERE task_id=? AND status='delivered' AND run_id IS NULL",

@@ -1,5 +1,107 @@
 # akkco vibestar architecture
 
+## Workflow-first IDE V3
+
+[The V3 implementation and acceptance record](docs/WORKFLOW-FIRST-IDE-V3.md) records the clean
+baseline and the full acceptance scope. New task creation is separated from
+execution authorization. The existing queue, AgentRunner, SQLite, Git ownership,
+provider adapters and Verification V2 gates remain the architectural boundaries.
+Historical authorized queue entries retain their semantics; conversation context
+must become implementation input only through an explicit selection or summary.
+
+Task creation now writes `not_started` without draining or preparing a worktree.
+`task.startWorkflow` validates identity and provider configuration, binds a durable
+request/digest and selected conversation IDs/summary in task JSON, then enters the
+existing queue. Concurrent identical starts share one promise. Legacy `queued`
+records and explicit internal enqueue retain their authorization. Retry and
+code-changing follow-ups cannot start an idle task.
+
+Migration 25 adds `task_messages.purpose` with historical `instruction` defaults.
+Read-only chat messages and answers use the existing table, AgentRunner, logs,
+events and usage. Explicit questions may prepare the owned worktree through the
+same preparation helper while leaving the workflow idle. Stage-1 source and Git
+mounts remain read-only; chat produces no plan artifact or pipeline transition.
+Restart interrupts pending conversations without replay. Pipeline prompts exclude
+chat except for explicitly selected completed messages or the reviewed summary.
+The compact run strip names conversation purpose rather than its reused stage-1
+sandbox, and unstarted verification stages do not imply a current blocker.
+`workflow_first:1` protects task creation/chat/start against older helpers.
+Workflow startup uses the existing task maintenance lease with its own activity
+label, so it is visible as startup validation instead of a cleanup operation.
+Graceful shutdown aborts and awaits pending start validation alongside agent runs.
+
+Task disposal reuses StorageService's existing common-directory lock, physical
+managed-path checks, task/branch ownership markers and checkpointed Git removal.
+The distinct discard preview binds task/path/branch identity and complete tracked,
+untracked and ignored content through the existing streaming no-follow fingerprint
+implementation. Explicit discard alone allows Git's scoped forced worktree removal;
+pending Git operations and hidden index flags still require manual resolution.
+Unique commits not known in local remote refs require additional acknowledgment.
+The confirmed fingerprint and acknowledgment persist before scoped Git removal;
+an interrupted removal can finish only that original authorization after fresh
+ownership/ref checks. Recreated files do not inherit the missing-worktree recovery.
+Finalization and linked repair dependencies block discard. Ordinary cleanup
+continues to reject dirty work and now protects unpublished commits by default.
+History-only removal retains an archived `preserved` ownership record so files,
+branch, dependency links and root migration remain safe and reachable; it removes
+conversation/run/log/artifact history without deleting the worktree or branch.
+
+The shared chat surface now supplies one reading width and gutter to messages,
+inline action trays and the composer. The composer owns one visible focus outline;
+its textarea has no second focus shadow. Workflow and Checks retain their stable
+saved tool keys. Settings selection uses a neutral surface without a decorative
+left strip. Sidebar and nested recovery action rows wrap within the pane, including
+expanded More options, so controls cannot create horizontal form scrolling.
+
+Issue Watch compiles its deterministic preview locally through the existing RPC as
+controls change, without GitHub collection or inference. Ambiguities still require
+an explicit interpretation and save retains the same digest validation. A label
+chip control accepts plain names, Markdown links and GitHub issue-search links
+through paste or URI/text drop, validates repository identity and renders text only.
+Explicit label discovery reuses GitHubClient with bounded pagination; it never
+starts a scan. Rare issue exclusions and assignment controls sit under Advanced
+filters. Production issue/repository placeholders are neutral.
+
+PR discovery now creates inactive analysis identities automatically for discovered
+PRs and searches authored history across lifecycle states. GitHub lifecycle and
+source-linked review/action state are separate inbox fields, with saved analyzed
+head SHA and timestamps. Migration 26 adds bounded PR batch journals. Analyze All
+previews reusable unchanged reports with GitHub-only reads, then explicitly runs
+at most 20 selected PRs through the existing Scheduler/PRAnalysis/UtilityAI path.
+The default UI selection and maximum AI authorization are five. A persisted counter
+is charged immediately before each semantic invocation; deterministic and unchanged
+reports consume none. Per-PR outcomes survive cancellation/restart, completed
+reports remain available, and startup marks unfinished batches interrupted without
+executing them. No timer or second reviewer runtime is introduced.
+
+Checks defaults to observed counts, three outcome groups and shared root blockers;
+final-review navigation uses the same Checks label.
+Command history, provider reports, manual argv, runtime/browser diagnostics and raw
+evidence live under Advanced evidence and tools. Recovery chooses one contextual
+primary action; additional recovery and policy choices remain under More options.
+Optional evidence keeps its original outcome and explanation. No verification
+classification, gap acknowledgment or publication authorization was relaxed.
+
+Repository rows show identity, status, ownership type, base and editor action;
+full paths/remotes/verification and lifecycle controls use a native Details
+popover with light dismissal, Escape handling and focus return.
+Usage keeps database locations under Storage information. Git Finalization now
+uses Files, Commit, Publish and Confirm steps with a saved task-local position.
+Selection review, exact messages, explicit local commit and separately confirmed
+publication reuse the same backend. New presets default to normal commit/push;
+saved optional-hook presets stay intact. Output/history/recovery stay accessible in
+an operation-log disclosure. Missing forks offer the existing verified local
+connection flow, without automatic GitHub writes or source-remote changes.
+
+Authored PR refresh retains a 500-detail budget and checks missing known identities
+directly, including compatible historical tracking records. Exhausted budgets keep
+an explicit partial warning and do not advance the complete-refresh timestamp.
+Search absence is never used as closure evidence; closed/merged state requires a
+retrieved PR response. Persisted detail cursors advance bounded explicit refreshes
+through large catalogs. Detail access failures retain the last known state separately
+and mark the current state unknown with an error. Search includes authored
+closed/merged history. Label URLs also reject malformed percent encoding.
+
 ## Pipeline verification V2
 
 Verification distinguishes application failures, evidence gaps and environmental

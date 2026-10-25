@@ -188,17 +188,34 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
         .getByLabel("GitHub repository", { exact: true })
         .fill("https://github.com/oppia/oppia");
       await editor
-        .getByLabel("What issues are you looking for?", { exact: true })
+        .getByLabel("Describe issues to find", { exact: true })
         .fill(
           "Find open issues that are not triage needed, not listed in https://github.com/oppia/oppia/issues/27409, and not already actively claimed. Prefer issues for which I can reasonably request assignment.",
         );
       await editor
         .getByLabel("Model", { exact: true })
         .selectOption("fixture-model");
+      await page.evaluate(() => {
+        const data = new DataTransfer();
+        data.setData(
+          "text/uri-list",
+          "https://github.com/oppia/oppia/issues?q=state%3Aopen%20label%3A%22triage%20needed%22",
+        );
+        document.querySelector(".label-exclusions")!.dispatchEvent(
+          new DragEvent("drop", {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: data,
+          }),
+        );
+      });
       await editor
-        .getByRole("button", { name: "Preview hard filters", exact: true })
-        .click();
-      await editor.getByText(/Confirmed rule preview/).waitFor();
+        .getByRole("button", {
+          name: "Remove label triage needed",
+          exact: true,
+        })
+        .waitFor();
+      await editor.getByText(/Open issues · Unassigned/).waitFor();
       for (const select of await editor
         .locator("select[aria-label^='Interpret ']")
         .all())

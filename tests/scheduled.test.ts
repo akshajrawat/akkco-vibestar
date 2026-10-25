@@ -83,7 +83,7 @@ it("defaults to manual PR policy; startup, tracking, imports and timers do not i
     task_id: null,
     updated_at: "now",
   });
-  expect(scheduler.jobs()).toHaveLength(1);
+  expect(scheduler.jobs()).toHaveLength(2);
   expect(() => scheduler.setEnabled(job.id, true)).toThrow(
     "Automatic PR inspection",
   );

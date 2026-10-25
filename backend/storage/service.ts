@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { AdeError, now, type Task, type Repository } from "../domain";
 import type { Engine } from "../execution/engine";
 import { inside, exists, managedPath, taskRoot } from "../workspace/paths";
+import type { TaskDisposalPreview } from "./disposal";
 const preparationEvidence = z
   .object({
     code: z.number().int(),
@@ -122,15 +123,185 @@ export class StorageService {
     this.engine.withTaskMaintenance(id, () =>
       this.cleanupTaskData(id, options),
     );
+  private disposalDependencies = (id: string) => ({
+    finalizations: this.engine.db.all(
+      "SELECT id FROM git_finalizations WHERE task_id=?",
+      id,
+    ).length,
+    repairs: this.engine.db.all(
+      "SELECT id FROM pr_repairs WHERE job_id IN (SELECT id FROM scheduled_jobs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.task_id')=?)",
+      id,
+    ).length,
+  });
+  /** Reuses removal's ownership checks without mutating files, binding any later discard to this content. */
+  previewTaskDisposal = (id: string) =>
+    this.engine.withTaskMaintenance(id, async () => {
+      const task = this.engine.db.task(id);
+      const repo = this.engine.db.repository(task.repo_id);
+      if (await this.disposalRecovery(task)) {
+        await this.removeTaskWorkspace(
+          task,
+          repo,
+          true,
+          !task.disposal_authorization!.acknowledge_unpublished,
+        );
+        return {
+          ...this.emptyDisposalPreview(task, repo),
+          fingerprint: task.disposal_authorization!.fingerprint,
+          active_operation: "Finish previously confirmed task removal",
+        };
+      }
+      return (
+        (await this.removeTaskWorkspace(task, repo, true, false, {})) ||
+        this.emptyDisposalPreview(task, repo)
+      );
+    });
+  private disposalRecovery = async (task: Task) =>
+    !!task.disposal_authorization &&
+    ["removing", "removed"].includes(task.workspace_checkpoint?.state || "") &&
+    !!task.worktree_path &&
+    !(await exists(task.worktree_path));
+  private emptyDisposalPreview = (
+    task: Task,
+    repo: Repository,
+  ): TaskDisposalPreview => ({
+    task_id: task.id,
+    title: String(task.issue?.title || `Issue #${task.issue_number}`),
+    repository: `${repo.owner}/${repo.name}`,
+    branch: task.branch_name,
+    fingerprint: createHash("sha256")
+      .update(
+        JSON.stringify([
+          task.id,
+          task.repo_id,
+          task.branch_name,
+          task.worktree_path,
+          task.updated_at,
+        ]),
+      )
+      .digest("hex"),
+    modified: [],
+    untracked: [],
+    ignored: [],
+    unpublished_commits: 0,
+    active_operation: null,
+    dependencies: this.disposalDependencies(task.id),
+  });
+  /** Binds deliberate loss to an owned workspace preview; interrupted removal retains that authorization. */
+  discardTask = (
+    id: string,
+    fingerprint: string,
+    acknowledgeUnpublished: boolean,
+  ) =>
+    this.engine.withTaskMaintenance(id, async () => {
+      const task = this.engine.db.task(id);
+      const repo = this.engine.db.repository(task.repo_id);
+      const dependencies = this.disposalDependencies(id);
+      if (dependencies.finalizations || dependencies.repairs)
+        throw new AdeError(
+          "task_dependencies",
+          "Remove the dependent Git Finalization previews and PR repair sessions explicitly before discarding this task.",
+        );
+      if (
+        !task.branch_name &&
+        !task.worktree_path &&
+        this.emptyDisposalPreview(task, repo).fingerprint !== fingerprint
+      )
+        throw new AdeError(
+          "stale_preview",
+          "The task changed. Inspect a fresh discard preview.",
+        );
+      if (await this.disposalRecovery(task)) {
+        if (task.disposal_authorization!.fingerprint !== fingerprint)
+          throw new AdeError(
+            "stale_preview",
+            "This removal must resume its original confirmed discard.",
+          );
+        await this.removeTaskWorkspace(
+          task,
+          repo,
+          false,
+          !task.disposal_authorization!.acknowledge_unpublished,
+        );
+      } else {
+        await this.removeTaskWorkspace(task, repo, false, false, {
+          fingerprint,
+          acknowledgeUnpublished,
+        });
+      }
+      await this.cleanupTaskData(id, {
+        worktree: false,
+        logs: true,
+        artifacts: true,
+        history: true,
+      });
+    });
+  /** Removes conversation history while retaining the ownership record needed to protect files and dependencies. */
+  preserveTaskWork = (id: string) =>
+    this.engine.withTaskMaintenance(id, async () => {
+      const e = this.engine;
+      const task = e.db.task(id);
+      if (
+        ["removing", "removed"].includes(task.workspace_checkpoint?.state || "")
+      )
+        throw new AdeError(
+          "removal_pending",
+          "Finish the previously confirmed worktree removal before clearing history.",
+        );
+      if (
+        e.db.all(
+          "SELECT id FROM git_finalizations WHERE task_id=? AND status IN ('committing','pushing','uncertain','interrupted')",
+          id,
+        ).length
+      )
+        throw new AdeError(
+          "publication_pending",
+          "Reconcile the unfinished Git Finalization operation before removing task history.",
+        );
+      // Retain the minimal task ownership record. It keeps worktrees/branches and
+      // dependent finalization/repair records reachable by storage and migration.
+      await this.cleanupTaskData(
+        id,
+        { worktree: false, logs: true, artifacts: true, history: true },
+        false,
+        true,
+      );
+      e.db.saveTask({
+        ...e.db.task(id),
+        status: "preserved",
+        archived: true,
+        notes: "",
+        issue: { title: task.issue?.title },
+        execution_settings: undefined,
+        stage_settings: undefined,
+        workflow_start: undefined,
+        followup_config: undefined,
+        approval_gate: undefined,
+        error: null,
+        updated_at: now(),
+      });
+      e.changed(id);
+    });
   private removeTaskWorkspace = async (
     task: Task,
     repo: Repository,
     preview = false,
     protectUnpushed = false,
+    discard?: { fingerprint?: string; acknowledgeUnpublished?: boolean },
   ) => {
     const e = this.engine;
-    await e.git.withLock(repo.id, async () => {
+    return e.git.withLock(repo.id, async () => {
+      let disposal: TaskDisposalPreview | undefined;
+      let removalHead: string | undefined;
       if (!task.branch_name && !task.worktree_path) return;
+      if (
+        discard &&
+        (!task.worktree_path || !(await exists(task.worktree_path)))
+      )
+        throw new AdeError(
+          "ownership",
+          "The assigned task worktree is missing. Restore or inspect its ownership before discarding the branch.",
+        );
       if (task.worktree_path) await managedPath(e.root, task.worktree_path);
       const common = await e.git.commonDirectory(repo.path);
       if (
@@ -249,6 +420,7 @@ export class StorageService {
           );
       }
       const checkpointRemoval = (head: string) => {
+        removalHead = head;
         if (preview) return;
         task.workspace_checkpoint = {
           ...task.workspace_checkpoint,
@@ -352,27 +524,100 @@ export class StorageService {
           cwd: path,
           rawStdoutForIntegrity: true,
         });
-        if (ignored.code !== 0)
+        if (ignored.code !== 0 || ignored.stdout_truncated)
           throw new AdeError(
             "git_cleanup",
             "Ignored worktree files could not be verified; the worktree was preserved.",
           );
         const flags = await gitChecked(["ls-files", "-v", "-z"], path);
+        const hidden = flags.split("\0").some((entry) => /^[a-zS]/.test(entry));
+        if (discard) {
+          for (const name of [
+            "MERGE_HEAD",
+            "CHERRY_PICK_HEAD",
+            "REVERT_HEAD",
+            "rebase-merge",
+            "rebase-apply",
+            "sequencer",
+            "index.lock",
+            "BISECT_LOG",
+          ])
+            if (await exists(join(gitdir, name)))
+              throw new AdeError(
+                "git_operation",
+                `Resolve the pending Git operation (${name}) before discarding this task. Its files were preserved.`,
+              );
+          if (hidden)
+            throw new AdeError(
+              "git_index",
+              "Clear assume-unchanged and skip-worktree index flags before discarding. Hidden index state requires manual inspection.",
+            );
+        }
         if (
-          (await gitChecked(
+          !discard &&
+          ((await gitChecked(
             ["status", "--porcelain", "--untracked-files=all"],
             path,
           )) ||
-          ignored.stdout ||
-          flags.split("\0").some((entry) => /^[a-zS]/.test(entry)) ||
-          (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], path))
-            .code === 0
+            ignored.stdout ||
+            hidden ||
+            (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], path))
+              .code === 0)
         )
           throw new AdeError(
             "git_dirty",
             "The task has local changes, ignored files, hidden index entries or a pending merge. Preserve or commit them before removing its worktree.",
           );
         const head = await gitChecked(["rev-parse", "HEAD"], path);
+        if (discard) {
+          const changes = await e.git.diff(task);
+          disposal = {
+            ...this.emptyDisposalPreview(task, repo),
+            modified: changes.files
+              .filter((file) => !file.untracked)
+              .map((file) => file.path),
+            untracked: changes.files
+              .filter((file) => file.untracked)
+              .map((file) => file.path),
+            ignored: ignored.stdout.split("\0").filter(Boolean),
+            unpublished_commits: Number(
+              await gitChecked(
+                [
+                  "rev-list",
+                  "--count",
+                  head,
+                  "--not",
+                  task.base_commit_sha,
+                  "--remotes",
+                ],
+                path,
+              ),
+            ),
+            fingerprint: createHash("sha256")
+              .update(
+                JSON.stringify([
+                  task.id,
+                  task.repo_id,
+                  path,
+                  task.branch_name,
+                  await e.git.disposalFingerprint(task),
+                ]),
+              )
+              .digest("hex"),
+          };
+          if (!preview) {
+            if (disposal.fingerprint !== discard.fingerprint)
+              throw new AdeError(
+                "stale_preview",
+                "Task contents changed after the discard preview. Inspect the current files before confirming again.",
+              );
+            if (disposal.unpublished_commits && !discard.acknowledgeUnpublished)
+              throw new AdeError(
+                "unpublished_commits",
+                "Confirm the additional loss of unique unpublished commits before discarding this task.",
+              );
+          }
+        }
         if (
           protectUnpushed &&
           (await gitChecked(
@@ -404,11 +649,28 @@ export class StorageService {
             "Task branch and worktree heads differ; cleanup was stopped.",
           );
         checkpointRemoval(head);
+        if (discard && !preview) {
+          await taskRoot(e.root, task);
+          if (
+            (await readWorktreeOwner(gitdir, "vibestar-task-owner")) !== task.id
+          )
+            throw new AdeError(
+              "ownership",
+              "Task ownership changed immediately before discard. Its files were preserved.",
+            );
+          task.disposal_authorization = {
+            fingerprint: discard.fingerprint!,
+            acknowledge_unpublished: !!discard.acknowledgeUnpublished,
+            authorized_at: now(),
+          };
+          e.db.saveTask(task);
+        }
         await remove([
           "-c",
           "core.hooksPath=/dev/null",
           "worktree",
           "remove",
+          ...(discard ? ["--force"] : []),
           "--",
           path,
         ]);
@@ -449,7 +711,9 @@ export class StorageService {
       }
       if (branch.code === 0) {
         const head =
-          task.workspace_checkpoint?.cleanup_head || task.base_commit_sha;
+          removalHead ||
+          task.workspace_checkpoint?.cleanup_head ||
+          task.base_commit_sha;
         if (
           !head ||
           head !==
@@ -517,6 +781,7 @@ export class StorageService {
         task.workspace_checkpoint.operation = null;
         e.db.saveTask(task);
       }
+      return disposal;
     });
   };
   private cleanupTaskData = async (
@@ -527,7 +792,8 @@ export class StorageService {
       artifacts: boolean;
       history: boolean;
     },
-    protectUnpushed = false,
+    protectUnpushed = true,
+    preserveWork = false,
   ) => {
     const e = this.engine;
     let task = e.db.task(id);
@@ -537,7 +803,7 @@ export class StorageService {
         "Stop or dequeue this task before deleting its data.",
       );
     const repo = e.db.repository(task.repo_id);
-    if (options.worktree || options.history) {
+    if (!preserveWork && (options.worktree || options.history)) {
       if (
         e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", id).length
       )
@@ -575,7 +841,12 @@ export class StorageService {
           e.db.run(`DELETE FROM ${table} WHERE task_id=?`, id);
       }
       e.db.saveTask({ ...task, archived: true, updated_at: now() });
-      if (!task.worktree_path && options.history && options.artifacts) {
+      if (
+        !preserveWork &&
+        !task.worktree_path &&
+        options.history &&
+        options.artifacts
+      ) {
         for (const table of ["scheduled_jobs", "github_pull_requests"]) {
           for (const row of e.db.all<{ id: string; data: string }>(
             `SELECT ${table === "scheduled_jobs" ? "id" : "url"} AS id,data FROM ${table}`,

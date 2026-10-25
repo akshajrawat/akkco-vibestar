@@ -1,7 +1,7 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { _electron } from "playwright-core";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { Rpc } from "../backend/rpc";
@@ -12,6 +12,34 @@ import {
   FixtureProvider,
 } from "./fixtures";
 import { ValidationBlockerProvider } from "./verification/provider";
+import type { AgentRunRequest } from "../backend/execution/providers/contracts";
+import { exists } from "../backend/workspace/paths";
+
+vi.mock("../backend/workspace/issue", () => ({
+  fetchIssue: vi.fn(async () => ({
+    title: "Discuss before workflow",
+    body: "Explain source.txt before implementation.",
+    comments: [],
+    labels: [],
+    state: "open",
+    linkedPullRequests: [],
+    contextWarnings: [],
+  })),
+}));
+
+class WorkspaceV3Provider extends ValidationBlockerProvider {
+  invocation = (request: AgentRunRequest) =>
+    Object.keys(request.schema.properties as object).length === 1
+      ? {
+          program: process.execPath,
+          input: "",
+          args: [
+            "-e",
+            `(async()=>{const fs=require('node:fs/promises');let denied=false;try{await fs.writeFile('source.txt','UNAUTHORIZED')}catch{denied=true}if(!denied)throw Error('Chat source was writable');const summary='Read-only answer: source.txt contains '+(await fs.readFile('source.txt','utf8')).trim();console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify({summary})}}));console.log(JSON.stringify({type:'turn.completed'}));})().catch(e=>{console.error(e);process.exitCode=1})`,
+          ],
+        }
+      : new ValidationBlockerProvider().invocation(request);
+}
 
 const require = createRequire(import.meta.url);
 
@@ -23,7 +51,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
     await mkdir(evidence);
     const engine = await createFixtureEngine(
       join(dir, "data"),
-      () => new ValidationBlockerProvider(),
+      () => new WorkspaceV3Provider(),
     );
     const rpc = new Rpc(engine);
     engine.db.saveSettings({
@@ -166,6 +194,32 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
             path: join(evidence, `${file}-${width}x${height}.png`),
           });
         }
+        if (navigation === "Repositories") {
+          const detailsButton = page.getByRole("button", {
+            name: `Details and actions for ${repo.owner}/${repo.name}`,
+          });
+          await detailsButton.focus();
+          await page.keyboard.press("Enter");
+          const details = page.getByRole("dialog", {
+            name: `Repository details for ${repo.owner}/${repo.name}`,
+          });
+          await details.getByText(repo.path, { exact: true }).waitFor();
+          expect(
+            await details.evaluate(
+              (node) => node.scrollWidth <= node.clientWidth,
+            ),
+          ).toBe(true);
+          await page.screenshot({
+            path: join(evidence, "v3-repository-details-1280x720.png"),
+          });
+          await page.keyboard.press("Escape");
+          await details.waitFor({ state: "hidden" });
+          expect(
+            await detailsButton.evaluate(
+              (node) => document.activeElement === node,
+            ),
+          ).toBe(true);
+        }
       }
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0].setSize(1440, 900),
@@ -182,7 +236,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         },
       );
       await page.locator(".tree-task").first().click();
-      const draft = page.getByLabel("Task follow-up");
+      const draft = page.getByLabel("Task conversation");
       await draft.fill(
         "Keep this independent unsent instruction through plan approval.",
       );
@@ -296,7 +350,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         .filter({ hasText: "Playwright installation · interrupted" });
       await page
         .locator(".verification-group > summary")
-        .filter({ hasText: "Blocked" })
+        .filter({ hasText: "Needs verification" })
         .click();
       await setupRow
         .getByRole("button", { name: "Inspect exact command" })
@@ -310,6 +364,10 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await page.screenshot({
         path: join(evidence, "interrupted-setup-command.png"),
       });
+      await page
+        .locator(".secondary-content .verification-recovery")
+        .getByText("More options", { exact: true })
+        .click();
       await page
         .locator(".secondary-content")
         .getByRole("button", { name: "Recheck saved evidence" })
@@ -351,6 +409,11 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         await page.screenshot({
           path: join(evidence, `validation-blocker-${width}x${height}.png`),
         });
+        expect(
+          await page
+            .locator(".tests-panel")
+            .evaluate((node) => node.scrollWidth <= node.clientWidth),
+        ).toBe(true);
       }
       expect(await page.locator(".bottom-dock").isVisible()).toBe(false);
       await page.getByRole("tab", { name: "Changes", exact: true }).click();
@@ -385,7 +448,10 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       expect(await draft.inputValue()).toContain("Keep this independent");
       await page.screenshot({ path: join(evidence, "expanded-review.png") });
       await page.getByLabel("Return to chat").click();
-      await page.getByRole("tab", { name: "Tests", exact: true }).click();
+      await page.getByRole("tab", { name: "Checks", exact: true }).click();
+      await page
+        .getByText("Advanced evidence and tools", { exact: true })
+        .click();
       await page.getByLabel("Toggle utility dock").click();
       await page
         .getByRole("button", { name: "Start task terminal", exact: true })
@@ -450,8 +516,8 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         "Keep this unsent instruction while I inspect verification.",
       );
       await page.reload();
-      await page.getByLabel("Task follow-up").waitFor();
-      expect(await page.getByLabel("Task follow-up").inputValue()).toContain(
+      await page.getByLabel("Task conversation").waitFor();
+      expect(await page.getByLabel("Task conversation").inputValue()).toContain(
         "Keep this unsent instruction",
       );
       expect(
@@ -469,7 +535,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await page.getByLabel("Toggle secondary workspace").click();
       expect(
         await page
-          .getByRole("tab", { name: "Tests", exact: true })
+          .getByRole("tab", { name: "Checks", exact: true })
           .getAttribute("aria-selected"),
       ).toBe("true");
       expect(engine.db.detail(task.id).runs).toHaveLength(3);
@@ -533,11 +599,160 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
           .scrollIntoViewIfNeeded();
       }
       expect(errors).toEqual([]);
+      // V3 acceptance uses the real create/chat/start/disposal RPCs and provider
+      // sandbox, with issue retrieval and provider executables confined to fixtures.
+      await page
+        .getByRole("button", { name: "New task", exact: true })
+        .first()
+        .click();
+      const creation = page.getByRole("dialog", { name: "New task" });
+      await creation
+        .getByLabel("Repository", { exact: true })
+        .selectOption(repo.id);
+      await creation
+        .getByLabel("Issue URL", { exact: true })
+        .fill("https://github.com/fixture/fixture/issues/8");
+      await creation
+        .getByText("Discuss before workflow", { exact: true })
+        .waitFor();
+      await creation.getByLabel("Entire issue", { exact: true }).check();
+      await creation
+        .getByRole("button", { name: "Create task", exact: true })
+        .click();
+      await creation.waitFor({ state: "hidden" });
+      const idle = engine.db.tasks().find((value) => value.issue_number === 8)!;
+      expect(idle.status).toBe("not_started");
+      expect(idle.worktree_path).toBe("");
+      expect(engine.db.detail(idle.id).runs).toEqual([]);
+      await page
+        .getByLabel("Task conversation")
+        .fill("Explain source.txt without implementing the issue.");
+      await page
+        .getByRole("button", { name: "Ask question", exact: true })
+        .click();
+      await page
+        .getByText("Read-only answer: source.txt contains base", {
+          exact: true,
+        })
+        .waitFor();
+      await expect.poll(() => engine.isActive(idle.id)).toBe(false);
+      expect(engine.db.task(idle.id).status).toBe("not_started");
+      await page.reload();
+      await page.getByLabel("Task conversation").waitFor();
+      expect(engine.db.detail(idle.id).runs).toHaveLength(1);
+      expect(engine.db.task(idle.id).status).toBe("not_started");
+      if (
+        !(await page
+          .getByRole("tab", { name: "Workflow", exact: true })
+          .isVisible())
+      )
+        await page.getByLabel("Toggle secondary workspace").click();
+      await page.getByRole("tab", { name: "Workflow", exact: true }).click();
+      for (const [width, height] of [
+        [1280, 720],
+        [1440, 900],
+        [1920, 1080],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, size) =>
+            BrowserWindow.getAllWindows()[0].setSize(
+              ...(size as [number, number]),
+            ),
+          [width, height],
+        );
+        await expect
+          .poll(() => page.evaluate(() => window.innerWidth))
+          .toBe(width);
+        await page
+          .getByRole("heading", { name: "Workflow not started", exact: true })
+          .waitFor();
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+        await page.screenshot({
+          animations: "disabled",
+          path: join(evidence, `v3-idle-chat-${width}x${height}.png`),
+        });
+        expect(
+          await page.getByLabel("Current agent run").innerText(),
+        ).toContain("Conversation · read-only");
+      }
+      await page
+        .getByText("Include reviewed conversation instructions", {
+          exact: true,
+        })
+        .click();
+      await page
+        .getByLabel("Reviewed summary or instructions", { exact: true })
+        .fill("KEEP_REVIEWED_INSTRUCTION");
+      await page
+        .getByRole("button", { name: "Start workflow", exact: true })
+        .click();
+      await expect
+        .poll(() => engine.db.task(idle.id).status)
+        .toBe("awaiting_approval");
+      await expect.poll(() => engine.isActive(idle.id)).toBe(false);
+      expect(engine.db.detail(idle.id).runs).toHaveLength(2);
+      expect(engine.db.detail(idle.id).runs.at(-1)?.prompt).toContain(
+        "KEEP_REVIEWED_INSTRUCTION",
+      );
+      expect(engine.db.detail(idle.id).runs.at(-1)?.prompt).not.toContain(
+        "Explain source.txt without implementing",
+      );
+      const ownedPath = engine.db.task(idle.id).worktree_path;
+      await writeFile(
+        join(ownedPath, "experimental.txt"),
+        "Disposable V3 fixture\n",
+      );
+      await page.getByLabel("Actions for task #8", { exact: true }).click();
+      await page
+        .getByRole("menuitem", { name: "Manage task…", exact: true })
+        .click();
+      const disposal = page.getByRole("dialog", {
+        name: "Manage task",
+        exact: true,
+      });
+      await disposal
+        .getByRole("radio", { name: /^Discard task and delete/ })
+        .check();
+      await disposal
+        .getByRole("button", { name: "Preview discard", exact: true })
+        .click();
+      await disposal.getByText("Files to discard", { exact: true }).click();
+      await disposal.getByText("experimental.txt", { exact: true }).waitFor();
+      await page.screenshot({
+        animations: "disabled",
+        path: join(evidence, "v3-discard-preview.png"),
+      });
+      await disposal
+        .getByRole("button", {
+          name: "Confirm discard and delete",
+          exact: true,
+        })
+        .click();
+      await disposal.waitFor({ state: "hidden" });
+      expect(engine.db.tasks().some((value) => value.id === idle.id)).toBe(
+        false,
+      );
+      expect(await exists(ownedPath)).toBe(false);
+      expect(await readFile(join(repo.path, "source.txt"), "utf8")).toBe(
+        "base\n",
+      );
+      expect(errors).toEqual([]);
       await writeFile(
         join(evidence, "results.json"),
         JSON.stringify(
           {
             errors,
+            workflow_v3: {
+              created_idle: true,
+              read_only_chat: true,
+              explicit_single_start: true,
+              selected_summary: true,
+              discarded_owned_fixture: true,
+            },
             detail: await rpc.call("task.detail", { id: task.id }),
             inference:
               "Fixture processes only; no subscription or GitHub operations",
@@ -564,5 +779,5 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await engine.close();
     }
   },
-  120000,
+  180000,
 );

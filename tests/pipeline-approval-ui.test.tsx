@@ -154,7 +154,9 @@ it("keeps compact review controls beside the composer without an automatic modal
   expect(
     screen.queryByRole("button", { name: "Split Changes beside chat" }),
   ).toBeNull();
-  const draft = screen.getByLabelText("Task follow-up") as HTMLTextAreaElement;
+  const draft = screen.getByLabelText(
+    "Task conversation",
+  ) as HTMLTextAreaElement;
   fireEvent.change(draft, {
     target: { value: "Do not submit this draft on approval" },
   });
@@ -238,24 +240,24 @@ it("retains the task request identity across transport retries and changes it af
       expect(
         (
           screen.getByRole("button", {
-            name: "Start task",
+            name: "Create task",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(false),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Start task" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }));
     await vi.waitFor(() => expect(attempts).toBe(attempt));
   }
   await vi.waitFor(() =>
     expect(
-      (screen.getByRole("button", { name: "Start task" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Create task" }) as HTMLButtonElement)
         .disabled,
     ).toBe(false),
   );
   fireEvent.change(screen.getByLabelText("Optional instructions"), {
     target: { value: "New user instructions" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Start task" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
   await vi.waitFor(() => expect(created).toHaveBeenCalledWith("created-task"));
   const requests = rpc.mock.calls
     .filter(([method]) => method === "task.create")

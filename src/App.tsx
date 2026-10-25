@@ -572,6 +572,10 @@ export const App = () => {
             }}
             created={async (id) => {
               await refresh();
+              updateTaskView(id, {
+                secondaryOpen: window.innerWidth >= 1200,
+                secondarySection: "pipeline",
+              });
               open(id);
             }}
           />

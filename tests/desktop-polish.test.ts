@@ -175,14 +175,18 @@ it.skipIf(process.env.VIBESTAR_UX_TEST !== "1")(
       await page.screenshot({ path: join(evidence, "storage-blockers.png") });
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
       await page.locator(".tree-task").first().click();
+      await page.locator(".tree-task.selected").click({ button: "right" });
       await page
-        .getByRole("button", { name: "Delete task data", exact: true })
+        .getByRole("menuitem", { name: "Manage task…", exact: true })
         .click();
       await page
-        .getByRole("button", { name: "Delete selected data", exact: true })
+        .getByRole("radio", { name: /^Discard task and delete/ })
+        .check();
+      await page
+        .getByRole("button", { name: "Preview discard", exact: true })
         .click();
       await page
-        .getByText("Can't delete task data right now", { exact: true })
+        .getByText("Task choice could not complete", { exact: true })
         .waitFor();
       await page
         .getByText("Task #26829 terminal session is open", { exact: true })
@@ -198,10 +202,18 @@ it.skipIf(process.env.VIBESTAR_UX_TEST !== "1")(
         .getByRole("button", { name: "Stop blockers", exact: true })
         .click();
       await page
-        .getByText("Blockers stopped. Try again to finish cleanup.")
+        .getByText(
+          "Blockers stopped. Preview the current task contents before continuing.",
+        )
         .waitFor();
       await page
-        .getByRole("button", { name: "Try again", exact: true })
+        .getByRole("button", { name: "Preview discard", exact: true })
+        .click();
+      await page
+        .getByRole("button", {
+          name: "Confirm discard and delete",
+          exact: true,
+        })
         .click();
       await expect
         .poll(

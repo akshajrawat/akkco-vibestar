@@ -244,9 +244,8 @@ it("keeps failed/cancelled runs visible, sums reported fields only and exposes o
   expect(
     screen.getByText(/Subscription window usage delta.*\+6 percentage points/),
   ).toBeTruthy();
-  expect(
-    await screen.findByText(/Database: \/data\/state\/vibestar.sqlite/),
-  ).toBeTruthy();
+  fireEvent.click(await screen.findByText("Storage information"));
+  expect(await screen.findByText("/data/state/vibestar.sqlite")).toBeTruthy();
 });
 it("refreshes global usage on local events and filters provider/model/purpose/repository/task", async () => {
   let rows: UsageRecord[] = [];

@@ -314,6 +314,8 @@ describe("domain and persistence", () => {
         { version: 22 },
         { version: 23 },
         { version: 24 },
+        { version: 25 },
+        { version: 26 },
       ]);
       db.close();
       const reopened = new Database(path);
@@ -326,4 +328,73 @@ describe("domain and persistence", () => {
       await rm(dir, { recursive: true });
     }
   });
+});
+
+it("upgrades the V2 database additively without changing authorized queued tasks or historical instructions", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-v3-migration-"));
+  const path = join(dir, "v2.sqlite");
+  const old = new BetterSqlite3(path);
+  try {
+    old.exec(
+      "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT NOT NULL)",
+    );
+    for (const migration of migrations.filter((item) => item.version <= 24)) {
+      old.exec(migration.sql);
+      old
+        .prepare("INSERT OR IGNORE INTO schema_migrations VALUES(?,?)")
+        .run(migration.version, "before");
+    }
+    const task = {
+      id: "authorized",
+      repo_id: "repository",
+      status: "queued",
+      stage: 0,
+      created_at: "before",
+      scope_mode: "whole_issue",
+    };
+    old
+      .prepare("INSERT INTO repositories VALUES(?,?,?,?)")
+      .run("repository", "owner", "repo", JSON.stringify({ id: "repository" }));
+    old
+      .prepare(
+        "INSERT INTO tasks(id,repo_id,status,stage,data,created_at,scope_mode) VALUES(?,?,?,?,?,?,?)",
+      )
+      .run(
+        task.id,
+        task.repo_id,
+        task.status,
+        task.stage,
+        JSON.stringify(task),
+        task.created_at,
+        task.scope_mode,
+      );
+    old
+      .prepare(
+        "INSERT INTO task_messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)",
+      )
+      .run("historical", task.id, "user", "Authorized instructions", "before");
+  } finally {
+    old.close();
+  }
+  const current = await Database.open(path);
+  try {
+    expect(current.task("authorized")).toMatchObject({
+      status: "queued",
+      stage: 0,
+    });
+    expect(current.task("authorized").workflow_version).toBeUndefined();
+    expect(current.detail("authorized").messages[0]).toMatchObject({
+      content: "Authorized instructions",
+      purpose: "instruction",
+    });
+    expect(current.all("SELECT * FROM pr_analysis_batches")).toEqual([]);
+    expect(
+      current
+        .all<{ version: number }>("SELECT version FROM schema_migrations")
+        .at(-1)?.version,
+    ).toBe(26);
+  } finally {
+    current.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });

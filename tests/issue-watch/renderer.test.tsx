@@ -146,17 +146,16 @@ it("previews and saves a watch without inference or a scan, using an explicitly 
   fireEvent.change(within(dialog).getByLabelText("GitHub repository"), {
     target: { value: "oppia/oppia" },
   });
-  fireEvent.change(
-    within(dialog).getByLabelText("What issues are you looking for?"),
-    { target: { value: "Open issues" } },
-  );
+  fireEvent.change(within(dialog).getByLabelText("Describe issues to find"), {
+    target: { value: "Open issues" },
+  });
   fireEvent.change(within(dialog).getByLabelText("Model"), {
     target: { value: "fixture-model" },
   });
-  fireEvent.click(
-    within(dialog).getByRole("button", { name: "Preview hard filters" }),
-  );
-  await within(dialog).findByText(/Confirmed rule preview/);
+  expect(
+    within(dialog).queryByRole("button", { name: "Preview hard filters" }),
+  ).toBeNull();
+  await within(dialog).findByText(/Open issues · Unassigned/);
   expect(f.api).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByRole("button", { name: "Save watch" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

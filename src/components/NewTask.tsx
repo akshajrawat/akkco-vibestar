@@ -235,7 +235,7 @@ export const NewTask = ({
               required
               type="url"
               value={url}
-              placeholder="https://github.com/oppia/oppia/issues/26831"
+              placeholder="https://github.com/owner/repository/issues/123"
               onChange={(e) => setUrl(e.target.value)}
             />
           </label>
@@ -401,7 +401,7 @@ export const NewTask = ({
                 (mode === "partial" && !scope.trim())
               }
             >
-              {busy ? "Starting…" : "Start task"}
+              {busy ? "Creating task…" : "Create task"}
               <ArrowUpRight size={13} />
             </Button>
           </div>

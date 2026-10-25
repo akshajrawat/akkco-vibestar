@@ -1,5 +1,19 @@
 # akkco vibestar
 
+[Workflow-first IDE V3](docs/WORKFLOW-FIRST-IDE-V3.md) separates task creation,
+repository conversation and implementation authorization. **Create task** opens
+an idle chat without running a model or reserving an execution slot. Ask read-only
+questions, then choose **Start workflow** in the right sidebar. Only selected chat
+instructions or your reviewed summary reach the pipeline. Existing approvals and
+Verification V2 remain in force.
+
+**Checks** starts with a concise evidence summary. **Git Finalization** guides you
+through Files → Commit → Publish → Confirm. Task management separates Archive,
+history removal while preserving work, and an ownership-verified discard preview.
+The PR inbox discovers authored history through explicit GitHub refresh and adds
+bounded **Analyze All** with a visible AI cap. Issue Watch accepts pasted/dropped
+GitHub label links as exact label chips; saving a watch never scans.
+
 [Pipeline verification V2](docs/PIPELINE-VERIFICATION-V2.md) adds distinct saved-evidence
 rechecks, executable missing checks, explicit Codex fixes and independently reviewed
 environmental gaps. Code approval with incomplete verification stays local and
@@ -9,7 +23,7 @@ Workspace** previews exact removals and creates a validated backup while preserv
 dirty/unpushed work, repositories, settings and provider authentication.
 New tasks require repository automated tests and explicit issue checks. Extra manual
 browser checks are optional; existing tasks can select **Skip extra manual browser
-checks** in Tests. This preserves real test failures, the independent review and
+checks** in Checks. This preserves real test failures, the independent review and
 Git publishing confirmations. A saved-evidence recheck also recovers missing
 Antigravity tool exits and preserves an unchanged accepted review.
 [Current verification and screenshot evidence](docs/VERIFICATION.md) records the
@@ -143,7 +157,9 @@ Codex uses its verified `exec` structured-output interface, read-only planning a
 
 1. Choose **Connect local repository**, select **WSL** or **Windows**, and enter the checkout path (for example `/home/aksha/oppia` or `D:\projects\my-repo`). **Verify repository** shows the canonical execution path, remotes, GitHub identities, current branch and available base branches. Confirm the upstream, fork and base, then **Connect repository**. No scan, clone or fetch is needed for this connection.
 2. Choose **New task** and select an active **Repository**. Paste an issue URL, such as `https://github.com/oppia/oppia/issues/26831`. A unique matching active checkout is visibly suggested; an explicit mismatched selection blocks creation. Vibestar fetches the issue preview from GitHub using the selected repository ID.
-3. Choose **Entire issue** or **Specific part / claimed subtask**, add any instructions, and inspect the source path, future worktree location and base. Expand **Agent configuration** if needed, then **Start task**.
+3. Choose **Entire issue** or **Specific part / claimed subtask**, add instructions and inspect the repository. Expand **Agent configuration** if needed, then **Create task**. The new task stays **not started**, including after reopening Vibestar.
+4. Ask repository questions through **Question · read-only**. An explicit question may prepare an isolated worktree for reading; it does not start planning or implementation. Use **Save for later** for instructions you want to retain without a model run.
+5. Review future stage models in **Workflow**. Optionally select completed chat messages or write a reviewed summary, then choose **Start workflow**. Repeated delivery of that start request cannot start a second pipeline.
 
 GitHub catalog entries offer **Find local checkout**. If no candidate is found, **Create Vibestar-managed clone** explicitly confirms a download under the data root. Imported and managed ownership are labeled. **Disconnect** removes a repository from the active selector but keeps source files, branches, task history and worktrees. Verify/reconnect an imported checkout to use its existing ID again.
 
@@ -151,15 +167,15 @@ The SQLite migration preserves existing V1 tasks as partial tasks. Whole issue t
 
 For an imported Oppia checkout, verification reads `origin` as `akshajrawat/oppia`, `upstream` as `oppia/oppia`, and the remote HEAD as `develop`. The source checkout can remain on its own feature branch. Multiple checkout paths for the same upstream have separate registry IDs; task creation uses exactly the selected ID.
 
-Every new task fetches upstream under a repository lock, saves the exact base SHA and creates a fresh isolated branch/worktree. Imported checkouts supply Git object storage; agents execute only in their task worktree. After final acceptance, **Git Finalization** offers reviewed file selection, an exact message editor, local commits and separately confirmed publication. Ready and completed tasks retain this action. The source checkout's branch, index and working files remain unchanged. Duplicate branches receive deterministic suffixes; existing task bases remain pinned.
+An explicitly started workflow fetches upstream under a repository lock, saves the exact base SHA and creates a fresh isolated branch/worktree. Imported checkouts supply Git object storage; agents execute only in their task worktree. After final acceptance, **Git Finalization** offers reviewed file selection, an exact message editor, local commits and separately confirmed publication. Ready and completed tasks retain this action. The source checkout's branch, index and working files remain unchanged. Duplicate branches receive deterministic suffixes; existing task bases remain pinned.
 
 ## Task workspace
 
-Chat is the permanent task workspace. The collapsible right sidebar selects **Pipeline / Plans / Changes / Tests / Final review / Usage / Run details / Raw logs**; its selected tool, width and scroll position persist per conversation. Expand a tool for focused review, then return to the same chat, draft and selected file. Smaller windows use a dismissible drawer. The bottom **Terminal / Problems** dock starts hidden. Ctrl+Shift+P opens commands, Ctrl+B toggles navigation, and Ctrl+backtick or Ctrl+J toggles the dock.
+Chat is the permanent task workspace. The collapsible right sidebar selects **Workflow / Plans / Changes / Checks / Final review / Usage / Run details / Raw logs**; its selected tool, width and scroll position persist per conversation. Expand a tool for focused review, then return to the same chat, draft and selected file. Smaller windows use a dismissible drawer. The bottom **Terminal / Problems** dock starts hidden. Ctrl+Shift+P opens commands, Ctrl+B toggles navigation, and Ctrl+backtick or Ctrl+J toggles the dock.
 
 Chat shows actual preparation commands, Antigravity planning, Codex refinement, Codex implementation, validation and final review in one conversation. The compact activity strip opens the actual run in Run details. Plans selects the original or refined artifact, with comparison available in the expanded tool; streamed drafts remain recoverable after cancellation under the existing schema/fingerprint checks. Readable tool calls and results remain in chat. Raw logs retains redacted stdout/stderr, structured events, saved prompts and historical search. Changes provides searchable tree/flat files, status/statistics, content-bound reviewed marks and focused numbered unified/split review with lexical syntax colors, folded context and explicit binary/large-file states. Repair keeps its three diff baselines separate. **Open in VS Code** opens the assigned task worktree.
 
-The composer sends follow-up messages through the selected Codex or Antigravity headless adapter in the same worktree. Provider, model and effort apply to the next follow-up; historical run metadata and saved pipeline settings remain unchanged. During execution, Stop cancels the current run. Unsent drafts stay local; explicitly sending feedback queues it for the next safe stage boundary. Save for later persists an instruction without starting an agent. Text is never silently injected into a running process. Each conversation keeps separate drafts, context chips, model selections and layout preferences. The context picker previews bounded snapshots from validated worktree files, changed paths, selected file diffs, saved plans/scopes, incomplete checks and text notes. Task approval explicitly chooses whether saved pending instructions stay saved or reach the next configured stage; unrelated unsent drafts are retained. Repair saves are labelled local, and repair sending retains its approved Codex → Antigravity sequence. Future task stage models can be edited from Pipeline only while idle and before the stage has ever started.
+The composer defaults to read-only questions through the selected Codex or Antigravity adapter. After workflow startup, choose Request code changes to explicitly authorize a code-changing follow-up in the task worktree. Provider, model and effort apply to the next follow-up; historical run metadata and saved pipeline settings remain unchanged. During execution, Stop cancels the current run. Unsent drafts stay local; explicitly sending feedback queues it for the next safe stage boundary. Save for later persists an instruction without starting an agent. Text is never silently injected into a running process. Each conversation keeps separate drafts, context chips, model selections and layout preferences. The context picker previews bounded snapshots from validated worktree files, changed paths, selected file diffs, saved plans/scopes, incomplete checks and text notes. Task approval explicitly chooses whether saved pending instructions stay saved or reach the next configured stage; unrelated unsent drafts are retained. Repair saves are labelled local, and repair sending retains its approved Codex → Antigravity sequence. Future task stage models can be edited from Workflow only while idle and before the stage has ever started.
 
 Retry Stage retains successful earlier results. Resume explicitly retries an interrupted stage. Restart Pipeline reuses the same pinned worktree and reruns planning; it does not discard changes. Each completed plan pauses for explicit approval. After implementation and validation, review the task worktree in VS Code before starting Antigravity’s final review/tests, then inspect the final report before finalizing. Required checks that cannot run are reported, never counted as passing.
 
@@ -174,9 +190,9 @@ feasible checks and reports code findings separately from test coverage. Accepti
 code with gaps enters **reviewed with gaps**; publishing stays blocked until required
 verification completes. No model starts automatically at any approval boundary.
 
-**Open in VS Code** is the prominent task-header action. Its adjacent menu offers other detected editors or Open folder/Copy path. The source checkout is never opened by a task editor action. Approval controls stay beside the composer and open the relevant saved artifact without automatic blocking dialogs. Task status belongs in navigation. Right-click a task, use its actions button, or press Shift+F10 for Open, editor, copy, Archive/Unarchive and confirmed cleanup. Pipeline contains safe retry/finalization actions. No next stage starts without its existing explicit backend approval.
+**Open in VS Code** is the prominent task-header action. Its adjacent menu offers other detected editors or Open folder/Copy path. The source checkout is never opened by a task editor action. Approval controls stay beside the composer and open the relevant saved artifact without automatic blocking dialogs. Task status belongs in navigation. Right-click a task, use its actions button, or press Shift+F10 for Open, editor, copy, Archive/Unarchive and confirmed cleanup. Workflow contains safe retry/finalization actions. No next stage starts without its existing explicit backend approval.
 
-Task sandboxes reuse ignored source dependencies read-only and honor the checkout's selected Python virtualenv/.python-version. A sibling project toolchain named `<checkout-folder>_tools`, such as Oppia's `oppia_tools`, is exposed read-only at the corresponding task-parent path. Tests shows the selected runtime. Skipped or blocked checks remain unverified; no missing dependencies are installed automatically. External editor terminals use their own environment; source dependency mounts are limited to agent/task-terminal execution.
+Task sandboxes reuse ignored source dependencies read-only and honor the checkout's selected Python virtualenv/.python-version. A sibling project toolchain named `<checkout-folder>_tools`, such as Oppia's `oppia_tools`, is exposed read-only at the corresponding task-parent path. Checks shows the selected runtime under Advanced evidence and tools. Skipped or blocked checks remain unverified; no missing dependencies are installed automatically. External editor terminals use their own environment; source dependency mounts are limited to agent/task-terminal execution.
 
 The optional **Terminal** utility dock provide a real xterm.js PTY shell restricted to the task worktree. Close its shell before starting another agent execution in that same task; other tasks can continue. Switching views preserves the process and replays a bounded transcript. Terminal sessions are reconciled after a crash and are not silently restarted.
 
@@ -184,11 +200,14 @@ Manual commands are explicit argv JSON arrays, for example `["npm","test","--","
 
 ## Git Finalization
 
-1. Open **Git Finalization** after the independent final review. Inspect every changed file, its status, size and staged state. Unsafe paths/content are excluded; implementation-reported files are selected by default.
-2. **Prepare staged preview** copies only the selected literal paths into an owned review worktree/index. A subset requires an explicit fresh Antigravity review. Required verification and manual approval still apply.
-3. Type your own **Exact commit message**. It starts empty, supports multiple lines and retains a local draft. **Use original issue text** is an optional convenience. Confirm the exact message and approved files.
-4. Choose **Local only**, **Standard**, **Normal commit + no-verify push**, or typed custom hook options. Normal mode honors repository/worktree hook configuration inside the authorized read-only sandbox; global/system executable settings stay disabled. Skipping hooks never skips Vibestar's authorization, review, ancestry, destination or remote-SHA checks.
-5. Create the local commit. For publication, inspect the verified contribution repository, upstream, remote, branch, account, local commit and expected remote SHA, then explicitly confirm the push. A changed destination requires a new check and confirmation.
+1. **Files:** inspect the changed files and select their complete contents. Unsafe paths/content are excluded; ignored files are never included automatically. **Prepare staged preview** copies only selected literal paths into an owned review worktree/index. A subset needs an explicit fresh Antigravity review.
+2. **Commit:** type an **Exact commit message**. It starts empty, supports multiple lines and retains a local draft. **Use original issue text** is optional. Normal commit is the default; optional hook skipping is under Advanced commit options.
+3. **Publish:** choose the destination repository/branch and a saved preset: **Standard**, **Local only**, **Normal commit + no-verify push**, or custom hook options. Normal push is the default. If a fork is missing, **Connect Fork** opens the verified local connection flow; local commits remain available.
+4. **Confirm:** review the selected files, exact message and operation summary, explicitly approve and create the local commit. Publication then requires a live destination check and a separate push confirmation bound to the contribution repository, remote, branch, account, local commit and expected remote SHA. A changed destination requires another check and confirmation.
+
+Skipping optional hooks never skips Vibestar's authorization, required verification,
+review, ancestry, destination or remote-SHA checks. Actual commands, output and
+recovery/history remain under **Saved operation log and recovery**.
 
 The task's unrelated staged content is preserved. Selecting a file with staged hunks requires an explicit choice to use its complete reviewed contents. Existing task commits are included in publication and cannot be silently omitted. Messages retain exact UTF-8 contents, including trailing spaces and absence of a final newline. There is no generated title or trailer.
 
@@ -198,16 +217,41 @@ Publication requires the configured contribution fork and current GitHub write p
 
 ## Browser verification environment
 
-Tests includes a collapsed **Browser verification environment** panel. Opening it runs nothing. An explicit **Use environment** choice can expose installed Playwright browser caches and Chrome read-only for manual verification; provider-internal sandboxes remain separate. **Inspect browser environment** reports installed tooling, DNS, loopback socket support and separate direct-file/HTTP fixture capability without downloading packages or starting a model. It never changes application verification results or waives a required check.
+Checks → Advanced evidence and tools includes a collapsed **Browser verification environment** panel. Opening it runs nothing. An explicit **Use environment** choice can expose installed Playwright browser caches and Chrome read-only for manual verification; provider-internal sandboxes remain separate. **Inspect browser environment** reports installed tooling, DNS, loopback socket support and separate direct-file/HTTP fixture capability without downloading packages or starting a model. It never changes application verification results or waives a required check.
 
 The installed-toolchain fixture runs with `npm run test:browser:environment` and uses disposable worktrees. Saved diagnostics identify their environment and timestamp.
+
+## PR batch analysis
+
+**Analyze All** starts with a selection, scope, verified reusable-report count,
+utility model/effort and maximum AI authorization. Defaults are five selected PRs
+and five AI attempts; the hard selection and allowance bounds are 20. Each PR is
+refreshed again before analysis, and unchanged reports consume no model invocation.
+Cancel keeps completed results; reopening never resumes an interrupted batch.
+
+## Task disposal
+
+The task context menu offers **Manage task**. Archive keeps everything. **Remove
+task history, preserve work** removes conversation/run/log/plan history and keeps
+the files, branch and an archived ownership record. Dependent records stay linked.
+That ownership record cannot restart implementation.
+
+**Discard task and delete** first verifies ownership and previews modified,
+untracked and ignored paths, locally unpublished commits and dependencies. Confirm
+the exact preview to remove the task-owned worktree, eligible branch and history.
+Unique commits require a separate acknowledgment. Changed contents, unknown owners,
+symlinks, active agents/terminals, pending merges, hidden index flags and unresolved
+finalization/repair dependencies stop the operation with a reason. Imported source
+checkouts and unrelated worktrees/branches are preserved. Ordinary cleanup remains
+conservative. Never use this feature on work you intend to retain without reviewing
+the preview.
 
 ## Manual PR review analysis
 
 PR review is manual only. Startup, authentication, opening the inbox, tracking and GitHub metadata synchronization never invoke PR-analysis models. Legacy enabled watches are disabled on upgrade while their snapshots, conversations, decisions, provider logs and usage remain available. The existing issue queue and recovery behavior are preserved.
 
-1. **Refresh PR List** retrieves authored PR metadata through official gh; no inference or tracking starts.
-2. Open a discovered PR to view its saved metadata and create an inactive review record. It does not start inspection or a timer; the main page has no URL/Track form.
+1. **Refresh PR List** retrieves authored PR metadata through official gh, including closed/merged history, and creates inactive local review identities. It never starts inference.
+2. Open a discovered PR to view its saved metadata and existing inactive review record. It does not start inspection or a timer; the main page has no URL/Track form.
 3. **Analyze PR / Analyze Again** retrieves fresh complete discussion/context and invokes the displayed Utility AI provider/model/effort only when semantic classification is needed. Cancellation and errors require an explicit new request; restart never retries PR analysis.
 4. **Review report** shows PR/fork/head/base identity, complete original Markdown reviews/replies, independently tracked observations, unanswered questions, response evidence, positive feedback, checks, patches and analysis history. Replies, commits, dismissed reviews and resolved threads do not prove code correctness.
 
@@ -237,7 +281,7 @@ Conflicts preserve the worktree and staged conflict state. Resolve and stage the
 - Provider-owned auth/session directories remain mounted because the official CLI must authenticate and store conversations. Vibestar never reads, deserializes or copies their credentials. This is a trust boundary: an OS mount cannot distinguish provider authentication code from tools running inside that same provider process. Provider security restrictions and prompts remain necessary, and this is not a claim of complete protection against a malicious provider executable.
 - SQLite and logs store task context and **redacted** events, not provider OAuth tokens. Authentication PTY output is ephemeral. Raw logs are redacted too.
 - PTY redaction retains bounded recognition state across chunks before output reaches events, snapshots or logs. Output and pending writes have explicit limits; redaction remains best effort. Corrupt SQLite records retain their source bytes and appear in Settings diagnostics while unrelated history remains readable. Unsafe operations on corrupt ownership records are blocked.
-- Issue-task submissions use durable request identities. Retrying the same submission returns its original task; reusing an identity with different content is refused. Worktree cleanup requires ownership evidence, a clean index/worktree and the expected branch SHA.
+- Issue-task submissions use durable request identities. Retrying the same submission returns its original task; reusing an identity with different content is refused. Ordinary worktree cleanup requires ownership evidence, a clean index/worktree and the expected branch SHA. Deliberate discard requires a fresh content-bound preview and explicit loss confirmation, retaining ownership, Git-operation and dependency guards.
 - Remote access is limited to issue/PR reads, upstream Git fetch, and official inference/authentication. Vibestar never automatically pushes, comments, creates PRs, merges, assigns or closes issues. Model instructions prohibit remote writes; official provider tooling and its auth directory remain trusted.
 
 The window keeps its dark frameless titlebar and native resizing, and its initial size fits the current display. Maximize checks the current display’s work area and retains restore bounds for a geometry fallback. State events drive the icon; titlebar double-click toggles maximize, F11 enters actual fullscreen, and Escape exits it. Fullscreen and maximize/restore are also available through Ctrl+Shift+P. Native Windows keeps native titlebar dragging and avoids WSLg's frameless maximize shadow offset. `npm run test:windows` tests Windows DPI-aware client bounds, restore, fullscreen, resize and real mouse dragging/double-click through the running host; it requires the dev Vite server. The optional WSLg path retains a pointer-driven drag fallback.

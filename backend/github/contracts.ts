@@ -28,6 +28,9 @@ export const GitHubPullRequestSchema = z
     title: z.string(),
     state: z.string(),
     draft: z.boolean().optional(),
+    head_sha: z.string().optional(),
+    access_error: z.string().optional(),
+    last_known_state: z.string().optional(),
     head_branch: z.string(),
     head_repository: z.string().nullable(),
     updated_at: z.string(),
@@ -54,6 +57,9 @@ export interface GitHubPullRequest {
   title: string;
   state: string;
   draft?: boolean;
+  head_sha?: string;
+  access_error?: string;
+  last_known_state?: string;
   head_branch: string;
   head_repository: string | null;
   updated_at: string;

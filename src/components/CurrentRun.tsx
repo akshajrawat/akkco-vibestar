@@ -56,20 +56,22 @@ export const CurrentRun = ({
     antigravity_verifying: "Independent review & tests",
   };
   const stage =
-    run?.purpose === "Code Review Ask AI"
-      ? "Code review · read-only"
-      : run?.purpose?.startsWith("PR Repair")
-        ? run.purpose
-        : run
-          ? [
-              "",
-              "Planning",
-              "Reviewing plan",
-              "Implementing",
-              "Validation",
-              "Reviewing changes & tests",
-            ][run.stage]
-          : labels[status];
+    run?.purpose === "Read-only conversation"
+      ? "Conversation · read-only"
+      : run?.purpose === "Code Review Ask AI"
+        ? "Code review · read-only"
+        : run?.purpose?.startsWith("PR Repair")
+          ? run.purpose
+          : run
+            ? [
+                "",
+                "Planning",
+                "Reviewing plan",
+                "Implementing",
+                "Validation",
+                "Reviewing changes & tests",
+              ][run.stage]
+            : labels[status];
   const activity = runActivity(detail.events, run);
   return (
     <section

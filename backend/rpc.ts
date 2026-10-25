@@ -28,11 +28,20 @@ import { AuthSessions } from "./execution/auth";
 import { AdeError, SettingsSchema, parseIssue, now } from "./domain";
 import { capture, checked } from "./execution/process";
 import { taskRoot } from "./workspace/paths";
+import { StartWorkflowSchema, TaskChatSchema } from "./execution/workflow";
+import { TaskDisposalSchema } from "./storage/disposal";
+import {
+  PRAnalysisBatches,
+  BatchSelectionSchema,
+  StartPRBatchSchema,
+} from "./review/pr/batches";
+import { reviewActionState } from "./review/pr/inbox";
 import { LocalRepositoryInput, ConnectLocalInput } from "./workspace/discovery";
 const idInput = z.object({ id: z.string().uuid() });
 export class Rpc {
   private readonly auth: AuthSessions;
   readonly scheduler: Scheduler;
+  readonly prBatches: PRAnalysisBatches;
   readonly github: GitHubService;
   readonly issueWatch: IssueWatchService;
   private readonly review: ReviewService;
@@ -48,6 +57,7 @@ export class Rpc {
     readonly finalization = new FinalizationService(engine),
   ) {
     this.scheduler = new Scheduler(engine, monitor);
+    this.prBatches = new PRAnalysisBatches(engine, this.scheduler);
     this.github = new GitHubService(engine, this.scheduler);
     this.issueWatch =
       issueWatch || new IssueWatchService(engine, this.github.client);
@@ -112,11 +122,12 @@ export class Rpc {
             .filter((t) => e.isActive(t.id))
             .map((t) => t.id),
           scheduled: this.scheduler.jobs(),
+          pr_batches: this.prBatches.list(),
           repairs: this.repairs.store.list(),
           pr_reports: this.scheduler.jobs().map((job) => {
-            const analysis = this.scheduler.analysis
-              .history(job.id)
-              .find((record) => record.report);
+            const history = this.scheduler.analysis.history(job.id);
+            const analysis = history.find((record) => record.report);
+            const latest = history[0];
             const actions =
               analysis?.report?.actions.filter(
                 (action) =>
@@ -126,6 +137,28 @@ export class Rpc {
               ) || [];
             return {
               job_id: job.id,
+              action_state:
+                latest &&
+                !latest.report &&
+                ["partial", "failed", "cancelled", "interrupted"].includes(
+                  latest.status,
+                )
+                  ? "Analysis incomplete"
+                  : analysis &&
+                      latest?.snapshot &&
+                      !this.scheduler.analysis.canReuse(job.id, latest.snapshot)
+                    ? "Analysis stale"
+                    : reviewActionState(
+                        analysis,
+                        this.github
+                          .prs()
+                          .find(
+                            (pr) =>
+                              pr.url.toLowerCase() === job.url.toLowerCase(),
+                          ),
+                      ),
+              analyzed_head: analysis?.snapshot?.headRefOid || null,
+              analyzed_at: analysis?.ended_at || null,
               outstanding: actions.length,
               unanswered_questions: actions.filter(
                 (action) => action.classification === "question",
@@ -352,11 +385,35 @@ export class Rpc {
       }
       case "task.archive": {
         const p = idInput.extend({ archived: z.boolean() }).parse(input);
+        if (!p.archived && e.db.task(p.id).status === "preserved")
+          throw new AdeError(
+            "invalid_state",
+            "This retained worktree keeps its ownership record, but its conversation history has been removed.",
+          );
         if (e.isActive(p.id) || e.db.task(p.id).status === "queued")
           throw new AdeError("busy", "Stop this task before archiving it.");
         e.db.saveTask({ ...e.db.task(p.id), archived: p.archived });
         e.changed(p.id);
         return null;
+      }
+      case "task.disposal.preview":
+        return this.storage.previewTaskDisposal(
+          idInput.strict().parse(input).id,
+        );
+      case "task.disposal.discard": {
+        const p = TaskDisposalSchema.parse(input);
+        return this.storage.discardTask(
+          p.id,
+          p.fingerprint,
+          p.acknowledge_unpublished,
+        );
+      }
+      case "task.disposal.preserve": {
+        const p = idInput
+          .extend({ confirmed: z.literal(true) })
+          .strict()
+          .parse(input);
+        return this.storage.preserveTaskWork(p.id);
       }
       case "task.message.retry": {
         const p = idInput
@@ -503,7 +560,7 @@ export class Rpc {
           .strict()
           .parse(input);
         const task = e.db.task(p.id);
-        if (e.isActive(p.id) || task.status === "queued")
+        if (e.cleanupBlockers(p.id).length || task.status === "queued")
           throw new AdeError(
             "busy",
             "Wait for execution and terminals to finish before editing a future stage.",
@@ -511,7 +568,7 @@ export class Rpc {
         if (
           task.stage > p.stage ||
           e.db.all(
-            "SELECT id FROM agent_runs WHERE task_id=? AND stage=? LIMIT 1",
+            "SELECT id FROM agent_runs WHERE task_id=? AND stage=? AND purpose!='Read-only conversation' LIMIT 1",
             p.id,
             p.stage,
           ).length
@@ -885,6 +942,12 @@ export class Rpc {
           .parse(input);
         return this.scheduler.analyze(p.id, p.request_id);
       }
+      case "scheduled.batch.preview":
+        return this.prBatches.preview(BatchSelectionSchema.parse(input));
+      case "scheduled.batch.start":
+        return this.prBatches.start(StartPRBatchSchema.parse(input));
+      case "scheduled.batch.cancel":
+        return this.prBatches.cancel(idInput.strict().parse(input).id);
       case "scheduled.cancel":
         return this.scheduler.cancel(idInput.strict().parse(input).id);
       case "scheduled.detail": {
@@ -1055,6 +1118,10 @@ export class Rpc {
         e.cancel(id);
         return null;
       }
+      case "task.startWorkflow":
+        return e.startWorkflow(StartWorkflowSchema.parse(input));
+      case "task.chat":
+        return e.chat(TaskChatSchema.parse(input));
       case "task.retry": {
         const p = idInput
           .extend({
@@ -1276,6 +1343,7 @@ export class Rpc {
     await this.finalization.close();
     await this.issueWatch.close();
     await this.github.close();
+    await this.prBatches.close();
     await this.scheduler.close();
     await this.repairTerminals.dispose();
     await this.repairs.close();

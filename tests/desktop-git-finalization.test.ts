@@ -201,7 +201,20 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
         .toBe("approved");
       const message =
         "  Exact desktop contribution  \n\n# Literal message text  ";
+      await dialog
+        .getByRole("button", { name: "Continue to commit", exact: true })
+        .click();
       await dialog.getByLabel("Exact Git commit message").fill(message);
+      await page.screenshot({ path: join(screenshots, "git-commit-step.png") });
+      await dialog
+        .getByRole("button", { name: "Continue to publish", exact: true })
+        .click();
+      await page.screenshot({
+        path: join(screenshots, "git-publish-step.png"),
+      });
+      await dialog
+        .getByRole("button", { name: "Review operation", exact: true })
+        .click();
       await dialog
         .getByRole("checkbox", {
           name: "I confirm this exact message and the approved selected files.",
@@ -218,7 +231,10 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
           timeout: 30000,
         })
         .toBe("prepared");
-      await dialog.getByText("contributor/fixture", { exact: true }).waitFor();
+      await dialog
+        .locator("dd")
+        .filter({ hasText: /^contributor\/fixture$/ })
+        .waitFor();
       await dialog
         .getByRole("checkbox", {
           name: "Publish this exact commit to the repository and branch shown above.",
@@ -294,6 +310,9 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
       await dialog
         .getByText("Push verified against the remote branch.")
         .waitFor();
+      await dialog
+        .getByText("Saved operation log and recovery", { exact: true })
+        .click();
       expect(
         await dialog.getByLabel("Saved Git operation history").inputValue(),
       ).toBe(record.id);

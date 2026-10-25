@@ -275,6 +275,12 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
       scope_mode: "partial",
       claimed_scope: "Task B",
     })) as ReturnType<Engine["db"]["task"]>;
+    expect([a.status, b.status]).toEqual(["not_started", "not_started"]);
+    await Promise.all(
+      [a, b].map((task) =>
+        engine.startWorkflow({ id: task.id, request_id: crypto.randomUUID() }),
+      ),
+    );
     await Promise.all(
       [a, b].map((task) =>
         waitForTask(engine, task.id, (status) =>
@@ -533,6 +539,11 @@ it("keeps an explicitly selected legacy managed repository authoritative when it
       issue_url: "https://github.com/fixture/fixture/issues/1",
       scope_mode: "whole_issue",
     })) as ReturnType<Engine["db"]["task"]>;
+    expect(task.status).toBe("not_started");
+    await engine.startWorkflow({
+      id: task.id,
+      request_id: crypto.randomUUID(),
+    });
     await waitForTask(engine, task.id, (status) => status === "failed");
     expect(engine.db.repository(repo.id)).toMatchObject({
       path: repo.path,

@@ -124,8 +124,16 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
         .toBe("verification_blocked");
       await page
         .locator(".chat-actions")
+        .getByText("More options", { exact: true })
+        .click();
+      await page
+        .locator(".chat-actions")
         .getByRole("button", { name: "Continue to independent review" })
         .waitFor();
+      await page
+        .locator(".chat-actions")
+        .getByText("More options", { exact: true })
+        .click();
       await expect
         .poll(() => page.locator('.tool-event[data-state="failed"]').count())
         .toBe(0);
@@ -134,11 +142,11 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
       ).toHaveLength(2);
       if (
         !(await page
-          .getByRole("tab", { name: "Pipeline", exact: true })
+          .getByRole("tab", { name: "Workflow", exact: true })
           .count())
       )
         await page.getByLabel("Toggle secondary workspace").click();
-      await page.getByRole("tab", { name: "Pipeline", exact: true }).click();
+      await page.getByRole("tab", { name: "Workflow", exact: true }).click();
       await page
         .locator(".pipeline-stages")
         .getByText("Verification incomplete", { exact: true })
@@ -252,6 +260,10 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
       );
       await prepareAuthorization
         .getByRole("button", { name: "Close", exact: true })
+        .click();
+      await page
+        .locator(".chat-actions")
+        .getByText("More options", { exact: true })
         .click();
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()[0].setSize(1440, 900),

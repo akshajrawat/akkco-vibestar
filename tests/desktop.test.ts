@@ -237,7 +237,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByText("CODEX IMPLEMENTATION", { exact: true }).waitFor();
       await page.locator(".tree-task").filter({ hasText: "Task A" }).click();
-      await page.getByLabel("Task follow-up").fill("Preserve task A draft");
+      await page.getByLabel("Task conversation").fill("Preserve task A draft");
       expect(await page.locator(".context-pane").count()).toBe(0);
       await mkdir("docs/screenshots", { recursive: true });
       await page.screenshot({ path: "docs/screenshots/chat.png" });
@@ -269,7 +269,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.getByLabel("Toggle utility dock").click();
       await page.getByRole("button", { name: "Start task terminal" }).click();
       await page.getByRole("button", { name: "Close shell" }).waitFor();
-      const composer = page.getByLabel("Task follow-up");
+      const composer = page.getByLabel("Task conversation");
       const location = page.url();
       let navigations = 0;
       page.on("framenavigated", () => {
@@ -341,24 +341,24 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
         .toContain("live-added.txt");
       await page.getByRole("tab", { name: "Chat", exact: true }).click();
       await page.locator(".tree-task").filter({ hasText: "Task B" }).click();
-      await page.getByLabel("Task follow-up").waitFor();
-      expect(await page.getByLabel("Task follow-up").inputValue()).toBe("");
+      await page.getByLabel("Task conversation").waitFor();
+      expect(await page.getByLabel("Task conversation").inputValue()).toBe("");
       expect(await page.locator(".utility-dock").count()).toBe(0);
       await page.getByRole("tab", { name: "Changes", exact: true }).click();
       expect(
         await page.getByRole("button", { name: /live-added.txt/ }).count(),
       ).toBe(0);
       await page.getByRole("tab", { name: "Chat", exact: true }).click();
-      await page.getByLabel("Task follow-up").fill("Task B only");
+      await page.getByLabel("Task conversation").fill("Task B only");
       await page.getByRole("button", { name: "Context", exact: true }).click();
       await page.getByLabel("Context file or note").fill("source.txt");
       await page.getByRole("button", { name: "Add", exact: true }).click();
-      expect(await page.getByLabel("Task follow-up").inputValue()).toBe(
+      expect(await page.getByLabel("Task conversation").inputValue()).toBe(
         "Task B only\n@source.txt",
       );
       await page.locator(".tree-task").filter({ hasText: "Task A" }).click();
       await page.getByRole("button", { name: "Close shell" }).waitFor();
-      expect(await page.getByLabel("Task follow-up").inputValue()).toBe(
+      expect(await page.getByLabel("Task conversation").inputValue()).toBe(
         "Preserve task A draft",
       );
       await page.getByRole("button", { name: "Close shell" }).click();

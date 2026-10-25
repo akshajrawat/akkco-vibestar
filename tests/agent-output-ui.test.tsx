@@ -247,7 +247,7 @@ it("shows actual execution independently from follow-up selection and keeps the 
   expect(current.textContent).not.toContain("composer-model");
   expect(screen.queryByRole("tab", { name: "Chat" })).toBeNull();
   fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
-  const pipeline = screen.getByRole("tab", { name: "Pipeline" });
+  const pipeline = screen.getByRole("tab", { name: "Workflow" });
   pipeline.focus();
   fireEvent.keyDown(pipeline, { key: "ArrowRight" });
   expect(document.activeElement).toBe(
@@ -548,7 +548,7 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
   );
   const rpc = bridge(
     vi.fn(async (method, params) =>
-      method === "task.followup"
+      method === "task.chat"
         ? {
             message: {
               id: "saved",
@@ -593,17 +593,17 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Agent prompts" })).toBeNull();
   expect(document.activeElement).toBe(opener);
-  const input = screen.getByLabelText("Task follow-up");
+  const input = screen.getByLabelText("Task conversation");
   fireEvent.change(input, { target: { value: "saved instruction" } });
   fireEvent.keyDown(input, { key: "Enter", isComposing: true });
   fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
   expect(
-    rpc.mock.calls.filter(([method]) => method === "task.followup"),
+    rpc.mock.calls.filter(([method]) => method === "task.chat"),
   ).toHaveLength(0);
   fireEvent.keyDown(input, { key: "Enter" });
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
-      "task.followup",
+      "task.chat",
       expect.objectContaining({ content: "saved instruction" }),
     ),
   );

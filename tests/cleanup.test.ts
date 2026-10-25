@@ -55,7 +55,11 @@ it("history deletion removes the owned branch and worktree even when worktree cl
       ],
       task.worktree_path,
     );
-    await storage.cleanupTask(task.id, options);
+    await expect(storage.cleanupTask(task.id, options)).rejects.toThrow(
+      "Unpushed",
+    );
+    const preview = await storage.previewTaskDisposal(task.id);
+    await storage.discardTask(task.id, preview.fingerprint, true);
     expect(await exists(task.worktree_path)).toBe(false);
     expect(
       (
@@ -69,12 +73,7 @@ it("history deletion removes the owned branch and worktree even when worktree cl
     expect(
       await checked("git", ["rev-parse", "main", "akkco/personal"], repo.path),
     ).toBe(before);
-    expect(engine.db.task(task.id)).toMatchObject({
-      worktree_path: "",
-      branch_name: "",
-      branch_owned: false,
-      archived: true,
-    });
+    expect(engine.db.tasks()).toEqual([]);
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });

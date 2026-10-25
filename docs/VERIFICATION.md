@@ -1,5 +1,144 @@
 # Verification — October 25, 2026
 
+## Workflow-first IDE V3
+
+V3 is implemented against the clean baseline
+`b96e65cc17744574a76f1a7b252bd96705da23ce`. The implementation record is
+[WORKFLOW-FIRST-IDE-V3.md](WORKFLOW-FIRST-IDE-V3.md). The tests use disposable
+repositories, isolated app/HOME roots and injected test-only providers. Real model
+allowance, user task data and remote GitHub writes were not used for this work.
+
+| Check                                                | Observed result                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| `npm test -- --maxWorkers=2`                         | **580 passed, 17 skipped**, 84 passing files / 100 total, 147.25 seconds |
+| `npm run test:integration`                           | **7 passed**, 16.71 seconds                                              |
+| `npm run test:tui`                                   | **3 passed**, real PTYs, 6.33 seconds                                    |
+| `npm run test:browser:environment`                   | **2 passed**, installed browser direct-file/HTTP fixtures, 5.60 seconds  |
+| Focused renderer checks after screenshot corrections | **16 passed**, 3 files, 7.49 seconds                                     |
+| Built Electron acceptance                            | **8 passed**, 100.96 seconds                                             |
+
+The final `npm run format:check`, explicit nested-document Prettier check,
+`npm run lint`, `npm run typecheck` and `git diff --check` passed.
+`npm run build` passed again on the delivery source (Vite 8.83 seconds).
+The final `Open Checks` navigation wording passed **8 recovery UI tests** in
+2.34 seconds and the rebuilt Verification V2 Electron fixture in **10.15 seconds**.
+Its final screenshots are
+`/home/aksha/tmp/vibestar-verification-v2-desktop-LXPuj6/screenshots/`;
+the final-review/gaps screenshot was visually inspected with the new navigation
+label and unchanged verification/publication semantics.
+Logs: `/tmp/vibestar-v3-{format,lint,types}-delivery.log`,
+`/tmp/vibestar-v3-doc-check.log`, `/tmp/vibestar-v3-build-delivery.log`,
+`/tmp/vibestar-v3-checks-label.log` and
+`/tmp/vibestar-v3-checks-label-desktop.log`.
+
+The 17 normal-suite skips are explicit environment/live/desktop/package gates;
+they are not passing tests. The eight desktop gates and browser-environment gate
+were exercised separately. Normal integration and PTY coverage is also included in
+the complete suite; explicit script runs above are not additional unique tests.
+
+### Built Electron acceptance
+
+The built source passed this fixture command after correcting the narrow recovery
+layout and read-only run label:
+
+```bash
+TMPDIR=/home/aksha/tmp \
+VIBESTAR_WORKSPACE_DESKTOP_TEST=1 VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 VIBESTAR_PR_DESKTOP_TEST=1 \
+VIBESTAR_REPAIR_DESKTOP_TEST=1 VIBESTAR_WATCH_DESKTOP_TEST=1 \
+VIBESTAR_GIT_DESKTOP_TEST=1 VIBESTAR_VERIFICATION_DESKTOP_TEST=1 \
+VIBESTAR_KEEP_EVIDENCE=1 \
+xvfb-run -a -s '-screen 0 2000x1200x24' npm test -- \
+tests/desktop-verification-v2.test.ts tests/desktop-chat-workspace.test.ts \
+tests/desktop-pipeline-approval.test.ts tests/desktop-agent-output.test.ts \
+tests/desktop-pr-analysis.test.ts tests/desktop-pr-repair.test.ts \
+tests/desktop-issue-watch.test.ts tests/desktop-git-finalization.test.ts \
+--maxWorkers=1
+```
+
+The workspace fixture creates an idle task through the UI, proves there are no
+runs/worktree/usage, sends a real sandboxed read-only question, reloads without
+starting a workflow, supplies an explicit reviewed summary and starts exactly one
+plan. It then previews and discards only the experimental task worktree while
+asserting the source checkout remains unchanged. Its retained results contain
+`created_idle`, `read_only_chat`, `explicit_single_start`,
+`selected_summary`, `discarded_owned_fixture` and no renderer errors.
+
+The PR fixture analyzes one contribution, checks saved source-linked history and
+unchanged reuse, opens Analyze All by keyboard, previews one reusable report and
+finishes with a zero-AI cap and no extra provider run. Batch unit tests separately
+cover caps, cancellation, partial evidence, active-PR exclusion and restart.
+The Watch fixture uses actual text/URI DataTransfer drop, keeps the decoded exact
+label chip and live compiler contract, then exercises explicit scan/cancel/handoff.
+The Git fixture completes Files/Commit/Publish/Confirm, preserves exact message
+bytes, unrelated staging and imported source/index, and publishes to a local bare
+fixture only. Verification V2 still rejects publication with required gaps and
+retains independent review/gap acknowledgment and reset-backup behavior.
+
+### Retained and visually inspected evidence
+
+Workspace evidence is
+`/home/aksha/tmp/vibestar-chat-workspace-2G3d84/screenshots/`. It includes
+`results.json`, three-size `v3-idle-chat-*.png`, `v3-discard-preview.png`,
+`v3-repository-details-1280x720.png`, three-size validation-blocker screenshots,
+approval, diff, drawer, secondary-page and usage screenshots. The final idle chat
+was inspected at **1280×720, 1440×900 and 1920×1080**. The 1280 Checks recovery
+screenshot was inspected after fixing the nested action-row overflow; the fixture
+now asserts the Checks panel itself has no horizontal overflow at all three sizes.
+Repository popover Escape/focus return, split review, retained drafts, navigation,
+keyboard resize/commands and reduced-motion checks passed. Settings, repository
+and empty Usage screenshots were inspected; no fake usage is shown.
+
+Additional retained evidence from the eight-fixture run:
+
+- Git Finalization: `/home/aksha/tmp/vibestar-issue-git-l4aW9j/screenshots/`.
+  The prior same-implementation run at `vibestar-issue-git-PifFmc/screenshots/`
+  was visually inspected for the 1280 Files step and final exact-message summary.
+- Issue Watch: `/home/aksha/tmp/vibestar-watch-evidence-WqBIa3/screenshots/`.
+  The editor, decoded chip, compact rule summary and ambiguity disclosure were
+  visually inspected.
+- PR report/batch: the first complete run retained
+  `/home/aksha/tmp/vibestar-pr-desktop-fBaY2n/`. Both batch preview and completed
+  zero-AI result screenshots were visually inspected.
+- PR repair: `/home/aksha/tmp/vibestar-pr-repair-desktop-bIWpti/screenshots/`.
+- Verification V2: `/home/aksha/tmp/vibestar-verification-v2-desktop-lGlecn/screenshots/`.
+  The earlier same-semantics `vibestar-verification-v2-desktop-PGRGXY` final review
+  screenshot was inspected and retained distinct approved code / unverified checks.
+
+### Regression attempts and operational limits
+
+Earlier complete runs exposed old creation/cleanup/label expectations; these were
+updated to exercise explicit startup and the separate discard contract. A migration
+fixture initially reinserted version 1, which the original migration already
+inserts; it now uses the historical insert-or-ignore setup. A desktop Git selector
+matched the hidden wizard step as well as the actual destination; it now selects
+the live destination value. None of these corrections relaxed a production gate.
+
+The first final unrestricted parallel run had **578 passes / 2 timing failures**:
+the 501-PR SQLite fixture exceeded its 5-second deadline under heavy load, and a
+publication test did not reach its mock push within the polling deadline. The same
+source passed all **580** with two workers; no timeout or security assertion was
+weakened. Screenshot review then identified a real narrow-pane action overflow
+and a conversation incorrectly labeled Planning. Both were corrected, the affected
+renderer checks passed and all eight built desktop fixtures passed again.
+
+Logs are retained at `/tmp/vibestar-v3-test-final-2.log`,
+`/tmp/vibestar-v3-{integration,tui,browser}-final.log`,
+`/tmp/vibestar-v3-layout-tests.log` and
+`/tmp/vibestar-v3-desktop-layout.log`. Earlier attempt logs are preserved under
+other `/tmp/vibestar-v3-*` names. Existing jsdom canvas diagnostics and Zod/Rollup
+comment-annotation warnings are non-fatal.
+
+Live Codex/Antigravity inference and authenticated real GitHub discovery were not
+rerun. Native Windows/WSL display/DPI, installers and signed release behavior were
+not revalidated for V3; historical Windows results below concern older source.
+This session used Node 22.22.1 and preinstalled dependencies with npm 9.2.0; no
+install or lockfile change was performed (dependency installation still requires
+npm 10+ per the manifest). PR discovery remains explicitly bounded and may require
+several refreshes; saved timestamps do not claim a partial refresh is complete.
+History preservation intentionally retains an archived ownership record, and
+unpublished-commit detection is conservative with respect to local remote refs.
+
 ## Repository-policy and Antigravity evidence correction
 
 The fix makes extra manual browser checks optional while retaining required

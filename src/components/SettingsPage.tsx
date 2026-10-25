@@ -326,7 +326,11 @@ export const SettingsPage = ({
               )}
               {section === "Agents" && (
                 <section className="settings-section">
-                  <h2>Planning pipeline</h2>
+                  <h2>Agent pipeline</h2>
+                  <p className="pipeline-sequence">
+                    Antigravity Plan → Codex Refinement → Codex Implementation →
+                    Antigravity Review
+                  </p>
                   <p className="subtle">
                     Models and reasoning settings are independent. Empty model
                     uses that CLI’s default; requested models and effort are

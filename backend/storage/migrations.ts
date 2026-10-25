@@ -232,4 +232,15 @@ CREATE INDEX git_operation_history ON git_operation_events(finalization_id,id);
 CREATE TABLE task_git_presets(task_id TEXT PRIMARY KEY REFERENCES tasks(id),data TEXT NOT NULL CHECK(json_valid(data)));
 `,
   },
+  {
+    version: 25,
+    sql: `
+ALTER TABLE task_messages ADD COLUMN purpose TEXT NOT NULL DEFAULT 'instruction' CHECK(purpose IN ('instruction','chat'));
+CREATE INDEX task_conversation ON task_messages(task_id,purpose,created_at);
+`,
+  },
+  {
+    version: 26,
+    sql: `CREATE TABLE pr_analysis_batches(id TEXT PRIMARY KEY,status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL);`,
+  },
 ];

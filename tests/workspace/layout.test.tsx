@@ -73,8 +73,8 @@ it("renders verification repair history without interpreting it as repository pr
       back={vi.fn()}
     />,
   );
-  expect(screen.getByText("Preparing repository")).toBeTruthy();
-  expect(screen.getByLabelText("Task follow-up")).toBeTruthy();
+  expect(screen.getByText("Repository preparation")).toBeTruthy();
+  expect(screen.getByLabelText("Task conversation")).toBeTruthy();
 });
 
 it("keeps chat primary while sidebar tools navigate, resize and expand, preserving the draft and model", async () => {
@@ -96,7 +96,9 @@ it("keeps chat primary while sidebar tools navigate, resize and expand, preservi
   expect(
     screen.getByRole("complementary", { name: "Secondary workspace" }),
   ).toBeTruthy();
-  const draft = screen.getByLabelText("Task follow-up") as HTMLTextAreaElement;
+  const draft = screen.getByLabelText(
+    "Task conversation",
+  ) as HTMLTextAreaElement;
   fireEvent.change(draft, { target: { value: "Keep this independent draft" } });
   act(() => updateTaskView(id, { followupModel: "selected-fixture-model" }));
   const separator = screen.getByRole("separator", {
@@ -106,7 +108,7 @@ it("keeps chat primary while sidebar tools navigate, resize and expand, preservi
   expect(
     JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!).secondaryWidth,
   ).toBe(396);
-  const pipeline = screen.getByRole("tab", { name: "Pipeline" });
+  const pipeline = screen.getByRole("tab", { name: "Workflow" });
   pipeline.focus();
   fireEvent.keyDown(pipeline, { key: "ArrowRight" });
   expect(
@@ -117,7 +119,7 @@ it("keeps chat primary while sidebar tools navigate, resize and expand, preservi
   const plans = screen.getByRole("tabpanel", { name: "Plans" });
   plans.scrollTop = 80;
   fireEvent.scroll(plans);
-  fireEvent.click(screen.getByRole("tab", { name: "Pipeline" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Workflow" }));
   fireEvent.click(screen.getByRole("tab", { name: "Plans" }));
   expect(screen.getByRole("tabpanel", { name: "Plans" }).scrollTop).toBe(80);
   const chat = screen.getByLabelText("Conversation");
@@ -161,7 +163,7 @@ it("preserves the attached terminal across hiding, Problems, maximize and keyboa
     />,
   );
   expect(terminal.mounts).toBe(0);
-  const input = screen.getByLabelText("Task follow-up");
+  const input = screen.getByLabelText("Task conversation");
   input.focus();
   fireEvent.keyDown(window, { ctrlKey: true, key: "`" });
   const live = await screen.findByText("Live fixture terminal");

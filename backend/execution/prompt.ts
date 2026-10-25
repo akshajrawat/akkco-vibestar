@@ -33,9 +33,22 @@ export const buildPrompt = (db: Database, t: Task) => {
     recordedValidationNote:
       "Most recent 100 implementation/review/manual command executions; stdout/stderr are 2,000-character tails. Complete command history and redacted provider output remain in the app's Tests and Logs views. Read/search commands are not test coverage.",
     followUps: db.all(
-      "SELECT role,content FROM task_messages WHERE task_id=? AND status='delivered' ORDER BY created_at,rowid",
+      "SELECT role,content FROM task_messages WHERE task_id=? AND purpose='instruction' AND status='delivered' ORDER BY created_at,rowid",
       t.id,
     ),
+    selectedConversationInstructions: t.workflow_start
+      ? {
+          summary: t.workflow_start.summary,
+          messages: t.workflow_start.message_ids.map(
+            (id) =>
+              db.all(
+                "SELECT role,content FROM task_messages WHERE task_id=? AND id=? AND purpose='chat'",
+                t.id,
+                id,
+              )[0],
+          ),
+        }
+      : undefined,
     linkedReviewContext: db.all(
       "SELECT summary,changes,analysis FROM scheduled_attention WHERE task_id=? AND dismissed=0 ORDER BY created_at DESC LIMIT 10",
       t.id,

@@ -62,6 +62,7 @@ const main = async () => {
             protocol: 3,
             pipeline_approvals: true,
             saved_instruction_choices: true,
+            workflow_first: 1,
             independent_final_review: true,
             pipeline_verification: 2,
             verification_policy: true,

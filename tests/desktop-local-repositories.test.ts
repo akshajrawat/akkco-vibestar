@@ -93,6 +93,9 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
         .click();
       await dialog.waitFor({ state: "hidden" });
       await page
+        .getByRole("button", { name: "Details and actions for oppia/oppia" })
+        .click();
+      await page
         .locator(".active-repository-row")
         .getByText(source, { exact: true })
         .waitFor();
@@ -136,7 +139,7 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
       );
       expect(
         await taskDialog
-          .getByRole("button", { name: "Start task", exact: false })
+          .getByRole("button", { name: "Create task", exact: false })
           .isEnabled(),
       ).toBe(true);
       await page.screenshot({ path: join(evidence, "new-task-oppia.png") });
@@ -148,7 +151,7 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
         .waitFor();
       expect(
         await taskDialog
-          .getByRole("button", { name: "Start task", exact: false })
+          .getByRole("button", { name: "Create task", exact: false })
           .isEnabled(),
       ).toBe(false);
       await page.screenshot({
@@ -156,6 +159,9 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
       });
       await taskDialog
         .getByRole("button", { name: "Close", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Details and actions for oppia/oppia" })
         .click();
       await page
         .locator(".active-repository-row")

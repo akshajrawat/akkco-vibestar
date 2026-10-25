@@ -9,7 +9,6 @@ import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
-  waitForTask,
 } from "../fixtures";
 
 vi.mock("../../backend/workspace/issue", () => ({ fetchIssue: vi.fn() }));
@@ -86,14 +85,9 @@ it("shares simultaneous requests, preserves their task through restart and rejec
   const [a, b] = await Promise.all([first, duplicate]);
   expect(a.id).toBe(b.id);
   expect(fetchIssue).toHaveBeenCalledTimes(1);
-  await waitForTask(
-    engine,
-    a.id,
-    (status) => status === "awaiting_approval" || status === "failed",
-  );
-  expect(engine.db.task(a.id).status).toBe("awaiting_approval");
+  expect(engine.db.task(a.id).status).toBe("not_started");
   expect(engine.db.tasks()).toHaveLength(1);
-  expect(calls).toHaveBeenCalledTimes(1);
+  expect(calls).toHaveBeenCalledTimes(0);
   expect(engine.db.all("SELECT * FROM task_requests")).toMatchObject([
     { request_id: request, task_id: a.id },
   ]);
@@ -113,8 +107,8 @@ it("shares simultaneous requests, preserves their task through restart and rejec
       )
     ).id,
   ).toBe(a.id);
-  expect(fetchIssue).toHaveBeenCalledTimes(2);
-  expect(calls).toHaveBeenCalledTimes(1);
+  expect(fetchIssue).toHaveBeenCalledTimes(1);
+  expect(calls).toHaveBeenCalledTimes(0);
   await expect(
     engine.createTask(
       repo.id,
@@ -141,13 +135,7 @@ it("retains a request tombstone after history removal rather than creating anoth
     undefined,
     request,
   );
-  await waitForTask(
-    engine,
-    task.id,
-    (status) => status === "awaiting_approval" || status === "failed",
-  );
   await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
-  engine.cancel(task.id);
   await new StorageService(engine).cleanupTask(task.id, {
     worktree: true,
     logs: true,
@@ -172,7 +160,7 @@ it("retains a request tombstone after history removal rather than creating anoth
       request,
     ),
   ).rejects.toThrow("history was removed");
-  expect(fetchIssue).toHaveBeenCalledTimes(2);
+  expect(fetchIssue).toHaveBeenCalledTimes(1);
   expect(engine.db.tasks()).toEqual([]);
 });
 

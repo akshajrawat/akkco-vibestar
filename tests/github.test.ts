@@ -71,7 +71,7 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
     expect(service.prs()[0].repository).toBe("upstream/repo");
     expect(service.catalog()).toHaveLength(1);
     expect(db.repositories()).toEqual([]);
-    expect(scheduler.jobs()).toHaveLength(0);
+    expect(scheduler.jobs()).toHaveLength(1);
     scheduler.add({
       url: service.prs()[0].url,
       task_id: null,
@@ -129,7 +129,11 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
       })
       .mockRejectedValueOnce(new Error("GitHub rate limit reached"));
     await service.sync();
-    expect(service.prs()).toEqual(before.pull_requests);
+    expect(service.prs()).toEqual(expect.arrayContaining(before.pull_requests));
+    expect(service.prs().find((pr) => pr.number === 44)).toMatchObject({
+      state: "UNKNOWN",
+      access_error: "GitHub rate limit reached",
+    });
     expect(service.catalog()).toEqual(before.repositories);
     expect(service.snapshot()).toMatchObject({
       last_sync: before.last_sync,
@@ -142,7 +146,7 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
       error: "GitHub rate limit reached",
     });
     await reopened.close();
-    expect(scheduler.jobs()).toHaveLength(1);
+    expect(scheduler.jobs()).toHaveLength(2);
     expect(db.all("SELECT * FROM ai_usage")).toEqual([]);
   } finally {
     await service.close();
@@ -241,4 +245,83 @@ it("refuses truncated or duplicate authored PR pages instead of advancing partia
       ],
     });
   expect(await client.authored("viewer")).toHaveLength(101);
+});
+
+it("advances persisted bounded PR detail pages and preserves authoritative unknown state without inference", async () => {
+  const db = new Database(":memory:");
+  const engine = {
+    root: "/tmp",
+    db,
+    assertAvailable: vi.fn(),
+    changed: vi.fn(),
+    publish: vi.fn(),
+    trackActivity: vi.fn(() => vi.fn()),
+    isExecuting: () => false,
+    isActive: () => false,
+    cancel: vi.fn(),
+  } as unknown as Engine;
+  const scheduler = new Scheduler(engine);
+  let service = new GitHubService(engine, scheduler);
+  const found = Array.from({ length: 501 }, (_, i) => ({
+    html_url: "https://github.com/upstream/repo/pull/" + (i + 1),
+    number: i + 1,
+    title: "Contribution " + (i + 1),
+    updated_at: "2026-10-25T00:00:00Z",
+  }));
+  const configure = () => {
+    vi.spyOn(service.client, "detect").mockResolvedValue({
+      installed: true,
+      connected: true,
+      username: "viewer",
+      version: "fixture",
+      error: null,
+    });
+    vi.spyOn(service.client, "pages").mockResolvedValue([]);
+    const authored = vi
+      .spyOn(service.client, "authored")
+      .mockResolvedValue(found);
+    const api = vi
+      .spyOn(service.client, "api")
+      .mockImplementation(async () => ({
+        state: "open",
+        merged: false,
+        head: {
+          ref: "feature",
+          sha: "a".repeat(40),
+          repo: { full_name: "viewer/repo" },
+        },
+      }));
+    return { authored, api };
+  };
+  try {
+    configure();
+    await service.sync();
+    expect(service.prs()).toHaveLength(500);
+    expect(service.snapshot()).toMatchObject({
+      last_sync: null,
+      error: expect.stringContaining("Partial refresh"),
+    });
+    await service.close();
+    service = new GitHubService(engine, scheduler);
+    const { authored, api } = configure();
+    await service.sync();
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(service.prs()).toHaveLength(501);
+    const saved = service.prs()[0];
+    authored.mockResolvedValue([]);
+    api.mockRejectedValueOnce(new Error("Not accessible"));
+    await service.sync();
+    expect(service.prs().find((pr) => pr.url === saved.url)).toMatchObject({
+      state: "UNKNOWN",
+      last_known_state: "OPEN",
+      access_error: "Not accessible",
+    });
+    expect(scheduler.jobs()).toHaveLength(501);
+    expect(db.all("SELECT * FROM ai_usage")).toEqual([]);
+  } finally {
+    await service.close();
+    await scheduler.close();
+    db.close();
+    vi.restoreAllMocks();
+  }
 });

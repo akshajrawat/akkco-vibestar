@@ -64,6 +64,9 @@ export const TaskWorkspace = ({
   const [promptOpen, setPromptOpen] = useState(false);
   const [draftRun, setDraftRun] = useState<Run>();
   const [busy, setBusy] = useState(false);
+  const [conversationMode, setConversationMode] = useState<"chat" | "changes">(
+    "chat",
+  );
   const noticeContext = `${t.id}:${t.stage}:${t.status}:${t.approval_gate}:${detail.runs.at(-1)?.id}:${detail.artifacts.at(-1)?.id}`;
   const [statusNotice, setStatusNotice] = useState<{
     message: string;
@@ -221,7 +224,13 @@ export const TaskWorkspace = ({
       return;
     }
     const configuration = followupConfiguration(t, view);
-    const signature = JSON.stringify({ content, configuration, saveOnly });
+    const question = !saveOnly && conversationMode === "chat";
+    const signature = JSON.stringify({
+      content,
+      configuration,
+      saveOnly,
+      question,
+    });
     const request_id =
       view.messageRequest?.signature === signature
         ? view.messageRequest.id
@@ -231,20 +240,26 @@ export const TaskWorkspace = ({
     setBusy(true);
     try {
       const result = await rpc<{ message?: Message; disposition: string }>(
-        saved && !saveOnly ? "task.message.send" : "task.followup",
-        saved && !saveOnly
-          ? {
-              id: t.id,
-              message_id: saved.id,
-              configuration,
-            }
-          : {
-              id: t.id,
-              content,
-              configuration,
-              save_only: saveOnly,
-              request_id,
-            },
+        question
+          ? "task.chat"
+          : saved && !saveOnly
+            ? "task.message.send"
+            : "task.followup",
+        question
+          ? { id: t.id, content, configuration, request_id }
+          : saved && !saveOnly
+            ? {
+                id: t.id,
+                message_id: saved.id,
+                configuration,
+              }
+            : {
+                id: t.id,
+                content,
+                configuration,
+                save_only: saveOnly,
+                request_id,
+              },
       );
       if (result.message)
         setSent((messages) => [
@@ -259,11 +274,13 @@ export const TaskWorkspace = ({
         setNotice("Instruction saved for later · no agent started");
       } else {
         setNotice(
-          saved && result.disposition === "delivered"
-            ? "Instruction already delivered · no new agent started"
-            : result.disposition === "queued"
-              ? "Feedback queued for the next safe stage boundary"
-              : "Feedback sent · continuation authorized",
+          question
+            ? "Read-only question sent"
+            : saved && result.disposition === "delivered"
+              ? "Instruction already delivered · no new agent started"
+              : result.disposition === "queued"
+                ? "Feedback queued for the next safe stage boundary"
+                : "Feedback sent · continuation authorized",
         );
         // Preserve edits made while this request was in flight.
         if (composerContent(currentDraft.current) === content)
@@ -451,45 +468,67 @@ export const TaskWorkspace = ({
                   <AgentResponse text={t.issue?.body || "No description"} />
                 </details>
               </article>
-              <section className="preparation-turn">
-                <strong>Preparing repository</strong>
-                {detail.activity
-                  ?.filter((row) => row.kind === "preparation")
-                  .map((row) => {
-                    const data = JSON.parse(row.data) as {
-                      argv: string[];
-                      code: number;
-                      stdout: string;
-                      stderr: string;
-                      duration_ms: number;
-                    };
-                    return (
-                      <details key={row.id}>
-                        <summary>
-                          <span
-                            className={data.code === 0 ? "success" : "failure"}
-                          >
-                            {data.code === 0 ? "✓" : "!"}
-                          </span>
-                          <code>{data.argv.join(" ")}</code>
-                          <small>{Math.round(data.duration_ms / 1000)}s</small>
-                        </summary>
-                        <pre>{data.stdout || data.stderr}</pre>
-                      </details>
-                    );
-                  })}
-                {t.worktree_path && (
-                  <p className="mono subtle">
-                    <GitBranch size={12} />
-                    {t.branch_name}
-                  </p>
-                )}
-                {t.stage === 0 && active && (
-                  <p className="subtle">
-                    Fetching upstream and creating an isolated worktree…
-                  </p>
-                )}
-              </section>
+              {(t.worktree_path || active) && (
+                <section className="preparation-turn">
+                  <strong>
+                    {t.status === "not_started"
+                      ? "Read-only chat workspace"
+                      : "Repository preparation"}
+                  </strong>
+                  {detail.activity
+                    ?.filter((row) =>
+                      ["preparation", "chat_preparation"].includes(row.kind),
+                    )
+                    .map((row) => {
+                      const data = JSON.parse(row.data) as {
+                        argv: string[];
+                        code: number;
+                        stdout: string;
+                        stderr: string;
+                        duration_ms: number;
+                      };
+                      return (
+                        <details key={row.id}>
+                          <summary>
+                            <span
+                              className={
+                                data.code === 0 ? "success" : "failure"
+                              }
+                            >
+                              {data.code === 0 ? "✓" : "!"}
+                            </span>
+                            <code>{data.argv.join(" ")}</code>
+                            <small>
+                              {Math.round(data.duration_ms / 1000)}s
+                            </small>
+                          </summary>
+                          <pre>{data.stdout || data.stderr}</pre>
+                        </details>
+                      );
+                    })}
+                  {t.worktree_path && (
+                    <p className="mono subtle">
+                      <GitBranch size={12} />
+                      {t.branch_name}
+                    </p>
+                  )}
+                  {t.stage === 0 && active && (
+                    <p className="subtle">
+                      Fetching upstream and creating an isolated worktree…
+                    </p>
+                  )}
+                </section>
+              )}
+              {detail.activity
+                ?.filter((row) => row.kind === "chat_error")
+                .slice(-1)
+                .map((row) => (
+                  <RunError
+                    key={row.id}
+                    error={JSON.parse(row.data).error}
+                    logs={() => inspect("Logs")}
+                  />
+                ))}
               <AgentTimeline
                 expandResults={false}
                 events={detail.events}
@@ -816,13 +855,18 @@ export const TaskWorkspace = ({
           composer={
             <Composer
               id={t.id}
-              label="Task follow-up"
+              label="Task conversation"
               placeholder={
                 active ? "Write while the agent works…" : "Ask Vibestar…"
               }
-              sendLabel="Send follow-up"
+              sendLabel={
+                conversationMode === "chat" ? "Ask question" : "Send follow-up"
+              }
               busy={busy}
-              disabled={occupied && !active}
+              disabled={
+                t.status === "preserved" ||
+                (occupied && (conversationMode === "chat" || !active))
+              }
               onSend={() => void submit()}
               save={{
                 label:
@@ -832,19 +876,49 @@ export const TaskWorkspace = ({
                       ? "Instruction saved"
                       : "Save for later",
                 run: () => void submit(true),
-                disabled: !!saved,
+                disabled: !!saved || t.status === "preserved",
               }}
-              model={<ComposerSettings task={t} />}
+              model={
+                <>
+                  <label className="conversation-mode">
+                    <span className="sr-only">Message action</span>
+                    <select
+                      aria-label="Message action"
+                      value={conversationMode}
+                      onChange={(event) =>
+                        setConversationMode(
+                          event.target.value as "chat" | "changes",
+                        )
+                      }
+                    >
+                      <option value="chat">Question · read-only</option>
+                      <option
+                        value="changes"
+                        disabled={t.status === "not_started"}
+                      >
+                        Request code changes
+                      </option>
+                    </select>
+                  </label>
+                  <ComposerSettings task={t} />
+                </>
+              }
               notice={notice}
               onEdit={() => setNotice("")}
               hint={
-                active
-                  ? `Send queues feedback for ${feedbackStage} at the next safe boundary. Save for later starts no agent.`
-                  : occupied
-                    ? "Close the terminal before sending feedback. Save for later starts no agent."
-                    : t.approval_gate?.endsWith("plan")
-                      ? "Send feedback reruns the current planning stage. Save for later keeps the approval gate."
-                      : "Send starts an implementation follow-up. Save for later starts no agent."
+                t.status === "preserved"
+                  ? "History removed. Files and branch remain available in your editor."
+                  : conversationMode === "chat"
+                    ? occupied
+                      ? "Wait for the current operation before asking a read-only question."
+                      : "Questions inspect an isolated read-only workspace. Start workflow separately when ready."
+                    : active
+                      ? `Send queues feedback for ${feedbackStage} at the next safe boundary. Save for later starts no agent.`
+                      : occupied
+                        ? "Close the terminal before sending feedback. Save for later starts no agent."
+                        : t.approval_gate?.endsWith("plan")
+                          ? "Send feedback reruns the current planning stage. Save for later keeps the approval gate."
+                          : "Send starts an implementation follow-up. Save for later starts no agent."
               }
               context={workspaceContext({
                 id: t.id,

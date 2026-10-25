@@ -79,7 +79,7 @@ it("announces backend review status and opens a keyboard menu without navigating
   expect(open).not.toHaveBeenCalled();
   fireEvent.keyDown(document.activeElement!, { key: "End" });
   expect(document.activeElement).toBe(
-    within(menu).getByRole("menuitem", { name: "Delete task data…" }),
+    within(menu).getByRole("menuitem", { name: "Manage task…" }),
   );
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   expect(screen.queryByRole("menu")).toBeNull();
@@ -127,8 +127,8 @@ it("retains cleanup confirmation and makes no cleanup call when the task menu op
     />,
   );
   fireEvent.click(screen.getByLabelText("Actions for task #1"));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Delete task data…" }));
-  const dialog = screen.getByRole("dialog", { name: "Delete task data" });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Manage task…" }));
+  const dialog = screen.getByRole("dialog", { name: "Manage task" });
   expect(dialog.contains(document.activeElement)).toBe(true);
   expect(rpc).not.toHaveBeenCalled();
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
@@ -154,7 +154,7 @@ it("disables lifecycle actions while execution is active and exposes archived ta
   expect(
     (
       screen.getByRole("menuitem", {
-        name: "Delete task data…",
+        name: "Manage task…",
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);

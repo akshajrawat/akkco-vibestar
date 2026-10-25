@@ -3,6 +3,7 @@ export type { Repository, Settings, StageConfig } from "../../backend/domain";
 export type Detection =
   import("../../backend/execution/providers/contracts").ProviderDetection;
 export interface Task {
+  workflow_start?: import("../../backend/domain").Task["workflow_start"];
   verification_environment?: import("../../backend/execution/browser/contracts").VerificationEnvironment;
   browser_environment_report?: import("../../backend/execution/browser/contracts").BrowserEnvironmentReport;
   runtime?: {
@@ -36,6 +37,7 @@ export interface Task {
   error: string | null;
 }
 export interface Snapshot {
+  pr_batches?: import("../../backend/review/pr/batches").PRBatch[];
   capabilities?: {
     manual_issue_watch: boolean;
     issue_watch_contract: number | null;
@@ -44,6 +46,9 @@ export interface Snapshot {
   repairs?: import("../../backend/review/repair/contracts").RepairSession[];
   pr_reports?: {
     job_id: string;
+    action_state?: string;
+    analyzed_head?: string | null;
+    analyzed_at?: string | null;
     outstanding: number;
     unanswered_questions: number;
   }[];
@@ -97,6 +102,7 @@ export interface AgentEvent {
   stream: string;
 }
 export interface Message {
+  purpose?: "instruction" | "chat";
   status?: string;
   run_id?: string | null;
   id: string;

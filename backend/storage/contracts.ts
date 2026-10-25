@@ -54,6 +54,25 @@ export const TaskRecordSchema = z
       .optional(),
     execution_settings: SettingsSchema.optional(),
     stage_settings: PipelineStageSettingsSchema.optional(),
+    workflow_version: z.literal(1).optional(),
+    disposal_authorization: z
+      .object({
+        fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+        acknowledge_unpublished: z.boolean(),
+        authorized_at: z.string().datetime(),
+      })
+      .strict()
+      .optional(),
+    workflow_start: z
+      .object({
+        request_id: z.string().uuid(),
+        digest: z.string().regex(/^[a-f0-9]{64}$/),
+        started_at: z.string().datetime(),
+        message_ids: z.array(z.string().uuid()).max(100),
+        summary: z.string().max(32000),
+      })
+      .strict()
+      .optional(),
     verification_environment: VerificationEnvironmentSchema.optional(),
     browser_environment_report: BrowserEnvironmentReportSchema.optional(),
     verification_policy: z.enum(["repository", "extended_browser"]).optional(),

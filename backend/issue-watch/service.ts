@@ -352,6 +352,23 @@ export class IssueWatchService {
     switch (method) {
       case "previewRules":
         return previewRules(input);
+      case "labels": {
+        const p = z
+          .object({ repository: z.string().min(1).max(500) })
+          .strict()
+          .parse(input);
+        const repository = repositoryName(p.repository);
+        const labels = await this.client.pages<unknown>(
+          `repos/${repository}/labels`,
+          AbortSignal.timeout(30000),
+          10,
+        );
+        return z
+          .array(z.object({ name: z.string().min(1).max(100) }))
+          .max(1000)
+          .parse(labels)
+          .map((label) => label.name);
+      }
       case "providerSupport":
         return watchProviderSupport;
       case "create":

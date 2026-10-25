@@ -103,7 +103,7 @@ it("sends Enter, preserves Shift+Enter and IME composition, and prevents form na
       back={() => {}}
     />,
   );
-  const composer = screen.getByLabelText("Task follow-up");
+  const composer = screen.getByLabelText("Task conversation");
   fireEvent.change(composer, { target: { value: "Resume planning" } });
   expect(fireEvent.keyDown(composer, { key: "Enter", shiftKey: true })).toBe(
     true,
@@ -112,12 +112,12 @@ it("sends Enter, preserves Shift+Enter and IME composition, and prevents form na
     true,
   );
   expect(
-    rpc.mock.calls.filter(([method]) => method === "task.followup"),
+    rpc.mock.calls.filter(([method]) => method === "task.chat"),
   ).toHaveLength(0);
   expect(fireEvent.keyDown(composer, { key: "Enter" })).toBe(false);
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
-      "task.followup",
+      "task.chat",
       expect.objectContaining({ content: "Resume planning" }),
     ),
   );
@@ -242,7 +242,7 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
   expect(
     (screen.getByLabelText("Entire issue") as HTMLInputElement).checked,
   ).toBe(true);
-  fireEvent.click(screen.getByText("Start task"));
+  fireEvent.click(screen.getByText("Create task"));
   await vi.waitFor(() => expect(created).toHaveBeenCalledWith("task"));
   expect(rpc).toHaveBeenCalledWith(
     "task.create",
@@ -256,7 +256,7 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
   fireEvent.change(screen.getByLabelText("Claimed scope"), {
     target: { value: "check-improvements-tab.spec.ts" },
   });
-  fireEvent.click(screen.getByText("Start task"));
+  fireEvent.click(screen.getByText("Create task"));
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
       "task.create",
@@ -757,7 +757,7 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
   expect(
     (
       screen.getByRole("button", {
-        name: /Start task/,
+        name: /Create task/,
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);

@@ -54,6 +54,12 @@ import { continuationStage } from "./continuation";
 import { taskVerification } from "./task-verification";
 import { CommandExecutions } from "./command-executions";
 import { missingVerificationChecks } from "./verification-recovery";
+import {
+  StartWorkflowSchema,
+  TaskChatSchema,
+  ChatResponseSchema,
+  chatPrompt,
+} from "./workflow";
 export class Engine extends EventEmitter {
   readonly db: Database;
   readonly git: GitWorkspace;
@@ -74,11 +80,15 @@ export class Engine extends EventEmitter {
     string,
     { digest: string; promise: Promise<Task> }
   >();
+  private readonly startingWorkflows = new Map<
+    string,
+    { digest: string; promise: Promise<Task> }
+  >();
   private draining = false;
   private closed = false;
   private closing: Promise<void> | undefined;
   private maintenance = false;
-  private readonly taskMaintenance = new Set<string>();
+  private readonly taskMaintenance = new Map<string, string>();
   private readonly activities = new Map<
     string,
     { blocker: ActivityBlocker; stop: () => Promise<void> }
@@ -179,12 +189,12 @@ export class Engine extends EventEmitter {
         label: "Storage cleanup is already running",
         stoppable: false,
       });
-    for (const id of this.taskMaintenance)
+    for (const [id, activity] of this.taskMaintenance)
       blockers.push({
         id: `cleanup:${id}`,
         kind: "maintenance",
         task_id: id,
-        label: `${label(id)} data cleanup is running`,
+        label: `${label(id)} · ${activity}`,
         stoppable: false,
       });
     if (!taskId)
@@ -229,7 +239,11 @@ export class Engine extends EventEmitter {
         this.cancel(key);
     } else await this.activities.get(id)?.stop();
   };
-  withTaskMaintenance = async <T>(id: string, operation: () => Promise<T>) => {
+  withTaskMaintenance = async <T>(
+    id: string,
+    operation: () => Promise<T>,
+    activity = "Data cleanup is running",
+  ) => {
     this.assertAvailable();
     const blockers = this.cleanupBlockers(id);
     if (blockers.length)
@@ -238,7 +252,7 @@ export class Engine extends EventEmitter {
         "Task data cleanup is waiting for this task's active operations to finish.",
         { blockers },
       );
-    this.taskMaintenance.add(id);
+    this.taskMaintenance.set(id, activity);
     try {
       return await operation();
     } finally {
@@ -413,6 +427,14 @@ export class Engine extends EventEmitter {
           terminateGroup(operation.pid, "SIGKILL");
         if (task.workspace_checkpoint)
           task.workspace_checkpoint.operation = null;
+        if (task.status === "preserved") {
+          engine.db.saveTask(task);
+          continue;
+        }
+        if (task.workflow_version === 1 && !task.workflow_start) {
+          engine.db.saveTask({ ...task, stage: 0, status: "not_started" });
+          continue;
+        }
         if (task.stage === 0 && task.worktree_path) {
           try {
             if (!(await exists(task.worktree_path)))
@@ -776,6 +798,7 @@ export class Engine extends EventEmitter {
         scopeMode,
         configuration,
         { id: requestId, digest },
+        "not_started",
       );
     }, "Issue context retrieval is running").finally(() =>
       this.creatingTasks.delete(requestId),
@@ -979,6 +1002,7 @@ export class Engine extends EventEmitter {
     scopeMode: "whole_issue" | "partial" = "partial",
     settings?: import("../domain").Settings,
     request?: { id: string; digest: string },
+    status: "queued" | "not_started" = "queued",
   ) => {
     this.assertAvailable();
     const t = this.db.transaction(() => {
@@ -1002,7 +1026,8 @@ export class Engine extends EventEmitter {
         worktree_path: "",
         created_at: now(),
         updated_at: now(),
-        status: "queued",
+        status,
+        workflow_version: status === "not_started" ? 1 : undefined,
         stage: 0,
         error: null,
       };
@@ -1024,8 +1049,294 @@ export class Engine extends EventEmitter {
       return t;
     });
     this.changed(t.id);
-    void this.drain();
+    if (t.status === "queued") void this.drain();
     return t;
+  };
+  /** Persists explicit startup authority once, after read-only identity and capability checks. */
+  startWorkflow = async (input: z.input<typeof StartWorkflowSchema>) => {
+    this.assertAvailable();
+    const p = StartWorkflowSchema.parse(input);
+    if (new Set(p.message_ids).size !== p.message_ids.length)
+      throw new AdeError(
+        "invalid_input",
+        "Select each conversation instruction once.",
+      );
+    const digest = createHash("sha256")
+      .update(JSON.stringify({ ...p, message_ids: [...p.message_ids].sort() }))
+      .digest("hex");
+    const task = this.db.task(p.id);
+    if (task.status === "preserved")
+      throw new AdeError(
+        "invalid_state",
+        "This task's history was removed while its files were preserved. Open the retained worktree in your editor.",
+      );
+    if (task.workflow_start) {
+      if (
+        task.workflow_start.request_id !== p.request_id ||
+        task.workflow_start.digest !== digest
+      )
+        throw new AdeError(
+          "invalid_state",
+          "This task's workflow has already been authorized.",
+        );
+      return Promise.resolve(task);
+    }
+    const starting = this.startingWorkflows.get(p.id);
+    if (starting) {
+      if (starting.digest !== digest)
+        throw new AdeError(
+          "busy",
+          "Another workflow start is being validated for this task.",
+        );
+      return starting.promise;
+    }
+    if (task.status !== "not_started" || task.archived)
+      throw new AdeError(
+        "invalid_state",
+        "Only an unarchived task whose workflow has not started can start.",
+      );
+    const promise = this.withTaskMaintenance(
+      p.id,
+      async () => {
+        const repo = this.taskRepository(
+          task.repo_id,
+          parseIssue(task.issue_url),
+        );
+        const repositoryIdentity = JSON.stringify(repo);
+        if (await exists(repo.path)) {
+          const verified = await this.repositoryIndex.verifyLocal(
+            { environment: "wsl", path: repo.path },
+            repo.source !== "imported",
+          );
+          if (
+            !verified.remotes.some(
+              (remote) =>
+                remote.url === repo.upstream_url ||
+                remote.identity?.toLowerCase() ===
+                  `${repo.owner}/${repo.name}`.toLowerCase(),
+            )
+          )
+            throw new AdeError(
+              "repository_mismatch",
+              "The checkout no longer matches the registered repository. Verify its connection before starting.",
+            );
+        } else if (repo.source === "imported") {
+          throw new AdeError(
+            "repository_missing",
+            "Reconnect the missing source checkout before starting.",
+          );
+        }
+        await this.runner.validateWorkflow(
+          task,
+          this.repositoryController.signal,
+        );
+        for (const id of p.message_ids) {
+          if (
+            !this.db.all(
+              "SELECT id FROM task_messages WHERE id=? AND task_id=? AND purpose='chat' AND status='chat_completed'",
+              id,
+              task.id,
+            ).length
+          )
+            throw new AdeError(
+              "invalid_input",
+              "Selected conversation instructions must belong to this task and be complete.",
+            );
+        }
+        // Re-read immediately before the atomic authorization; metadata discovery is read-only.
+        const current = this.db.task(task.id);
+        if (
+          JSON.stringify(
+            this.taskRepository(task.repo_id, parseIssue(task.issue_url)),
+          ) !== repositoryIdentity
+        )
+          throw new AdeError(
+            "repository_mismatch",
+            "The repository connection changed during startup. Inspect it and start explicitly again.",
+          );
+        if (current.status !== "not_started" || current.archived)
+          throw new AdeError(
+            "invalid_state",
+            "The task changed while workflow startup was being checked.",
+          );
+        const started = {
+          ...current,
+          status: "queued" as const,
+          workflow_start: {
+            request_id: p.request_id,
+            digest,
+            started_at: now(),
+            message_ids: p.message_ids,
+            summary: redact(p.summary),
+          },
+          error: null,
+          updated_at: now(),
+        };
+        this.db.saveTask(started);
+        this.changed(task.id);
+        return started;
+      },
+      "Checking workflow startup",
+    ).finally(() => this.startingWorkflows.delete(p.id));
+    this.startingWorkflows.set(p.id, { digest, promise });
+    return promise;
+  };
+  /** Runs a persisted read-only question through AgentRunner without advancing workflow authority. */
+  chat = (input: z.input<typeof TaskChatSchema>) => {
+    this.assertAvailable();
+    const p = TaskChatSchema.parse(input);
+    const task = this.db.task(p.id);
+    if (task.status === "preserved")
+      throw new AdeError(
+        "invalid_state",
+        "This task's conversation history was removed. Its retained worktree can be opened in your editor.",
+      );
+    this.taskRepository(task.repo_id, parseIssue(task.issue_url));
+    const existing = this.db.all<{
+      id: string;
+      task_id: string;
+      content: string;
+      configuration: string;
+      purpose: string;
+      status: string;
+    }>("SELECT * FROM task_messages WHERE id=?", p.request_id)[0];
+    if (existing) {
+      if (
+        existing.task_id !== task.id ||
+        existing.purpose !== "chat" ||
+        existing.content !== redact(p.content) ||
+        existing.configuration !== JSON.stringify(p.configuration)
+      )
+        throw new AdeError(
+          "invalid_input",
+          "This conversation request belongs to a different message.",
+        );
+      return { message: existing, disposition: existing.status };
+    }
+    if (
+      task.archived ||
+      task.status === "queued" ||
+      this.cleanupBlockers(task.id).length ||
+      this.active.size >= this.db.settings().concurrency
+    )
+      throw new AdeError(
+        "busy",
+        "Wait for this task's active operation and an available execution slot before asking a question.",
+      );
+    const message = {
+      id: p.request_id,
+      role: "user",
+      content: redact(p.content),
+      created_at: now(),
+      status: "chat_pending",
+      purpose: "chat",
+    };
+    this.db.run(
+      "INSERT INTO task_messages(id,task_id,role,content,created_at,status,configuration,purpose) VALUES(?,?,?,?,?,?,?,'chat')",
+      message.id,
+      task.id,
+      message.role,
+      message.content,
+      message.created_at,
+      message.status,
+      JSON.stringify(p.configuration),
+    );
+    const prompt = chatPrompt(this.db, task, p.content);
+    void this.withExecutionSlot(
+      task.id,
+      "Read-only conversation",
+      this.repositoryController.signal,
+      async (signal) => {
+        if (!task.worktree_path || task.workspace_checkpoint?.state !== "ready")
+          await this.prepareTaskWorkspace(task, signal, "chat_preparation");
+        const result = ChatResponseSchema.parse(
+          await this.runner.run(
+            { ...task, stage: 1 },
+            task.execution_settings || this.db.settings(),
+            signal,
+            {
+              prompt,
+              purpose: "Read-only conversation",
+              schema: ChatResponseSchema,
+              provider: p.configuration.provider,
+              config: p.configuration.config,
+              messageId: message.id,
+            },
+          ),
+        );
+        this.db.transaction(() => {
+          this.db.run(
+            "UPDATE task_messages SET status='chat_completed' WHERE id=? AND task_id=?",
+            message.id,
+            task.id,
+          );
+          this.db.run(
+            "INSERT INTO task_messages(id,task_id,role,content,created_at,status,run_id,purpose) SELECT ?,task_id,'assistant',?,?,'chat_completed',run_id,'chat' FROM task_messages WHERE id=?",
+            randomUUID(),
+            redact(result.summary),
+            now(),
+            message.id,
+          );
+        });
+      },
+      task.id,
+    )
+      .catch((error) => {
+        this.db.run(
+          "UPDATE task_messages SET status=? WHERE id=? AND task_id=?",
+          (error instanceof AdeError && error.kind === "cancelled") ||
+            (error instanceof Error && error.name === "AbortError")
+            ? "chat_cancelled"
+            : "chat_failed",
+          message.id,
+          task.id,
+        );
+        this.db.run(
+          "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'chat_error',?,?)",
+          task.id,
+          JSON.stringify({
+            message_id: message.id,
+            error: redact(String(error)),
+          }),
+          now(),
+        );
+      })
+      .finally(() => this.changed(task.id));
+    this.changed(task.id);
+    return { message, disposition: message.status };
+  };
+  private prepareTaskWorkspace = async (
+    t: Task,
+    signal: AbortSignal,
+    kind = "preparation",
+  ) => {
+    const repo = this.db.repository(t.repo_id);
+    await this.prepareClone(repo, signal);
+    const logDir = join(this.root, "logs", t.id);
+    await mkdir(logDir, { recursive: true, mode: 0o700 });
+    await this.git.prepare(
+      repo,
+      t,
+      signal,
+      (checkpoint) => this.db.saveTask(checkpoint),
+      async (record) => {
+        this.db.run(
+          "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,?,?,?)",
+          t.id,
+          kind,
+          JSON.stringify(record),
+          now(),
+        );
+        this.changed(t.id);
+        await appendFile(
+          join(logDir, "preparation.jsonl"),
+          JSON.stringify(record) + "\n",
+          { mode: 0o600 },
+        );
+      },
+    );
+    this.db.saveRepository(repo);
+    this.db.saveTask(t);
   };
   private pipeline = async (t: Task, signal: AbortSignal) => {
     for (; t.stage < 6; t.stage++) {
@@ -1038,32 +1349,8 @@ export class Engine extends EventEmitter {
       this.db.saveTask(t);
       this.changed(t.id);
       if (t.stage === 0) {
-        const repo = this.db.repository(t.repo_id);
-        await this.prepareClone(repo, signal);
-        const logDir = join(this.root, "logs", t.id);
-        await mkdir(logDir, { recursive: true, mode: 0o700 });
-        await this.git.prepare(
-          repo,
-          t,
-          signal,
-          (checkpoint) => this.db.saveTask(checkpoint),
-          async (record) => {
-            this.db.run(
-              "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'preparation',?,?)",
-              t.id,
-              JSON.stringify(record),
-              now(),
-            );
-            this.changed(t.id);
-            await appendFile(
-              join(logDir, "preparation.jsonl"),
-              JSON.stringify(record) + "\n",
-              { mode: 0o600 },
-            );
-          },
-        );
+        await this.prepareTaskWorkspace(t, signal);
         if (t.preparation_timing) t.preparation_timing.ended_at = now();
-        this.db.saveRepository(repo);
         this.db.saveTask(t);
       } else if (t.stage <= 3 || t.stage === 5) {
         if (t.stage === 5) {
@@ -1220,6 +1507,7 @@ export class Engine extends EventEmitter {
     if (active) active.controller.abort();
     else {
       const t = this.db.task(id);
+      if (t.workflow_version === 1 && !t.workflow_start) return;
       this.db.saveTask({ ...t, status: "cancelled", updated_at: now() });
     }
     this.changed(id);
@@ -1229,6 +1517,14 @@ export class Engine extends EventEmitter {
     if (this.taskMaintenance.has(id))
       throw new AdeError("busy", "Task data cleanup is running");
     const t = this.db.task(id);
+    if (
+      t.status === "preserved" ||
+      (t.workflow_version === 1 && !t.workflow_start)
+    )
+      throw new AdeError(
+        "workflow_not_started",
+        "Use Start workflow to explicitly authorize this task's first execution.",
+      );
     if (t.status === "awaiting_approval" && stage === undefined && !restart)
       throw new AdeError(
         "approval_required",
@@ -1851,6 +2147,14 @@ export class Engine extends EventEmitter {
     sendSaved = false,
   ) => {
     const t = this.db.task(id);
+    if (
+      t.status === "preserved" ||
+      (t.workflow_version === 1 && !t.workflow_start && !saveOnly)
+    )
+      throw new AdeError(
+        "workflow_not_started",
+        "Ask a read-only question or choose Start workflow before requesting code changes.",
+      );
     if (!content.trim() || content.length > 32000)
       throw new AdeError(
         "invalid_state",
@@ -2202,6 +2506,11 @@ export class Engine extends EventEmitter {
           [...this.active.values()].map((a) => a.promise),
         );
         await Promise.allSettled([...this.repositoryOperations.keys()]);
+        await Promise.allSettled(
+          [...this.startingWorkflows.values()].map(
+            (operation) => operation.promise,
+          ),
+        );
         await this.repositoryIndex.close();
       } finally {
         try {

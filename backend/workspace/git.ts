@@ -539,12 +539,15 @@ export class GitWorkspace {
     this.workspaceFingerprint(t, includeHistory);
   contentFingerprint = (t: WorkspaceAssignment) =>
     this.workspaceFingerprint(t, false, true);
+  disposalFingerprint = (t: WorkspaceAssignment) =>
+    this.workspaceFingerprint(t, true, true, undefined, 0, true);
   private workspaceFingerprint = async (
     t: WorkspaceAssignment,
     includeHistory: boolean,
     allTracked = false,
     physicalDirectory?: string,
     depth = 0,
+    includeIgnored = false,
   ) => {
     const cwd = physicalDirectory || (await this.assertTask(t));
     if (
@@ -601,7 +604,16 @@ export class GitWorkspace {
           "--",
         ])) +
         (await output(["ls-files", "--others", "--exclude-standard", "-z"])) +
-        (allTracked ? await output(["ls-files", "-z"]) : "")
+        (allTracked ? await output(["ls-files", "-z"]) : "") +
+        (includeIgnored
+          ? await output([
+              "ls-files",
+              "--others",
+              "--ignored",
+              "--exclude-standard",
+              "-z",
+            ])
+          : "")
       )
         .split("\0")
         .filter(Boolean),
@@ -698,6 +710,7 @@ export class GitWorkspace {
             true,
             file,
             depth + 1,
+            includeIgnored,
           ),
         );
       } else

@@ -310,7 +310,7 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
   expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy();
   const tabs = screen.getByRole("tablist", { name: "Workspace tools" });
   const first = within(tabs).getByRole("tab", {
-    name: "Pipeline",
+    name: "Workflow",
   });
   first.focus();
   fireEvent.keyDown(first, { key: "End" });

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { parseIssue, remoteIdentity } from "../../../backend/domain";
 import type {
@@ -15,6 +15,7 @@ import { useDialogFocus } from "../../lib/useDialogFocus";
 import { containDialogFocus } from "../../lib/keyboard";
 import { AgentConfiguration } from "../StageSettings";
 import { Button } from "../ui/button";
+import { LabelExclusions } from "./LabelExclusions";
 
 export const WatchEditor = ({
   initial,
@@ -33,9 +34,7 @@ export const WatchEditor = ({
     initial?.watch.repository.full_name || "",
   );
   const [prompt, setPrompt] = useState(original?.prompt || "");
-  const [labels, setLabels] = useState(
-    original?.rules.excluded_labels.join(", ") || "",
-  );
+  const [labels, setLabels] = useState(original?.rules.excluded_labels || []);
   const [banned, setBanned] = useState(
     original?.rules.excluded_issues
       .map(
@@ -79,6 +78,7 @@ export const WatchEditor = ({
     Record<string, "" | "semantic_preference" | "confirmed_controls">
   >({});
   const [busy, setBusy] = useState(false);
+  const [compiling, setCompiling] = useState(false);
   const [error, setError] = useState("");
   const request = useRef({ payload: "", id: "" });
   const dialog = useDialogFocus();
@@ -92,57 +92,68 @@ export const WatchEditor = ({
     setPreview(null);
     setDecisions({});
   };
-  const compile = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const repo = remoteIdentity(
-        repository.includes("://")
-          ? repository
-          : `https://github.com/${repository}`,
-      );
-      const excluded = banned
-        .split(/[\n,]+/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-          if (/^#?[1-9]\d*$/.test(line))
-            return {
-              repository: `${repo.owner}/${repo.name}`,
-              number: Number(line.replace("#", "")),
-            };
-          const ref = parseIssue(line);
-          return { repository: `${ref.owner}/${ref.repo}`, number: ref.number };
-        });
-      const result = await rpc<ReturnType<typeof previewRules>>(
-        "issueWatch.previewRules",
-        {
-          repository,
-          prompt,
-          controls: {
-            excluded_labels: labels
-              .split(/[,\n]+/)
-              .map((label) => label.trim())
-              .filter(Boolean),
-            excluded_issues: excluded,
-            trackers,
-            unassigned_only: unassigned,
-          },
-        },
-      );
-      setPreview(result);
-      setLabels(result.rules.excluded_labels.join(", "));
-      setTrackers(result.rules.trackers);
-      setUnassigned(result.rules.unassigned_only);
-      setDecisions(
-        Object.fromEntries(result.ambiguities.map((item) => [item.id, ""])),
-      );
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
+  useEffect(() => {
+    let alive = true;
+    if (!repository.trim() || !prompt.trim()) {
+      setCompiling(false);
+      return;
     }
-  };
+    const compile = async () => {
+      setCompiling(true);
+      try {
+        const repo = remoteIdentity(
+          repository.includes("://")
+            ? repository
+            : `https://github.com/${repository}`,
+        );
+        const excluded = banned
+          .split(/[\n,]+/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            if (/^#?[1-9]\d*$/.test(line))
+              return {
+                repository: `${repo.owner}/${repo.name}`,
+                number: Number(line.replace("#", "")),
+              };
+            const ref = parseIssue(line);
+            return {
+              repository: `${ref.owner}/${ref.repo}`,
+              number: ref.number,
+            };
+          });
+        const result = await rpc<ReturnType<typeof previewRules>>(
+          "issueWatch.previewRules",
+          {
+            repository,
+            prompt,
+            controls: {
+              excluded_labels: labels,
+              excluded_issues: excluded,
+              trackers,
+              unassigned_only: unassigned,
+            },
+          },
+        );
+        if (alive) {
+          setPreview(result);
+          setError("");
+        }
+      } catch (e) {
+        if (alive) {
+          setPreview(null);
+          setError(errorMessage(e));
+        }
+      } finally {
+        if (alive) setCompiling(false);
+      }
+    };
+    const timer = setTimeout(() => void compile(), 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [repository, prompt, labels, banned, trackers, unassigned]);
   const save = async () => {
     if (!preview) return;
     setBusy(true);
@@ -240,7 +251,7 @@ export const WatchEditor = ({
                   invalidate();
                 }}
                 list="watch-repositories"
-                placeholder="oppia/oppia or GitHub URL"
+                placeholder="owner/repository"
                 disabled={!!initial}
               />
               <datalist id="watch-repositories">
@@ -251,7 +262,7 @@ export const WatchEditor = ({
             </label>
           </div>
           <label>
-            What issues are you looking for?
+            Describe issues to find
             <textarea
               value={prompt}
               rows={5}
@@ -260,11 +271,19 @@ export const WatchEditor = ({
                 setPrompt(event.target.value);
                 invalidate();
               }}
-              placeholder="Watch for open issues that are not triage needed and are not present in https://github.com/oppia/oppia/issues/27409. Prefer actionable, well-scoped issues."
+              placeholder="Find triaged, unassigned issues with no confirmed active claim."
             />
           </label>
-          <section className="watch-editor-section">
-            <h3>Hard filters</h3>
+          <LabelExclusions
+            repository={repository}
+            labels={labels}
+            change={(value) => {
+              setLabels(value);
+              invalidate();
+            }}
+          />
+          <details className="watch-editor-section">
+            <summary>Advanced filters</summary>
             <p className="subtle">
               Enforced by Vibestar before and after AI. The prompt compiler
               recognizes a small grammar; unresolved requirements need
@@ -289,21 +308,6 @@ export const WatchEditor = ({
             </div>
             <div className="watch-form-grid">
               <label>
-                Excluded labels
-                <input
-                  value={labels}
-                  onChange={(event) => {
-                    setLabels(event.target.value);
-                    invalidate();
-                  }}
-                  placeholder="triage needed, needs triage"
-                />
-                <small>
-                  Exact labels, case insensitive. Similar labels require an
-                  explicit choice.
-                </small>
-              </label>
-              <label>
                 Excluded issue URLs or numbers
                 <textarea
                   rows={2}
@@ -321,7 +325,7 @@ export const WatchEditor = ({
               excluded. Possible claims, missing coverage and uncertain policies
               stay in manual review.
             </p>
-          </section>
+          </details>
           <section className="watch-editor-section">
             <div className="watch-section-heading">
               <h3>Excluded trackers</h3>
@@ -354,7 +358,7 @@ export const WatchEditor = ({
                       );
                       invalidate();
                     }}
-                    placeholder="https://github.com/oppia/oppia/issues/27409"
+                    placeholder="https://github.com/owner/repository/issues/123"
                   />
                 </label>
                 <label>
@@ -398,32 +402,21 @@ export const WatchEditor = ({
             </small>
           </section>
           <section className="watch-editor-section">
-            <Button
-              variant="secondary"
-              onClick={() => void compile()}
-              disabled={!prompt.trim() || !repository.trim()}
-            >
-              Preview hard filters
-            </Button>
+            {compiling && (
+              <p className="subtle" role="status">
+                Checking filter interpretation…
+              </p>
+            )}
             {preview && (
               <div className="watch-rule-preview">
-                <h4>
-                  Confirmed rule preview · compiler v{preview.compiler_version}
-                </h4>
-                <ul>
-                  <li>
-                    Open GitHub issues;{" "}
-                    {preview.rules.unassigned_only
-                      ? "assigned issues excluded"
-                      : "assignments shown for review"}
-                    .
-                  </li>
-                  <li>
-                    {preview.rules.excluded_labels.length} exact label
-                    exclusions · {preview.rules.excluded_issues.length} issue
-                    bans · {preview.rules.trackers.length} dynamic trackers.
-                  </li>
-                </ul>
+                <p>
+                  Open issues ·{" "}
+                  {preview.rules.unassigned_only
+                    ? "Unassigned"
+                    : "Review assignments"}{" "}
+                  · Exclude {preview.rules.excluded_labels.length} labels ·
+                  Exclude {preview.rules.trackers.length} trackers
+                </p>
                 {preview.explanation.length > 0 && (
                   <details>
                     <summary>How your words became filters</summary>
@@ -568,6 +561,7 @@ export const WatchEditor = ({
             onClick={() => void save()}
             disabled={
               busy ||
+              compiling ||
               !preview ||
               !name.trim() ||
               !model.model ||

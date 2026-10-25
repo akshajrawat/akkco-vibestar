@@ -446,6 +446,11 @@ it("indexes an existing checkout and creates isolated worktrees while preserving
       ],
       task.worktree_path,
     );
+    await expect(storage.removeRepository(imported.id)).rejects.toThrow(
+      "Unpushed",
+    );
+    const discardPreview = await storage.previewTaskDisposal(task.id);
+    await storage.discardTask(task.id, discardPreview.fingerprint, true);
     await storage.removeRepository(imported.id);
     expect(await readFile(join(source, "source.txt"), "utf8")).toBe(
       "my uncommitted work\n",

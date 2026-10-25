@@ -103,7 +103,7 @@ export const ConnectLocalRepository = ({
               value={path}
               placeholder={
                 environment === "wsl"
-                  ? "~/oppia or /home/aksha/projects/my-repo"
+                  ? "~/projects/repository"
                   : "D:\\projects\\my-repo"
               }
               onChange={(e) => {

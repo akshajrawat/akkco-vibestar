@@ -369,6 +369,72 @@ export const VerificationRecovery = ({
     (detail.task.stage === 4 &&
       detail.task.status === "verification_blocked") ||
     detail.task.approval_gate === "implementation";
+  const actions = [
+    {
+      id: "checks",
+      label: runnable ? "Run missing checks" : "Prepare missing checks",
+      available: recovery.length > 0,
+      run: () => setKind("checks"),
+    },
+    {
+      id: "fix",
+      label: "Fix with Codex",
+      available: true,
+      run: () => setKind("fix"),
+    },
+    {
+      id: "review",
+      label: "Continue to independent review",
+      available: boundary && verification.canReviewWithGaps,
+      run: () => setKind("review"),
+    },
+    {
+      id: "policy",
+      label:
+        detail.task.verification_policy === "repository"
+          ? "Verification policy"
+          : "Skip extra manual browser checks",
+      available: verification.optionalCandidates.length > 0,
+      run: () => setKind("policy"),
+    },
+    {
+      id: "inspect",
+      label: "Inspect blockers",
+      available: !!inspect,
+      run: () => inspect?.(),
+    },
+    {
+      id: "recheck",
+      label: "Recheck saved evidence",
+      available: true,
+      run: () => {
+        setBusy(true);
+        void rpc("task.verification.recheck", { id: detail.task.id })
+          .catch((error) => onError(errorMessage(error)))
+          .finally(() => setBusy(false));
+      },
+    },
+  ].filter((action) => action.available);
+  const primary =
+    verification.outcome === "failed" ||
+    detail.task.final_review_verdict === "changes_requested"
+      ? "fix"
+      : recovery.length
+        ? "checks"
+        : boundary && verification.canReviewWithGaps
+          ? "review"
+          : "recheck";
+  const renderAction = (action: (typeof actions)[number]) => (
+    <Button
+      key={action.id}
+      size="sm"
+      variant={action.id === primary ? "default" : "ghost"}
+      disabled={unavailable}
+      onClick={action.run}
+    >
+      {action.label}
+    </Button>
+  );
   return (
     <div className="verification-recovery">
       {verification.canReview &&
@@ -381,64 +447,14 @@ export const VerificationRecovery = ({
           </p>
         )}
       <div className="actions">
-        {verification.optionalCandidates.length > 0 && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={unavailable}
-            onClick={() => setKind("policy")}
-          >
-            {detail.task.verification_policy === "repository"
-              ? "Verification policy"
-              : "Skip extra manual browser checks"}
-          </Button>
-        )}
-        {inspect && (
-          <Button size="sm" variant="ghost" onClick={inspect}>
-            Inspect blockers
-          </Button>
-        )}
-        {recovery.length > 0 && (
-          <Button
-            size="sm"
-            disabled={unavailable}
-            onClick={() => setKind("checks")}
-          >
-            {runnable ? "Run missing checks" : "Prepare missing checks"}
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={unavailable}
-          onClick={() => setKind("fix")}
-        >
-          Fix with Codex
-        </Button>
-        {boundary && verification.canReviewWithGaps && (
-          <Button
-            size="sm"
-            disabled={unavailable}
-            onClick={() => setKind("review")}
-          >
-            Continue to independent review
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant={verification.canReview ? "default" : "ghost"}
-          disabled={unavailable}
-          title="Re-evaluates saved commands and reruns diff hygiene. Starts no AI or browser tests."
-          onClick={() => {
-            setBusy(true);
-            void rpc("task.verification.recheck", { id: detail.task.id })
-              .catch((error) => onError(errorMessage(error)))
-              .finally(() => setBusy(false));
-          }}
-        >
-          Recheck saved evidence
-        </Button>
+        {actions.filter((action) => action.id === primary).map(renderAction)}
       </div>
+      <details>
+        <summary>More options</summary>
+        <div className="actions">
+          {actions.filter((action) => action.id !== primary).map(renderAction)}
+        </div>
+      </details>
       {kind && (
         <RecoveryDialog
           key={kind}

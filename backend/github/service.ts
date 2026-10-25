@@ -180,6 +180,8 @@ export class GitHubService {
   private running: Promise<unknown> | undefined;
   private status: GitHubStatus | null = null;
   private lastSync: string | null = null;
+  private detailCursor = 0;
+  private knownCursor = 0;
   private error: string | null = null;
   private phase: string | null = null;
   private stopping = false;
@@ -205,10 +207,14 @@ export class GitHubService {
         z.object({
           last_sync: z.string().nullable(),
           error: z.string().nullable(),
+          detail_cursor: z.number().int().nonnegative().optional(),
+          known_cursor: z.number().int().nonnegative().optional(),
         }).parse,
       );
     this.lastSync = metadata?.last_sync || null;
     this.error = metadata?.error || null;
+    this.detailCursor = metadata?.detail_cursor || 0;
+    this.knownCursor = metadata?.known_cursor || 0;
   }
   catalog = () =>
     this.engine.db.records.list<GitHubRepository>(
@@ -420,22 +426,63 @@ export class GitHubService {
       );
       const urls = new Set(found.map((p) => p.html_url));
       const savedPRs = this.prs();
+      const knownMissing = new Set(
+        [
+          ...savedPRs.map((pr) => pr.url),
+          ...this.scheduler.jobs().map((job) => job.url),
+        ].filter((url) => !urls.has(url)),
+      );
+      const detailBudget = 500 - Math.min(100, knownMissing.size);
+      const cursor = this.detailCursor % Math.max(1, found.length);
+      const sorted = [...found].sort(
+        (a, b) =>
+          b.updated_at.localeCompare(a.updated_at) ||
+          a.html_url.localeCompare(b.html_url),
+      );
+      const bounded = sorted.slice(cursor, cursor + detailBudget);
+      let partial =
+        found.length > bounded.length
+          ? `Partial refresh: inspected ${bounded.length} of ${found.length} authored PRs. Refresh again to inspect the next saved page; previous results remain.`
+          : "";
       const updates: GitHubPullRequest[] = [];
-      for (const pr of found) {
+      for (const pr of bounded) {
         this.phase = `Retrieving pull request details · ${updates.length + 1} of ${found.length}`;
         this.engine.changed();
         const ref = parsePullRequest(pr.html_url);
-        const info = await this.client.api<{
-          head: { ref: string; repo: { full_name: string } | null };
-          state: string;
-          merged: boolean;
-          draft?: boolean;
-          title?: string;
-          updated_at?: string;
-        }>(
-          `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
-          this.controller.signal,
-        );
+        const info = await this.client
+          .api<{
+            head: {
+              ref: string;
+              sha?: string;
+              repo: { full_name: string } | null;
+            };
+            state: string;
+            merged: boolean;
+            draft?: boolean;
+            title?: string;
+            updated_at?: string;
+          }>(
+            `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
+            this.controller.signal,
+          )
+          .catch((error) => {
+            if (!this.controller.signal.aborted)
+              this.recordInaccessible(
+                savedPRs.find((old) => old.url === pr.html_url) || {
+                  url: pr.html_url,
+                  repository: `${ref.owner}/${ref.repo}`,
+                  number: pr.number,
+                  title: pr.title,
+                  state: "UNKNOWN",
+                  head_branch: "",
+                  head_repository: null,
+                  updated_at: pr.updated_at,
+                  task_id: null,
+                },
+                error,
+              );
+            throw error;
+          });
         const repository = `${ref.owner}/${ref.repo}`;
         // Both upstream identity and fork + head branch must agree, uniquely.
         const matches = this.engine.db.tasks().filter((t) => {
@@ -462,6 +509,7 @@ export class GitHubService {
               ? "CLOSED"
               : "OPEN",
           draft: info.draft,
+          head_sha: info.head.sha,
           head_branch: info.head.ref,
           head_repository: info.head.repo?.full_name || null,
           updated_at: info.updated_at || pr.updated_at,
@@ -472,19 +520,67 @@ export class GitHubService {
       // Missing search results are not proof of closure. Confirm each known PR.
       this.phase = "Checking previously discovered pull requests";
       this.engine.changed();
-      for (const old of savedPRs.filter(
-        (p) => p.state === "OPEN" && !urls.has(p.url),
-      )) {
+      const known = [...savedPRs];
+      for (const job of this.scheduler.jobs()) {
+        if (known.some((pr) => pr.url.toLowerCase() === job.url.toLowerCase()))
+          continue;
+        const ref = parsePullRequest(job.url);
+        known.push({
+          url: ref.url,
+          repository: `${ref.owner}/${ref.repo}`,
+          number: ref.number,
+          title: job.title || job.last_snapshot?.title || `PR #${ref.number}`,
+          state: job.last_snapshot?.state || "UNKNOWN",
+          head_branch: "",
+          head_repository: null,
+          updated_at: job.last_checked_at || "",
+          task_id: job.task_id,
+        });
+      }
+      const missing = known.filter((p) => !urls.has(p.url));
+      const remaining = Math.max(0, 500 - bounded.length);
+      const knownCursor = this.knownCursor % Math.max(1, missing.length);
+      const rechecked = missing.slice(knownCursor, knownCursor + remaining);
+      if (missing.length > rechecked.length)
+        partial =
+          `${partial} Partial refresh: ${missing.length - rechecked.length} previously known PRs were not rechecked within the detail budget.`.trim();
+      for (const old of rechecked) {
         const ref = parsePullRequest(old.url);
-        const info = await this.client.api<{ state: string; merged: boolean }>(
-          `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
-          this.controller.signal,
-        );
-        if (info.state === "closed") {
+        const info = await this.client
+          .api<{
+            state: string;
+            merged: boolean;
+            draft?: boolean;
+            updated_at?: string;
+            head?: {
+              ref: string;
+              sha: string;
+              repo: { full_name: string } | null;
+            };
+          }>(
+            `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
+            this.controller.signal,
+          )
+          .catch((error) => {
+            if (!this.controller.signal.aborted)
+              this.recordInaccessible(old, error);
+            throw error;
+          });
+        if (["open", "closed"].includes(info.state)) {
           const value = {
             ...old,
-            state: info.merged ? "MERGED" : "CLOSED",
-            updated_at: now(),
+            state: info.merged
+              ? "MERGED"
+              : info.state === "closed"
+                ? "CLOSED"
+                : "OPEN",
+            draft: info.draft ?? old.draft,
+            head_sha: info.head?.sha || old.head_sha,
+            head_branch: info.head?.ref || old.head_branch,
+            head_repository: info.head?.repo?.full_name || old.head_repository,
+            updated_at: info.updated_at || old.updated_at,
+            access_error: undefined,
+            last_known_state: undefined,
           };
           updates.push(value);
         }
@@ -506,8 +602,11 @@ export class GitHubService {
         for (const value of updates) this.savePR(value);
       });
       for (const value of updates) this.scheduler.discovered(value);
-      this.lastSync = now();
-      this.error = null;
+      this.detailCursor = (cursor + bounded.length) % Math.max(1, found.length);
+      this.knownCursor =
+        (knownCursor + rechecked.length) % Math.max(1, missing.length);
+      if (!partial) this.lastSync = now();
+      this.error = partial || null;
     } catch (e) {
       this.error = this.controller.signal.aborted
         ? null
@@ -518,7 +617,12 @@ export class GitHubService {
       this.phase = null;
       this.engine.db.run(
         "INSERT INTO settings VALUES('github_sync',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        JSON.stringify({ last_sync: this.lastSync, error: this.error }),
+        JSON.stringify({
+          last_sync: this.lastSync,
+          error: this.error,
+          detail_cursor: this.detailCursor,
+          known_cursor: this.knownCursor,
+        }),
       );
     }
     this.engine.changed();
@@ -533,6 +637,18 @@ export class GitHubService {
       JSON.stringify(pr),
       pr.updated_at,
     );
+  };
+  private recordInaccessible = (pr: GitHubPullRequest, error: unknown) => {
+    const value = {
+      ...pr,
+      state: "UNKNOWN",
+      last_known_state: pr.state === "UNKNOWN" ? pr.last_known_state : pr.state,
+      access_error: redact(
+        error instanceof Error ? error.message : String(error),
+      ).slice(-3000),
+    };
+    this.savePR(value);
+    this.scheduler.discovered(value);
   };
   // Kept for older callers: starting the service never schedules a GitHub read.
   start = () => {};

@@ -209,7 +209,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.getByLabel("Toggle utility dock").click();
       await page.getByRole("button", { name: "Start task terminal" }).click();
       await page.getByRole("button", { name: "Close shell" }).waitFor();
-      const composer = page.getByLabel("Task follow-up");
+      const composer = page.getByLabel("Task conversation");
       let navigations = 0;
       page.on("framenavigated", () => {
         navigations++;

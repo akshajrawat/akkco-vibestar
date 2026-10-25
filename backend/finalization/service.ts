@@ -202,9 +202,9 @@ export class FinalizationService {
           GitPresetSchema.parse,
         )
       : GitPresetSchema.parse({
-          name: "Normal commit + no-verify push",
+          name: "Standard",
           commit_hooks: "normal",
-          push: "skip",
+          push: "normal",
           remote:
             this.engine.db.repository(task.repo_id).origin_remote || "origin",
           branch: task.branch_name,

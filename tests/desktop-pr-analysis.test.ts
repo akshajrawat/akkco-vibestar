@@ -73,7 +73,10 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
       await page.exposeFunction(
         "fixtureRpc",
-        (method: string, params: unknown) => rpc.call(method, params),
+        async (method: string, params: unknown) =>
+          method === "providers.detect"
+            ? [await new PRFixtureProvider().detect()]
+            : rpc.call(method, params),
       );
       await app.evaluate(({ ipcMain, BrowserWindow }) => {
         ipcMain.removeHandler("core:rpc");
@@ -193,6 +196,40 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
         1,
       );
       await page.screenshot({ path: join(dir, "manual-pr-report.png") });
+      await page.getByRole("button", { name: "Close PR details" }).click();
+      const analyzeAll = page.getByRole("button", {
+        name: "Analyze All",
+        exact: true,
+      });
+      await analyzeAll.focus();
+      await page.keyboard.press("Enter");
+      const batchDialog = page.getByRole("dialog", {
+        name: "Analyze All",
+        exact: true,
+      });
+      await batchDialog.getByLabel("Maximum AI analyses authorized").fill("0");
+      await batchDialog
+        .getByRole("button", { name: "Inspect selection · no AI" })
+        .click();
+      await batchDialog.getByText(/1 unchanged reports reusable/).waitFor();
+      await page.screenshot({ path: join(dir, "v3-batch-preview.png") });
+      await batchDialog
+        .getByRole("button", { name: "Start Analyze All" })
+        .click();
+      await batchDialog.waitFor({ state: "hidden" });
+      await expect
+        .poll(() => rpc.prBatches.list()[0]?.status)
+        .toBe("completed");
+      expect(rpc.prBatches.list()[0]).toMatchObject({
+        max_analyses: 0,
+        analyses_used: 0,
+        items: [{ status: "completed" }],
+      });
+      expect(engine.db.all("SELECT * FROM scheduled_agent_runs")).toHaveLength(
+        1,
+      );
+      await page.getByRole("region", { name: "PR batch progress" }).waitFor();
+      await page.screenshot({ path: join(dir, "v3-batch-complete.png") });
       expect(errors).toEqual([]);
     } finally {
       if (forward) engine.off("event", forward);
@@ -200,7 +237,8 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
       await rpc.close();
       await engine.close();
       vi.restoreAllMocks();
-      await rm(dir, { recursive: true, force: true });
+      if (!process.env.VIBESTAR_KEEP_EVIDENCE)
+        await rm(dir, { recursive: true, force: true });
     }
   },
   60000,

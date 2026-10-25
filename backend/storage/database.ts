@@ -289,6 +289,9 @@ export class Database {
         "UPDATE code_questions SET status='interrupted',error='Execution interrupted. Ask again to retry.' WHERE status='running'",
       );
       this.run(
+        "UPDATE task_messages SET status='chat_interrupted' WHERE purpose='chat' AND status='chat_pending'",
+      );
+      this.run(
         "UPDATE ai_usage SET status='interrupted',ended_at=?,duration_ms=CAST((julianday(?) - julianday(started_at))*86400000 AS INTEGER) WHERE status='running'",
         now(),
         now(),

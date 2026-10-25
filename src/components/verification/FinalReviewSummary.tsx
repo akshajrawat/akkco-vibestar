@@ -115,7 +115,7 @@ export const FinalReviewSummary = ({
           Open Changes
         </Button>
         <Button size="sm" variant="ghost" onClick={tests}>
-          Open Tests
+          Open Checks
         </Button>
         {fix && (
           <Button size="sm" variant="ghost" onClick={fix}>

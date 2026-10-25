@@ -2,7 +2,7 @@ import { ActionSchema } from "./action";
 import { z } from "zod";
 import type { GitHubPullRequest } from "../github/contracts";
 import { randomUUID } from "node:crypto";
-import { now, AdeError } from "../domain";
+import { now, AdeError, type Settings } from "../domain";
 import type { Engine } from "../execution/engine";
 import { redact } from "../execution/process";
 import { PRAnalysis } from "../review/pr/analysis";
@@ -133,11 +133,18 @@ export class Scheduler {
     return job;
   };
   discovered = (pr: GitHubPullRequest) => {
-    const job = this.jobs().find((j) => j.url === pr.url);
-    if (!job) return;
+    const job =
+      this.jobs().find((j) => j.url.toLowerCase() === pr.url.toLowerCase()) ||
+      this.add({
+        url: pr.url,
+        task_id: pr.task_id,
+        interval_minutes: 60,
+        verify_codex: false,
+      });
     if (this.active.has(job.id)) return;
     job.title = pr.title;
-    job.archived = pr.state !== "OPEN";
+    if (["OPEN", "CLOSED", "MERGED"].includes(pr.state))
+      job.archived = pr.state !== "OPEN";
     if (!job.task_id && pr.task_id) job.task_id = pr.task_id;
     this.save(job);
   };
@@ -175,14 +182,46 @@ export class Scheduler {
   // Older callers cannot restore timers or execute imported enabled records.
   tick = async () => {};
   runNow = (id: string) => this.launch(id, randomUUID(), false);
-  analyze = (id: string, requestId: string = randomUUID()) =>
-    this.launch(id, requestId, true);
+  analyze = (
+    id: string,
+    requestId: string = randomUUID(),
+    options?: {
+      configuration: Settings["utility_ai"];
+      authorizeInference: () => void;
+    },
+  ) => this.launch(id, requestId, true, options);
+  inspectForBatch = async (id: string, signal: AbortSignal) => {
+    const snapshot = await this.monitor.inspect(this.job(id).url, signal);
+    return this.analysis.canReuse(id, snapshot);
+  };
+  analyzeBatchItem = async (
+    id: string,
+    requestId: string,
+    options: {
+      configuration: Settings["utility_ai"];
+      authorizeInference: () => void;
+    },
+  ) => {
+    this.analyze(id, requestId, options);
+    await this.active.get(id)?.promise;
+    return this.analysis
+      .history(id)
+      .find((session) => session.id === requestId);
+  };
   cancel = async (id: string) => {
     const active = this.active.get(id);
     active?.controller.abort();
     await active?.promise;
   };
-  private launch = (id: string, requestId: string, semantic: boolean) => {
+  private launch = (
+    id: string,
+    requestId: string,
+    semantic: boolean,
+    options?: {
+      configuration: Settings["utility_ai"];
+      authorizeInference: () => void;
+    },
+  ) => {
     this.engine.assertAvailable();
     const duplicate = this.engine.db.all<{ job_id: string }>(
       "SELECT job_id FROM pr_analyses WHERE id=?",
@@ -210,7 +249,9 @@ export class Scheduler {
       started_at: now(),
       ended_at: null,
       phase: "Fetching complete GitHub context",
-      configuration: structuredClone(this.engine.db.settings().utility_ai),
+      configuration: structuredClone(
+        options?.configuration || this.engine.db.settings().utility_ai,
+      ),
     };
     let release = () => {};
     release = this.engine.trackActivity(
@@ -248,6 +289,7 @@ export class Scheduler {
               snapshot,
               job.url,
               controller.signal,
+              options?.authorizeInference,
             );
             job.last_analyzed_at = session.ended_at || now();
           } else {
@@ -331,11 +373,14 @@ export class Scheduler {
               );
           }
         } catch (error) {
-          session.status = controller.signal.aborted
-            ? this.stopped
-              ? "interrupted"
-              : "cancelled"
-            : "failed";
+          session.status =
+            error instanceof AdeError && error.kind === "analysis_cap"
+              ? "partial"
+              : controller.signal.aborted
+                ? this.stopped
+                  ? "interrupted"
+                  : "cancelled"
+                : "failed";
           session.error = redact(
             error instanceof Error ? error.message : String(error),
           );

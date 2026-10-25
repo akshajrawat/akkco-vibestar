@@ -9,12 +9,14 @@ export const CleanupError = ({
   title,
   retry,
   busy,
+  canRetry = true,
 }: {
   error: unknown;
   taskId?: string;
   title: string;
   retry: () => void;
   busy: boolean;
+  canRetry?: boolean;
 }) => {
   const [blockers, setBlockers] = useState<ActivityBlocker[]>([]);
   const [stopping, setStopping] = useState(false);
@@ -56,6 +58,20 @@ export const CleanupError = ({
       : error instanceof Error
         ? error.stack || error.message
         : String(error);
+  const permanent =
+    !!error &&
+    typeof error === "object" &&
+    "kind" in error &&
+    [
+      "git_dirty",
+      "git_unpushed",
+      "ownership",
+      "isolation",
+      "task_dependencies",
+      "publication_pending",
+      "git_operation",
+      "git_index",
+    ].includes(String(error.kind));
   return (
     <section
       className={`operation-error ${blockers.length ? "operation-blocked" : ""}`}
@@ -77,7 +93,9 @@ export const CleanupError = ({
       ) : (
         <p>
           {stopped
-            ? "Blockers stopped. Try again to finish cleanup."
+            ? canRetry
+              ? "Blockers stopped. Try again to finish cleanup."
+              : "Blockers stopped. Preview the current task contents before continuing."
             : errorMessage(error)}
         </p>
       )}
@@ -92,9 +110,11 @@ export const CleanupError = ({
             {stopping ? "Stopping…" : "Stop blockers"}
           </Button>
         )}
-        <Button size="sm" disabled={busy || stopping} onClick={retry}>
-          Try again
-        </Button>
+        {canRetry && !permanent && (!blockers.length || stopped) && (
+          <Button size="sm" disabled={busy || stopping} onClick={retry}>
+            Try again
+          </Button>
+        )}
       </div>
       <details>
         <summary>Technical details</summary>

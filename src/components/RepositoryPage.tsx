@@ -1,7 +1,7 @@
 import { CloneActivity } from "./CloneActivity";
 import { OpenInEditor } from "./OpenInEditor";
 import { useState } from "react";
-import { Search, RefreshCw, Plus } from "lucide-react";
+import { Search, RefreshCw, Plus, MoreHorizontal, X } from "lucide-react";
 import type { Snapshot } from "../lib/types";
 import type { LocalRepository } from "../../backend/workspace/discovery";
 import { Button } from "./ui/button";
@@ -199,90 +199,121 @@ export const RepositoryPage = ({
                     ? "User-owned checkout"
                     : "Vibestar-managed clone"}
                 </span>
-              </div>
-              <p className="subtle">
-                {r.environment === "windows" || r.path?.startsWith("/mnt/")
-                  ? "Windows"
-                  : "WSL"}{" "}
-                ·{" "}
-                {r.distro ||
-                  snapshot.execution_environment?.distro ||
-                  "Configured environment"}
-              </p>
-              <code className="repository-path">{r.path}</code>
-              {r.windows_path && (
-                <p className="subtle">Windows: {r.windows_path}</p>
-              )}
-              <dl className="repository-facts">
-                <dt>Upstream</dt>
-                <dd>
-                  {r.owner}/{r.name}{" "}
-                  <small>{r.upstream_remote || "upstream"}</small>
-                </dd>
-                <dt>Origin / fork</dt>
-                <dd>{originLabel(r.origin_url)}</dd>
-                <dt>Base</dt>
-                <dd>{r.base_branch}</dd>
-              </dl>
-              <div className="actions">
+                <span className="subtle">Base {r.base_branch}</span>
                 <OpenInEditor id={r.id} kind="repository" path={r.path} />
                 <Button
-                  size="sm"
-                  onClick={() =>
-                    void action(
-                      "open.directory",
-                      { id: r.id, kind: "repository" },
-                      r.id,
-                    )
-                  }
-                >
-                  Open
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!!busy}
-                  onClick={() =>
-                    void action("repository.fetch", { id: r.id }, r.id)
-                  }
-                >
-                  Fetch
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!!busy}
-                  onClick={() => void verify(r.id)}
-                >
-                  Verify
-                </Button>
-                <Button
-                  size="sm"
                   variant="ghost"
-                  disabled={!!busy}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        "Disconnect " +
-                          r.owner +
-                          "/" +
-                          r.name +
-                          "? It will leave the active list. Source files, branches, task history and existing worktrees will be kept. Reconnect this checkout to create new tasks.",
-                      )
-                    )
-                      void action(
-                        "repository.disconnect",
-                        { id: r.id, confirmed: true },
-                        r.id,
-                      );
-                  }}
+                  size="icon"
+                  popoverTarget={`repository-details-${r.id}`}
+                  aria-label={`Details and actions for ${r.owner}/${r.name}`}
                 >
-                  Disconnect
+                  <MoreHorizontal size={16} />
                 </Button>
               </div>
-              {verified[r.id] && (
-                <p className="success" role="status">
-                  {verified[r.id]}
+              <div
+                id={`repository-details-${r.id}`}
+                popover="auto"
+                role="dialog"
+                aria-label={`Repository details for ${r.owner}/${r.name}`}
+                className="repository-details-popover"
+              >
+                <div className="section-heading">
+                  <h2>
+                    {r.owner}/{r.name}
+                  </h2>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    popoverTarget={`repository-details-${r.id}`}
+                    popoverTargetAction="hide"
+                    aria-label="Close repository details"
+                  >
+                    <X size={16} />
+                  </Button>
+                </div>
+                <p className="subtle">
+                  {r.environment === "windows" || r.path?.startsWith("/mnt/")
+                    ? "Windows"
+                    : "WSL"}{" "}
+                  ·{" "}
+                  {r.distro ||
+                    snapshot.execution_environment?.distro ||
+                    "Configured environment"}
                 </p>
-              )}
+                <code className="repository-path">{r.path}</code>
+                {r.windows_path && (
+                  <p className="subtle">Windows: {r.windows_path}</p>
+                )}
+                <dl className="repository-facts">
+                  <dt>Upstream</dt>
+                  <dd>
+                    {r.owner}/{r.name}{" "}
+                    <small>{r.upstream_remote || "upstream"}</small>
+                  </dd>
+                  <dt>Origin / fork</dt>
+                  <dd>{originLabel(r.origin_url)}</dd>
+                  <dt>Base</dt>
+                  <dd>{r.base_branch}</dd>
+                </dl>
+                <div className="actions">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      void action(
+                        "open.directory",
+                        { id: r.id, kind: "repository" },
+                        r.id,
+                      )
+                    }
+                  >
+                    Open
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() =>
+                      void action("repository.fetch", { id: r.id }, r.id)
+                    }
+                  >
+                    Fetch
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!!busy}
+                    onClick={() => void verify(r.id)}
+                  >
+                    Verify
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!!busy}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Disconnect " +
+                            r.owner +
+                            "/" +
+                            r.name +
+                            "? It will leave the active list. Source files, branches, task history and existing worktrees will be kept. Reconnect this checkout to create new tasks.",
+                        )
+                      )
+                        void action(
+                          "repository.disconnect",
+                          { id: r.id, confirmed: true },
+                          r.id,
+                        );
+                    }}
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+                {verified[r.id] && (
+                  <p className="success" role="status">
+                    {verified[r.id]}
+                  </p>
+                )}
+              </div>
             </div>
           ))}
       </section>

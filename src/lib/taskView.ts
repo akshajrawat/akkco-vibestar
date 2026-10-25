@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from "react";
 
 export const workspaceSections = {
-  pipeline: "Pipeline",
+  pipeline: "Workflow",
   plans: "Plans",
   changes: "Changes",
-  tests: "Tests",
+  tests: "Checks",
   "final-review": "Final review",
   usage: "Usage",
   "run-details": "Run details",
@@ -19,6 +19,7 @@ export interface ContextAttachment {
 interface TaskView {
   draft: string;
   gitMessageDraft: string;
+  gitStep: number;
   draftContext: ContextAttachment[];
   messageRequest: { id: string; signature: string } | null;
   savedInstruction: { id: string; content: string } | null;
@@ -164,6 +165,9 @@ const savedLayout = (id: string): Partial<TaskView> => {
         }),
       ),
       planStage: saved.planStage === 2 ? (2 as const) : (1 as const),
+      gitStep: [0, 1, 2, 3].includes(Number(saved.gitStep))
+        ? Number(saved.gitStep)
+        : 0,
       secondaryWidth: bounded(
         saved.secondaryWidth,
         bounded(Number(read("vibestar.contextWidth")) || 380, 380, 300, 640),
@@ -256,6 +260,7 @@ const state = (id: string) => {
     value = {
       draft: read(`vibestar.draft.${id}`) || "",
       gitMessageDraft: "",
+      gitStep: 0,
       draftContext: [],
       messageRequest: null,
       savedInstruction: null,

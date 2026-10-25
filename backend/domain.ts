@@ -161,6 +161,8 @@ export const defaultSettings: Settings = {
   },
 };
 export const taskStatuses = [
+  "not_started",
+  "preserved",
   "queued",
   "preparing",
   "planning_antigravity",
@@ -205,6 +207,19 @@ export interface Repository {
   origin_remote?: string | null;
 }
 export interface Task {
+  disposal_authorization?: {
+    fingerprint: string;
+    acknowledge_unpublished: boolean;
+    authorized_at: string;
+  };
+  workflow_version?: 1;
+  workflow_start?: {
+    request_id: string;
+    digest: string;
+    started_at: string;
+    message_ids: string[];
+    summary: string;
+  };
   verification_environment?: VerificationEnvironment;
   browser_environment_report?: BrowserEnvironmentReport;
   runtime?: {
