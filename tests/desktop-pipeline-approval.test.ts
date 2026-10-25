@@ -219,6 +219,10 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         .waitFor();
       await page
         .locator(".secondary-content")
+        .getByText("View result details", { exact: true })
+        .click();
+      await page
+        .locator(".secondary-content")
         .getByText("remote CI", { exact: true })
         .waitFor();
       await page.screenshot({ path: join(evidence, "final-review.png") });

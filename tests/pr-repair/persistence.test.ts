@@ -121,7 +121,11 @@ it("protects source/repair ownership during cleanup and retains reviewed state o
     await expect(storage.removeRepository(repo.id)).rejects.toThrow(
       "PR repair workspaces",
     );
-    await expect(storage.reset()).rejects.toThrow("PR repair workspaces");
+    const resetPreview = await storage.previewReset();
+    expect(resetPreview.repairs.map((repair) => repair.id)).toContain(
+      session.id,
+    );
+    await expect(storage.reset()).rejects.toThrow("preview");
     const file = join(session.workspace.worktree_path, "spec.ts");
     const unusual = join(
       session.workspace.worktree_path,

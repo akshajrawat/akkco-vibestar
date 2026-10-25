@@ -13,6 +13,8 @@ export class CoreBridge extends EventEmitter {
   private instructionChoicesAvailable = false;
   private finalReviewSettingsAvailable = false;
   private browserVerificationAvailable = false;
+  private pipelineVerificationAvailable = false;
+  private verificationPolicyAvailable = false;
   private exactCommitMessagesAvailable = false;
   private gitFinalizationAvailable = false;
   private manualPrAvailable = false;
@@ -42,6 +44,8 @@ export class CoreBridge extends EventEmitter {
     this.instructionChoicesAvailable = false;
     this.finalReviewSettingsAvailable = false;
     this.browserVerificationAvailable = false;
+    this.pipelineVerificationAvailable = false;
+    this.verificationPolicyAvailable = false;
     this.exactCommitMessagesAvailable = false;
     this.gitFinalizationAvailable = false;
     this.checking = this.launch().catch((error) => {
@@ -121,6 +125,8 @@ export class CoreBridge extends EventEmitter {
         saved_instruction_choices?: boolean;
         independent_final_review?: boolean;
         browser_verification_environment?: boolean;
+        pipeline_verification?: number;
+        verification_policy?: boolean;
         exact_commit_messages?: boolean;
         git_finalization?: number;
         manual_pr_analysis?: boolean;
@@ -137,6 +143,8 @@ export class CoreBridge extends EventEmitter {
           info.independent_final_review === true;
         this.browserVerificationAvailable =
           info.browser_verification_environment === true;
+        this.pipelineVerificationAvailable = info.pipeline_verification === 2;
+        this.verificationPolicyAvailable = info.verification_policy === true;
         this.exactCommitMessagesAvailable = info.exact_commit_messages === true;
         this.gitFinalizationAvailable = info.git_finalization === 1;
         this.manualPrAvailable = info.manual_pr_analysis === true;
@@ -165,6 +173,20 @@ export class CoreBridge extends EventEmitter {
   };
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (
+      method === "task.verification.policy" &&
+      !this.verificationPolicyAvailable
+    )
+      throw new Error(
+        "Update the execution helper before changing verification policy.",
+      );
+    if (
+      !this.pipelineVerificationAvailable &&
+      method.startsWith("task.verification.")
+    )
+      throw new Error(
+        "Update the execution helper before using verification recovery and review with gaps.",
+      );
     if (!this.gitFinalizationAvailable && method.startsWith("git."))
       throw new Error(
         "Update the execution helper before using Git Finalization.",

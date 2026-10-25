@@ -41,6 +41,8 @@ import { ChatSurface } from "./workspace/ChatSurface";
 import { SecondaryWorkspace } from "./workspace/SecondaryWorkspace";
 import { BottomDock } from "./workspace/BottomDock";
 import { PipelineView, RunDetailsView } from "./workspace/TaskEngineering";
+import { VerificationRecovery } from "./verification/VerificationRecovery";
+import { FinalReviewSummary } from "./verification/FinalReviewSummary";
 
 export const TaskWorkspace = ({
   detail,
@@ -451,29 +453,31 @@ export const TaskWorkspace = ({
               </article>
               <section className="preparation-turn">
                 <strong>Preparing repository</strong>
-                {detail.activity?.map((row) => {
-                  const data = JSON.parse(row.data) as {
-                    argv: string[];
-                    code: number;
-                    stdout: string;
-                    stderr: string;
-                    duration_ms: number;
-                  };
-                  return (
-                    <details key={row.id}>
-                      <summary>
-                        <span
-                          className={data.code === 0 ? "success" : "failure"}
-                        >
-                          {data.code === 0 ? "✓" : "!"}
-                        </span>
-                        <code>{data.argv.join(" ")}</code>
-                        <small>{Math.round(data.duration_ms / 1000)}s</small>
-                      </summary>
-                      <pre>{data.stdout || data.stderr}</pre>
-                    </details>
-                  );
-                })}
+                {detail.activity
+                  ?.filter((row) => row.kind === "preparation")
+                  .map((row) => {
+                    const data = JSON.parse(row.data) as {
+                      argv: string[];
+                      code: number;
+                      stdout: string;
+                      stderr: string;
+                      duration_ms: number;
+                    };
+                    return (
+                      <details key={row.id}>
+                        <summary>
+                          <span
+                            className={data.code === 0 ? "success" : "failure"}
+                          >
+                            {data.code === 0 ? "✓" : "!"}
+                          </span>
+                          <code>{data.argv.join(" ")}</code>
+                          <small>{Math.round(data.duration_ms / 1000)}s</small>
+                        </summary>
+                        <pre>{data.stdout || data.stderr}</pre>
+                      </details>
+                    );
+                  })}
                 {t.worktree_path && (
                   <p className="mono subtle">
                     <GitBranch size={12} />
@@ -487,6 +491,7 @@ export const TaskWorkspace = ({
                 )}
               </section>
               <AgentTimeline
+                expandResults={false}
                 events={detail.events}
                 runs={detail.runs}
                 messages={messages}
@@ -571,7 +576,11 @@ export const TaskWorkspace = ({
               {detail.tests.length > 0 && (
                 <section className="validation-turn">
                   <button onClick={() => inspect("Tests")}>
-                    Validation{" "}
+                    {verification.outcome === "passed"
+                      ? "Implementation verification"
+                      : verification.outcome === "failed"
+                        ? "Implementation needs changes"
+                        : "Implementation verification incomplete"}{" "}
                     <span
                       className={
                         verification.outcome === "passed"
@@ -581,13 +590,25 @@ export const TaskWorkspace = ({
                             : "warning"
                       }
                     >
-                      {verification.summary}
+                      {
+                        verification.checks.filter(
+                          (check) =>
+                            check.kind === "check" &&
+                            check.outcome === "passed",
+                        ).length
+                      }{" "}
+                      checks passed
+                      {verification.blockers.length > 0
+                        ? ` · ${verification.blockers.map((blocker) => blocker.title).join("; ")}`
+                        : verification.outcome === "passed"
+                          ? " · Required verification complete"
+                          : " · Inspect outstanding requirements"}
                     </span>
                   </button>
-                  {t.stage === 4 && t.error && (
+                  {t.stage >= 4 && (
                     <details>
                       <summary>Host validation details</summary>
-                      <p>{t.error}</p>
+                      <p>{verification.summary}</p>
                       <small>
                         Host validation launches no provider process. Inspect
                         the recorded command for its actual exit and output.
@@ -605,6 +626,13 @@ export const TaskWorkspace = ({
                   {diff?.files.length === 1 ? "file" : "files"}
                   <ChevronRight size={14} />
                 </p>
+              )}
+              {t.final_review_verdict && (
+                <FinalReviewSummary
+                  detail={detail}
+                  changes={() => inspect("Changes")}
+                  tests={() => inspect("Tests")}
+                />
               )}
             </>
           }
@@ -668,12 +696,14 @@ export const TaskWorkspace = ({
                       (pending.length > 0 && !chosenInstructions) ||
                       occupied ||
                       (t.approval_gate === "final_review" &&
-                        JSON.parse(
-                          [...detail.artifacts]
-                            .reverse()
-                            .find((a) => a.stage === 5 && a.kind === "plan")
-                            ?.content || "{}",
-                        ).approval !== "approved")
+                        (verification.outcome === "failed" ||
+                          t.final_review_verdict === "changes_requested" ||
+                          JSON.parse(
+                            [...detail.artifacts]
+                              .reverse()
+                              .find((a) => a.stage === 5 && a.kind === "plan")
+                              ?.content || "{}",
+                          ).approval !== "approved"))
                     }
                     onClick={() =>
                       void action("task.approve", {
@@ -754,14 +784,27 @@ export const TaskWorkspace = ({
                 </ActionTray>
               )}
 
-              {t.status === "verification_blocked" && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => inspect("Tests")}
-                >
-                  Inspect unresolved verification
-                </Button>
+              {t.stage >= 4 &&
+                (t.stage === 4 ||
+                  t.final_review_verdict === "changes_requested" ||
+                  t.final_review_verdict === "blocked" ||
+                  t.status === "reviewed_with_gaps" ||
+                  !verification.canReview) &&
+                !active && (
+                  <VerificationRecovery
+                    detail={detail}
+                    onError={onError}
+                    disabled={busy}
+                    inspect={() => inspect("Tests")}
+                  />
+                )}
+              {t.status === "reviewed_with_gaps" && (
+                <p className="warning">
+                  Code review accepted · changes kept locally.{" "}
+                  {verification.canReview
+                    ? "Recheck evidence to request final verification review."
+                    : "Complete required verification before Git Finalization."}
+                </p>
               )}
               {["ready_for_review", "completed"].includes(t.status) && (
                 <Button size="sm" onClick={() => setFinalizing(true)}>
@@ -830,6 +873,7 @@ export const TaskWorkspace = ({
               busy={busy}
               action={action}
               finalize={() => setFinalizing(true)}
+              onError={onError}
             />
           ) : view.secondarySection === "plans" ? (
             <PlanView
@@ -873,14 +917,23 @@ export const TaskWorkspace = ({
             />
           ) : (
             <div className="final-review-panel">
-              <AgentResponse
-                expanded
-                text={
-                  [...detail.artifacts]
-                    .reverse()
-                    .find((a) => a.stage === 5 && a.kind === "plan")?.content ||
-                  "Antigravity final review has not run yet."
-                }
+              <FinalReviewSummary
+                detail={detail}
+                changes={() => inspect("Changes")}
+                tests={() => inspect("Tests")}
+              />
+              {t.stage >= 4 && (
+                <VerificationRecovery
+                  detail={detail}
+                  onError={onError}
+                  disabled={busy}
+                />
+              )}
+              <OpenInEditor
+                id={t.id}
+                kind="task"
+                path={t.worktree_path}
+                disabled={!t.worktree_path}
               />
               {detail.runs
                 .filter((run) => run.stage === 5)

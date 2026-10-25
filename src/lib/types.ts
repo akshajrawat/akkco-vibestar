@@ -10,6 +10,8 @@ export interface Task {
     dependencies: string[];
     warnings: string[];
   };
+  preparation_timing?: import("../../backend/domain").Task["preparation_timing"];
+  verification_policy?: import("../../backend/domain").Task["verification_policy"];
   id: string;
   repo_id: string;
   issue_number: number;
@@ -29,6 +31,7 @@ export interface Task {
   status: string;
   archived?: boolean;
   approval_gate?: import("../../backend/domain").Task["approval_gate"];
+  final_review_verdict?: import("../../backend/domain").Task["final_review_verdict"];
   stage: number;
   error: string | null;
 }

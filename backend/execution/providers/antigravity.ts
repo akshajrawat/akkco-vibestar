@@ -131,6 +131,12 @@ export class AntigravityProvider implements AgentProvider {
         kind = "file.changed";
       const info = object(step.tool_info),
         params = object(info.parameters);
+      const reportedExit =
+        kind === "command.finished" && typeof info.output === "string"
+          ? info.output.match(
+              /^Command exited with code (-?\d{1,9})\.(?:\r?\n|$)/,
+            )
+          : null;
       return [
         {
           kind,
@@ -147,7 +153,10 @@ export class AntigravityProvider implements AgentProvider {
                   ? "provider"
                   : undefined,
             stderr: info.stderr ?? object(info.error).message,
-            exit_code: info.exit_code ?? step.exit_code,
+            exit_code:
+              info.exit_code ??
+              step.exit_code ??
+              (reportedExit ? Number(reportedExit[1]) : undefined),
             arguments: info.parameters,
             path:
               params.AbsolutePath ??

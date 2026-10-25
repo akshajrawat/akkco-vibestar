@@ -6,6 +6,7 @@ import { CommandRuns } from "./CommandRuns";
 import { Button } from "./ui/button";
 import { VerificationSummary } from "./VerificationSummary";
 import { BrowserEnvironment } from "./BrowserEnvironment";
+import { VerificationRecovery } from "./verification/VerificationRecovery";
 export const TestsView = ({
   detail,
   onError,
@@ -36,20 +37,14 @@ export const TestsView = ({
         detail={detail}
         inspect={setCommandId}
         terminal={terminal}
-        retry={
-          detail.task.stage === 4 &&
-          !detail.active &&
-          !detail.executing &&
-          !busy
-            ? () => {
-                setBusy(true);
-                void rpc("task.retry", { id: detail.task.id, stage: 4 })
-                  .catch((e) => onError(errorMessage(e)))
-                  .finally(() => setBusy(false));
-              }
-            : undefined
-        }
       />
+      {detail.task.stage >= 4 && (
+        <VerificationRecovery
+          detail={detail}
+          onError={onError}
+          disabled={busy}
+        />
+      )}
       <BrowserEnvironment
         task={detail.task}
         unavailable={busy || !!detail.active || !!detail.executing}

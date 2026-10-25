@@ -6,7 +6,8 @@ import { Usage } from "./usage";
 import { discoverCodexModels } from "./providers/codex-models";
 import { sandboxInvocation } from "./sandbox";
 import { mkdir, open, writeFile, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { managedPath } from "../workspace/paths";
 import { randomUUID } from "node:crypto";
 import {
   AdeError,
@@ -24,6 +25,7 @@ import type { GitWorkspace } from "../workspace/git";
 import { execute, redact } from "./process";
 import { BoundedWriter } from "./bounded-output";
 import { buildPrompt } from "./prompt";
+import { taskVerification } from "./task-verification";
 import {
   schemaFor,
   validatePlan,
@@ -329,12 +331,62 @@ export class AgentRunner {
       await writeFile(schemaPath, JSON.stringify(outputSchema), {
         mode: 0o600,
       });
+      let sentPrompt = prompt;
+      const contextPaths = [...(options?.contextPaths || [])];
+      if (task && t.stage === 5 && !options) {
+        const evidencePath = await managedPath(
+          join(this.root, "artifacts"),
+          join(t.id, id, "review-evidence.json"),
+        );
+        await mkdir(dirname(evidencePath), {
+          recursive: true,
+          mode: 0o700,
+        });
+        await managedPath(join(this.root, "artifacts"), evidencePath);
+        await writeFile(
+          evidencePath,
+          redact(
+            JSON.stringify(
+              {
+                issue: task.issue,
+                scope:
+                  task.scope_mode === "whole_issue"
+                    ? "Entire issue"
+                    : task.claimed_scope,
+                plan: this.db.artifact(task.id, 2),
+                implementation: this.db.artifact(task.id, 3),
+                verification: taskVerification(this.db, task.id),
+                commands: this.db.all(
+                  "SELECT * FROM test_runs WHERE task_id=? ORDER BY started_at,rowid",
+                  task.id,
+                ),
+                runs: this.db.all(
+                  "SELECT id,stage,provider,status,output,error FROM agent_runs WHERE task_id=? ORDER BY started_at,rowid",
+                  task.id,
+                ),
+                evidenceNote:
+                  "Complete retained command records; output_truncated indicates earlier provider output exceeded retention. Missing output is not proof of success.",
+              },
+              null,
+              2,
+            ),
+          ),
+          { mode: 0o600 },
+        );
+        contextPaths.push(evidencePath);
+        sentPrompt += `\nCOMPLETE REVIEW EVIDENCE: ${evidencePath}`;
+        this.db.run(
+          `UPDATE ${table} SET prompt=? WHERE id=?`,
+          redact(sentPrompt),
+          id,
+        );
+      }
       const directInvocation = provider.invocation({
         runId: id,
         cwd,
         stage: t.stage,
         config: selectedConfig,
-        prompt,
+        prompt: sentPrompt,
         schemaPath,
         schema: outputSchema,
         workspaceType: repair ? "task" : options ? "utility" : "task",
@@ -353,11 +405,23 @@ export class AgentRunner {
           ? detection.provider
           : undefined,
         options?.workspace,
-        options?.contextPaths,
+        contextPaths,
       );
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
       const before = assignment ? await fingerprint(assignment) : null;
+      if (
+        task &&
+        t.stage === 5 &&
+        !options &&
+        task.review_gap_acknowledgment &&
+        !taskVerification(this.db, task.id).canReview &&
+        before !== task.review_gap_acknowledgment.fingerprint
+      )
+        throw new AdeError(
+          "stale_review",
+          "The implementation changed after gap approval. Inspect and acknowledge the current implementation before review.",
+        );
       this.emit({ event: "changed", task_id: task?.id, repair_id: repair?.id });
       invoked = true;
       const output = await execute({

@@ -1,7 +1,18 @@
 import { readWorktreeOwner } from "../workspace/ownership";
 import { z } from "zod";
 import { gitCapture, gitChecked, gitExecute } from "../workspace/git-command";
-import { lstat, readdir, realpath, rm, mkdir } from "node:fs/promises";
+import {
+  lstat,
+  readdir,
+  realpath,
+  rm,
+  mkdir,
+  writeFile,
+  cp,
+  chmod,
+} from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import BetterSqlite3 from "better-sqlite3";
 import { join } from "node:path";
 import { AdeError, now, type Task, type Repository } from "../domain";
 import type { Engine } from "../execution/engine";
@@ -111,7 +122,12 @@ export class StorageService {
     this.engine.withTaskMaintenance(id, () =>
       this.cleanupTaskData(id, options),
     );
-  private removeTaskWorkspace = async (task: Task, repo: Repository) => {
+  private removeTaskWorkspace = async (
+    task: Task,
+    repo: Repository,
+    preview = false,
+    protectUnpushed = false,
+  ) => {
     const e = this.engine;
     await e.git.withLock(repo.id, async () => {
       if (!task.branch_name && !task.worktree_path) return;
@@ -145,7 +161,7 @@ export class StorageService {
         (!task.worktree_path || !(await exists(task.worktree_path))) &&
         !worktrees.split("\n").includes(`worktree ${task.worktree_path}`)
       ) {
-        if (task.workspace_checkpoint) {
+        if (task.workspace_checkpoint && !preview) {
           task.workspace_checkpoint.state = "removed";
           task.workspace_checkpoint.operation = null;
           e.db.saveTask(task);
@@ -233,6 +249,7 @@ export class StorageService {
           );
       }
       const checkpointRemoval = (head: string) => {
+        if (preview) return;
         task.workspace_checkpoint = {
           ...task.workspace_checkpoint,
           state: "removing",
@@ -244,6 +261,7 @@ export class StorageService {
         e.db.saveTask(task);
       };
       const remove = async (args: string[]) => {
+        if (preview) return;
         let finished = false;
         try {
           const result = await gitExecute({
@@ -356,6 +374,24 @@ export class StorageService {
           );
         const head = await gitChecked(["rev-parse", "HEAD"], path);
         if (
+          protectUnpushed &&
+          (await gitChecked(
+            [
+              "rev-list",
+              "--count",
+              head,
+              "--not",
+              task.base_commit_sha,
+              "--remotes",
+            ],
+            repo.path,
+          )) !== "0"
+        )
+          throw new AdeError(
+            "git_unpushed",
+            "Unpushed task commits were preserved. Publish or preserve them separately before resetting.",
+          );
+        if (
           branch.code === 0 &&
           head !==
             (await gitChecked(
@@ -426,11 +462,30 @@ export class StorageService {
             "ownership",
             "The task branch changed after removal was checkpointed; it was preserved.",
           );
+        if (
+          protectUnpushed &&
+          (await gitChecked(
+            [
+              "rev-list",
+              "--count",
+              `refs/heads/${task.branch_name}`,
+              "--not",
+              task.base_commit_sha,
+              "--remotes",
+            ],
+            repo.path,
+          )) !== "0"
+        )
+          throw new AdeError(
+            "git_unpushed",
+            "Unpushed task commits were preserved. Publish or preserve them separately before resetting.",
+          );
         const checkouts = await gitChecked(
           ["worktree", "list", "--porcelain"],
           repo.path,
         );
         if (
+          !preview &&
           checkouts
             .split("\n")
             .includes(`branch refs/heads/${task.branch_name}`)
@@ -446,7 +501,7 @@ export class StorageService {
           `refs/heads/${task.branch_name}`,
           head,
         ]);
-        if (marker.code === 0)
+        if (marker.code === 0 && !preview)
           await gitChecked(
             [
               "config",
@@ -457,7 +512,7 @@ export class StorageService {
             repo.path,
           );
       }
-      if (task.workspace_checkpoint) {
+      if (task.workspace_checkpoint && !preview) {
         task.workspace_checkpoint.state = "removed";
         task.workspace_checkpoint.operation = null;
         e.db.saveTask(task);
@@ -472,6 +527,7 @@ export class StorageService {
       artifacts: boolean;
       history: boolean;
     },
+    protectUnpushed = false,
   ) => {
     const e = this.engine;
     let task = e.db.task(id);
@@ -489,7 +545,7 @@ export class StorageService {
           "git_history",
           "Remove this task's owned Git Finalization previews explicitly before deleting its workspace or history.",
         );
-      await this.removeTaskWorkspace(task, repo);
+      await this.removeTaskWorkspace(task, repo, false, protectUnpushed);
       task = {
         ...task,
         worktree_path: "",
@@ -651,77 +707,224 @@ export class StorageService {
     for (const repo of repos) await this.removeRepositoryData(repo.id);
     return repos.length;
   };
-  reset = () => this.engine.withStorageMaintenance(this.resetData);
-  private resetData = async () => {
-    this.engine.db.assertOwnershipRecords();
-    if (this.engine.db.all("SELECT id FROM pr_repairs").length)
-      throw new AdeError(
-        "repair_history",
-        "Remove PR repair workspaces and history explicitly before resetting storage; local changes must remain preserved.",
-      );
-    for (const task of this.engine.db.tasks()) {
-      if (!task.worktree_path && !task.branch_name) continue;
-      this.engine.db.saveTask({ ...task, status: "cancelled" });
-      await this.cleanupTaskData(task.id, {
-        worktree: true,
-        logs: true,
-        artifacts: true,
-        history: true,
+  previewReset = async () => {
+    const e = this.engine;
+    e.db.assertOwnershipRecords();
+    const tasks = [];
+    for (const task of e.db.tasks()) {
+      let reason = "";
+      let fingerprint = "";
+      try {
+        if (
+          e
+            .cleanupBlockers(task.id)
+            .some((blocker) => blocker.id !== "storage-maintenance")
+        )
+          throw new AdeError(
+            "busy",
+            "Active task processes must stop before resetting.",
+          );
+        if (
+          e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", task.id)
+            .length
+        )
+          throw new AdeError(
+            "git_history",
+            "Git Finalization records require separate explicit removal.",
+          );
+        await this.removeTaskWorkspace(
+          task,
+          e.db.repository(task.repo_id),
+          true,
+          true,
+        );
+        if (task.worktree_path && (await exists(task.worktree_path)))
+          fingerprint = await e.git.fingerprint(task);
+        await managedPath(e.root, join("logs", task.id));
+        await managedPath(e.root, join("artifacts", task.id));
+      } catch (error) {
+        reason = error instanceof Error ? error.message : String(error);
+      }
+      tasks.push({
+        id: task.id,
+        title: String(task.issue.title || task.claimed_scope || "Entire issue"),
+        archived: !!task.archived,
+        worktree: task.worktree_path,
+        branch: task.branch_name,
+        eligible: !reason,
+        reason,
+        fingerprint,
+        remove: [
+          task.worktree_path,
+          task.branch_name && "refs/heads/" + task.branch_name,
+          join(e.root, "logs", task.id),
+          join(e.root, "artifacts", task.id),
+          "Task conversation, plans, runs, terminals and task usage",
+        ].filter(Boolean),
       });
     }
-    for (const repo of this.engine.db.repositories())
-      await this.removeRepositoryData(repo.id);
-    for (const dir of [
+    const repairs = e.db.all<{ id: string; status: string }>(
+      "SELECT id,status FROM pr_repairs",
+    );
+    const finalizations = e.db.all<{ id: string; status: string }>(
+      "SELECT id,status FROM git_finalizations",
+    );
+    const sensitive = [
+      ...finalizations.filter((record) =>
+        [
+          "preparing",
+          "reviewing",
+          "committing",
+          "pushing",
+          "uncertain",
+        ].includes(record.status),
+      ),
+      ...e.db.all<{ id: string; status: string }>(
+        "SELECT id,status FROM repair_publications WHERE status IN ('pushing','uncertain')",
+      ),
+    ];
+    const retained = [];
+    for (const category of [
       "logs",
       "artifacts",
       "cache",
+      "runtime",
       "telemetry",
       "worktrees",
       "repos",
     ]) {
-      await this.remove(dir);
-      await mkdir(join(this.engine.root, dir), {
+      const path = await managedPath(e.root, category);
+      for (const name of await readdir(path).catch(() => []))
+        if (
+          !["logs", "artifacts"].includes(category) ||
+          !tasks.some((task) => task.id === name && task.eligible)
+        )
+          retained.push(join(path, name));
+    }
+    const preview = {
+      root: e.root,
+      tasks,
+      repairs,
+      finalizations,
+      sensitive,
+      retained,
+      blockers: e
+        .cleanupBlockers()
+        .filter((blocker) => blocker.id !== "storage-maintenance"),
+      preserved: [
+        "All registered source repositories and managed clones",
+        "User-owned branches",
+        "Provider and GitHub authentication",
+        "Settings and repository connections",
+        "Repair sessions, Git Finalization history and unowned cache/log/runtime data",
+      ],
+    };
+    const token = createHash("sha256")
+      .update(JSON.stringify(preview))
+      .digest("hex");
+    return { ...preview, token };
+  };
+  reset = (token?: string) =>
+    this.engine.withStorageMaintenance(() => this.resetData(token));
+  private resetData = async (token?: string) => {
+    const e = this.engine;
+    const preview = await this.previewReset();
+    if (preview.token !== token)
+      throw new AdeError(
+        "stale_preview",
+        "Workspace data changed. Inspect a new reset preview before confirming.",
+      );
+    if (preview.sensitive.length)
+      throw new AdeError(
+        "busy",
+        "Reconcile pending sensitive Git operations before resetting local test data.",
+      );
+    const backup = await managedPath(
+      e.root,
+      join("backups", "local-test-reset-" + randomUUID()),
+    );
+    await mkdir(backup, { recursive: true, mode: 0o700 });
+    const database = join(backup, "vibestar.sqlite");
+    await e.db.backup(database);
+    await chmod(database, 0o600);
+    const connection = new BetterSqlite3(database, {
+      readonly: true,
+      fileMustExist: true,
+    });
+    try {
+      if (connection.pragma("quick_check", { simple: true }) !== "ok")
+        throw new AdeError(
+          "backup",
+          "SQLite backup validation failed; no task data was removed.",
+        );
+    } finally {
+      connection.close();
+    }
+    await writeFile(
+      join(backup, "manifest.json"),
+      JSON.stringify({ created_at: now(), preview }, null, 2),
+      { mode: 0o600 },
+    );
+    for (const category of ["logs", "artifacts"]) {
+      const path = await managedPath(e.root, category);
+      await cp(path, join(backup, category), {
         recursive: true,
-        mode: 0o700,
+        filter: async (file) => !(await lstat(file)).isSymbolicLink(),
       });
     }
-    this.engine.db.transaction(() => {
-      this.engine.db.run("UPDATE issue_watches SET last_complete_scan_id=NULL");
-      for (const table of [
-        "utility_events",
-        "issue_watch_results",
-        "issue_watch_candidates",
-        "issue_watch_sources",
-        "issue_watch_scans",
-        "issue_watch_revisions",
-        "issue_watches",
-        "ai_usage",
-        "agent_events",
-        "agent_runs",
-        "task_messages",
-        "task_artifacts",
-        "test_runs",
-        "task_review_notes",
-        "task_reviewed_files",
-        "code_questions",
-        "task_activity",
-        "terminal_sessions",
-        "scheduled_attention",
-        "scheduled_agent_runs",
-        "utility_runs",
-        "scheduled_jobs",
-        "github_pull_requests",
-        "github_repositories",
-        "local_repositories",
-        "tasks",
-        "task_requests",
-        "issues",
-        "repositories",
-        "settings",
-      ])
-        this.engine.db.run(`DELETE FROM ${table}`);
-    });
-    this.engine.changed();
-    return { restart_required: true };
+    const removed: string[] = [];
+    const preserved = preview.tasks
+      .filter((task) => !task.eligible)
+      .map((task) => ({ id: task.id, reason: task.reason }));
+    for (const task of preview.tasks.filter((task) => task.eligible)) {
+      try {
+        // Ownership, dirtiness and unpushed commits are rechecked under the same
+        // canonical Git lock used by normal task cleanup, after the backup.
+        const usage = e.db.all<{ id: string }>(
+          "SELECT id FROM ai_usage WHERE task_id=?",
+          task.id,
+        );
+        const requests = e.db.all<{ request_id: string }>(
+          "SELECT request_id FROM task_requests WHERE task_id=?",
+          task.id,
+        );
+        await this.cleanupTaskData(
+          task.id,
+          { worktree: true, logs: true, artifacts: true, history: true },
+          true,
+        );
+        e.db.transaction(() => {
+          for (const row of usage)
+            e.db.run("DELETE FROM ai_usage WHERE id=?", row.id);
+          for (const request of requests)
+            e.db.run(
+              "DELETE FROM task_requests WHERE request_id=?",
+              request.request_id,
+            );
+        });
+        removed.push(task.id);
+      } catch (error) {
+        preserved.push({
+          id: task.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    const result = {
+      backup,
+      removed,
+      preserved,
+      retained: preview.retained,
+      repairs: preview.repairs,
+      finalizations: preview.finalizations,
+      restart_required: false,
+    };
+    await writeFile(
+      join(backup, "result.json"),
+      JSON.stringify(result, null, 2),
+      { mode: 0o600 },
+    );
+    e.changed();
+    return result;
   };
 }

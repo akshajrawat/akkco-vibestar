@@ -8,6 +8,7 @@ import {
   CircleSlash,
   CircleHelp,
   Clock3,
+  MoreHorizontal,
 } from "lucide-react";
 import type { Detail, Repository, StageConfig } from "../../lib/types";
 import { defaultSettings } from "../../../backend/domain";
@@ -25,6 +26,7 @@ import { RunPrompt } from "../RunPrompt";
 import { AgentConfiguration } from "../StageSettings";
 import { runActivity } from "../../lib/agent-output/activity";
 import { detailVerification } from "../../lib/verification";
+import { VerificationRecovery } from "../verification/VerificationRecovery";
 
 const FutureStageSettings = ({
   stage,
@@ -103,11 +105,13 @@ export const PipelineView = ({
   busy,
   action,
   finalize,
+  onError = () => {},
 }: {
   detail: Detail;
   busy: boolean;
   action: (method: string, params?: unknown) => Promise<unknown>;
   finalize: () => void;
+  onError?: (message: string) => void;
 }) => {
   const task = detail.task;
   const [editing, setEditing] = useState<number>();
@@ -118,7 +122,9 @@ export const PipelineView = ({
     task.status !== "queued";
   const config = task.execution_settings || defaultSettings;
   const [, tick] = useState(0);
-  const running = detail.runs.some((run) => run.status === "running");
+  const running =
+    ["preparing", "validating"].includes(task.status) ||
+    detail.runs.some((run) => run.status === "running");
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(() => tick((value) => value + 1), 1000);
@@ -164,39 +170,41 @@ export const PipelineView = ({
                   ? config?.codex_plan
                   : config?.codex_implementation);
           const status =
-            task.status === "awaiting_approval" && stage === approvalStage
-              ? "awaiting_approval"
-              : stage === 4 && task.stage >= 4
-                ? task.status === "validating"
-                  ? "running"
-                  : verification.outcome === "passed"
-                    ? "completed"
-                    : verification.outcome
-                : run
-                  ? run.status === "completed" && run.exit_code !== 0
-                    ? "unknown"
-                    : run.status
-                  : stage === task.stage &&
-                      [
-                        "failed",
-                        "cancelled",
-                        "interrupted",
-                        "verification_blocked",
-                      ].includes(task.status)
-                    ? task.status === "verification_blocked"
-                      ? "blocked"
-                      : task.status
-                    : stage === 0 && task.stage > 0 && task.base_commit_sha
+            stage === 5 && task.final_review_verdict === "changes_requested"
+              ? "changes_requested"
+              : task.status === "awaiting_approval" && stage === approvalStage
+                ? "awaiting_approval"
+                : stage === 4 && task.stage >= 4
+                  ? task.status === "validating"
+                    ? "running"
+                    : verification.outcome === "passed"
                       ? "completed"
-                      : stage === task.stage && !idle
-                        ? "running"
-                        : stage < task.stage
-                          ? "unknown"
-                          : "not_started";
+                      : verification.outcome
+                  : run
+                    ? run.status === "completed" && run.exit_code !== 0
+                      ? "unknown"
+                      : run.status
+                    : stage === task.stage &&
+                        [
+                          "failed",
+                          "cancelled",
+                          "interrupted",
+                          "verification_blocked",
+                        ].includes(task.status)
+                      ? task.status === "verification_blocked"
+                        ? "blocked"
+                        : task.status
+                      : stage === 0 && task.stage > 0 && task.base_commit_sha
+                        ? "completed"
+                        : stage === task.stage && !idle
+                          ? "running"
+                          : stage < task.stage
+                            ? "unknown"
+                            : "not_started";
           const tone =
             status === "completed"
               ? "success"
-              : status === "failed"
+              : ["failed", "changes_requested"].includes(status)
                 ? "failure"
                 : status === "running"
                   ? "running"
@@ -208,7 +216,7 @@ export const PipelineView = ({
               ? CheckCircle2
               : status === "running"
                 ? LoaderCircle
-                : status === "failed"
+                : ["failed", "changes_requested"].includes(status)
                   ? XCircle
                   : status === "awaiting_approval"
                     ? Clock3
@@ -226,6 +234,8 @@ export const PipelineView = ({
               aria-current={
                 status === "running" ||
                 status === "awaiting_approval" ||
+                (task.status === "awaiting_approval" &&
+                  stage === approvalStage) ||
                 (stage === task.stage && status === "blocked")
                   ? "step"
                   : undefined
@@ -238,13 +248,30 @@ export const PipelineView = ({
                 />
               </span>
               <div className="pipeline-stage-heading">
-                <strong>{label}</strong>
+                <strong>
+                  {stage === 4 && verification.outcome === "blocked"
+                    ? "Verification incomplete"
+                    : label}
+                </strong>
                 <small className={tone}>
                   {status === "unknown"
                     ? "Evidence unavailable"
                     : status.replaceAll("_", " ")}
                 </small>
               </div>
+              {stage === 0 && (
+                <p>
+                  Host ·{" "}
+                  {task.preparation_timing &&
+                  (task.preparation_timing.ended_at ||
+                    task.status === "preparing")
+                    ? duration(
+                        task.preparation_timing.started_at,
+                        task.preparation_timing.ended_at,
+                      )
+                    : "Duration unavailable"}
+                </p>
+              )}
               {[1, 2, 3, 5].includes(stage) && (
                 <p>
                   {run?.provider ||
@@ -256,57 +283,111 @@ export const PipelineView = ({
                     : " · saved stage configuration"}
                 </p>
               )}
+              {stage === 5 && task.final_review_verdict && (
+                <p>
+                  {
+                    {
+                      verified: "Code approved · verification complete",
+                      code_approved_incomplete:
+                        "Code approved · verification incomplete",
+                      changes_requested:
+                        "Changes requested · inspect findings and request Codex fixes",
+                      blocked: "Review blocked · inspect missing evidence",
+                    }[task.final_review_verdict]
+                  }
+                </p>
+              )}
+              {stage === 4 && task.stage >= 4 && (
+                <p className="pipeline-current-action">
+                  {
+                    verification.checks.filter(
+                      (check) =>
+                        check.kind === "check" && check.outcome === "passed",
+                    ).length
+                  }{" "}
+                  checks passed
+                  {verification.blockers.length > 0
+                    ? ` · ${verification.blockers.map((blocker) => blocker.title).join("; ")}`
+                    : ""}
+                  {(() => {
+                    const host = [...detail.tests]
+                      .reverse()
+                      .find(
+                        (test) =>
+                          !test.run_id &&
+                          test.command ===
+                            JSON.stringify([
+                              "git",
+                              "diff",
+                              "--check",
+                              task.base_commit_sha,
+                              "--",
+                            ]),
+                      );
+                    return host?.ended_at
+                      ? ` · ${duration(host.started_at, host.ended_at)}`
+                      : "";
+                  })()}
+                </p>
+              )}
               {run && status === "running" && (
                 <p className="pipeline-current-action">
                   {runActivity(detail.events, run)}
                 </p>
               )}
-              <div className="actions">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    if (stage === 1 || stage === 2) {
-                      updateTaskView(task.id, { planStage: stage });
-                      openWorkspaceTool(task.id, "plans");
-                    } else if (stage === 4) openWorkspaceTool(task.id, "tests");
-                    else {
-                      updateTaskView(task.id, {
-                        outputRun: run?.id || "preparation",
-                      });
-                      openWorkspaceTool(task.id, "run-details");
-                    }
-                  }}
-                >
-                  Inspect
-                </Button>
-                {stage > 0 &&
-                  stage <= Math.min(task.stage, 5) &&
-                  status !== "awaiting_approval" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={!idle || busy}
-                      onClick={() =>
-                        void action("task.retry", { id: task.id, stage })
+              <details className="pipeline-stage-actions">
+                <summary aria-label={`Actions for ${label}`}>
+                  <MoreHorizontal size={15} />
+                </summary>
+                <div className="actions">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      if (stage === 1 || stage === 2) {
+                        updateTaskView(task.id, { planStage: stage });
+                        openWorkspaceTool(task.id, "plans");
+                      } else if (stage === 5)
+                        openWorkspaceTool(task.id, "final-review");
+                      else if (stage === 4) openWorkspaceTool(task.id, "tests");
+                      else {
+                        updateTaskView(task.id, {
+                          outputRun: run?.id || "preparation",
+                        });
+                        openWorkspaceTool(task.id, "run-details");
                       }
-                    >
-                      {stage === 4 ? "Retry validation only" : "Retry stage"}
-                    </Button>
-                  )}
-                {[1, 2, 3, 5].includes(stage) &&
-                  !run &&
-                  stage >= task.stage && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={!idle || busy}
-                      onClick={() => setEditing(stage)}
-                    >
-                      Edit future model
-                    </Button>
-                  )}
-              </div>
+                    }}
+                  >
+                    Inspect
+                  </Button>
+                  {stage > 0 &&
+                    stage <= Math.min(task.stage, 5) &&
+                    status !== "awaiting_approval" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={!idle || busy}
+                        onClick={() =>
+                          void action("task.retry", { id: task.id, stage })
+                        }
+                      >
+                        {stage === 4 ? "Recheck saved evidence" : "Retry stage"}
+                      </Button>
+                    )}
+                  {[1, 2, 3, 5].includes(stage) &&
+                    !run &&
+                    stage >= task.stage && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={!idle || busy}
+                        onClick={() => setEditing(stage)}
+                      >
+                        Edit future model
+                      </Button>
+                    )}
+                </div>
+              </details>
               {editing === stage && idle && !run && saved && (
                 <FutureStageSettings
                   stage={stage}
@@ -327,6 +408,20 @@ export const PipelineView = ({
           );
         })}
       </ol>
+      {task.stage >= 4 &&
+        (task.stage === 4 ||
+          task.final_review_verdict === "changes_requested" ||
+          task.final_review_verdict === "blocked" ||
+          task.status === "reviewed_with_gaps" ||
+          !verification.canReview) &&
+        idle && (
+          <VerificationRecovery
+            detail={detail}
+            onError={onError}
+            disabled={busy}
+            inspect={() => openWorkspaceTool(task.id, "tests")}
+          />
+        )}
       <p className="subtle">
         Stage settings were saved with this task. Completed runs show their
         effective model and effort. The chat model applies to explicit
@@ -343,14 +438,14 @@ export const PipelineView = ({
           "awaiting_approval",
           "ready_for_review",
           "queued",
+          "verification_blocked",
+          "reviewed_with_gaps",
         ].includes(task.status) && (
           <Button
             disabled={!idle || busy}
             onClick={() => void action("task.retry")}
           >
-            {task.status === "verification_blocked"
-              ? "Retry saved validation"
-              : "Resume"}
+            Resume
           </Button>
         )}
         <Button

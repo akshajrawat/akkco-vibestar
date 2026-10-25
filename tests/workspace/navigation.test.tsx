@@ -67,7 +67,9 @@ it("announces backend review status and opens a keyboard menu without navigating
       open={open}
     />,
   );
-  const row = screen.getByRole("button", { name: /#1 Work.*Review needed/ });
+  const row = screen.getByRole("button", {
+    name: /Issue #1 · Work.*Review needed/,
+  });
   row.focus();
   fireEvent.keyDown(row, { key: "F10", shiftKey: true });
   const menu = screen.getByRole("menu", { name: "Task #1 actions" });
@@ -94,10 +96,13 @@ it("uses existing owner-checked editor RPCs and copies exact task references", a
       open={vi.fn()}
     />,
   );
-  fireEvent.contextMenu(screen.getByRole("button", { name: /#1 Work/ }), {
-    clientX: 20,
-    clientY: 50,
-  });
+  fireEvent.contextMenu(
+    screen.getByRole("button", { name: /Issue #1 · Work/ }),
+    {
+      clientX: 20,
+      clientY: 50,
+    },
+  );
   fireEvent.click(screen.getByRole("menuitem", { name: "Copy task branch" }));
   await vi.waitFor(() => expect(copy).toHaveBeenCalledWith(task.branch_name));
   fireEvent.click(screen.getByLabelText("Actions for task #1"));

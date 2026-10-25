@@ -45,13 +45,37 @@ export const TaskRecordSchema = z
         warnings: z.array(z.string()),
       })
       .optional(),
+    preparation_timing: z
+      .object({
+        started_at: z.string().datetime(),
+        ended_at: z.string().datetime().nullable(),
+      })
+      .strict()
+      .optional(),
     execution_settings: SettingsSchema.optional(),
     stage_settings: PipelineStageSettingsSchema.optional(),
     verification_environment: VerificationEnvironmentSchema.optional(),
     browser_environment_report: BrowserEnvironmentReportSchema.optional(),
+    verification_policy: z.enum(["repository", "extended_browser"]).optional(),
     followup_config: FollowupConfigSchema.optional(),
     continuation: z.enum(["pipeline", "planning", "implementation"]).optional(),
     final_review_hash: z.string().optional(),
+    final_review_verdict: z
+      .enum([
+        "verified",
+        "code_approved_incomplete",
+        "changes_requested",
+        "blocked",
+      ])
+      .optional(),
+    review_gap_acknowledgment: z
+      .object({
+        fingerprint: z.string(),
+        evidence_hash: z.string(),
+        acknowledged_at: z.string(),
+      })
+      .strict()
+      .optional(),
     approval_gate: z
       .enum([
         "antigravity_plan",

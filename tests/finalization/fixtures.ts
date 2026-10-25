@@ -78,7 +78,7 @@ export const finalizationFixture = async (
     JSON.stringify({
       summary: "Fixture implementation",
       filesChanged: ["source.txt"],
-      testsPassed: ["fixture inspection"],
+      testsPassed: [],
       testsFailed: [],
       testsSkipped: [],
       remainingRisks: [],

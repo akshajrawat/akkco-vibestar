@@ -1,12 +1,32 @@
 # akkco vibestar
 
+[Pipeline verification V2](docs/PIPELINE-VERIFICATION-V2.md) adds distinct saved-evidence
+rechecks, executable missing checks, explicit Codex fixes and independently reviewed
+environmental gaps. Code approval with incomplete verification stays local and
+cannot bypass Git Finalization. The compact timeline and neutral task navigation
+show actual execution and approval states. Settings → Storage → **Reset Local Test
+Workspace** previews exact removals and creates a validated backup while preserving
+dirty/unpushed work, repositories, settings and provider authentication.
+New tasks require repository automated tests and explicit issue checks. Extra manual
+browser checks are optional; existing tasks can select **Skip extra manual browser
+checks** in Tests. This preserves real test failures, the independent review and
+Git publishing confirmations. A saved-evidence recheck also recovers missing
+Antigravity tool exits and preserves an unchanged accepted review.
+[Current verification and screenshot evidence](docs/VERIFICATION.md) records the
+V2 regression matrix, fixture-only inference and retained local-data limitations.
+If a required check has no saved command or its prerequisites are unavailable,
+**Prepare missing checks** explains what is missing and offers browser diagnostics
+and an explicitly authorized Codex preparation step. **Run missing checks** appears
+when a supported recorded command is ready. Rechecking saved evidence evaluates
+existing results and diff hygiene; it does not create tests or install tooling.
+
 The [premium workspace and Git Finalization delivery](docs/PREMIUM-UX-GIT-FINALIZATION.md)
 adds a cohesive charcoal interface, bundled Geist typography, GitHub-first PR inbox,
 clearer verification and local usage charts. Ordinary tasks support reviewed file
 selection, exact commit messages, typed hook presets, separately confirmed guarded
-publication and durable history/recovery. [Verification](docs/VERIFICATION.md)
+publication and durable history/recovery. Its October 24 verification history
 records 491 passing normal tests, seven built Electron fixtures and native Windows
-window checks at 125%/150% DPI. Pushes and pull requests run the new GitHub CI workflow.
+window checks at 125%/150% DPI. Pushes and pull requests run the GitHub CI workflow.
 
 The [chat-first workspace milestone](docs/CHAT-FIRST-WORKSPACE.md) is implemented and verified. Validation distinguishes tooling blockers from failing checks, and the shared task/repair shell keeps chat central with a collapsible engineering sidebar and a secondary Terminal / Problems dock. Saved-instruction choices, the shared expanding composer/model picker and numbered unified/split diff review are available. Existing reports remain readable; ambiguous historical failures are not rewritten as successes.
 
@@ -142,6 +162,17 @@ Chat shows actual preparation commands, Antigravity planning, Codex refinement, 
 The composer sends follow-up messages through the selected Codex or Antigravity headless adapter in the same worktree. Provider, model and effort apply to the next follow-up; historical run metadata and saved pipeline settings remain unchanged. During execution, Stop cancels the current run. Unsent drafts stay local; explicitly sending feedback queues it for the next safe stage boundary. Save for later persists an instruction without starting an agent. Text is never silently injected into a running process. Each conversation keeps separate drafts, context chips, model selections and layout preferences. The context picker previews bounded snapshots from validated worktree files, changed paths, selected file diffs, saved plans/scopes, incomplete checks and text notes. Task approval explicitly chooses whether saved pending instructions stay saved or reach the next configured stage; unrelated unsent drafts are retained. Repair saves are labelled local, and repair sending retains its approved Codex → Antigravity sequence. Future task stage models can be edited from Pipeline only while idle and before the stage has ever started.
 
 Retry Stage retains successful earlier results. Resume explicitly retries an interrupted stage. Restart Pipeline reuses the same pinned worktree and reruns planning; it does not discard changes. Each completed plan pauses for explicit approval. After implementation and validation, review the task worktree in VS Code before starting Antigravity’s final review/tests, then inspect the final report before finalizing. Required checks that cannot run are reported, never counted as passing.
+
+Verification recovery offers **Recheck saved evidence** (diff hygiene and recorded
+outcomes, no AI), **Run missing checks** (previewed supported recorded argv, no
+installer), and **Fix with Codex** (one explicitly authorized iteration in the same
+worktree with exact failure evidence). Environmental gaps offer **Continue to
+independent review**, with an implementation review and explicit acknowledgment
+bound to current contents/evidence. Genuine failures and ambiguous legacy evidence
+cannot use this path. Antigravity receives a read-only evidence packet, executes
+feasible checks and reports code findings separately from test coverage. Accepting
+code with gaps enters **reviewed with gaps**; publishing stays blocked until required
+verification completes. No model starts automatically at any approval boundary.
 
 **Open in VS Code** is the prominent task-header action. Its adjacent menu offers other detected editors or Open folder/Copy path. The source checkout is never opened by a task editor action. Approval controls stay beside the composer and open the relevant saved artifact without automatic blocking dialogs. Task status belongs in navigation. Right-click a task, use its actions button, or press Shift+F10 for Open, editor, copy, Archive/Unarchive and confirmed cleanup. Pipeline contains safe retry/finalization actions. No next stage starts without its existing explicit backend approval.
 

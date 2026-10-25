@@ -1,3 +1,253 @@
+# Verification — October 25, 2026
+
+## Repository-policy and Antigravity evidence correction
+
+The fix makes extra manual browser checks optional while retaining required
+repository/issue tests, real failures, strict Git selection/review/publication
+checks and unchanged source fingerprints. New tasks use repository policy;
+legacy tasks change only through explicit confirmation. Tool-reported Antigravity
+exit headers are now captured and can repair missing exits in saved command
+records. No model-reported pass or skipped browser test becomes executed proof.
+
+| Check                                      | Observed final result                                                   |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| Normal suite, `npm test -- --maxWorkers=2` | **553 passed, 17 skipped; 80 passing files / 96 total**, 129.35 seconds |
+| Policy/history protection focused tests    | **11 passed**, 9.31 seconds                                             |
+| Explicit integration                       | **7 passed**, 14.60 seconds                                             |
+| Explicit PTY                               | **3 passed**, 3.71 seconds                                              |
+| Format, lint, typecheck, build             | Passed; Vite 6.39 seconds                                               |
+
+The built Electron check passed **8 fixtures in 99.18 seconds**. Current V2
+screenshots are retained at
+`/home/aksha/tmp/vibestar-verification-v2-desktop-OJEZaB/screenshots/`. Current logs use `policy-final-` and `policy-` prefixes under the retained
+evidence directory. Fixture inference and publication use isolated providers and
+local bare remotes; no real subscription or GitHub writes occur in automation.
+
+The real task's explicitly requested policy correction and validation-only recheck
+completed at **16:11 UTC**. `live-policy-fix-result.json` records
+`ready_for_review`, `verified`, zero required gaps, three optional unexecuted
+browser checks, unchanged source/review hash, and **4 provider runs before / 4 after**.
+A private pre-change database backup is at
+`/home/aksha/vibestar-backups/verification-policy-2026-10-25T16-11-17-469Z`.
+The native Windows accessibility tree in `live-policy-ui.txt` confirmed
+Validation completed, Code approved / verification complete, and the existing
+Git Finalization action. This did not commit, push or mark browser tests passed.
+
+Separately, the user's preceding explicit continue instruction authorized one live
+Antigravity review, completed at 15:47 UTC with code approval and no reported
+implementation issues. That operational review is separate from fixture-only test
+results. The subsequent policy fix launched no further model. No SQLite migration
+was needed; optional task/check fields retain schema version 24.
+
+## Follow-up: missing-check readiness and preparation
+
+The actual task had three browser requirements with `command: null`, plus
+unresolved setup prerequisites. There was no executable browser test to replay.
+The shared recovery planner now retains every requirement and gives its readiness
+reason to the renderer. The action reads **Prepare missing checks** when none is
+runnable, exposes the existing browser diagnostics, and opens the existing explicit
+Codex authorization to prepare repeatable scripts/commands. Static simple wrapped
+checks can run as validated direct argv; compound scripts/installers remain outside
+automatic replay. Saved evidence recheck and publishing policy are unchanged.
+
+| Executed check                                 | Observed result                                                         |
+| ---------------------------------------------- | ----------------------------------------------------------------------- |
+| Normal suite, `npm test -- --maxWorkers=2`     | **544 passed, 17 skipped**, 78 passing files / 94 total, 129.09 seconds |
+| Focused readiness/recovery/command regressions | **32 passed**, 8.61 seconds                                             |
+| Built V2, chat-workspace and approval fixtures | **3 passed**, 45.01 seconds                                             |
+| Format, lint, typecheck and build              | Passed                                                                  |
+
+The normal suite includes the integration and real PTY regressions. Logs use the
+`readiness-` prefix in the current evidence directory. Built V2 evidence:
+`/home/aksha/tmp/vibestar-verification-v2-desktop-lLcq10/screenshots/`.
+Visually inspected the 1280×720 and 1440×900 preparation dialogs; a 1920×1080
+capture is also retained. Primary preparation and close actions remain visible;
+requirements explain absent argv and unresolved prerequisites. The desktop fixture
+asserts no horizontal overflow, and opening preparation/authorization leaves
+provider-run and command counts unchanged. No real model/GitHub writes were used.
+
+A read-only audit of the actual task is saved as `live-readiness-result.json`:
+three required browser entries have no command, three setup entries remain blocked,
+and zero checks are runnable. This correctly selects preparation rather than
+claiming another saved-evidence recheck would execute browser tests. The previous
+three agent runs remain intact; no actual provider or installer was started.
+
+## Follow-up: recorded shell-command evidence
+
+A real Codex implementation report used inner script text while its observed
+execution stored a literal Bash wrapper. The corrected matcher links only the
+same complete script, including pipelines/redirections, through one known static
+Bash/sh wrapper. It rejects expansions, extra arguments, malformed quoting and
+custom shell paths. Recorded command text remains unchanged. Curl host-resolution
+failures now receive the DNS category, and dependent setup inherits that root.
+No shell execution or publication waiver was added.
+
+| Executed check                             | Observed result                                                         |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| Format, lint and typecheck                 | Passed                                                                  |
+| Normal suite, `npm test -- --maxWorkers=2` | **540 passed, 17 skipped; 78 passing files / 94 total**, 124.22 seconds |
+| Focused evidence/recovery regressions      | **66 passed**, 8.39 seconds                                             |
+| Explicit integration                       | **7 passed**, 19.72 seconds                                             |
+| Explicit PTY                               | **3 passed**, 4.30 seconds                                              |
+| Build                                      | Passed, Vite 4.94 seconds                                               |
+| Eight built Electron fixtures              | **8 passed**, 89.40 seconds                                             |
+
+Current logs use the `wrapper-` prefix under
+`/home/aksha/tmp/vibestar-v2-checks-20261025/`. The fixture providers used no live
+subscriptions or GitHub writes. Current V2 screenshots are at
+`/home/aksha/tmp/vibestar-verification-v2-desktop-QRrYWK/screenshots/`.
+
+At the user's request, the actual issue-9 task's saved-evidence validation stage
+was rerun at **15:03 UTC** using the existing Engine recheck operation. Host
+`git diff --check` exited 0 and recorded a new command row. The resulting evidence
+contains **five observed check passes, no required unknowns and no application
+failures**. It correctly remains `verification_blocked`: registry DNS, browser
+setup, three required browser checks and the empty repository-guidance search are
+still recorded as incomplete. `canReview=false` and
+`canReviewWithGaps=true` preserve the separate review and publication policies.
+The guidance search exited 1 because nothing matched; no passing result was
+invented for it. Agent run count remained **3 before / 3 after**, zero new model
+invocations, and the source fingerprint was unchanged. This rerun did not install
+dependencies, execute browser tests or approve an AI review.
+
+Exact results: `live-wrapper-recheck.json` and
+`live-validation-only-result.json` in the same evidence directory.
+
+## Pipeline verification V2
+
+Implemented against clean starting HEAD
+`6443c5fa724132d5f71c1e29bd10a4b7f229607d` plus this working tree.
+[Delivery, transitions, acceptance mapping, changed files and retained-data audit](PIPELINE-VERIFICATION-V2.md)
+record the scope. The historical October 24 results below describe the earlier
+premium workspace delivery; they are not V2 measurements.
+
+| Command                                          | Observed V2 result                                                                             |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `npm run format:check`                           | Passed                                                                                         |
+| `npm run lint`                                   | Passed                                                                                         |
+| `npm run typecheck`                              | Passed                                                                                         |
+| `npm test -- --maxWorkers=1`                     | **523 passed, 17 skipped; 77 passing files / 93 total**, 197.09 seconds                        |
+| `npm run test:integration`                       | **7 passed**, 12.87 seconds                                                                    |
+| `npm run test:tui`                               | **3 passed**, real PTYs, 3.25 seconds                                                          |
+| `npm run build`                                  | Passed; Vite 5.41 seconds                                                                      |
+| `npm run test:browser:environment`               | **2 passed**, actual installed Chromium/Playwright direct-file and HTTP fixtures, 2.97 seconds |
+| Eight built Electron fixtures                    | **8 passed**, 89.22 seconds                                                                    |
+| `tests/verification.test.ts` final focused rerun | **43 passed**, 0.34 seconds                                                                    |
+
+Each row represents its own execution; counts are not additive unique-test totals.
+The normal suite
+includes integration, PTY, Git finalization/publication, repair, Watch, storage,
+sandbox and verification regressions. Explicit opt-in desktop/browser commands
+exercise checks that remain skipped during the ordinary suite. No test pass is
+inferred from provider prose.
+
+Environment: WSL/Linux x64, Node 22.22.1, npm 9.2.0, Electron 41.10.7.
+The repository still requires npm 10+ for installation. No dependency or lockfile
+change was made. Existing jsdom canvas and Zod/Rollup annotation notices are
+non-fatal. Native Windows/DPI checks and hosted CI were not rerun for V2.
+
+### Built Electron and final acceptance
+
+Executed on the final built source:
+
+```bash
+TMPDIR=/home/aksha/tmp \
+VIBESTAR_VERIFICATION_DESKTOP_TEST=1 \
+VIBESTAR_WORKSPACE_DESKTOP_TEST=1 VIBESTAR_GATE_DESKTOP_TEST=1 \
+VIBESTAR_OUTPUT_DESKTOP_TEST=1 VIBESTAR_PR_DESKTOP_TEST=1 \
+VIBESTAR_REPAIR_DESKTOP_TEST=1 VIBESTAR_WATCH_DESKTOP_TEST=1 \
+VIBESTAR_GIT_DESKTOP_TEST=1 VIBESTAR_KEEP_EVIDENCE=1 \
+xvfb-run -a -s '-screen 0 2000x1200x24' npm test -- \
+  tests/desktop-verification-v2.test.ts tests/desktop-chat-workspace.test.ts \
+  tests/desktop-pipeline-approval.test.ts tests/desktop-agent-output.test.ts \
+  tests/desktop-pr-analysis.test.ts tests/desktop-pr-repair.test.ts \
+  tests/desktop-issue-watch.test.ts tests/desktop-git-finalization.test.ts \
+  --maxWorkers=1
+```
+
+All automation uses fixture provider processes, isolated roots/HOME and blocked
+real AI/GitHub executables. Publication fixtures use disposable local bare remotes.
+There were no real subscription invocations or remote GitHub writes. The V2 fixture
+executes real JavaScript syntax and deterministic table/source checks against an
+HTML/CSS/JS table of 2. Its fake npm failure and socket-denial command deliberately
+simulate unavailable DNS/socket capabilities; they do not claim this host lacks
+those capabilities. Explicit repair does not repeat the unchanged failed installer.
+The independent fixture reviewer reads the complete evidence packet, cannot write
+the source, runs its own syntax check and adds an unexecuted mobile requirement.
+Human gap approval and final acceptance leave `reviewed_with_gaps`, with strict
+publication refused. Final review shows **5 recorded checks passed, 3 required
+application checks unverified**, plus the retained setup blockers.
+
+Visually inspected current screenshots:
+
+- V2: `/home/aksha/tmp/vibestar-verification-v2-desktop-dPwIci/screenshots/`.
+  `pipeline-1920x1080.png`, `pipeline-1440x900.png`,
+  `pipeline-1280x720.png` and `pipeline-1000x720.png` show compact real stage
+  states, model/effort/duration, neutral selected task, amber environmental causes
+  and usable recovery controls. The 1280 view scrolls vertically; the narrow view
+  uses the existing focus-contained drawer. No horizontal overflow was observed.
+- In the same directory, `explicit-gap-approval.png` shows exact outstanding
+  checks and the disabled action before acknowledgment; `independent-review-gaps.png`
+  separates code approval from unexecuted browser/HTTP/mobile coverage.
+  `reset-preview.png` and `reset-backed-up.png` show one eligible fixture removed
+  with a valid backup and the dirty multiplication-table task preserved.
+  `results.json` records zero renderer errors, the final gap verdict and no live
+  subscription/GitHub operations.
+- Existing workspace: `/home/aksha/tmp/vibestar-chat-workspace-AJ8sDN/screenshots/`.
+  Visually inspected `validation-blocker-1280x720.png`: readable interrupted
+  setup evidence, recorded passes, saved draft and explicit recovery controls.
+  The fixture also captures all existing pages at the three requested sizes.
+- Existing Git Finalization: `/home/aksha/tmp/vibestar-issue-git-eMRtFa/screenshots/`.
+  Visually inspected `git-files-1440x900.png`: explicit file selection, exact-message
+  form, destination and unchanged hook/publication choices. Results confirm unchanged
+  imported source/index, zero renderer errors and no real inference/GitHub writes.
+- Existing PR repair: `/home/aksha/tmp/vibestar-pr-repair-desktop-h5j755/screenshots/`.
+  Regression passed through selected findings, actual command evidence, read-only
+  review and explicit local publication. Results confirm unchanged imported source,
+  zero renderer errors and no real inference/GitHub writes.
+
+### Storage and operational limits
+
+The real configured root `/home/aksha/.akkco-vibestar` was inventoried read-only.
+Its only task, issue 9 / `df777c82-a458-4503-b3de-b5eba8d553db`, owns branch
+`akkco/9-whole-issue` and has untracked `README.md`, `index.html`,
+`script.js` and `style.css`. There are **zero eligible real tasks** to remove.
+The worktree, branch, three runs, 34 command records, five artifacts and task logs
+were preserved, along with its managed clone and separately owned clone log.
+There were no archived tasks, terminals, repairs or finalizations; cache/runtime
+and filesystem artifact directories were empty. That initial audit preserved the
+dirty task. Fixture reset/reopen coverage passed.
+
+After the user's explicit follow-up request, the actual fresh start completed at
+14:13 UTC on October 25. The app closed gracefully; a private full-root copy and
+valid SQLite backup were saved at
+`/home/aksha/vibestar-backups/fresh-start-2026-10-25T14-13-07-960Z`.
+The four untracked files were verified in that archive before removing the old
+task through the existing ownership-verified cleanup. Old task/run/test/artifact/
+usage/terminal history, logs/cache and stale issue/GitHub/local discovery catalogs
+were cleared. Migration/reset backups were moved outside the active root.
+Reopening found zero tasks, runs, events, test records, artifacts, usage, terminals,
+repairs, finalizations and blockers. SQLite `quick_check=ok` and foreign-key checks
+passed. Repository HEAD/index and registered connection were unchanged; settings,
+publication policy and credentials were preserved. The final machine-readable
+result is `fresh-start-result.json` in the current evidence directory. No inference
+or remote write was used. Normal discovery refresh can populate current catalog
+entries again without restoring old task history.
+
+No SQLite migration: schema version 24 remains; optional task JSON stores review
+gap acknowledgment, review verdict and preparation timing. Official authentication,
+settings, imported repositories and user-owned resources remain preserved.
+Unsupported custom missing-check argv requires the existing manual command flow;
+ambiguous legacy evidence cannot receive an environmental-gap waiver. Real provider
+reasoning and native Windows behavior were not exercised by these fixture runs.
+
+Current logs, build output and the read-only data inventory are retained under
+`/home/aksha/tmp/vibestar-v2-checks-20261025/`. Earlier failed development runs
+are not claimed as final passes. Final documentation formatting and
+`git diff --check` are checked after recording the completed run.
+
+---
+
 # Verification — October 24, 2026
 
 ## Premium workspace and Git Finalization — complete

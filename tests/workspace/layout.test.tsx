@@ -50,6 +50,33 @@ const State = ({ id }: { id: string }) => (
   <pre data-testid="state">{JSON.stringify(useTaskView(id))}</pre>
 );
 
+it("renders verification repair history without interpreting it as repository preparation argv", () => {
+  bridge();
+  const value = detail("layout-verification-repair");
+  value.activity = [
+    {
+      id: 1,
+      kind: "verification_repair",
+      data: JSON.stringify({
+        verification: { checks: [] },
+        review: null,
+        commands: [],
+      }),
+      timestamp: value.task.updated_at,
+    },
+  ];
+  render(
+    <TaskWorkspace
+      detail={value}
+      revision={0}
+      onError={vi.fn()}
+      back={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("Preparing repository")).toBeTruthy();
+  expect(screen.getByLabelText("Task follow-up")).toBeTruthy();
+});
+
 it("keeps chat primary while sidebar tools navigate, resize and expand, preserving the draft and model", async () => {
   bridge();
   const id = "layout-primary";

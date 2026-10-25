@@ -139,6 +139,86 @@ it("retains bounded command tails with explicit truncation", () => {
   }
 });
 
+it("recovers only Antigravity tool-header exits from saved raw events and retains known results", () => {
+  const db = new Database(":memory:");
+  try {
+    seed(db);
+    db.run(
+      "INSERT INTO agent_runs(id,task_id,stage,provider,model,effort,prompt,status,started_at) VALUES('agy','task',5,'antigravity','','high','','completed','2026-10-25T00:00:00Z')",
+    );
+    const commands = new CommandExecutions(db);
+    const provider = new AntigravityProvider();
+    for (const [index, exit] of [
+      [1, 0],
+      [2, 1],
+      [3, 0],
+    ]) {
+      const raw = {
+        event: "step_update",
+        step_update: {
+          step_index: index,
+          step_type: "tool",
+          tool_name: "run_command",
+          state: "DONE",
+          tool_info: {
+            parameters: { CommandLine: `node --test case-${index}.cjs` },
+            output: `Command exited with code ${exit}.\n\nCommand output:\nresult`,
+          },
+        },
+      };
+      commands.observe("task", "agy", {
+        kind: "command.finished",
+        data: {
+          call_id: index,
+          command: `node --test case-${index}.cjs`,
+          ...(index === 3 ? { exit_code: 2 } : {}),
+        },
+      });
+      db.run(
+        "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES('agy','task','2026-10-25T00:00:01Z','command.finished','{}',?,'stdout')",
+        JSON.stringify(raw),
+      );
+      expect(provider.normalize(raw)[0].data).toMatchObject({
+        exit_code: exit,
+      });
+    }
+    expect(commands.recoverToolExits("task")).toBe(2);
+    expect(db.detail("task").tests.map((row) => row.exit_code)).toEqual([
+      0, 1, 2,
+    ]);
+    expect(commands.recoverToolExits("task")).toBe(0);
+    expect(
+      provider.normalize({
+        event: "step_update",
+        step_update: {
+          step_index: 4,
+          step_type: "tool",
+          tool_name: "run_command",
+          state: "DONE",
+          tool_info: {
+            parameters: { CommandLine: "npm test" },
+            output: "Application printed: Command exited with code 0.",
+          },
+        },
+      })[0].data,
+    ).not.toMatchObject({ exit_code: 0 });
+    expect(
+      provider.normalize({
+        event: "step_update",
+        step_update: {
+          step_index: 5,
+          step_type: "tool",
+          tool_name: "view_file",
+          state: "DONE",
+          tool_info: { output: "Command exited with code 0.\n" },
+        },
+      })[0].data,
+    ).not.toMatchObject({ exit_code: 0 });
+  } finally {
+    db.close();
+  }
+});
+
 it("migrates historic provider command logs once without replacing manual validation or treating incomplete calls as passed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-command-migration-"));
   const path = join(dir, "state.sqlite");

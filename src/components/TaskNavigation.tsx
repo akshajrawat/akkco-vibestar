@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, ChevronDown, MoreHorizontal } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronDown,
+  MoreHorizontal,
+  CheckCircle2,
+  XCircle,
+  CircleSlash,
+  Circle,
+  AlertCircle,
+} from "lucide-react";
 import type { Repository, Task } from "../lib/types";
 import { activeStatuses } from "../lib/types";
 import { rpc, errorMessage } from "../lib/api";
@@ -64,16 +73,22 @@ export const TaskNavigation = ({
     });
   };
   const status = (task: Task) =>
-    task.status === "awaiting_approval"
-      ? "Review needed"
-      : task.status.replaceAll("_", " ");
+    task.final_review_verdict === "changes_requested"
+      ? "Changes requested"
+      : task.status === "awaiting_approval"
+        ? "Review needed"
+        : task.status.replaceAll("_", " ");
   const running =
     !!task &&
     (activeStatuses.includes(task.status) || task.status === "queued");
   return (
     <div className="sidebar-tasks">
       {repositories
-        .filter((repo) => tasks.some((task) => task.repo_id === repo.id))
+        .filter((repo) =>
+          tasks.some(
+            (task) => task.repo_id === repo.id && (archived || !task.archived),
+          ),
+        )
         .map((repo) => (
           <section key={repo.id}>
             <button
@@ -107,6 +122,7 @@ export const TaskNavigation = ({
                   <div className="tree-task-entry" key={task.id}>
                     <button
                       className={`tree-task ${task.id === selected ? "selected" : ""}`}
+                      aria-current={task.id === selected ? "page" : undefined}
                       onClick={() => open(task.id)}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -123,15 +139,44 @@ export const TaskNavigation = ({
                       }}
                       title={`${status(task)}\n${task.issue?.title || task.claimed_scope}\n${task.branch_name}`}
                     >
-                      <i
-                        className={`task-dot ${task.status}`}
-                        aria-hidden="true"
-                      />
                       <span>
-                        <small>#{task.issue_number}</small>{" "}
+                        <small>Issue #{task.issue_number} ·</small>{" "}
                         {task.claimed_scope ||
                           task.issue?.title ||
                           "Entire issue"}
+                      </span>
+                      <span
+                        className={`task-status-icon ${task.final_review_verdict === "changes_requested" ? "failed" : task.status}`}
+                        aria-hidden="true"
+                      >
+                        {task.final_review_verdict === "changes_requested" ? (
+                          <XCircle size={12} />
+                        ) : ["ready_for_review", "completed"].includes(
+                            task.status,
+                          ) ? (
+                          <CheckCircle2 size={12} />
+                        ) : task.status === "failed" ? (
+                          <XCircle size={12} />
+                        ) : ["cancelled", "interrupted"].includes(
+                            task.status,
+                          ) ? (
+                          <CircleSlash size={12} />
+                        ) : [
+                            "verification_blocked",
+                            "awaiting_approval",
+                            "reviewed_with_gaps",
+                          ].includes(task.status) ? (
+                          <AlertCircle size={12} />
+                        ) : (
+                          <Circle
+                            size={9}
+                            fill={
+                              activeStatuses.includes(task.status)
+                                ? "currentColor"
+                                : "none"
+                            }
+                          />
+                        )}
                       </span>
                       <span className="sr-only">
                         {" "}

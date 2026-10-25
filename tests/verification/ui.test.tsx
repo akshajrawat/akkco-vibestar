@@ -11,8 +11,38 @@ import { TestsView } from "../../src/components/TestsView";
 import { RunError } from "../../src/components/RunError";
 import type { Detail } from "../../src/lib/types";
 import { verificationSummary } from "../../backend/execution/verification";
+import { AgentTimeline } from "../../src/components/AgentTimeline";
 
 afterEach(cleanup);
+
+it("shows an observed socket denial as blocked in chat while keeping the exact failed exit evidence", () => {
+  const data = {
+    command: JSON.stringify(["node", "-e", "startServer()"]),
+    status: "failed",
+    exit_code: 1,
+    stdout: "Error: listen EPERM 127.0.0.1:8000",
+  };
+  render(
+    <AgentTimeline
+      runs={[]}
+      events={[
+        {
+          id: 1,
+          run_id: "socket-run",
+          task_id: null,
+          timestamp: "2026-10-25T12:00:00Z",
+          kind: "command.finished",
+          stream: "stdout",
+          raw: JSON.stringify(data),
+          data: JSON.stringify(data),
+        },
+      ]}
+    />,
+  );
+  expect(screen.getByText(/^Command blocked/)).toBeTruthy();
+  expect(screen.queryByText(/^Command failed/)).toBeNull();
+  expect(screen.getByText("Error: listen EPERM 127.0.0.1:8000")).toBeTruthy();
+});
 const setup = {
   id: "install",
   command: "npm install --no-save playwright",
@@ -93,7 +123,10 @@ it("shows code success with unresolved browser evidence, opens the exact command
     within(evidence).getByText("Prerequisite: Playwright installation"),
   ).toBeTruthy();
   fireEvent.click(
-    within(evidence).getByRole("button", { name: "Inspect exact command" }),
+    within(evidence).getByRole("button", {
+      name: "Inspect exact command",
+      hidden: true,
+    }),
   );
   expect(
     screen.getByLabelText("Selected command output").textContent,
@@ -102,12 +135,11 @@ it("shows code success with unresolved browser evidence, opens the exact command
   fireEvent.click(screen.getByRole("button", { name: "Diagnose in terminal" }));
   expect(terminal).toHaveBeenCalledOnce();
   fireEvent.click(
-    screen.getByRole("button", { name: "Retry validation only" }),
+    screen.getByRole("button", { name: "Recheck saved evidence" }),
   );
   await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith("task.retry", {
+    expect(rpc).toHaveBeenCalledWith("task.verification.recheck", {
       id: detail.task.id,
-      stage: 4,
     }),
   );
   expect(rpc).toHaveBeenCalledTimes(1);
@@ -156,12 +188,10 @@ it("groups a recorded DNS setup failure with browser prerequisites without chang
   };
   const before = structuredClone(value);
   render(<TestsView detail={value} onError={vi.fn()} />);
-  expect(screen.getByText("Browser tooling unavailable")).toBeTruthy();
   expect(
-    screen.getByText(
-      "Cannot resolve registry.npmjs.org. Installation did not complete.",
-    ),
-  ).toBeTruthy();
+    screen.getByRole("region", { name: "Verification evidence" }).textContent,
+  ).toContain("DNS resolution unavailable");
+  expect(screen.getAllByText("DNS resolution unavailable").length).toBeTruthy();
   expect(screen.getByText("Browser layout · blocked")).toBeTruthy();
   expect(value).toEqual(before);
   expect(value.validation.canReview).toBe(false);

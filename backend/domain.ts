@@ -170,6 +170,7 @@ export const taskStatuses = [
   "reviewing_antigravity",
   "awaiting_approval",
   "ready_for_review",
+  "reviewed_with_gaps",
   "failed",
   "verification_blocked",
   "cancelled",
@@ -211,6 +212,8 @@ export interface Task {
     dependencies: string[];
     warnings: string[];
   };
+  preparation_timing?: { started_at: string; ended_at: string | null };
+  verification_policy?: "repository" | "extended_browser";
   id: string;
   repo_id: string;
   issue_number: number;
@@ -247,6 +250,13 @@ export interface Task {
   archived?: boolean;
   continuation?: "pipeline" | "planning" | "implementation";
   final_review_hash?: string;
+  final_review_verdict?:
+    "verified" | "code_approved_incomplete" | "changes_requested" | "blocked";
+  review_gap_acknowledgment?: {
+    fingerprint: string;
+    evidence_hash: string;
+    acknowledged_at: string;
+  };
   approval_gate?:
     "antigravity_plan" | "codex_plan" | "implementation" | "final_review";
 }

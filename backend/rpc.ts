@@ -317,11 +317,18 @@ export class Rpc {
         z.object({ confirmed: z.literal(true) }).parse(input);
         return this.storage.removeUnused();
       }
+      case "storage.resetPreview":
+        z.object({}).strict().parse(input);
+        return this.storage.previewReset();
       case "storage.reset": {
-        z.object({
-          confirmed: z.literal(true),
-          confirmation: z.literal("RESET VIBESTAR"),
-        }).parse(input);
+        const p = z
+          .object({
+            confirmed: z.literal(true),
+            confirmation: z.literal("RESET LOCAL TEST WORKSPACE"),
+            preview_token: z.string().min(1),
+          })
+          .strict()
+          .parse(input);
         const blockers = e.cleanupBlockers();
         if (blockers.length)
           throw new AdeError(
@@ -329,9 +336,7 @@ export class Rpc {
             "Data reset is waiting for active operations to finish.",
             { blockers },
           );
-        await this.github.close();
-        await this.scheduler.close();
-        return this.storage.reset();
+        return this.storage.reset(p.preview_token);
       }
       case "task.cleanup": {
         const p = idInput
@@ -1059,6 +1064,56 @@ export class Rpc {
           .parse(input);
         return e.retry(p.id, p.stage, p.restart);
       }
+      case "task.verification.recheck":
+        return e.recheckEvidence(idInput.strict().parse(input).id);
+      case "task.verification.policy": {
+        const p = idInput
+          .extend({
+            policy: z.enum(["repository", "extended_browser"]),
+            confirmed: z.literal(true),
+          })
+          .strict()
+          .parse(input);
+        return e.setVerificationPolicy(p.id, p.policy);
+      }
+      case "task.verification.run": {
+        const p = idInput
+          .extend({ command: z.string().min(1).max(16000) })
+          .strict()
+          .parse(input);
+        return e.runMissingCheck(p.id, p.command);
+      }
+      case "task.verification.fix": {
+        const p = idInput
+          .extend({ request_id: z.string().uuid() })
+          .strict()
+          .parse(input);
+        return e.fixWithCodex(p.id, p.request_id);
+      }
+      case "task.verification.reviewPreview":
+        return e.reviewGapsPreview(idInput.strict().parse(input).id);
+      case "task.verification.continueReview": {
+        const p = idInput
+          .extend({
+            artifact_id: z.string().uuid(),
+            acknowledge_gaps: z.literal(true),
+            fingerprint: z.string().min(1),
+            evidence_hash: z.string().min(1),
+            instructions: z
+              .object({
+                disposition: z.enum(["keep_saved", "include_next_stage"]),
+                message_ids: z.array(z.string().uuid()).max(1000),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .parse(input);
+        return e.approveStage(p.id, p.instructions, p.artifact_id, {
+          fingerprint: p.fingerprint,
+          evidence_hash: p.evidence_hash,
+        });
+      }
       case "task.approve": {
         const p = idInput
           .extend({
@@ -1114,6 +1169,9 @@ export class Rpc {
             "stale_review",
             "The worktree changed or its final review uses an older integrity method. Retry Antigravity review before completing.",
           );
+        const verification = taskVerification(e.db, t.id);
+        if (!verification.canReview)
+          throw new AdeError("verification_blocked", verification.summary);
         e.db.saveTask({ ...t, status: "completed", updated_at: now() });
         e.changed(t.id);
         return null;

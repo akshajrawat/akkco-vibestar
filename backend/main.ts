@@ -63,6 +63,8 @@ const main = async () => {
             pipeline_approvals: true,
             saved_instruction_choices: true,
             independent_final_review: true,
+            pipeline_verification: 2,
+            verification_policy: true,
             browser_verification_environment: true,
             exact_commit_messages: true,
             git_finalization: 1,

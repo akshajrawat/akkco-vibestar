@@ -78,11 +78,10 @@ export const toolState = (
         : String(data.command || ""),
       status: status === "error" ? "failed" : status,
       exit_code: typeof data.exit_code === "number" ? data.exit_code : null,
+      stdout: typeof data.stdout === "string" ? data.stdout : "",
+      stderr: typeof data.stderr === "string" ? data.stderr : "",
     });
-    if (
-      verification.kind === "setup" &&
-      ["blocked", "interrupted"].includes(verification.outcome)
-    )
+    if (["blocked", "interrupted"].includes(verification.outcome))
       return verification.outcome === "blocked" ? "blocked" : "interrupted";
   }
   if (

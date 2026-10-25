@@ -52,6 +52,8 @@ import type { z } from "zod";
 import { UtilityAI, type UtilityRequest } from "./utility-ai";
 import { continuationStage } from "./continuation";
 import { taskVerification } from "./task-verification";
+import { CommandExecutions } from "./command-executions";
+import { missingVerificationChecks } from "./verification-recovery";
 export class Engine extends EventEmitter {
   readonly db: Database;
   readonly git: GitWorkspace;
@@ -510,6 +512,14 @@ export class Engine extends EventEmitter {
             const latest = this.db.task(t.id);
             this.db.saveTask({
               ...latest,
+              ...(latest.stage === 0 && latest.preparation_timing
+                ? {
+                    preparation_timing: {
+                      ...latest.preparation_timing,
+                      ended_at: now(),
+                    },
+                  }
+                : {}),
               status: controller.signal.aborted
                 ? this.closed
                   ? "interrupted"
@@ -983,6 +993,7 @@ export class Engine extends EventEmitter {
         claimed_scope: scopeMode === "partial" ? scope.trim() : "",
         scope_mode: scopeMode,
         notes,
+        verification_policy: "repository",
         issue,
         execution_settings: settings ?? this.db.settings(),
         branch_name: "",
@@ -1022,6 +1033,8 @@ export class Engine extends EventEmitter {
       t.status = stageStatus(t.stage);
       t.updated_at = now();
       t.error = null;
+      if (t.stage === 0)
+        t.preparation_timing = { started_at: now(), ended_at: null };
       this.db.saveTask(t);
       this.changed(t.id);
       if (t.stage === 0) {
@@ -1049,9 +1062,28 @@ export class Engine extends EventEmitter {
             );
           },
         );
+        if (t.preparation_timing) t.preparation_timing.ended_at = now();
         this.db.saveRepository(repo);
         this.db.saveTask(t);
       } else if (t.stage <= 3 || t.stage === 5) {
+        if (t.stage === 5) {
+          const verification = taskVerification(this.db, t.id);
+          if (
+            !verification.canReview &&
+            !(
+              verification.canReviewWithGaps &&
+              t.review_gap_acknowledgment &&
+              t.review_gap_acknowledgment.evidence_hash ===
+                this.verificationEvidenceHash(t.id) &&
+              t.review_gap_acknowledgment.fingerprint ===
+                (await this.git.fingerprint(t))
+            )
+          )
+            throw new AdeError(
+              "verification_blocked",
+              "Review requires verified checks or a current explicit acknowledgment of environmental gaps.",
+            );
+        }
         const runtime = await taskRuntime(
           this.db.repository(t.repo_id).path,
           t.worktree_path,
@@ -1098,11 +1130,17 @@ export class Engine extends EventEmitter {
             verification.summary,
           );
       }
-      if (t.stage === 5) t.final_review_hash = await this.git.fingerprint(t);
-      const queued = this.db.all<{ id: string; configuration: string | null }>(
-        "SELECT id,configuration FROM task_messages WHERE task_id=? AND status='queued' ORDER BY created_at,rowid",
-        t.id,
-      );
+      if (t.stage === 5) {
+        t.final_review_hash = await this.git.fingerprint(t);
+        t.final_review_verdict = this.savedReviewVerdict(t.id);
+      }
+      const queued =
+        t.stage === 4
+          ? []
+          : this.db.all<{ id: string; configuration: string | null }>(
+              "SELECT id,configuration FROM task_messages WHERE task_id=? AND status='queued' ORDER BY created_at,rowid",
+              t.id,
+            );
       if (queued.length) {
         const message = queued.at(-1)!;
         if (message.configuration)
@@ -1120,6 +1158,13 @@ export class Engine extends EventEmitter {
           t.id,
         );
         if (t.stage >= 3) {
+          this.db.run(
+            "DELETE FROM task_artifacts WHERE task_id=? AND stage>=3",
+            t.id,
+          );
+          t.final_review_hash = undefined;
+          t.final_review_verdict = undefined;
+          t.review_gap_acknowledgment = undefined;
           t.stage = 2;
           t.continuation = "implementation";
         } else if (t.stage === 1) {
@@ -1235,6 +1280,11 @@ export class Engine extends EventEmitter {
     if (target >= 2) this.db.artifact(id, 1);
     if (target >= 3) this.db.artifact(id, 2);
     if (target === 5) this.db.artifact(id, 3);
+    if (target === 5 && !taskVerification(this.db, id).canReview)
+      throw new AdeError(
+        "approval_required",
+        "Recheck saved evidence, then explicitly acknowledge current environmental gaps before starting another independent review.",
+      );
     if (restart || target < 3) {
       t.followup_config = undefined;
       t.continuation = "planning";
@@ -1264,6 +1314,11 @@ export class Engine extends EventEmitter {
         id,
         target,
       );
+    if (target <= 3) {
+      t.review_gap_acknowledgment = undefined;
+      t.final_review_hash = undefined;
+      t.final_review_verdict = undefined;
+    }
     const updated: Task = {
       ...t,
       archived: false,
@@ -1285,9 +1340,20 @@ export class Engine extends EventEmitter {
       message_ids: string[];
     },
     artifactId?: string,
+    gapAcknowledgment?: { fingerprint: string; evidence_hash: string },
   ) => {
     this.assertAvailable();
-    const task = this.db.task(id);
+    const original = this.db.task(id);
+    const task =
+      gapAcknowledgment &&
+      original.status === "verification_blocked" &&
+      original.stage === 4
+        ? ({
+            ...original,
+            status: "awaiting_approval",
+            approval_gate: "implementation",
+          } as Task)
+        : original;
     if (this.isActive(id) || this.taskMaintenance.has(id))
       throw new AdeError(
         "busy",
@@ -1337,10 +1403,27 @@ export class Engine extends EventEmitter {
       );
     if (completedStage === 3) {
       const verification = taskVerification(this.db, id);
-      if (!verification.canReview)
+      if (!verification.canReview && !gapAcknowledgment)
         throw new AdeError("verification_blocked", verification.summary);
+      if (gapAcknowledgment) {
+        const preview = await this.reviewGapsPreview(id);
+        if (
+          !preview.eligible ||
+          preview.fingerprint !== gapAcknowledgment.fingerprint ||
+          preview.evidence_hash !== gapAcknowledgment.evidence_hash
+        )
+          throw new AdeError(
+            "stale_review",
+            "Verification evidence or the implementation changed. Inspect the current gaps before authorizing review.",
+          );
+      }
     }
-    if (completedStage === 5 && object(result).approval !== "approved")
+    if (
+      completedStage === 5 &&
+      (object(result).approval !== "approved" ||
+        taskVerification(this.db, id).outcome === "failed" ||
+        task.final_review_verdict === "changes_requested")
+    )
       throw new AdeError(
         "review_required",
         "Antigravity reported unresolved findings or blocked validation. Request changes or retry the review before completing.",
@@ -1381,8 +1464,8 @@ export class Engine extends EventEmitter {
       );
     const current = this.db.task(id);
     if (
-      current.status !== "awaiting_approval" ||
-      current.approval_gate !== task.approval_gate ||
+      current.status !== original.status ||
+      current.approval_gate !== original.approval_gate ||
       JSON.stringify(pendingIds()) !== JSON.stringify(pending) ||
       this.isActive(id)
     )
@@ -1408,6 +1491,23 @@ export class Engine extends EventEmitter {
         approval_gate: undefined,
         stage: target,
         status: target === 6 ? "ready_for_review" : "queued",
+        ...(target === 6 && !taskVerification(this.db, id).canReview
+          ? { status: "reviewed_with_gaps" as const }
+          : {}),
+        ...(target === 6
+          ? {
+              final_review_verdict: taskVerification(this.db, id).canReview
+                ? ("verified" as const)
+                : ("code_approved_incomplete" as const),
+            }
+          : {}),
+        ...(completedStage === 3
+          ? {
+              review_gap_acknowledgment: gapAcknowledgment
+                ? { ...gapAcknowledgment, acknowledged_at: now() }
+                : undefined,
+            }
+          : {}),
         continuation: "pipeline",
         followup_config: undefined,
         updated_at: now(),
@@ -1416,6 +1516,210 @@ export class Engine extends EventEmitter {
     this.changed(id);
     if (target < 6) void this.drain();
     return this.db.task(id);
+  };
+  private verificationEvidenceHash = (id: string) =>
+    createHash("sha256")
+      .update(
+        JSON.stringify({
+          checks: taskVerification(this.db, id).checks,
+          commands: this.db.all(
+            "SELECT id,command,status,exit_code,stdout,stderr FROM test_runs WHERE task_id=? ORDER BY started_at,rowid",
+            id,
+          ),
+          implementation: this.db.artifact(id, 3),
+        }),
+      )
+      .digest("hex");
+  reviewGapsPreview = async (id: string) => {
+    this.assertAvailable();
+    const task = this.db.task(id);
+    if (this.isActive(id) || this.taskMaintenance.has(id))
+      throw new AdeError(
+        "busy",
+        "Wait for task activity to finish before reviewing gaps.",
+      );
+    if (
+      !(task.stage === 4 && task.status === "verification_blocked") &&
+      !(
+        task.status === "awaiting_approval" &&
+        task.approval_gate === "implementation"
+      )
+    )
+      throw new AdeError(
+        "invalid_state",
+        "Review gaps at the implementation approval boundary.",
+      );
+    const verification = taskVerification(this.db, id);
+    return {
+      eligible: verification.canReviewWithGaps,
+      fingerprint: await this.git.fingerprint(task),
+      evidence_hash: this.verificationEvidenceHash(id),
+      checks: verification.checks.filter(
+        (check) => check.required && check.outcome !== "passed",
+      ),
+    };
+  };
+  private savedReviewVerdict = (id: string) => {
+    const review = object(this.db.artifact(id, 5));
+    const verification = taskVerification(this.db, id);
+    return review.approval === "changes_requested" ||
+      verification.outcome === "failed" ||
+      (Array.isArray(review.issues) && review.issues.length > 0) ||
+      (Array.isArray(review.implementationConcerns) &&
+        review.implementationConcerns.length > 0)
+      ? ("changes_requested" as const)
+      : review.approval !== "approved"
+        ? ("blocked" as const)
+        : verification.canReview
+          ? ("verified" as const)
+          : ("code_approved_incomplete" as const);
+  };
+  recheckEvidence = async (id: string) => {
+    await this.withTaskMaintenance(id, async () => {
+      new CommandExecutions(this.db).recoverToolExits(id);
+    });
+    const task = this.db.task(id);
+    if (task.stage < 5 || !task.final_review_hash) return this.retry(id, 4);
+    return this.withTaskMaintenance(id, async () => {
+      if (task.final_review_hash !== (await this.git.fingerprint(task)))
+        throw new AdeError(
+          "stale_review",
+          "The worktree changed since independent review. Review the changed implementation before accepting it.",
+        );
+      const output = await this.manual(
+        id,
+        ["git", "diff", "--check", task.base_commit_sha, "--"],
+        undefined,
+        true,
+      );
+      if (output.code !== 0)
+        throw new AdeError(
+          "validation",
+          "git diff --check failed. Inspect Tests.",
+        );
+      const verdict = this.savedReviewVerdict(id);
+      const current = this.db.task(id);
+      if (current.final_review_hash !== (await this.git.fingerprint(current)))
+        throw new AdeError(
+          "stale_review",
+          "The worktree changed during validation. Review the changed implementation before accepting it.",
+        );
+      const updated = {
+        ...current,
+        final_review_verdict: verdict,
+        status: ["reviewed_with_gaps", "ready_for_review"].includes(
+          current.status,
+        )
+          ? verdict === "verified"
+            ? ("ready_for_review" as const)
+            : ("reviewed_with_gaps" as const)
+          : current.status,
+        updated_at: now(),
+      };
+      this.db.saveTask(updated);
+      return updated;
+    });
+  };
+  setVerificationPolicy = async (
+    id: string,
+    policy: "repository" | "extended_browser",
+  ) => {
+    await this.withTaskMaintenance(id, async () => {
+      const task = this.db.task(id);
+      if (task.stage < 4)
+        throw new AdeError(
+          "invalid_state",
+          "Wait for implementation before changing verification policy.",
+        );
+      await this.git.assertTask(task);
+      this.db.transaction(() => {
+        this.db.saveTask({
+          ...this.db.task(id),
+          verification_policy: policy,
+          updated_at: now(),
+        });
+        this.db.run(
+          "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'verification_policy',?,?)",
+          id,
+          JSON.stringify({ policy, source: "user" }),
+          now(),
+        );
+      });
+    });
+    return this.recheckEvidence(id);
+  };
+  runMissingCheck = async (id: string, command: string) => {
+    const task = this.db.task(id);
+    const candidate = missingVerificationChecks(taskVerification(this.db, id), {
+      selected: task.verification_environment,
+      report: task.browser_environment_report,
+    }).find((check) => check.command === command);
+    if (!candidate)
+      throw new AdeError(
+        "invalid_input",
+        "Select an executable recorded check with resolved prerequisites. Setup and arbitrary prose are never executed by this action.",
+      );
+    return this.runCommand(id, candidate.argv);
+  };
+  fixWithCodex = (id: string, requestId: string) => {
+    this.assertAvailable();
+    const existing = this.db.all<{
+      task_id: string;
+      content: string;
+      configuration: string;
+    }>(
+      "SELECT task_id,content,configuration FROM task_messages WHERE id=?",
+      requestId,
+    )[0];
+    if (existing) {
+      if (existing.task_id !== id)
+        throw new AdeError(
+          "invalid_input",
+          "Repair request belongs to another task.",
+        );
+      return { disposition: "already_requested" };
+    }
+    if (this.isActive(id) || this.taskMaintenance.has(id))
+      throw new AdeError(
+        "busy",
+        "Wait for task activity to finish before requesting Codex fixes.",
+      );
+    const task = this.db.task(id);
+    if (task.stage < 4)
+      throw new AdeError(
+        "invalid_state",
+        "Implementation must finish before requesting verification fixes.",
+      );
+    const evidence = taskVerification(this.db, id);
+    const settings = task.execution_settings || this.db.settings();
+    const review = this.db.all<{ output: string }>(
+      "SELECT output FROM agent_runs WHERE task_id=? AND stage=5 ORDER BY started_at DESC,rowid DESC LIMIT 1",
+      id,
+    )[0]?.output;
+    const context = JSON.stringify({
+      verification: evidence,
+      review,
+      commands: this.db.all(
+        "SELECT command,status,exit_code,stdout,stderr FROM test_runs WHERE task_id=? ORDER BY started_at,rowid",
+        id,
+      ),
+    });
+    this.db.run(
+      "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'verification_repair',?,?)",
+      id,
+      context,
+      now(),
+    );
+    return this.followUp(
+      id,
+      "Fix the demonstrated implementation failures and rerun affected checks in this original worktree. Read the saved verification repair evidence in TASK CONTEXT. For required checks without an executable recorded command, prepare repeatable test scripts using the project's tooling, run feasible checks and report their exact commands, outcomes and prerequisites. Prefer supported check-only npm scripts, node --test, pytest or npx playwright test so Run missing checks can replay the saved commands. Use stable check names to link the new commands to the existing requirements; do not discard requirements or claim unexecuted checks passed. Investigate environmental gaps without repeating failed installation attempts unless prerequisites changed. One Codex iteration is authorized; further iterations require a new explicit request.",
+      {
+        provider: "codex",
+        config: task.stage_settings?.[3] || settings.codex_implementation,
+      },
+      false,
+      requestId,
+    );
   };
   acceptDraft = async (id: string, runId: string) => {
     this.assertAvailable();
@@ -1621,6 +1925,9 @@ export class Engine extends EventEmitter {
       this.db.saveTask({
         ...t,
         followup_config: configuration,
+        final_review_hash: undefined,
+        final_review_verdict: undefined,
+        review_gap_acknowledgment: undefined,
         approval_gate: undefined,
         archived: false,
         continuation: target >= 3 ? "implementation" : "planning",

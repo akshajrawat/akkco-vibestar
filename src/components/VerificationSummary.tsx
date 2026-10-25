@@ -91,7 +91,12 @@ export const VerificationSummary = ({
       </p>
       <small className="subtle">
         Required blocked, interrupted, not-run and unknown checks remain
-        unverified. Review cannot start until they are resolved.
+        unverified.{" "}
+        {verification.canReview
+          ? "Required checks are satisfied. Optional unexecuted checks remain recorded below."
+          : verification.canReviewWithGaps
+            ? "Independent review can start after explicit approval and acknowledgment of environmental gaps."
+            : "Resolve failures and ambiguous evidence before independent review."}
       </small>
       <details>
         <summary>Evaluation details</summary>
@@ -130,9 +135,7 @@ export const VerificationSummary = ({
           <details
             className="verification-group"
             key={label}
-            open={
-              label === "Failed" || label === "Blocked" || label === "Not run"
-            }
+            open={label === "Failed"}
           >
             <summary>
               {label} <span>{checks.length}</span>
@@ -149,7 +152,10 @@ export const VerificationSummary = ({
                           : "warning"
                     }
                   >
-                    {check.name} · {check.outcome.replaceAll("_", " ")}
+                    {check.name} ·{" "}
+                    {check.optionalReason && check.outcome !== "passed"
+                      ? "skipped (optional)"
+                      : check.outcome.replaceAll("_", " ")}
                   </strong>
                   <small>
                     {check.source.replaceAll("_", " ")}
@@ -167,7 +173,14 @@ export const VerificationSummary = ({
                   {check.prerequisite && (
                     <p>Prerequisite: {check.prerequisite}</p>
                   )}
+                  {check.priorFailure && (
+                    <p className="warning">
+                      A prior failure still needs an observed passing repair
+                      rerun.
+                    </p>
+                  )}
                   {check.outcome !== "passed" && <p>{check.detail}</p>}
+                  {check.optionalReason && <p>{check.optionalReason}</p>}
                   {check.commandId && inspect && (
                     <Button
                       size="sm"
@@ -185,7 +198,7 @@ export const VerificationSummary = ({
       <div className="actions">
         {retry && (
           <Button size="sm" onClick={retry}>
-            Retry validation only
+            Recheck saved evidence
           </Button>
         )}
         {terminal && (

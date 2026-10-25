@@ -1,12 +1,169 @@
 # akkco vibestar architecture
 
+## Pipeline verification V2
+
+Verification distinguishes application failures, evidence gaps and environmental
+prerequisites. Independent review with gaps is a separate backend authorization;
+it never changes `canReview`, which continues to mean required verification is
+complete for Git finalization. Commands, attempts and provider opinions retain
+their separate provenance. The existing read-only reviewer, sandbox, manual
+execution boundary and publication checks remain authoritative.
+
+Task JSON persists fingerprint/evidence-bound gap acknowledgments and separate
+final-review verdicts, including `reviewed_with_gaps`; no database migration is
+needed. Recovery RPCs separately recheck host evidence, run validated recorded
+check argv, request one explicit Codex repair iteration, and approve independent
+review after inspecting current environmental gaps. The stage-5 runner rechecks
+this authority immediately before invocation. Final review receives a read-only
+artifact packet containing complete retained command records and reports; observed
+review executions may settle matching requirements, while review prose cannot.
+The desktop negotiates `pipeline_verification:2` before recovery mutations.
+
+The shared verification recovery controls serve chat, Tests and the compact
+pipeline. They preview recorded command argv, authorize one Codex iteration, or
+show a focus-contained gap acknowledgment with saved-instruction choices. The
+timeline uses contextual stage disclosures, actual model/duration/activity and
+semantic statuses. Neutral task rows retain contextual menus, keyboard focus and
+fixed status-icon spacing. Final review separates the code verdict, observed test
+counts, outstanding requirements and full structured technical details.
+
+Storage reset now means a preview-bound Reset Local Test Workspace. It reuses
+the existing ownership-verified task cleanup in dry-run and mutation modes,
+protects unpushed commits as well as dirty/unknown worktrees, refuses active or
+uncertain sensitive operations, and validates a private SQLite backup before
+removal. The backup includes a manifest, retained logs/artifacts and an exact
+result journal. Only eligible task-owned resources/history/usage are removed;
+repositories, settings, authentication, repairs, finalization journals and unowned
+data remain visible in the preview/result. No recursive data-root wipe occurs.
+Independent Issue Watch and PR analysis history have separate ownership and are
+retained by this task reset. Existing broad-reset fixtures now assert that
+preservation explicitly. Required provider-reported passes without matching
+executions remain unknown; fixture code inspection is no longer invented test
+coverage. Provider prompts request the full observed command, including wrappers,
+so new reports can link to command records accurately.
+Review authorization is checked again after provider discovery, before executing
+the model, so source edits during discovery cannot reuse a gap acknowledgment.
+Required checks discovered by the reviewer are additive even for legacy
+implementation reports; they cannot downgrade existing requirements.
+Required checks also survive subsequent implementation attempts. Their old passes
+do not certify changed code, and an observed failure requires a passing affected
+check in the current attempt before a repair can use environmental-gap review.
+Historical requirements come from retained completed-run reports and command
+records, so deleting the latest canonical artifact for a continuation cannot erase
+the verification obligation.
+Recorded browser checks can run through local-only `npx --offline --no-install`;
+supported pytest/compiler/linter argv also reuse the existing manual sandbox.
+A matching explicitly selected browser capability report can make an otherwise
+blocked browser prerequisite executable without marking it or its checks passed.
+Installation, shell interpretation and mutating formatter/linter flags remain
+excluded from missing-check recovery.
+Recovery stays visible after missing checks pass: a no-AI evidence recheck opens
+the implementation approval gate. Reviewed-with-gaps tasks similarly retain an
+explicit path back through review after additional checks, without auto-starting
+a provider. Reset removes request identities only for its selected tasks.
+Implementation/final-review reports stay collapsed in chat, with full details in
+their disclosures and dedicated tools. Preparation renders only preparation
+activity; repair evidence has its own activity kind. The acceptance fixture
+actually renders the table of 2 and records simulated DNS/socket failures without
+network writes; explicit repair does not repeat its unchanged installation failure.
+Chat tool statuses use the same observed stdout/stderr classifier as Tests, so
+environmental command failures remain amber while assertion failures stay red.
+Chat alone collapses implementation/review result fields; the dedicated output
+browser retains expanded technical results. Deterministic validation never
+consumes queued instructions into an agent continuation, including a successful
+evidence recheck; saved instructions wait for the next explicit approval choice.
+Review packets use the existing managed-path boundary before directory creation
+and writing, and are mounted read-only in the reviewer sandbox.
+Final changes-requested verdicts are red in the timeline/navigation and expose the
+explicit Codex recovery action even when test commands passed. Starting any
+implementation continuation invalidates the old review verdict, fingerprint and
+gap acknowledgment while retaining historical runs and evidence.
+Historical reviewer requirements and observed failures from incomplete runs also
+survive repair. Failure tracking respects chronological passing reruns: a later
+environment error cannot erase an unsettled assertion, while a real passing rerun
+settles it. Current test arguments remain exact across attempts.
+Evidence identity decodes one literal, known Bash/sh command wrapper while keeping
+the entire script, redirections and pipelines exact. This links provider inner
+script reports to observed wrapper executions without enabling shell execution in
+missing-check recovery. Dynamic expansions, extra shell arguments and custom shell
+paths remain unmatched. Concrete curl host-resolution errors are classified as DNS
+blockers; actual browser checks remain unverified until executed.
+Blocked setup with an unresolved named prerequisite inherits its root cause rather
+than creating a duplicate generic tooling blocker. Unknown prerequisite references
+do not create an environmental waiver.
+Distinct stable check names retain requirement identity when a repair replaces an
+ephemeral or moved test command. Replacements require their own observed command
+result; old transcripts are retained and never relabelled passed. Ambiguous names
+fall back to exact command links. Queued implementation feedback removes stale
+canonical results while retaining the historical provider reports.
+Implementation and reviewer prompts require stable distinct names for these
+obligations and separate names for platform variants.
+Preparation start/finish timestamps are optional task JSON telemetry, recorded at
+the real host stage boundaries. Pipeline duration updates include active host
+preparation/validation; historical missing preparation durations stay unavailable.
+Root-blocker disclosures count unresolved dependent items only; observed passes
+and genuine failures remain in their separate evidence groups.
+[V2 delivery and acceptance evidence](docs/PIPELINE-VERIFICATION-V2.md) records the
+state transitions, retained-data audit, file inventory and environment limits;
+[verification history](docs/VERIFICATION.md) separates current checks from earlier
+desktop/Windows acceptance.
+Final V2 acceptance passed 523 normal tests, explicit integration/PTY/build checks,
+two installed-browser checks and eight built Electron fixtures. The initial real
+local-data audit preserved one dirty task. After the user's explicit follow-up
+request to clear the old data, a private external full-root/SQLite backup preserved
+its four source files before the existing cleanup removed its task worktree, branch
+and history. Stale discovery catalogs/logs/cache were cleared. Reopening verified
+zero tasks, runs, commands, artifacts, usage or terminals, with the registered
+repository/index, settings and official credentials preserved. The external backup
+and measured cleanup result are recorded in the V2 delivery document.
+
+The follow-up command-wrapper correction passed 540 normal tests (17 skipped),
+explicit integration/PTY/build checks and all eight built Electron fixtures. The
+real issue-9 validation-only rerun recorded passed host diff hygiene, five observed
+check passes, zero required unknowns and zero application failures. It remained
+verification-incomplete for six required setup/browser obligations and eligible
+for acknowledged independent review; no model ran or source file changed.
+
+Missing-check recovery now shares per-requirement readiness and reasons between
+the backend and renderer. A check without saved argv or resolved prerequisites
+opens Prepare missing checks with its exact reason, inline existing browser
+diagnostics and an explicitly authorized Codex preparation path. That iteration
+creates repeatable test commands under stable requirement names; opening the
+dialog starts no inference, installation or capability probe. Literal simple
+shell-wrapped commands can be replayed as validated direct argv, while compound
+scripts and installers retain the manual/preparation boundary. The readiness
+follow-up passed 544 normal tests and three relevant built desktop fixtures,
+including the no-inference preparation/authorization flow and three-size dialog
+captures. The real task audit retains three browser requirements without commands;
+no command or passing result is fabricated for them.
+
+Repository verification policy now makes extra unexecuted manual browser checks
+and setup observations with no outstanding application dependents optional.
+Explicit repository/issue requirements and executable automated checks stay
+required; actual failures and historical repair obligations cannot be skipped.
+Protected repository/issue scope is additive across reviewer reports and retained
+history, so a later model cannot relabel an existing obligation as manual.
+New tasks use this policy; legacy tasks keep their existing policy until the user
+explicitly changes it through a confirmed, journaled backend operation. Optional
+evidence retains its original outcome and an explanation instead of becoming a
+passed test. Antigravity tool exit headers are decoded as command metadata, and
+saved raw tool events can recover previously missing exits during a deterministic
+recheck. Rechecking an unchanged completed review preserves its acceptance gate
+and fingerprint instead of restarting implementation approval or inference.
+Policy acceptance passed 553 normal tests, explicit integration/PTY/build checks
+and eight built Electron fixtures. Applying the policy to the accepted live task
+recorded verification passed with zero required gaps, retained the same review
+hash and four runs, and left its three manual browser checks optional/unexecuted.
+The native UI confirmed Validation completed and code approval with verification
+complete. No source edit, additional model run, commit or push occurred.
+
 ## Premium workspace and Git Finalization
 
 The October 24 delivery retains the Electron renderer / Linux or WSL core boundary
 and existing chat-first task/repair architecture.
 [Delivery contracts and acceptance](docs/PREMIUM-UX-GIT-FINALIZATION.md) and
 [measured verification](docs/VERIFICATION.md) describe the implementation and limits.
-Earlier milestone sections below remain historical records. Current acceptance
+Earlier milestone sections below remain historical records. October 24 acceptance
 passed normal/integration/PTY/build, seven built Electron fixtures, actual installed
 browser checks and native Windows window checks on two displays at 125%/150% DPI.
 
@@ -198,7 +355,7 @@ The concise chat model selector uses existing official provider discovery and ex
 
 Composer context consists of previewable, removable bounded snapshots. Existing validated task/repair file IPC supplies worktree files and selected file diffs; already-loaded plans/scopes, changed paths, incomplete checks and explicit notes supply other options. Historical repair diff attachments retain their selected baseline, while worktree references always read the current repair working tree. Snapshots remain local until explicit save/send. Shared input handles growth, long pastes, Enter/Shift+Enter/IME, message limits, busy state and persistence errors. UI notices are scoped to workflow/run/artifact identity so an earlier approval cannot label a later blocker.
 
-Validation uses backend/execution/verification.ts for its evidence taxonomy and task-verification.ts for issue-task attempt selection. Optional bounded structured verification supplements unchanged historical arrays. Provider reports, observed commands and deterministic host diff evidence stay distinct. Recognized setup failure/interruption cannot become an application assertion failure or proof of verification success; ambiguous legacy evidence remains unresolved. Stage 4 requires the exact pinned-base diff check and all recorded required checks, with genuine failures retaining failed and gaps retaining verification_blocked. Approval rechecks evidence. Validation-only retry starts no provider and delivers no instruction. Chat, command cards and Tests share classification; transcripts retain original statuses, exits and output. No waiver moves unresolved required checks into review.
+Validation uses backend/execution/verification.ts for its evidence taxonomy and task-verification.ts for issue-task attempt selection. Optional bounded structured verification supplements unchanged historical arrays. Provider reports, observed commands and deterministic host diff evidence stay distinct. Recognized setup failure/interruption cannot become an application assertion failure or proof of verification success; ambiguous legacy evidence remains unresolved. Stage 4 requires the exact pinned-base diff check and preserves recorded requirements, with genuine failures retaining failed and gaps retaining verification_blocked. Approval rechecks evidence. Recheck saved evidence starts no provider and delivers no instruction. Environmental gaps may reach independent review only through the explicit fingerprint/evidence-bound acknowledgment described above; they stay unverified and block Git finalization. Chat, command cards and Tests share classification; transcripts retain original statuses, exits and output.
 
 Diff presentation reuses validated Git file/diff payloads. src/lib/diff validates Git hunks and old/new counters and provides bounded lexical coloring. src/components/diff groups searchable tree/flat file navigation with numbered unified/split rendering, incremental unchanged-context reveal and explicit binary, oversized and unmapped states. React renders source as text; no raw repository HTML or editor dependency is introduced. ChangesView reuses review.files/review.reviewed for content-bound issue marks and existing repair review authority for repair marks. Failed mark refreshes hide stale indicators. Repair layers retain distinct statistics and correctly labelled base/head references. All filesystem, sandbox, source ownership, Issue Watch and explicit publication boundaries remain in their existing backend services.
 

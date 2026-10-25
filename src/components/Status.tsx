@@ -19,6 +19,7 @@ export const Status = ({ status }: { status: string }) => {
               "merge_conflict",
               "stale_remote_head",
               "verification_blocked",
+              "reviewed_with_gaps",
               "blocked",
               "not_run",
             ].includes(status)

@@ -3,6 +3,7 @@ import type { Database } from "../storage/database";
 import type { NormalizedEvent } from "../domain";
 import { now } from "../domain";
 import { z } from "zod";
+import { AntigravityProvider } from "./providers/antigravity";
 export const CommandEvidenceSchema = z
   .object({
     call_id: z.union([z.string(), z.number().finite()]).nullable().optional(),
@@ -19,6 +20,47 @@ export const CommandEvidenceSchema = z
 // the bounded chat event window, without inventing successful exit codes.
 export class CommandExecutions {
   constructor(private readonly db: Database) {}
+  recoverToolExits = (taskId: string) => {
+    const provider = new AntigravityProvider();
+    let recovered = 0;
+    for (const event of this.db.all<{
+      id: number;
+      run_id: string;
+      raw: string;
+      timestamp: string;
+    }>(
+      "SELECT e.id,e.run_id,e.raw,e.timestamp FROM agent_events e JOIN agent_runs r ON r.id=e.run_id WHERE e.task_id=? AND r.provider='antigravity' AND e.kind='command.finished' ORDER BY e.id",
+      taskId,
+    )) {
+      let raw;
+      try {
+        raw = JSON.parse(event.raw);
+      } catch {
+        continue;
+      }
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      for (const normalized of provider.normalize(raw)) {
+        const parsed = CommandEvidenceSchema.safeParse(normalized.data);
+        if (
+          normalized.kind !== "command.finished" ||
+          !parsed.success ||
+          typeof parsed.data.exit_code !== "number" ||
+          parsed.data.call_id == null
+        )
+          continue;
+        const saved = this.db.all<{ exit_code: number | null }>(
+          "SELECT exit_code FROM test_runs WHERE task_id=? AND run_id=? AND call_id=?",
+          taskId,
+          event.run_id,
+          String(parsed.data.call_id),
+        )[0];
+        if (!saved || saved.exit_code !== null) continue;
+        this.observe(taskId, event.run_id, normalized, event.timestamp);
+        recovered++;
+      }
+    }
+    return recovered;
+  };
   observe = (
     taskId: string | null,
     runId: string,

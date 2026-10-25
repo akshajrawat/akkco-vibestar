@@ -50,6 +50,7 @@ it("preserves whole vs partial scope through the user-approved pipeline and next
     expect(engine.db.task(whole.id)).toMatchObject({
       status: "ready_for_review",
       scope_mode: "whole_issue",
+      verification_policy: "repository",
       claimed_scope: "",
     });
     expect(engine.db.task(partial.id)).toMatchObject({
@@ -66,6 +67,10 @@ it("preserves whole vs partial scope through the user-approved pipeline and next
           t.scope_mode === "whole_issue"
             ? "All requirements of this issue are in scope unless explicitly excluded by notes."
             : "ONLY the claimed scope belongs to this task. Other issue requirements are explicit non-goals.",
+        );
+      for (const run of runs)
+        expect(run.prompt).toContain(
+          "Do not require duplicate manual browser launches",
         );
     }
     expect(

@@ -390,10 +390,13 @@ it("migrates prompts, utility events and reported usage together, and resets the
         "utf8",
       ),
     ).toBe(prompt);
-    await new StorageService(engine).reset();
-    expect(engine.db.all("SELECT * FROM issue_watches")).toEqual([]);
-    expect(engine.db.all("SELECT * FROM utility_events")).toEqual([]);
-    expect(engine.db.all("SELECT * FROM utility_runs")).toEqual([]);
+    const storage = new StorageService(engine);
+    const resetPreview = await storage.previewReset();
+    await storage.reset(resetPreview.token);
+    // Task-only reset preserves independently owned watches and their evidence.
+    expect(engine.db.all("SELECT * FROM issue_watches")).not.toEqual([]);
+    expect(engine.db.all("SELECT * FROM utility_events")).not.toEqual([]);
+    expect(engine.db.all("SELECT * FROM utility_runs")).not.toEqual([]);
     expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
   } finally {
     await engine.close();

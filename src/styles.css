@@ -447,9 +447,9 @@ details > pre {
   white-space: nowrap;
 }
 .sidebar-tasks .tree-task {
-  height: 30px;
-  padding: 0 8px 0 19px;
-  gap: 8px;
+  height: 28px;
+  padding: 0 8px 0 18px;
+  gap: 6px;
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -467,9 +467,48 @@ details > pre {
   background: var(--background-elevated);
 }
 .sidebar-tasks button.selected {
-  background: var(--background-selected);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   color: var(--text-primary);
-  box-shadow: inset 2px 0 var(--accent-blue);
+  box-shadow: none;
+}
+.tree-task.selected::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+.tree-task:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.task-status-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 14px;
+  color: var(--text-muted);
+}
+.task-status-icon.completed,
+.task-status-icon.ready_for_review {
+  color: var(--accent-green);
+}
+.task-status-icon.failed {
+  color: var(--accent-red);
+}
+.task-status-icon.awaiting_approval,
+.task-status-icon.verification_blocked,
+.task-status-icon.reviewed_with_gaps {
+  color: var(--accent-amber);
+}
+.task-status-icon.implementing,
+.task-status-icon.planning_antigravity,
+.task-status-icon.planning_codex,
+.task-status-icon.reviewing_antigravity,
+.task-status-icon.validating,
+.task-status-icon.preparing {
+  color: var(--accent-blue);
 }
 .sidebar-empty {
   padding: 6px 9px;
@@ -5369,7 +5408,7 @@ progress::-webkit-progress-value {
 .pipeline-stages li {
   position: relative;
   margin-left: 10px;
-  padding: 0 0 26px 24px;
+  padding: 0 26px 15px 20px;
   border-left: 1px solid var(--border-default);
 }
 .pipeline-stages li:last-child {
@@ -5388,8 +5427,81 @@ progress::-webkit-progress-value {
 .pipeline-stage-heading {
   display: flex;
   gap: 8px;
-  align-items: start;
+  align-items: baseline;
   justify-content: space-between;
+}
+.pipeline-stage-heading strong {
+  font-size: 12px;
+  font-weight: 550;
+}
+.pipeline-stage-actions {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  z-index: 1;
+}
+.pipeline-stage-actions > summary {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.pipeline-stage-actions > summary::-webkit-details-marker {
+  display: none;
+}
+.pipeline-step:hover .pipeline-stage-actions > summary,
+.pipeline-step:focus-within .pipeline-stage-actions > summary,
+.pipeline-stage-actions[open] > summary {
+  opacity: 1;
+}
+.pipeline-stage-actions > .actions {
+  position: absolute;
+  top: 25px;
+  right: 0;
+  width: 178px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--background-elevated);
+  box-shadow: 0 8px 20px #0004;
+}
+.verification-recovery {
+  margin: 10px 0;
+}
+.verification-recovery > .actions {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.verification-recovery-dialog {
+  width: min(660px, 92vw);
+  max-height: 85vh;
+  overflow: auto;
+}
+.verification-recovery-dialog article,
+.final-review-summary article {
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+.verification-recovery-dialog pre,
+.verification-recovery-dialog code,
+.final-review-summary code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.final-review-summary {
+  margin: 14px 0;
+  font-size: 12px;
 }
 .verification-blockers {
   display: grid;
@@ -5458,16 +5570,30 @@ progress::-webkit-progress-value {
   font-size: 11px;
   text-align: right;
 }
+.pipeline-stage-heading small.success {
+  color: var(--accent-green);
+}
+.pipeline-stage-heading small.failure {
+  color: var(--accent-red);
+}
+.pipeline-stage-heading small.warning {
+  color: var(--accent-amber);
+}
 .pipeline-stages li p {
-  margin: 6px 0;
+  margin: 3px 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 .pipeline-stages li p.pipeline-current-action {
   color: var(--accent-blue);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.pipeline-step.blocked p.pipeline-current-action {
+  color: var(--accent-amber);
+  white-space: normal;
 }
 .secondary-workspace:not(.secondary-expanded) .plan-comparison {
   display: block;
@@ -5616,6 +5742,11 @@ progress::-webkit-progress-value {
   min-width: 0;
   padding-right: 26px;
 }
+.tree-task-entry .tree-task > span:first-child {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
 .sidebar-tasks .tree-task-menu {
   position: absolute;
   right: 4px;
@@ -5629,6 +5760,18 @@ progress::-webkit-progress-value {
   background: transparent;
   color: var(--text-muted);
   border-radius: 5px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.tree-task-entry:hover .tree-task-menu,
+.tree-task-entry:focus-within .tree-task-menu {
+  opacity: 1;
+}
+@media (hover: none) {
+  .sidebar-tasks .tree-task-menu,
+  .pipeline-stage-actions > summary {
+    opacity: 1;
+  }
 }
 .tree-task-menu:hover,
 .tree-task-menu:focus-visible {

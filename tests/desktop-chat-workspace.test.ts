@@ -280,7 +280,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         .toBe("verification_blocked");
       await expect
         .poll(() => page.locator(".validation-turn").innerText())
-        .toContain("Browser rendering and accessibility (blocked)");
+        .toContain("Tooling setup interrupted");
       expect(await page.locator(".validation-turn .success").count()).toBe(0);
       expect(engine.db.detail(task.id).messages[0].status).toBe("delivered");
       expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
@@ -294,6 +294,10 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         .getByRole("region", { name: "Verification evidence" })
         .locator("li")
         .filter({ hasText: "Playwright installation · interrupted" });
+      await page
+        .locator(".verification-group > summary")
+        .filter({ hasText: "Blocked" })
+        .click();
       await setupRow
         .getByRole("button", { name: "Inspect exact command" })
         .click();
@@ -306,7 +310,10 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await page.screenshot({
         path: join(evidence, "interrupted-setup-command.png"),
       });
-      await page.getByRole("button", { name: "Retry validation only" }).click();
+      await page
+        .locator(".secondary-content")
+        .getByRole("button", { name: "Recheck saved evidence" })
+        .click();
       await expect.poll(() => engine.db.detail(task.id).tests.length).toBe(6);
       expect(engine.db.detail(task.id).runs).toHaveLength(3);
       await page.locator(".browser-environment > summary").click();

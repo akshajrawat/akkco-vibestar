@@ -119,6 +119,23 @@ export const planSchemas = {
       findings: list,
       testsRun: list,
       testsNotRun: list,
+      verification: z.array(VerificationCheckSchema).max(200).optional(),
+      environmentLimitations: list.optional(),
+      implementationConcerns: list.optional(),
+      recommendedNextActions: list.optional(),
+      issues: z
+        .array(
+          z
+            .object({
+              severity: z.enum(["critical", "high", "medium", "low"]),
+              file: z.string().nullable(),
+              summary: z.string(),
+              evidence: z.string(),
+            })
+            .strict(),
+        )
+        .max(100)
+        .optional(),
     })
     .strict(),
 };

@@ -27,6 +27,7 @@ export const AgentTimeline = ({
   editMessage,
   search = "",
   filter = "all",
+  expandResults = true,
 }: {
   events: AgentEvent[];
   runs: Run[];
@@ -37,6 +38,7 @@ export const AgentTimeline = ({
   editMessage?: (message: Message) => void;
   search?: string;
   filter?: string;
+  expandResults?: boolean;
 }) => {
   const entries = useMemo(() => agentEntries(events, search), [events, search]);
   const renderTool = (row: (typeof entries)[number]) => {
@@ -511,7 +513,10 @@ export const AgentTimeline = ({
             (filter === "all" || filter === "messages") &&
             (!search ||
               run.output.toLowerCase().includes(search.toLowerCase())) && (
-              <AgentResponse text={run.output} expanded />
+              <AgentResponse
+                text={run.output}
+                expanded={expandResults || [1, 2].includes(run.stage)}
+              />
             )}
           {run.error && <RunError error={run.error} run={run} />}
           {run.id && (

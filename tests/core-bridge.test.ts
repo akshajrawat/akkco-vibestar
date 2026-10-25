@@ -36,6 +36,9 @@ it.skipIf(process.platform === "win32")(
     });
     try {
       bridge.start();
+      await expect(
+        bridge.request("task.verification.policy", {}),
+      ).rejects.toThrow("verification policy");
       await expect(bridge.request("git.preview", {})).rejects.toThrow(
         "Git Finalization",
       );

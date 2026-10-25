@@ -3,6 +3,7 @@ import { rpc, errorMessage } from "../lib/api";
 import { Button } from "./ui/button";
 import { CleanupError } from "./CleanupError";
 import type { StorageService } from "../../backend/storage/service";
+import { StorageReset } from "./StorageReset";
 const bytes = (value: number) =>
   value >= 1024 ** 3
     ? `${(value / 1024 ** 3).toFixed(2)} GB`
@@ -21,7 +22,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
     params: Record<string, unknown>;
     description: string;
   } | null>(null);
-  const [reset, setReset] = useState("");
+  const [reset, setReset] = useState(false);
   const [notice, setNotice] = useState("");
   useEffect(() => {
     let alive = true;
@@ -45,17 +46,9 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
       await rpc(confirmation.method, {
         ...confirmation.params,
         confirmed: true,
-        ...(confirmation.method === "storage.reset"
-          ? { confirmation: reset }
-          : {}),
       });
-      setNotice(
-        confirmation.method === "storage.reset"
-          ? "Data reset. Restart Vibestar to resume GitHub monitoring."
-          : "Cleanup completed.",
-      );
+      setNotice("Cleanup completed.");
       setConfirmation(null);
-      setReset("");
       setRevision((v) => v + 1);
       await refresh();
     } catch (e) {
@@ -143,17 +136,11 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
             {},
             "Remove managed clones with no tasks. Imported repositories remain where they are.",
           ],
-          [
-            "Reset Vibestar data…",
-            "storage.reset",
-            {},
-            "Remove all Vibestar tasks, worktrees, owned branches, managed clones, history, logs, settings and usage. Imported source repositories and provider authentication remain. The runtime stays installed. Restart the app afterwards.",
-          ],
         ].map(([label, method, params, description]) => (
           <Button
             key={String(method) + String(label)}
             disabled={busy}
-            variant={method === "storage.reset" ? "destructive" : "secondary"}
+            variant="secondary"
             onClick={() => {
               setCleanupError(undefined);
               setConfirmation({
@@ -166,7 +153,23 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
             {String(label)}
           </Button>
         ))}
+        <Button
+          variant="destructive"
+          disabled={busy}
+          onClick={() => setReset(true)}
+        >
+          Reset Local Test Workspace…
+        </Button>
       </div>
+      {reset && (
+        <StorageReset
+          close={() => setReset(false)}
+          done={async () => {
+            setRevision((value) => value + 1);
+            await refresh();
+          }}
+        />
+      )}
       {confirmation && (
         <div className="modal-backdrop">
           <section
@@ -185,25 +188,12 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
                 busy={busy}
               />
             )}
-            {confirmation.method === "storage.reset" && (
-              <label>
-                Type RESET VIBESTAR
-                <input
-                  value={reset}
-                  onChange={(e) => setReset(e.target.value)}
-                />
-              </label>
-            )}
             <div className="actions">
               <Button disabled={busy} onClick={() => setConfirmation(null)}>
                 Cancel
               </Button>
               <Button
-                disabled={
-                  busy ||
-                  (confirmation.method === "storage.reset" &&
-                    reset !== "RESET VIBESTAR")
-                }
+                disabled={busy}
                 variant="destructive"
                 onClick={() => void execute()}
               >
