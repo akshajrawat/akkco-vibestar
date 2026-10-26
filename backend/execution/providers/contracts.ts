@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { NormalizedEvent, StageConfig } from "../../domain";
-import { VerificationCheckSchema } from "../verification";
+import { VerificationCheckSchema } from "../verification/verification";
 export interface ProviderDetection {
   provider: string;
   installed: boolean;
@@ -26,20 +26,12 @@ export interface ProviderDetection {
   capabilities: string[];
   error: string | null;
 }
-export const supportedEfforts = (
-  d: ProviderDetection | undefined,
-  model: string,
-) =>
-  (model
-    ? d?.models.find((m) => m.id === model)
-    : d?.models.find((m) => m.isDefault)
-  )?.supportedEfforts ||
+export const supportedEfforts = (d: ProviderDetection | undefined, model: string) =>
+  (model ? d?.models.find((m) => m.id === model) : d?.models.find((m) => m.isDefault))
+    ?.supportedEfforts ||
   d?.efforts ||
   [];
-export const configurationError = (
-  d: ProviderDetection,
-  config: StageConfig,
-) => {
+export const configurationError = (d: ProviderDetection, config: StageConfig) => {
   if (config.model && !d.models.some((m) => m.id === config.model))
     return `${d.provider} model '${config.model}' is not available from the official CLI. Refresh model discovery.`;
   const efforts = supportedEfforts(d, config.model);
@@ -69,10 +61,7 @@ export interface AgentProvider {
   result: (raw: Record<string, unknown>) => unknown;
   conversationId: (raw: Record<string, unknown>) => string | null;
   outputSchema?: (schema: Record<string, unknown>) => Record<string, unknown>;
-  parseStructuredOutput?: (
-    schema: Record<string, unknown>,
-    value: unknown,
-  ) => unknown;
+  parseStructuredOutput?: (schema: Record<string, unknown>, value: unknown) => unknown;
 }
 const list = z.array(z.string());
 export const planSchemas = {
@@ -149,9 +138,7 @@ export const validatePlan = (stage: number, value: unknown) =>
 export const verifyFlags = (help: string, flags: string[]) => {
   for (const flag of flags)
     if (!help.includes(flag))
-      throw new Error(
-        `Installed CLI lacks ${flag}. Update the official CLI before running.`,
-      );
+      throw new Error(`Installed CLI lacks ${flag}. Update the official CLI before running.`);
 };
 export const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)

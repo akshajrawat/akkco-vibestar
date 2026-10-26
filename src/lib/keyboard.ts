@@ -1,12 +1,8 @@
 import type { KeyboardEvent } from "react";
 export const focusWorkspace = (root: Element | null | undefined) => {
   const target =
-    root?.querySelector<HTMLElement>(
-      ".chat-main:not([hidden]) textarea:not(:disabled)",
-    ) ||
-    root?.querySelector<HTMLElement>(
-      ".secondary-expanded button[aria-label='Return to chat']",
-    ) ||
+    root?.querySelector<HTMLElement>(".chat-main:not([hidden]) textarea:not(:disabled)") ||
+    root?.querySelector<HTMLElement>(".secondary-expanded button[aria-label='Return to chat']") ||
     root?.querySelector<HTMLElement>(".secondary-toggle");
   target?.focus();
 };
@@ -26,13 +22,10 @@ export const containDialogFocus = (event: KeyboardEvent<HTMLElement>) => {
 
 export const navigateTabs = (event: KeyboardEvent<HTMLDivElement>) => {
   const target = event.target;
-  if (!(target instanceof HTMLElement) || target.getAttribute("role") !== "tab")
-    return;
+  if (!(target instanceof HTMLElement) || target.getAttribute("role") !== "tab") return;
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   const tabs = [
-    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-      "button[role=tab]:not(:disabled)",
-    ),
+    ...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[role=tab]:not(:disabled)"),
   ];
   const index = tabs.indexOf(target as HTMLButtonElement);
   const next =
@@ -40,8 +33,7 @@ export const navigateTabs = (event: KeyboardEvent<HTMLDivElement>) => {
       ? 0
       : event.key === "End"
         ? tabs.length - 1
-        : (index + (event.key === "ArrowLeft" ? -1 : 1) + tabs.length) %
-          tabs.length;
+        : (index + (event.key === "ArrowLeft" ? -1 : 1) + tabs.length) % tabs.length;
   event.preventDefault();
   tabs[next]?.focus();
   tabs[next]?.click();

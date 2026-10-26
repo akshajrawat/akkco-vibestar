@@ -34,16 +34,12 @@ await build({
   external: ["electron"],
 });
 const lock = await readFile("backend/package-lock.json");
+await copyFile("LICENSE", "dist-core/LICENSE");
 await copyFile("backend/package.json", "dist-core/package.json");
 await copyFile("backend/package-lock.json", "dist-core/package-lock.json");
 if (process.platform !== "win32") {
-  const digest = createHash("sha256")
-    .update(lock)
-    .update(process.versions.modules)
-    .digest("hex");
-  const prior = await readFile("dist-core/.dependencies", "utf8").catch(
-    () => "",
-  );
+  const digest = createHash("sha256").update(lock).update(process.versions.modules).digest("hex");
+  const prior = await readFile("dist-core/.dependencies", "utf8").catch(() => "");
   const installed = await stat("dist-core/node_modules/better-sqlite3").then(
     () => true,
     () => false,

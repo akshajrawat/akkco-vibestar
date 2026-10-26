@@ -22,21 +22,14 @@ export class FinalizationWorkspaces {
     const cwd = await this.engine.git.assertTask(task);
     const repo = this.engine.db.repository(task.repo_id);
     const common = await this.engine.git.commonDirectory(repo.path);
-    const metadata = await realpath(
-      await gitChecked(["rev-parse", "--absolute-git-dir"], cwd),
-    );
+    const metadata = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], cwd));
     if (
       !task.branch_owned ||
       (await this.engine.git.commonDirectory(cwd)) !== common ||
       !inside(join(common, "worktrees"), metadata) ||
       (await readWorktreeOwner(metadata, "vibestar-task-owner")) !== task.id ||
       (await gitChecked(
-        [
-          "config",
-          "--local",
-          "--get",
-          `branch.${task.branch_name}.vibestarTask`,
-        ],
+        ["config", "--local", "--get", `branch.${task.branch_name}.vibestarTask`],
         cwd,
       )) !== task.id
     )
@@ -58,28 +51,17 @@ export class FinalizationWorkspaces {
     const common = await this.engine.git.commonDirectory(
       this.engine.db.repository(task.repo_id).path,
     );
-    const metadata = await realpath(
-      await gitChecked(["rev-parse", "--absolute-git-dir"], cwd),
-    );
+    const metadata = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], cwd));
     if (
       !inside(join(common, "worktrees"), metadata) ||
       (await this.engine.git.commonDirectory(cwd)) !== common ||
-      (await readWorktreeOwner(metadata, "vibestar-finalization-owner")) !==
-        record.id ||
+      (await readWorktreeOwner(metadata, "vibestar-finalization-owner")) !== record.id ||
       (await gitChecked(
-        [
-          "config",
-          "--local",
-          "--get",
-          `branch.${record.preview_branch}.vibestarFinalization`,
-        ],
+        ["config", "--local", "--get", `branch.${record.preview_branch}.vibestarFinalization`],
         cwd,
       )) !== record.id
     )
-      throw new AdeError(
-        "ownership",
-        "The selected-file review workspace changed ownership.",
-      );
+      throw new AdeError("ownership", "The selected-file review workspace changed ownership.");
     return cwd;
   };
   create = async (
@@ -93,46 +75,22 @@ export class FinalizationWorkspaces {
     await this.git(
       record,
       source,
-      [
-        "worktree",
-        "add",
-        "-b",
-        record.preview_branch,
-        "--",
-        record.preview_path,
-        record.parent,
-      ],
+      ["worktree", "add", "-b", record.preview_branch, "--", record.preview_path, record.parent],
       signal,
     );
     const metadata = await realpath(
-      await gitChecked(
-        ["rev-parse", "--absolute-git-dir"],
-        record.preview_path,
-      ),
+      await gitChecked(["rev-parse", "--absolute-git-dir"], record.preview_path),
     );
-    await writeWorktreeOwner(
-      metadata,
-      "vibestar-finalization-owner",
-      record.id,
-    );
+    await writeWorktreeOwner(metadata, "vibestar-finalization-owner", record.id);
     await this.git(
       record,
       source,
-      [
-        "config",
-        "--local",
-        `branch.${record.preview_branch}.vibestarFinalization`,
-        record.id,
-      ],
+      ["config", "--local", `branch.${record.preview_branch}.vibestarFinalization`, record.id],
       signal,
     );
     const cwd = await this.assert(record, task);
     for (const path of record.paths) {
-      const content = await inspectSelectedFile(
-        source,
-        path,
-        untracked.has(path),
-      );
+      const content = await inspectSelectedFile(source, path, untracked.has(path));
       const destination = await managedPath(cwd, path);
       if (content.bytes) {
         await mkdir(dirname(destination), { recursive: true });
@@ -145,12 +103,7 @@ export class FinalizationWorkspaces {
       await this.git(
         record,
         cwd,
-        [
-          "add",
-          "--all",
-          "--",
-          ...record.paths.map((path) => `:(literal)${path}`),
-        ],
+        ["add", "--all", "--", ...record.paths.map((path) => `:(literal)${path}`)],
         signal,
       );
     record.tree = (await this.git(record, cwd, ["write-tree"], signal)).trim();
@@ -175,17 +128,9 @@ export class FinalizationWorkspaces {
     const cwd = await this.assert(record, task);
     if (
       !record.tree ||
-      (await this.git(record, cwd, ["write-tree"], signal)).trim() !==
-        record.tree ||
-      (
-        await this.git(record, cwd, ["diff", "--name-only", "--"], signal)
-      ).trim() ||
-      (await this.git(
-        record,
-        cwd,
-        ["ls-files", "--others", "--exclude-standard", "-z"],
-        signal,
-      ))
+      (await this.git(record, cwd, ["write-tree"], signal)).trim() !== record.tree ||
+      (await this.git(record, cwd, ["diff", "--name-only", "--"], signal)).trim() ||
+      (await this.git(record, cwd, ["ls-files", "--others", "--exclude-standard", "-z"], signal))
     )
       throw new AdeError(
         "review_changed",

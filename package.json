@@ -9,32 +9,37 @@
     "build": "tsc --noEmit && node scripts/build.mjs && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "format": "prettier --write src backend electron tests scripts *.json *.md",
-    "format:check": "prettier --check src backend electron tests scripts *.json *.md",
-    "test": "vitest run",
-    "test:integration": "vitest run tests/integration.test.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
     "desktop": "npm run dev",
     "desktop:build": "npm run build && electron-builder --linux deb --publish never",
     "desktop:build:windows": "npm run build && electron-builder --win nsis --publish never",
-    "check": "npm run lint && npm run typecheck && npm test",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "start": "electron .",
-    "test:live": "VIBESTAR_LIVE_TEST=1 vitest run tests/live.test.ts",
-    "test:tui": "vitest run tests/pty.test.ts tests/task-terminal.test.ts",
+    "test:live": "VIBESTAR_LIVE_TEST=1 vitest run tests/live/live.test.ts",
+    "test:tui": "vitest run --project terminals",
     "test:browser:environment": "VIBESTAR_BROWSER_TEST=1 vitest run tests/verification/browser-environment.test.ts",
-    "test:desktop": "VIBESTAR_DESKTOP_TEST=1 vitest run tests/desktop.test.ts",
-    "test:desktop:pr": "VIBESTAR_PR_DESKTOP_TEST=1 vitest run tests/desktop-pr-analysis.test.ts",
-    "test:desktop:repair": "VIBESTAR_REPAIR_DESKTOP_TEST=1 vitest run tests/desktop-pr-repair.test.ts",
-    "test:desktop:git": "VIBESTAR_GIT_DESKTOP_TEST=1 vitest run tests/desktop-git-finalization.test.ts",
-    "test:desktop:output": "VIBESTAR_OUTPUT_DESKTOP_TEST=1 vitest run tests/desktop-agent-output.test.ts",
-    "test:desktop:watch": "VIBESTAR_WATCH_DESKTOP_TEST=1 vitest run tests/desktop-issue-watch.test.ts",
-    "test:windows": "node scripts/test-windows.mjs"
+    "test:desktop": "VIBESTAR_DESKTOP_TEST=1 vitest run tests/desktop/desktop.test.ts",
+    "test:desktop:pr": "VIBESTAR_PR_DESKTOP_TEST=1 vitest run tests/desktop/desktop-pr-analysis.test.ts",
+    "test:desktop:repair": "VIBESTAR_REPAIR_DESKTOP_TEST=1 vitest run tests/desktop/desktop-pr-repair.test.ts",
+    "test:desktop:git": "VIBESTAR_GIT_DESKTOP_TEST=1 vitest run tests/desktop/desktop-git-finalization.test.ts",
+    "test:desktop:output": "VIBESTAR_OUTPUT_DESKTOP_TEST=1 vitest run tests/desktop/desktop-agent-output.test.ts",
+    "test:desktop:watch": "VIBESTAR_WATCH_DESKTOP_TEST=1 vitest run tests/desktop/desktop-issue-watch.test.ts",
+    "test:windows": "node scripts/test-windows.mjs",
+    "test:security": "vitest run --project security",
+    "test:regression": "vitest run --project unit --project integration --project security --project terminals",
+    "verify": "npm run check && npm run test:integration && npm run test:security && npm run test:tui && npm run build",
+    "prepare": "node scripts/install-hooks.mjs",
+    "hooks:install": "node scripts/install-hooks.mjs",
+    "prepush": "npm run check && npm run test:security"
   },
   "devDependencies": {
     "@electron/get": "^5.1.0",
     "@eslint/js": "^9.39.0",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/vite": "^4.2.0",
-    "@testing-library/jest-dom": "^6.9.0",
     "@testing-library/react": "^16.3.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/mdast": "^4.0.4",
@@ -53,7 +58,10 @@
     "esbuild": "^0.28.2",
     "eslint": "^9.39.0",
     "eslint-plugin-react-hooks": "^7.0.0",
+    "globals": "^17.13.0",
+    "husky": "^9.1.7",
     "jsdom": "^27.0.0",
+    "lint-staged": "^16.4.0",
     "lucide-react": "^0.577.0",
     "node-pty": "^1.1.0",
     "playwright-core": "^1.63.0",
@@ -80,12 +88,18 @@
       "dist/**/*",
       "dist-electron/**/*",
       "package.json",
-      "assets/**/*"
+      "assets/**/*",
+      "LICENSE",
+      "docs/third-party-notices.md"
     ],
     "extraResources": [
       {
         "from": "dist-core",
         "to": "core"
+      },
+      {
+        "from": "dist-core/node_modules",
+        "to": "core/node_modules"
       }
     ],
     "asar": true,
@@ -113,7 +127,7 @@
   },
   "description": "Local desktop Agent Development Environment for isolated open-source contribution tasks",
   "author": "akkco",
-  "homepage": "https://github.com",
+  "homepage": "https://github.com/akshajrawat/akkco-vibestar#readme",
   "engines": {
     "node": ">=22.12.0",
     "npm": ">=10"
@@ -125,5 +139,13 @@
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/akshajrawat/akkco-vibestar.git"
+  },
+  "bugs": {
+    "url": "https://github.com/akshajrawat/akkco-vibestar/issues"
   }
 }

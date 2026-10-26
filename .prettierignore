@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-core/
+dist-electron/
+release/
+coverage/
+package-lock.json
+backend/package-lock.json
+public/Geist-OFL.txt
+LICENSE
+test-results/
+.husky/_/

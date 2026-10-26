@@ -2,22 +2,15 @@
 import { useState } from "react";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
-import { IssueWatchPage } from "../../src/components/issue-watch/IssueWatchPage";
-import { IssueMarkdown } from "../../src/components/issue-watch/IssueMarkdown";
-import { NewTask } from "../../src/components/NewTask";
-import { useWatchNotifications } from "../../src/lib/issue-watch/notifications";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { IssueWatchPage } from "../../src/features/issue-watch/IssueWatchPage";
+import { IssueMarkdown } from "../../src/features/issue-watch/IssueMarkdown";
+import { NewTask } from "../../src/features/tasks/NewTask";
+import { useWatchNotifications } from "../../src/features/issue-watch/notifications";
 import type { CoreEvent, Snapshot } from "../../src/lib/types";
 import { watchFixture } from "./fixtures";
 
-vi.mock("../../src/lib/useWorkspace", () => ({
+vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({
     providers: [
       {
@@ -61,8 +54,7 @@ const setup = async () => {
   };
   const listeners = new Set<(event: CoreEvent) => void>();
   const api = vi.fn(async (method: string, params: unknown) => {
-    if (method.startsWith("issueWatch."))
-      return f.service.call(method.slice(11), params);
+    if (method.startsWith("issueWatch.")) return f.service.call(method.slice(11), params);
     if (method === "snapshot") return snapshot;
     if (method === "usage.info") return { database: "fixture.sqlite" };
     throw new Error(`Unexpected renderer RPC ${method}`);
@@ -82,15 +74,12 @@ const setup = async () => {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
   });
-  f.engine.on("event", (event) =>
-    listeners.forEach((listener) => listener(event)),
-  );
+  f.engine.on("event", (event) => listeners.forEach((listener) => listener(event)));
   return {
     f,
     snapshot,
     api,
-    emit: (event: CoreEvent) =>
-      listeners.forEach((listener) => listener(event)),
+    emit: (event: CoreEvent) => listeners.forEach((listener) => listener(event)),
   };
 };
 
@@ -99,20 +88,10 @@ it("loads older local history pages without GitHub reads or inference", async ()
   const { watch } = await f.create();
   const first = await f.scan(watch.id);
   for (let index = 0; index < 52; index++)
-    f.service.store.reserve(
-      { ...first, id: randomUUID() },
-      randomUUID(),
-      randomUUID(),
-    );
+    f.service.store.reserve({ ...first, id: randomUUID() }, randomUUID(), randomUUID());
   const reads = f.api.mock.calls.length;
   const infer = vi.spyOn(f.engine.utility, "run");
-  render(
-    <IssueWatchPage
-      snapshot={snapshot}
-      initialWatchId={watch.id}
-      startTask={vi.fn()}
-    />,
-  );
+  render(<IssueWatchPage snapshot={snapshot} initialWatchId={watch.id} startTask={vi.fn()} />);
   const load = await screen.findByRole(
     "button",
     {
@@ -122,9 +101,7 @@ it("loads older local history pages without GitHub reads or inference", async ()
   );
   fireEvent.click(load);
   await waitFor(() =>
-    expect(
-      screen.queryByRole("button", { name: "Load older attempts" }),
-    ).toBeNull(),
+    expect(screen.queryByRole("button", { name: "Load older attempts" })).toBeNull(),
   );
   const select = screen.getByLabelText("Scan history");
   expect(within(select).getAllByRole("option")).toHaveLength(54);
@@ -152,9 +129,7 @@ it("previews and saves a watch without inference or a scan, using an explicitly 
   fireEvent.change(within(dialog).getByLabelText("Model"), {
     target: { value: "fixture-model" },
   });
-  expect(
-    within(dialog).queryByRole("button", { name: "Preview hard filters" }),
-  ).toBeNull();
+  expect(within(dialog).queryByRole("button", { name: "Preview hard filters" })).toBeNull();
   await within(dialog).findByText(/Open issues · Unassigned/);
   expect(f.api).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByRole("button", { name: "Save watch" }));
@@ -165,12 +140,8 @@ it("previews and saves a watch without inference or a scan, using an explicitly 
   expect(f.api).toHaveBeenCalledTimes(1);
   expect(infer).not.toHaveBeenCalled();
   fireEvent(window, new Event("focus"));
-  await waitFor(() =>
-    expect(api).toHaveBeenCalledWith("issueWatch.detail", expect.anything()),
-  );
-  expect(api.mock.calls.some(([method]) => method === "issueWatch.scan")).toBe(
-    false,
-  );
+  await waitFor(() => expect(api).toHaveBeenCalledWith("issueWatch.detail", expect.anything()));
+  expect(api.mock.calls.some(([method]) => method === "issueWatch.scan")).toBe(false);
   expect(infer).not.toHaveBeenCalled();
 });
 
@@ -205,19 +176,13 @@ it("opens saved results and the existing prefilled task form without queueing a 
   await screen.findByText("Original issue 1");
   fireEvent.click(screen.getByRole("button", { name: "Start Vibestar Task" }));
   const form = screen.getByRole("dialog", { name: "New task" });
-  expect(
-    (within(form).getByLabelText("Issue URL") as HTMLInputElement).value,
-  ).toBe("https://github.com/oppia/oppia/issues/1");
-  expect(
-    (
-      within(form).getByLabelText(
-        "Optional instructions",
-      ) as HTMLTextAreaElement
-    ).value,
-  ).toContain("Issue Watch discovery");
-  expect(api.mock.calls.some(([method]) => method === "task.create")).toBe(
-    false,
+  expect((within(form).getByLabelText("Issue URL") as HTMLInputElement).value).toBe(
+    "https://github.com/oppia/oppia/issues/1",
   );
+  expect(
+    (within(form).getByLabelText("Optional instructions") as HTMLTextAreaElement).value,
+  ).toContain("Issue Watch discovery");
+  expect(api.mock.calls.some(([method]) => method === "task.create")).toBe(false);
   expect(f.engine.db.tasks()).toEqual([]);
   expect(infer).not.toHaveBeenCalled();
 });
@@ -279,9 +244,7 @@ it("requires a helper capability before any feature RPC and keeps completion not
   };
   emit(event);
   emit(event);
-  await screen.findByText(
-    /2 initial discoveries, 0 existing matches, 1 require manual review/,
-  );
+  await screen.findByText(/2 initial discoveries, 0 existing matches, 1 require manual review/);
   expect(screen.getAllByText(/2 initial discoveries/)).toHaveLength(1);
   page.unmount();
   render(<Notices />);

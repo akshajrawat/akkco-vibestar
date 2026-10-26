@@ -35,8 +35,7 @@ export const parseUnifiedDiff = (patch: string) => {
   let files = 0;
   const complete = () =>
     !hunk ||
-    (oldLine === hunk.oldStart + hunk.oldCount &&
-      newLine === hunk.newStart + hunk.newCount);
+    (oldLine === hunk.oldStart + hunk.oldCount && newLine === hunk.newStart + hunk.newCount);
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index].replace(/\r$/, "");
     if (line.startsWith("diff --git ")) {
@@ -44,9 +43,7 @@ export const parseUnifiedDiff = (patch: string) => {
       hunk = undefined;
       continue;
     }
-    const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(
-      line,
-    );
+    const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(line);
     if (header) {
       if (!complete()) return unavailable("unrecognized");
       const [oldStart, oldCount, newStart, newCount] = [
@@ -57,19 +54,13 @@ export const parseUnifiedDiff = (patch: string) => {
       ];
       if (
         hunk &&
-        (oldStart < hunk.oldStart + hunk.oldCount ||
-          newStart < hunk.newStart + hunk.newCount)
+        (oldStart < hunk.oldStart + hunk.oldCount || newStart < hunk.newStart + hunk.newCount)
       )
         return unavailable("unrecognized");
       if (
-        ![
-          oldStart,
-          oldCount,
-          newStart,
-          newCount,
-          oldStart + oldCount,
-          newStart + newCount,
-        ].every(Number.isSafeInteger)
+        ![oldStart, oldCount, newStart, newCount, oldStart + oldCount, newStart + newCount].every(
+          Number.isSafeInteger,
+        )
       )
         return unavailable("unrecognized");
       hunk = {
@@ -114,8 +105,7 @@ export const parseUnifiedDiff = (patch: string) => {
         oldLine: oldLine++,
         newLine: newLine++,
       });
-    else if (index !== lines.length - 1 || line)
-      return unavailable("unrecognized");
+    else if (index !== lines.length - 1 || line) return unavailable("unrecognized");
   }
   if (
     !complete() ||
@@ -144,11 +134,7 @@ export const splitDiffRows = (lines: DiffLine[]) => {
     else if (line.kind === "add") added.push(line);
     else {
       flush();
-      rows.push(
-        line.kind === "meta"
-          ? { meta: line.text }
-          : { base: line, working: line },
-      );
+      rows.push(line.kind === "meta" ? { meta: line.text } : { base: line, working: line });
     }
   }
   flush();

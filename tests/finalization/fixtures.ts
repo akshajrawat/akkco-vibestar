@@ -3,18 +3,17 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FinalizationService } from "../../backend/finalization/service";
-import { checked } from "../../backend/execution/process";
+import { checked } from "../../backend/execution/runtime/process";
 import { defaultSettings, now } from "../../backend/domain";
 import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   prepareFixtureTask,
-} from "../fixtures";
+} from "../helpers/fixtures";
 
 export const finalizationFixture = async (
-  providers: Parameters<typeof createFixtureEngine>[1] = () =>
-    new FixtureProvider(),
+  providers: Parameters<typeof createFixtureEngine>[1] = () => new FixtureProvider(),
 ) => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-issue-git-"));
   const root = join(dir, "data");
@@ -23,11 +22,7 @@ export const finalizationFixture = async (
   const task = await prepareFixtureTask(engine, repo, randomUUID());
   const fork = join(dir, "fork.git");
   await checked("git", ["clone", "--bare", repo.path, fork], dir);
-  await checked(
-    "git",
-    ["update-ref", "-d", `refs/heads/${task.branch_name}`],
-    fork,
-  );
+  await checked("git", ["update-ref", "-d", `refs/heads/${task.branch_name}`], fork);
   await checked(
     "git",
     ["remote", "add", "origin", "https://github.com/contributor/fixture.git"],
@@ -41,10 +36,7 @@ export const finalizationFixture = async (
   repo.origin_url = "https://github.com/contributor/fixture.git";
   repo.upstream_url = "https://github.com/fixture/fixture.git";
   engine.db.saveRepository(repo);
-  await writeFile(
-    join(task.worktree_path, "source.txt"),
-    "independently reviewed change\n",
-  );
+  await writeFile(join(task.worktree_path, "source.txt"), "independently reviewed change\n");
   task.status = "ready_for_review";
   task.stage = 6;
   task.execution_settings = {
@@ -68,9 +60,7 @@ export const finalizationFixture = async (
     "--",
   ]);
   if (diffCheck.code !== 0)
-    throw new Error(
-      `Fixture pinned-base validation failed: ${diffCheck.stderr}`,
-    );
+    throw new Error(`Fixture pinned-base validation failed: ${diffCheck.stderr}`);
   engine.db.run(
     "INSERT INTO task_artifacts VALUES(?,?,3,'plan',?,?)",
     randomUUID(),
@@ -110,11 +100,7 @@ export const finalizationFixture = async (
     if (url !== repo.origin_url) throw new Error("Unexpected test transport");
     return fork;
   };
-  const service = new FinalizationService(
-    engine,
-    async () => identity,
-    transport,
-  );
+  const service = new FinalizationService(engine, async () => identity, transport);
   const preview = async (paths = ["source.txt"], replace = false) =>
     service.preview({
       id: task.id,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AdeError, now } from "../../domain";
-import { GitHubClient } from "../../github/client";
+import type { GitHubClient } from "../../github/client";
 import { parsePullRequest } from "../../scheduled/contracts";
 import { PRIdentitySchema } from "./contracts";
 
@@ -42,17 +42,14 @@ export class PRIdentityReader {
         signal,
       ),
     ]);
-    const source = repository
-      .extend({ permissions: z.object({ push: z.boolean() }) })
-      .parse(head);
+    const source = repository.extend({ permissions: z.object({ push: z.boolean() }) }).parse(head);
     if (
       metadata.html_url !== reference.url ||
       metadata.number !== reference.number ||
       metadata.base.repo.full_name.toLowerCase() !==
         `${reference.owner}/${reference.repo}`.toLowerCase() ||
       source.node_id !== metadata.head.repo.node_id ||
-      source.full_name.toLowerCase() !==
-        metadata.head.repo.full_name.toLowerCase()
+      source.full_name.toLowerCase() !== metadata.head.repo.full_name.toLowerCase()
     )
       throw new AdeError(
         "pr_identity",
@@ -75,8 +72,7 @@ export class PRIdentityReader {
       },
       base: {
         branch: metadata.base.ref,
-        sha: z.object({ object: z.object({ sha: z.string() }) }).parse(base)
-          .object.sha,
+        sha: z.object({ object: z.object({ sha: z.string() }) }).parse(base).object.sha,
       },
       viewer: z.object({ login: z.string().min(1) }).parse(viewer).login,
       can_push: source.permissions.push,
@@ -91,16 +87,10 @@ export class PRIdentityReader {
         ref.includes("..") ||
         ref.includes("@{")
       )
-        throw new AdeError(
-          "pr_identity",
-          "GitHub returned an invalid branch ref.",
-        );
+        throw new AdeError("pr_identity", "GitHub returned an invalid branch ref.");
     for (const remote of [identity.upstream, identity.head])
       if (remote.url !== `https://github.com/${remote.name}.git`)
-        throw new AdeError(
-          "pr_identity",
-          "GitHub returned an unexpected repository transport.",
-        );
+        throw new AdeError("pr_identity", "GitHub returned an unexpected repository transport.");
     return identity;
   };
 }

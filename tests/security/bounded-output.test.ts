@@ -1,8 +1,5 @@
 import { expect, it, vi } from "vitest";
-import {
-  BoundedWriter,
-  OutputBudget,
-} from "../../backend/execution/bounded-output";
+import { BoundedWriter, OutputBudget } from "../../backend/execution/output/bounded-output";
 
 it("limits both bytes and entries queued behind a slow log sink", async () => {
   let release!: () => void;
@@ -12,9 +9,7 @@ it("limits both bytes and entries queued behind a slow log sink", async () => {
   const sink = vi.fn(async () => gate);
   const writer = new BoundedWriter(vi.fn());
   writer.write("a".repeat(3 * 1024 * 1024), sink);
-  expect(() => writer.write("b".repeat(3 * 1024 * 1024), sink)).toThrow(
-    "faster than",
-  );
+  expect(() => writer.write("b".repeat(3 * 1024 * 1024), sink)).toThrow("faster than");
   release();
   await writer.drain();
   expect(sink).toHaveBeenCalledTimes(1);

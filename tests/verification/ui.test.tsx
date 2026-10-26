@@ -1,17 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
-import { TestsView } from "../../src/components/TestsView";
-import { RunError } from "../../src/components/RunError";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { TestsView } from "../../src/features/verification/TestsView";
+import { RunError } from "../../src/features/chat/RunError";
 import type { Detail } from "../../src/lib/types";
-import { verificationSummary } from "../../backend/execution/verification";
-import { AgentTimeline } from "../../src/components/AgentTimeline";
+import { verificationSummary } from "../../backend/execution/verification/verification";
+import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
 
 afterEach(cleanup);
 
@@ -116,27 +110,21 @@ it("shows code success with unresolved browser evidence, opens the exact command
   const evidence = screen.getByRole("region", {
     name: "Verification evidence",
   });
-  expect(
-    within(evidence).getByText("Browser rendering · blocked"),
-  ).toBeTruthy();
-  expect(
-    within(evidence).getByText("Prerequisite: Playwright installation"),
-  ).toBeTruthy();
+  expect(within(evidence).getByText("Browser rendering · blocked")).toBeTruthy();
+  expect(within(evidence).getByText("Prerequisite: Playwright installation")).toBeTruthy();
   fireEvent.click(
     within(evidence).getByRole("button", {
       name: "Inspect exact command",
       hidden: true,
     }),
   );
-  expect(
-    screen.getByLabelText("Selected command output").textContent,
-  ).toContain("Playwright installation interrupted");
+  expect(screen.getByLabelText("Selected command output").textContent).toContain(
+    "Playwright installation interrupted",
+  );
   expect(document.activeElement?.className).toBe("command-transcript");
   fireEvent.click(screen.getByRole("button", { name: "Diagnose in terminal" }));
   expect(terminal).toHaveBeenCalledOnce();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Recheck saved evidence" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Recheck saved evidence" }));
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.verification.recheck", {
       id: detail.task.id,
@@ -154,9 +142,7 @@ it("does not describe a host-side blocker as a cancelled provider run or missing
   );
   expect(screen.getByText("Verification needs attention")).toBeTruthy();
   expect(screen.queryByText("Run cancelled")).toBeNull();
-  expect(
-    screen.getByText("Host validation · no provider process is launched"),
-  ).toBeTruthy();
+  expect(screen.getByText("Host validation · no provider process is launched")).toBeTruthy();
   expect(screen.queryByText(/Exit: unavailable/)).toBeNull();
 });
 
@@ -188,9 +174,9 @@ it("groups a recorded DNS setup failure with browser prerequisites without chang
   };
   const before = structuredClone(value);
   render(<TestsView detail={value} onError={vi.fn()} />);
-  expect(
-    screen.getByRole("region", { name: "Verification evidence" }).textContent,
-  ).toContain("DNS resolution unavailable");
+  expect(screen.getByRole("region", { name: "Verification evidence" }).textContent).toContain(
+    "DNS resolution unavailable",
+  );
   expect(screen.getAllByText("DNS resolution unavailable").length).toBeTruthy();
   expect(screen.getByText("Browser layout · blocked")).toBeTruthy();
   expect(value).toEqual(before);

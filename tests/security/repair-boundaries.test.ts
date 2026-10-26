@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { RepairService } from "../../backend/review/repair/service";
 import { RepairWorkspaces } from "../../backend/review/repair/workspace";
-import { createFixtureEngine, FixtureProvider } from "../fixtures";
+import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
 import { repairFixture } from "../pr-repair/fixtures";
 import { securityWorkspace } from "./fixtures";
 import { Rpc } from "../../backend/rpc";
@@ -129,27 +129,19 @@ it("refuses repair context writes through a redirected artifacts parent before s
     const workspaces = new RepairWorkspaces(root, engine.git, (_, side) =>
       side === "head" ? fixture.fork : fixture.upstream,
     );
-    service = new RepairService(
-      engine,
-      async () => fixture.session.identity,
-      workspaces,
-    );
+    service = new RepairService(engine, async () => fixture.session.identity, workspaces);
     const external = join(dir, "external");
     await mkdir(external);
     await writeFile(join(external, "canary"), "preserve external artifacts");
     await rename(join(root, "artifacts"), join(root, "artifacts-original"));
     await symlink(external, join(root, "artifacts"));
     await service.start(fixture.session.id);
-    await vi.waitFor(
-      () =>
-        expect(service!.store.get(fixture.session.id).status).toBe("failed"),
-      { timeout: 10000 },
-    );
+    await vi.waitFor(() => expect(service!.store.get(fixture.session.id).status).toBe("failed"), {
+      timeout: 10000,
+    });
     expect(service.store.get(fixture.session.id).error).toContain("symlink");
     expect(agents).toBe(0);
-    expect(await readFile(join(external, "canary"), "utf8")).toBe(
-      "preserve external artifacts",
-    );
+    expect(await readFile(join(external, "canary"), "utf8")).toBe("preserve external artifacts");
   } finally {
     await service?.close();
     await engine.close();

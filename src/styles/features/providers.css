@@ -1,0 +1,82 @@
+.provider-list {
+  max-width: 900px;
+  display: grid;
+  gap: 14px;
+}
+.provider-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 24px;
+  background: var(--background-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+}
+.provider-icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--background-elevated);
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+.provider-info {
+  flex: 1;
+  min-width: 0;
+}
+.provider-info h2 {
+  font-size: 14px;
+  font-weight: 500;
+}
+.provider-info p {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 12px;
+  margin: 6px 0;
+}
+.provider-info details {
+  margin-top: 5px;
+}
+.provider-info pre {
+  font-size: 11px;
+  max-height: 230px;
+  overflow: auto;
+}
+.provider-footnote {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-top: 17px;
+}
+.auth-dialog {
+  width: 770px;
+}
+.auth-terminal {
+  height: 340px;
+  overflow: hidden;
+  padding: 10px 0;
+}
+.library-search {
+  max-width: 600px;
+  margin-bottom: 13px;
+}
+.library-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 5px;
+}
+.library-tabs button {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  padding: 7px 12px;
+  border-radius: 0;
+  font-size: 12px;
+}
+.library-tabs button.selected {
+  color: var(--text-primary);
+  box-shadow: inset 0 -1px var(--text-secondary);
+}

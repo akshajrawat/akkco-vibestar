@@ -5,19 +5,16 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { defaultSettings, parseIssue } from "../../backend/domain";
 import { Rpc } from "../../backend/rpc";
-import { taskVerification } from "../../backend/execution/task-verification";
-import { missingVerificationChecks } from "../../backend/execution/verification-recovery";
+import { taskVerification } from "../../backend/execution/verification/task-verification";
+import { missingVerificationChecks } from "../../backend/execution/verification/verification-recovery";
 import {
   createFixtureEngine,
   fixtureRepository,
   finishFixtureTask,
   waitForTask,
   FixtureProvider,
-} from "../fixtures";
-import {
-  ValidationBlockerProvider,
-  IndependentReviewProvider,
-} from "./provider";
+} from "../helpers/fixtures";
+import { ValidationBlockerProvider, IndependentReviewProvider } from "./provider";
 
 const settings = {
   ...defaultSettings,
@@ -67,24 +64,14 @@ it("never consumes queued feedback or starts a model when a successful saved-evi
       undefined,
       true,
     );
-    engine.db.run(
-      "UPDATE task_messages SET status='queued' WHERE id=?",
-      saved.message.id,
-    );
+    engine.db.run("UPDATE task_messages SET status='queued' WHERE id=?", saved.message.id);
     await engine.recheckEvidence(task.id);
-    await waitForTask(
-      engine,
-      task.id,
-      (status) => status === "awaiting_approval",
-    );
+    await waitForTask(engine, task.id, (status) => status === "awaiting_approval");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     expect(engine.db.task(task.id).approval_gate).toBe("implementation");
     expect(selected).toEqual([1, 2, 3]);
     expect(
-      engine.db.all(
-        "SELECT status,run_id FROM task_messages WHERE id=?",
-        saved.message.id,
-      )[0],
+      engine.db.all("SELECT status,run_id FROM task_messages WHERE id=?", saved.message.id)[0],
     ).toMatchObject({ status: "queued", run_id: null });
   } finally {
     await engine.close();
@@ -111,11 +98,7 @@ it("requires current explicit gap approval, gives an independent read-only revie
       "partial",
       settings,
     );
-    await finishFixtureTask(
-      engine,
-      task.id,
-      (status) => status === "verification_blocked",
-    );
+    await finishFixtureTask(engine, task.id, (status) => status === "verification_blocked");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     let rpc = new Rpc(engine);
     const original = taskVerification(engine.db, task.id);
@@ -146,9 +129,9 @@ it("requires current explicit gap approval, gives an independent read-only revie
         eligible: undefined,
       }),
     ).rejects.toThrow();
-    await expect(
-      engine.approveStage(task.id, undefined, artifact.id, preview),
-    ).rejects.toThrow("changed");
+    await expect(engine.approveStage(task.id, undefined, artifact.id, preview)).rejects.toThrow(
+      "changed",
+    );
     await writeFile(file, source);
     await engine.close();
     engine = await createFixtureEngine(join(dir, "data"), provider);
@@ -163,17 +146,12 @@ it("requires current explicit gap approval, gives an independent read-only revie
       evidence_hash: current.evidence_hash,
     };
     await rpc.call("task.verification.continueReview", params);
-    await expect(
-      rpc.call("task.verification.continueReview", params),
-    ).rejects.toThrow();
+    await expect(rpc.call("task.verification.continueReview", params)).rejects.toThrow();
     await waitForTask(engine, task.id, (status) =>
       ["awaiting_approval", "failed"].includes(status),
     );
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
-    expect(
-      engine.db.task(task.id),
-      engine.db.task(task.id).error || "review",
-    ).toMatchObject({
+    expect(engine.db.task(task.id), engine.db.task(task.id).error || "review").toMatchObject({
       approval_gate: "final_review",
       final_review_verdict: "code_approved_incomplete",
     });
@@ -181,9 +159,7 @@ it("requires current explicit gap approval, gives an independent read-only revie
     expect(selected.at(-1)?.provider).toBe("antigravity");
     const after = taskVerification(engine.db, task.id);
     expect(
-      after.checks.find(
-        (check) => check.name === "Browser rendering and accessibility",
-      )?.outcome,
+      after.checks.find((check) => check.name === "Browser rendering and accessibility")?.outcome,
     ).toBe("blocked");
     expect(after.canReview).toBe(false);
     await engine.approveStage(task.id);
@@ -205,11 +181,7 @@ it("requires current explicit gap approval, gives an independent read-only revie
     expect(repairing.final_review_hash).toBeUndefined();
     expect(repairing.final_review_verdict).toBeUndefined();
     expect(repairing.review_gap_acknowledgment).toBeUndefined();
-    await waitForTask(
-      engine,
-      task.id,
-      (status) => status === "verification_blocked",
-    );
+    await waitForTask(engine, task.id, (status) => status === "verification_blocked");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     expect(
       taskVerification(engine.db, task.id).checks.find(
@@ -241,11 +213,7 @@ it("runs a selected recognizable missing check without inference and records rep
       "partial",
       settings,
     );
-    await finishFixtureTask(
-      engine,
-      task.id,
-      (status) => status === "verification_blocked",
-    );
+    await finishFixtureTask(engine, task.id, (status) => status === "verification_blocked");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     const artifact = engine.db.all<{ id: string; content: string }>(
       "SELECT id,content FROM task_artifacts WHERE task_id=? AND stage=3 AND kind='plan'",
@@ -289,16 +257,10 @@ it("runs a selected recognizable missing check without inference and records rep
       )?.outcome,
     ).toBe("passed");
     await rpc.call("task.verification.recheck", { id: task.id });
-    await waitForTask(
-      engine,
-      task.id,
-      (status) => status === "verification_blocked",
-    );
+    await waitForTask(engine, task.id, (status) => status === "verification_blocked");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     expect(selected).toEqual([1, 2, 3]);
-    expect(
-      engine.db.detail(task.id).tests.filter((row) => !row.run_id),
-    ).toHaveLength(3);
+    expect(engine.db.detail(task.id).tests.filter((row) => !row.run_id)).toHaveLength(3);
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });
@@ -309,15 +271,10 @@ it("blocks real assertion waivers and authorizes only one explicit Codex repair 
   const dir = await mkdtemp(join(tmpdir(), "vibestar-v2-fix-"));
   let implementations = 0;
   const selected: { stage: number; provider?: string }[] = [];
-  const engine = await createFixtureEngine(
-    join(dir, "data"),
-    (stage, provider) => {
-      selected.push({ stage, provider });
-      return new ValidationBlockerProvider(
-        stage === 3 && implementations++ === 0,
-      );
-    },
-  );
+  const engine = await createFixtureEngine(join(dir, "data"), (stage, provider) => {
+    selected.push({ stage, provider });
+    return new ValidationBlockerProvider(stage === 3 && implementations++ === 0);
+  });
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const task = engine.enqueue(
@@ -337,11 +294,7 @@ it("blocks real assertion waivers and authorizes only one explicit Codex repair 
     const request = randomUUID();
     engine.fixWithCodex(task.id, request);
     engine.fixWithCodex(task.id, request);
-    await waitForTask(
-      engine,
-      task.id,
-      (status) => status === "verification_blocked",
-    );
+    await waitForTask(engine, task.id, (status) => status === "verification_blocked");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     expect(engine.db.task(task.id).worktree_path).toBe(path);
     expect(selected.map((run) => run.stage)).toEqual([1, 2, 3, 3]);
@@ -355,9 +308,7 @@ it("blocks real assertion waivers and authorizes only one explicit Codex repair 
             test.command.includes('"install","--no-save","playwright"'),
         ),
     ).toHaveLength(1);
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "AssertionError",
-    );
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain("AssertionError");
     expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
       "prepare repeatable test scripts",
     );

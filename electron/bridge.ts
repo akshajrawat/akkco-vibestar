@@ -95,8 +95,7 @@ export class CoreBridge extends EventEmitter {
         if (request) {
           clearTimeout(request.timer);
           this.pending.delete(v.id);
-          if (v.error)
-            request.reject(Object.assign(new Error(v.error.message), v.error));
+          if (v.error) request.reject(Object.assign(new Error(v.error.message), v.error));
           else request.resolve(v.result);
         } else this.emit("event", v);
       } catch {
@@ -109,9 +108,7 @@ export class CoreBridge extends EventEmitter {
     child.stderr.on("data", (chunk) =>
       this.emit("event", { event: "core.error", text: chunk.toString() }),
     );
-    child.on("error", (e) =>
-      this.rejectAll(`Cannot start execution core: ${e.message}`),
-    );
+    child.on("error", (e) => this.rejectAll(`Cannot start execution core: ${e.message}`));
     child.on("close", () => {
       this.rejectAll(
         "Execution core stopped. Configure WSL, install the helper, or restart to recover tasks.",
@@ -140,13 +137,10 @@ export class CoreBridge extends EventEmitter {
     ])
       .then(([bundle, info]) => {
         this.approvalsAvailable = info.pipeline_approvals === true;
-        this.instructionChoicesAvailable =
-          info.saved_instruction_choices === true;
+        this.instructionChoicesAvailable = info.saved_instruction_choices === true;
         this.workflowFirstAvailable = info.workflow_first === 1;
-        this.finalReviewSettingsAvailable =
-          info.independent_final_review === true;
-        this.browserVerificationAvailable =
-          info.browser_verification_environment === true;
+        this.finalReviewSettingsAvailable = info.independent_final_review === true;
+        this.browserVerificationAvailable = info.browser_verification_environment === true;
         this.pipelineVerificationAvailable = info.pipeline_verification === 2;
         this.verificationPolicyAvailable = info.verification_policy === true;
         this.exactCommitMessagesAvailable = info.exact_commit_messages === true;
@@ -177,32 +171,17 @@ export class CoreBridge extends EventEmitter {
   };
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
-    if (
-      method === "task.verification.policy" &&
-      !this.verificationPolicyAvailable
-    )
-      throw new Error(
-        "Update the execution helper before changing verification policy.",
-      );
-    if (
-      !this.pipelineVerificationAvailable &&
-      method.startsWith("task.verification.")
-    )
+    if (method === "task.verification.policy" && !this.verificationPolicyAvailable)
+      throw new Error("Update the execution helper before changing verification policy.");
+    if (!this.pipelineVerificationAvailable && method.startsWith("task.verification."))
       throw new Error(
         "Update the execution helper before using verification recovery and review with gaps.",
       );
     if (!this.gitFinalizationAvailable && method.startsWith("git."))
-      throw new Error(
-        "Update the execution helper before using Git Finalization.",
-      );
+      throw new Error("Update the execution helper before using Git Finalization.");
     if (!this.exactCommitMessagesAvailable && method === "repair.commit")
-      throw new Error(
-        "Update the execution helper before committing exact multiline messages.",
-      );
-    if (
-      !this.browserVerificationAvailable &&
-      method.startsWith("task.browser.")
-    )
+      throw new Error("Update the execution helper before committing exact multiline messages.");
+    if (!this.browserVerificationAvailable && method.startsWith("task.browser."))
       throw new Error(
         "Update the execution helper before selecting or inspecting browser verification environments.",
       );
@@ -223,23 +202,15 @@ export class CoreBridge extends EventEmitter {
         "Update the execution helper before saving independent final review settings.",
       );
     if (!this.issueWatchAvailable && method.startsWith("issueWatch."))
-      throw new Error(
-        "Update the execution helper before using manual Issue Watch.",
-      );
+      throw new Error("Update the execution helper before using manual Issue Watch.");
     if (
       !this.repairAvailable &&
       method.startsWith("repair.") &&
-      ![
-        "repair.list",
-        "repair.detail",
-        "repair.logs",
-        "repair.events",
-        "repair.cancel",
-      ].includes(method)
+      !["repair.list", "repair.detail", "repair.logs", "repair.events", "repair.cancel"].includes(
+        method,
+      )
     )
-      throw new Error(
-        "Update the execution helper before using PR repair and publishing.",
-      );
+      throw new Error("Update the execution helper before using PR repair and publishing.");
     if (
       !this.manualPrAvailable &&
       [
@@ -253,8 +224,7 @@ export class CoreBridge extends EventEmitter {
       ].includes(method)
     )
       throw new Error(
-        this.warning ||
-          "Update the execution helper before using manual PR actions.",
+        this.warning || "Update the execution helper before using manual PR actions.",
       );
     if (
       !this.approvalsAvailable &&
@@ -267,10 +237,7 @@ export class CoreBridge extends EventEmitter {
         "task.acceptDraft",
       ].includes(method)
     )
-      throw new Error(
-        this.warning ||
-          "Restart the updated core before starting task execution.",
-      );
+      throw new Error(this.warning || "Restart the updated core before starting task execution.");
     if (
       !this.instructionChoicesAvailable &&
       [
@@ -312,11 +279,7 @@ export class CoreBridge extends EventEmitter {
         return { ...result, warning: this.warning };
       return result;
     } catch (error) {
-      if (
-        this.warning &&
-        error instanceof Error &&
-        error.message.includes("Unknown method")
-      )
+      if (this.warning && error instanceof Error && error.message.includes("Unknown method"))
         throw new Error(this.warning);
       throw error;
     }
@@ -329,9 +292,7 @@ export class CoreBridge extends EventEmitter {
     const child = this.child;
     if (!child || child.exitCode !== null)
       return Promise.reject(
-        new Error(
-          "Execution core unavailable. Use Settings to install the WSL helper.",
-        ),
+        new Error("Execution core unavailable. Use Settings to install the WSL helper."),
       );
     return new Promise((resolve, reject) => {
       const id = randomUUID();
@@ -341,16 +302,13 @@ export class CoreBridge extends EventEmitter {
       }, timeoutMs);
       timer.unref();
       this.pending.set(id, { resolve: (v) => resolve(v as T), reject, timer });
-      child.stdin.write(
-        `${JSON.stringify({ id, method, params })}\n`,
-        (error) => {
-          if (error) {
-            clearTimeout(timer);
-            this.pending.delete(id);
-            reject(error);
-          }
-        },
-      );
+      child.stdin.write(`${JSON.stringify({ id, method, params })}\n`, (error) => {
+        if (error) {
+          clearTimeout(timer);
+          this.pending.delete(id);
+          reject(error);
+        }
+      });
     });
   };
   stop = async () => {
@@ -371,10 +329,8 @@ export class CoreBridge extends EventEmitter {
   install = async (onOutput: (text: string) => void) => {
     if (process.platform !== "win32") return;
     const data: Record<string, string> = {};
-    for (const file of ["core.cjs", "package.json", "package-lock.json"])
-      data[file] = (await readFile(join(this.coreDir, file))).toString(
-        "base64",
-      );
+    for (const file of ["core.cjs", "package.json", "package-lock.json", "LICENSE"])
+      data[file] = (await readFile(join(this.coreDir, file))).toString("base64");
     const script = `const fs=require('node:fs/promises');const path=require('node:path');const os=require('node:os');const cp=require('node:child_process');let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{try{const v=JSON.parse(input);const root=v.home||path.join(os.homedir(),'.akkco-vibestar');const dir=path.join(root,'runtime');await fs.mkdir(dir,{recursive:true,mode:448});for(const[name,content]of Object.entries(v.files))await fs.writeFile(path.join(dir,name),Buffer.from(content,'base64'),{mode:384});const p=cp.spawn('npm',['ci','--omit=dev','--no-audit','--no-fund'],{cwd:dir,stdio:'inherit',shell:false});p.on('exit',code=>process.exit(code||0));}catch(e){console.error(String(e));process.exit(1);}});`;
     await new Promise<void>((resolve, reject) => {
       const child = spawn(
@@ -386,29 +342,20 @@ export class CoreBridge extends EventEmitter {
       child.stderr.on("data", (c) => onOutput(c.toString()));
       child.on("error", reject);
       child.on("close", (code) =>
-        code === 0
-          ? resolve()
-          : reject(new Error(`WSL helper installation exited ${code}`)),
+        code === 0 ? resolve() : reject(new Error(`WSL helper installation exited ${code}`)),
       );
-      child.stdin.end(
-        JSON.stringify({ files: data, home: this.config.data_home }),
-      );
+      child.stdin.end(JSON.stringify({ files: data, home: this.config.data_home }));
     });
   };
 }
-export const readDesktopConfig = async (
-  path: string,
-): Promise<DesktopSettings> => {
+export const readDesktopConfig = async (path: string): Promise<DesktopSettings> => {
   try {
     return JSON.parse(await readFile(path, "utf8"));
   } catch {
     return { distro: "", data_home: "", helper_path: "" };
   }
 };
-export const saveDesktopConfig = async (
-  path: string,
-  config: DesktopSettings,
-) => {
+export const saveDesktopConfig = async (path: string, config: DesktopSettings) => {
   await mkdir(join(path, ".."), { recursive: true });
   await writeFile(path, JSON.stringify(config), { mode: 0o600 });
 };

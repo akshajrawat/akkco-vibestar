@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { verificationSummary } from "../../backend/execution/verification";
+import { verificationSummary } from "../../backend/execution/verification/verification";
 
 const check = (name: string, command: string | null, kind = "check") => ({
   name,
@@ -43,9 +43,10 @@ it("skips extra unexecuted manual browser checks and their exclusive setup witho
     policy: "repository",
   });
   expect(result.checks.filter((check) => check.optionalReason)).toHaveLength(4);
-  expect(
-    result.checks.find((check) => check.name === "Browser rendering"),
-  ).toMatchObject({ outcome: "blocked", required: false });
+  expect(result.checks.find((check) => check.name === "Browser rendering")).toMatchObject({
+    outcome: "blocked",
+    required: false,
+  });
   expect(checks).toEqual(original);
   expect(evaluate(checks, "extended_browser").canReview).toBe(false);
 });
@@ -62,17 +63,9 @@ it("preserves required repository browser suites, issue checks and their shared 
     { ...check("Required mobile acceptance", null), scope: "issue" },
   ]);
   expect(result.canReview).toBe(false);
-  for (const name of [
-    "Browser setup",
-    "Repository browser suite",
-    "Required mobile acceptance",
-  ])
-    expect(result.checks.find((check) => check.name === name)?.required).toBe(
-      true,
-    );
-  expect(
-    result.checks.find((check) => check.name === "Browser rendering")?.required,
-  ).toBe(false);
+  for (const name of ["Browser setup", "Repository browser suite", "Required mobile acceptance"])
+    expect(result.checks.find((check) => check.name === name)?.required).toBe(true);
+  expect(result.checks.find((check) => check.name === "Browser rendering")?.required).toBe(false);
 });
 
 it("never skips an observed test failure mislabeled as manual setup", () => {

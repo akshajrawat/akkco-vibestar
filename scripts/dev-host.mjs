@@ -4,10 +4,9 @@ import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join, resolve } from "node:path";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 const exec = promisify(execFile);
-const wslpath = async (direction, path) =>
-  (await exec("wslpath", [direction, path])).stdout.trim();
+const wslpath = async (direction, path) => (await exec("wslpath", [direction, path])).stdout.trim();
 export const resolveDevHost = async () => {
   const env = { ...process.env, VIBESTAR_DEV_URL: "http://127.0.0.1:1420" };
   if (
@@ -25,10 +24,7 @@ export const resolveDevHost = async () => {
     ])
   ).stdout.trim();
   const version = JSON.parse(
-    await readFile(
-      new URL("../node_modules/electron/package.json", import.meta.url),
-      "utf8",
-    ),
+    await readFile(new URL("../node_modules/electron/package.json", import.meta.url), "utf8"),
   ).version;
   const arch = process.arch;
   const directory = join(
@@ -39,10 +35,7 @@ export const resolveDevHost = async () => {
   );
   const executable = join(directory, "electron.exe");
   try {
-    await Promise.all([
-      access(executable),
-      access(join(directory, "resources/default_app.asar")),
-    ]);
+    await Promise.all([access(executable), access(join(directory, "resources/default_app.asar"))]);
   } catch {
     process.stdout.write(
       `Preparing native Windows Electron ${version} (execution stays in ${process.env.WSL_DISTRO_NAME})…\n`,
@@ -61,13 +54,9 @@ export const resolveDevHost = async () => {
     data_home: process.env.VIBESTAR_HOME || "",
     helper_path: resolve("dist-core/core.cjs"),
   });
-  const metadata = join(
-    await mkdtemp(join(tmpdir(), "vibestar-dev-")),
-    "window.json",
-  );
+  const metadata = join(await mkdtemp(join(tmpdir(), "vibestar-dev-")), "window.json");
   env.VIBESTAR_DEV_WINDOW_META = await wslpath("-w", metadata);
-  if (env.VIBESTAR_USER_DATA)
-    env.VIBESTAR_USER_DATA = await wslpath("-w", env.VIBESTAR_USER_DATA);
+  if (env.VIBESTAR_USER_DATA) env.VIBESTAR_USER_DATA = await wslpath("-w", env.VIBESTAR_USER_DATA);
   env.WSLENV = [
     env.WSLENV,
     "VIBESTAR_DEV_URL",
@@ -77,9 +66,7 @@ export const resolveDevHost = async () => {
   ]
     .filter(Boolean)
     .join(":");
-  process.stdout.write(
-    `Desktop: native Windows · execution: WSL ${process.env.WSL_DISTRO_NAME}\n`,
-  );
+  process.stdout.write(`Desktop: native Windows · execution: WSL ${process.env.WSL_DISTRO_NAME}\n`);
   return {
     executable,
     args: [await wslpath("-w", resolve("."))],

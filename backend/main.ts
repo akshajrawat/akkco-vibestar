@@ -6,7 +6,7 @@ import { Engine } from "./execution/engine";
 import { Rpc } from "./rpc";
 import { AdeError, defaultSettings } from "./domain";
 import { dataRootChoice, chooseDataRoot } from "./storage/bootstrap";
-import { redact } from "./execution/process";
+import { redact } from "./execution/runtime/process";
 const main = async () => {
   const build = createHash("sha256")
     .update(await readFile(__filename))
@@ -21,9 +21,7 @@ const main = async () => {
     initializing = (async () => {
       engine = await Engine.create(root);
       rpc = new Rpc(engine);
-      engine.on("event", (event) =>
-        process.stdout.write(`${JSON.stringify(event)}\n`),
-      );
+      engine.on("event", (event) => process.stdout.write(`${JSON.stringify(event)}\n`));
       engine.start();
       rpc.scheduler.start();
     })().finally(() => {
@@ -82,16 +80,9 @@ const main = async () => {
             root: bootstrap.root,
             migration: bootstrap.migration,
           };
-        else if (
-          !rpc &&
-          request.method === "storage.chooseRoot" &&
-          bootstrap.migration
-        ) {
+        else if (!rpc && request.method === "storage.chooseRoot" && bootstrap.migration) {
           if (initializing || choosing)
-            throw new AdeError(
-              "busy",
-              "Data initialization is already in progress",
-            );
+            throw new AdeError("busy", "Data initialization is already in progress");
           const choice = z
             .object({ choice: z.enum(["migrate", "old", "fresh"]) })
             .parse(request.params).choice;
@@ -105,10 +96,7 @@ const main = async () => {
           }
         } else {
           if (!rpc)
-            throw new AdeError(
-              "migration",
-              "Choose how to use the existing Vibestar data first",
-            );
+            throw new AdeError("migration", "Choose how to use the existing Vibestar data first");
           result = await rpc.call(request.method, request.params);
         }
         process.stdout.write(`${JSON.stringify({ id: request.id, result })}\n`);

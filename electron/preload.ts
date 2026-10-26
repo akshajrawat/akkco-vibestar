@@ -7,10 +7,8 @@ const api: DesktopApi = {
     return response.result;
   },
   subscribe: (callback) => {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      payload: Parameters<typeof callback>[0],
-    ) => callback(payload);
+    const listener = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]) =>
+      callback(payload);
     ipcRenderer.on("core:event", listener);
     return () => ipcRenderer.removeListener("core:event", listener);
   },
@@ -29,10 +27,8 @@ const windowApi: ElectronWindowApi = {
   fullscreen: () => ipcRenderer.invoke("window:fullscreen"),
   getState: () => ipcRenderer.invoke("window:get-state"),
   onStateChanged: (callback) => {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      state: Parameters<typeof callback>[0],
-    ) => callback(state);
+    const listener = (_event: Electron.IpcRendererEvent, state: Parameters<typeof callback>[0]) =>
+      callback(state);
     ipcRenderer.on("window:state", listener);
     return () => ipcRenderer.removeListener("window:state", listener);
   },
@@ -41,10 +37,8 @@ const windowApi: ElectronWindowApi = {
   close: () => ipcRenderer.invoke("window:close"),
   isMaximized: () => ipcRenderer.invoke("window:is-maximized"),
   onMaximizedChanged: (callback) => {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      state: { maximized: boolean },
-    ) => callback(state.maximized);
+    const listener = (_event: Electron.IpcRendererEvent, state: { maximized: boolean }) =>
+      callback(state.maximized);
     ipcRenderer.on("window:state", listener);
     return () => ipcRenderer.removeListener("window:state", listener);
   },

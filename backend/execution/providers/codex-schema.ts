@@ -2,9 +2,7 @@ import { object } from "./contracts";
 
 // Codex's official structured output requires every object property in required.
 // Optional application fields are represented by nullable transport fields.
-export const codexSchema = (
-  schema: Record<string, unknown>,
-): Record<string, unknown> => {
+export const codexSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
   const copy = structuredClone(schema);
   const properties = object(copy.properties);
   if (copy.type === "object" || Object.keys(properties).length) {
@@ -18,32 +16,21 @@ export const codexSchema = (
     copy.properties = Object.fromEntries(
       Object.entries(properties).map(([key, value]) => {
         const child = codexSchema(object(value));
-        return [
-          key,
-          required.includes(key) ? child : { anyOf: [child, { type: "null" }] },
-        ];
+        return [key, required.includes(key) ? child : { anyOf: [child, { type: "null" }] }];
       }),
     );
   }
   if (copy.items) copy.items = codexSchema(object(copy.items));
   for (const key of ["anyOf", "oneOf", "allOf"])
-    if (Array.isArray(copy[key]))
-      copy[key] = copy[key].map((child) => codexSchema(object(child)));
+    if (Array.isArray(copy[key])) copy[key] = copy[key].map((child) => codexSchema(object(child)));
   if (copy.$defs)
     copy.$defs = Object.fromEntries(
-      Object.entries(object(copy.$defs)).map(([key, value]) => [
-        key,
-        codexSchema(object(value)),
-      ]),
+      Object.entries(object(copy.$defs)).map(([key, value]) => [key, codexSchema(object(value))]),
     );
   return copy;
 };
-export const codexResult = (
-  schema: Record<string, unknown>,
-  value: unknown,
-): unknown => {
-  if (Array.isArray(value))
-    return value.map((item) => codexResult(object(schema.items), item));
+export const codexResult = (schema: Record<string, unknown>, value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map((item) => codexResult(object(schema.items), item));
   if (!value || typeof value !== "object") return value;
   const properties = object(schema.properties);
   const required = Array.isArray(schema.required) ? schema.required : [];
@@ -55,13 +42,7 @@ export const codexResult = (
         (Array.isArray(child.type) && child.type.includes("null")) ||
         (Array.isArray(child.anyOf) &&
           child.anyOf.some((branch) => object(branch).type === "null"));
-      if (
-        item === null &&
-        key in properties &&
-        !required.includes(key) &&
-        !nullable
-      )
-        return [];
+      if (item === null && key in properties && !required.includes(key) && !nullable) return [];
       return [[key, codexResult(child, item)]];
     }),
   );

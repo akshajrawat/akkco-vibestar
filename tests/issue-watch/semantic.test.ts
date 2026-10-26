@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { migrateDataRoot } from "../../backend/storage/migrate-root";
 import { StorageService } from "../../backend/storage/service";
 import { IssueWatchStore } from "../../backend/issue-watch/store";
-import { createFixtureEngine } from "../fixtures";
+import { createFixtureEngine } from "../helpers/fixtures";
 import { validateSemanticReport } from "../../backend/issue-watch/semantic";
 import { watchConfiguration, watchFixture } from "./fixtures";
 
@@ -24,9 +24,7 @@ afterEach(async () => {
 
 it("uses one existing sandboxed utility run, real reported usage and owner-checked readable/raw history", async () => {
   const { f, provider } = await setup();
-  const { watch } = await f.create(
-    watchConfiguration("Open issues. Prefer focused test changes."),
-  );
+  const { watch } = await f.create(watchConfiguration("Open issues. Prefer focused test changes."));
   const infer = vi.spyOn(f.engine.utility, "run");
   const scan = await f.scan(watch.id);
   expect(scan).toMatchObject({
@@ -88,18 +86,14 @@ it("uses one existing sandboxed utility run, real reported usage and owner-check
   });
   await f.restart();
   expect(provider.calls).toBe(1);
-  expect(f.service.store.scan(watch.id, scan.id).utility_run_id).toBe(
-    scan.utility_run_id,
-  );
+  expect(f.service.store.scan(watch.id, scan.id).utility_run_id).toBe(scan.utility_run_id);
 });
 
 it.each(["unknown", "forged-citation", "quota"])(
   "preserves GitHub-only evidence on %s without retries, fallback or baseline advancement",
   async (mode) => {
     const { f, provider } = await setup();
-    const { watch } = await f.create(
-      watchConfiguration("Open issues. Prefer focused changes."),
-    );
+    const { watch } = await f.create(watchConfiguration("Open issues. Prefer focused changes."));
     const baseline = await f.scan(watch.id);
     provider.mode = mode;
     const failed = await f.scan(watch.id);
@@ -109,17 +103,14 @@ it.each(["unknown", "forged-citation", "quota"])(
       coverage: { semantic_complete: false },
     });
     expect(provider.calls).toBe(2);
-    expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(
-      baseline.id,
-    );
+    expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(baseline.id);
     expect(f.service.store.candidates(watch.id, failed.id)).toHaveLength(3);
     expect(
       f.service.store
         .candidates(watch.id, failed.id)
         .every(
           (candidate) =>
-            candidate.semantic_state ===
-            (mode === "quota" ? "unavailable" : "invalid"),
+            candidate.semantic_state === (mode === "quota" ? "unavailable" : "invalid"),
         ),
     ).toBe(true);
     const usage = f.engine.db.all<{ total_tokens: number | null }>(
@@ -152,9 +143,7 @@ it("skips inference when deterministic exclusions reject every candidate", async
 
 it("bounds semantic candidates and complete packets without invoking an automatic second model", async () => {
   const { f, provider } = await setup();
-  const configuration = watchConfiguration(
-    "Open issues. Prefer focused changes.",
-  );
+  const configuration = watchConfiguration("Open issues. Prefer focused changes.");
   configuration.limits.max_semantic_candidates = 1;
   const { watch } = await f.create(configuration);
   const scan = await f.scan(watch.id);
@@ -173,9 +162,7 @@ it("bounds semantic candidates and complete packets without invoking an automati
 
 it("awaits cancellation of the real fixture process and preserves the consumed slot across restart", async () => {
   const { f, provider } = await setup();
-  const { watch } = await f.create(
-    watchConfiguration("Open issues. Prefer focused changes."),
-  );
+  const { watch } = await f.create(watchConfiguration("Open issues. Prefer focused changes."));
   const baseline = await f.scan(watch.id);
   provider.mode = "hang";
   const operation = f.service.launch({
@@ -210,22 +197,18 @@ it("awaits cancellation of the real fixture process and preserves the consumed s
 
 it("rejects duplicate identities, unsupported actors and false factual blockers before any result is promoted", async () => {
   const { f } = await setup();
-  const { watch } = await f.create(
-    watchConfiguration("Open issues. Prefer focused changes."),
-  );
+  const { watch } = await f.create(watchConfiguration("Open issues. Prefer focused changes."));
   const scan = await f.scan(watch.id);
   const candidates = f.service.store.candidates(watch.id, scan.id);
   const sources = f.service.store.sources(watch.id, scan.id);
   const result = candidates[0].semantic!;
-  expect(() =>
-    validateSemanticReport({ results: [result, result] }, candidates, sources),
-  ).toThrow("duplicate");
+  expect(() => validateSemanticReport({ results: [result, result] }, candidates, sources)).toThrow(
+    "duplicate",
+  );
   expect(() =>
     validateSemanticReport(
       {
-        results: [
-          { ...result, description: "@invented-maintainer approves this" },
-        ],
+        results: [{ ...result, description: "@invented-maintainer approves this" }],
       },
       candidates,
       sources,
@@ -263,17 +246,14 @@ it("reapplies current hard facts after the model and refuses a fresh label exclu
 
 it("requires explicit continuation selection and gives it a new one-call attempt with fresh trackers", async () => {
   const { f, provider } = await setup();
-  const configuration = watchConfiguration(
-    "Open issues. Prefer focused changes.",
-    {
-      trackers: [
-        {
-          url: "https://github.com/oppia/oppia/issues/27409",
-          comments: "none",
-        },
-      ],
-    },
-  );
+  const configuration = watchConfiguration("Open issues. Prefer focused changes.", {
+    trackers: [
+      {
+        url: "https://github.com/oppia/oppia/issues/27409",
+        comments: "none",
+      },
+    ],
+  });
   configuration.limits.max_semantic_candidates = 1;
   f.issues.get(27409)!.body = "No exclusions yet.";
   const { watch } = await f.create(configuration);
@@ -302,18 +282,14 @@ it("requires explicit continuation selection and gives it a new one-call attempt
     semantic_attempts: 0,
     parent_scan_id: first.id,
   });
-  expect(
-    f.service.store.candidate(watch.id, next.id, pending.issue.id).eligible,
-  ).toBe(false);
+  expect(f.service.store.candidate(watch.id, next.id, pending.issue.id).eligible).toBe(false);
   expect(provider.calls).toBe(1);
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBeNull();
 });
 
 it("keeps a consumed host slot without launching a CLI when shared execution capacity is unavailable", async () => {
   const { f, provider } = await setup();
-  const { watch } = await f.create(
-    watchConfiguration("Open issues. Prefer focused changes."),
-  );
+  const { watch } = await f.create(watchConfiguration("Open issues. Prefer focused changes."));
   const infer = vi
     .spyOn(f.engine.utility, "run")
     .mockRejectedValue(new Error("Shared task execution capacity unavailable"));
@@ -326,9 +302,7 @@ it("keeps a consumed host slot without launching a CLI when shared execution cap
   expect(infer).toHaveBeenCalledOnce();
   expect(provider.calls).toBe(0);
   expect(f.engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
-  expect(() =>
-    f.service.store.reserveSemantic(scan, scan.context_hash!),
-  ).toThrow("no unused");
+  expect(() => f.service.store.reserveSemantic(scan, scan.context_hash!)).toThrow("no unused");
   await f.restart();
   expect(provider.calls).toBe(0);
 });
@@ -336,9 +310,7 @@ it("keeps a consumed host slot without launching a CLI when shared execution cap
 it("records missing model candidates as partial coverage and requires another explicit attempt", async () => {
   const { f, provider } = await setup();
   provider.mode = "missing";
-  const { watch } = await f.create(
-    watchConfiguration("Open issues. Prefer focused changes."),
-  );
+  const { watch } = await f.create(watchConfiguration("Open issues. Prefer focused changes."));
   const scan = await f.scan(watch.id);
   expect(scan).toMatchObject({
     status: "partial",
@@ -355,9 +327,7 @@ it("records missing model candidates as partial coverage and requires another ex
 
 it("migrates prompts, utility events and reported usage together, and resets their FK ownership explicitly", async () => {
   const { f, provider } = await setup();
-  const { watch } = await f.create(
-    watchConfiguration("Open issues. Prefer focused changes."),
-  );
+  const { watch } = await f.create(watchConfiguration("Open issues. Prefer focused changes."));
   const scan = await f.scan(watch.id);
   const prompt = await readFile(
     join(f.engine.root, "artifacts", "issue-watch", scan.id, "prompt.txt"),
@@ -369,14 +339,11 @@ it("migrates prompts, utility events and reported usage together, and resets the
   await migrateDataRoot(join(f.dir, "data"), destination);
   const engine = await createFixtureEngine(destination, () => provider);
   try {
+    expect(new IssueWatchStore(engine.db).scan(watch.id, scan.id).utility_run_id).toBe(
+      scan.utility_run_id,
+    );
     expect(
-      new IssueWatchStore(engine.db).scan(watch.id, scan.id).utility_run_id,
-    ).toBe(scan.utility_run_id);
-    expect(
-      engine.db.all(
-        "SELECT id FROM utility_events WHERE run_id=?",
-        scan.utility_run_id!,
-      ),
+      engine.db.all("SELECT id FROM utility_events WHERE run_id=?", scan.utility_run_id!),
     ).not.toEqual([]);
     expect(
       engine.db.all<{ total_tokens: number }>(
@@ -385,10 +352,7 @@ it("migrates prompts, utility events and reported usage together, and resets the
       )[0].total_tokens,
     ).toBe(125);
     expect(
-      await readFile(
-        join(destination, "artifacts", "issue-watch", scan.id, "prompt.txt"),
-        "utf8",
-      ),
+      await readFile(join(destination, "artifacts", "issue-watch", scan.id, "prompt.txt"), "utf8"),
     ).toBe(prompt);
     const storage = new StorageService(engine);
     const resetPreview = await storage.previewReset();

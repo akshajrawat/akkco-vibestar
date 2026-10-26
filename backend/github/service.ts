@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
-import { redact } from "../execution/process";
+import { redact } from "../execution/runtime/process";
 import { z } from "zod";
 import { AdeError, now } from "../domain";
 import type { Engine } from "../execution/engine";
@@ -72,11 +72,7 @@ export class GitHubService {
     let release = () => {};
     const promise = Promise.resolve()
       .then(async () => {
-        const log = await open(
-          join(this.engine.root, "logs", `clone-${id}.log`),
-          "a",
-          0o600,
-        );
+        const log = await open(join(this.engine.root, "logs", `clone-${id}.log`), "a", 0o600);
         let writes = Promise.resolve();
         const progress = (line: string) => {
           const safe = redact(line.replace(/\x1b\[[0-9;]*m/g, ""));
@@ -91,13 +87,7 @@ export class GitHubService {
           this.engine.changed();
         };
         try {
-          const repo = await this.useLocally(
-            name,
-            true,
-            undefined,
-            true,
-            controller.signal,
-          );
+          const repo = await this.useLocally(name, true, undefined, true, controller.signal);
           repositoryId = repo.id;
           repo.connected = false;
           repo.clone_status = "cloning";
@@ -112,14 +102,8 @@ export class GitHubService {
           progress(
             `Cloning upstream ${repo.owner}/${repo.name}; origin ${repo.origin_url || "not configured"}`,
           );
-          await this.engine.prepareClone(
-            repo,
-            controller.signal,
-            undefined,
-            progress,
-          );
-          if (controller.signal.aborted)
-            throw new AdeError("cancelled", "Clone cancelled");
+          await this.engine.prepareClone(repo, controller.signal, undefined, progress);
+          if (controller.signal.aborted) throw new AdeError("cancelled", "Clone cancelled");
           repo.connected = true;
           this.engine.db.saveRepository(repo);
           activity.status = "completed";
@@ -127,20 +111,12 @@ export class GitHubService {
           activity.percent = 100;
         } catch (error) {
           activity.status = controller.signal.aborted ? "cancelled" : "failed";
-          activity.error = redact(
-            error instanceof Error ? error.message : String(error),
-          );
+          activity.error = redact(error instanceof Error ? error.message : String(error));
           activity.phase = controller.signal.aborted
             ? "Clone cancelled · incomplete managed checkout removed"
             : "Clone failed";
-          if (
-            repositoryId &&
-            !this.engine.db.tasks().some((t) => t.repo_id === repositoryId)
-          )
-            this.engine.db.run(
-              "DELETE FROM repositories WHERE id=?",
-              repositoryId,
-            );
+          if (repositoryId && !this.engine.db.tasks().some((t) => t.repo_id === repositoryId))
+            this.engine.db.run("DELETE FROM repositories WHERE id=?", repositoryId);
         } finally {
           try {
             await writes;
@@ -168,10 +144,7 @@ export class GitHubService {
     );
     this.clones.set(id, { activity, controller, promise });
     for (const [key, clone] of this.clones)
-      if (
-        this.clones.size > 20 &&
-        !["resolving", "cloning"].includes(clone.activity.status)
-      )
+      if (this.clones.size > 20 && !["resolving", "cloning"].includes(clone.activity.status))
         this.clones.delete(key);
     this.engine.changed();
     return activity;
@@ -280,17 +253,11 @@ export class GitHubService {
     const status = this.status || (await this.client.detect(signal));
     if (status.connected) {
       const candidates = this.catalog().filter(
-        (r) =>
-          r.fork &&
-          r.owner.login === status.username &&
-          r.name === repository.name,
+        (r) => r.fork && r.owner.login === status.username && r.name === repository.name,
       );
       for (const candidate of candidates) {
         const info = await this.client.repository(candidate.full_name, signal);
-        if (
-          info.parent?.full_name.toLowerCase() ===
-          repository.full_name.toLowerCase()
-        ) {
+        if (info.parent?.full_name.toLowerCase() === repository.full_name.toLowerCase()) {
           fork = info;
           break;
         }
@@ -304,8 +271,7 @@ export class GitHubService {
           );
           if (
             info.fork &&
-            info.parent?.full_name.toLowerCase() ===
-              repository.full_name.toLowerCase()
+            info.parent?.full_name.toLowerCase() === repository.full_name.toLowerCase()
           )
             fork = info;
         } catch {
@@ -328,20 +294,15 @@ export class GitHubService {
     signal = this.controller.signal,
   ) => {
     let metadata = await this.client.repository(name, signal);
-    const selectedFork =
-      metadata.fork && metadata.parent ? metadata.clone_url : null;
+    const selectedFork = metadata.fork && metadata.parent ? metadata.clone_url : null;
     if (metadata.fork && metadata.parent)
-      metadata = await this.client.repository(
-        metadata.parent.full_name,
-        signal,
-      );
+      metadata = await this.client.repository(metadata.parent.full_name, signal);
     const existing = this.engine.db
       .repositories()
       .find(
         (r) =>
           (!managed || r.source !== "imported") &&
-          `${r.owner}/${r.name}`.toLowerCase() ===
-            metadata.full_name.toLowerCase(),
+          `${r.owner}/${r.name}`.toLowerCase() === metadata.full_name.toLowerCase(),
       );
     if (existing) {
       if (
@@ -357,8 +318,7 @@ export class GitHubService {
           "repository_exists",
           `This repository is already registered from ${existing.path}. Connect that checkout explicitly.`,
         );
-      if (!deferred)
-        await this.engine.prepareClone(existing, undefined, localPath);
+      if (!deferred) await this.engine.prepareClone(existing, undefined, localPath);
       return existing;
     }
     const resolved = await this.resolve(metadata.full_name, signal);
@@ -409,8 +369,7 @@ export class GitHubService {
       if (!this.status.connected || !this.status.username)
         throw new AdeError(
           "github_auth",
-          this.status.error ||
-            "Connect GitHub through Providers, then retry Refresh PR List.",
+          this.status.error || "Connect GitHub through Providers, then retry Refresh PR List.",
         );
       this.phase = "Retrieving repository catalog";
       this.engine.changed();
@@ -420,24 +379,18 @@ export class GitHubService {
       );
       this.phase = "Discovering authored pull requests";
       this.engine.changed();
-      const found = await this.client.authored(
-        this.status.username,
-        this.controller.signal,
-      );
+      const found = await this.client.authored(this.status.username, this.controller.signal);
       const urls = new Set(found.map((p) => p.html_url));
       const savedPRs = this.prs();
       const knownMissing = new Set(
-        [
-          ...savedPRs.map((pr) => pr.url),
-          ...this.scheduler.jobs().map((job) => job.url),
-        ].filter((url) => !urls.has(url)),
+        [...savedPRs.map((pr) => pr.url), ...this.scheduler.jobs().map((job) => job.url)].filter(
+          (url) => !urls.has(url),
+        ),
       );
       const detailBudget = 500 - Math.min(100, knownMissing.size);
       const cursor = this.detailCursor % Math.max(1, found.length);
       const sorted = [...found].sort(
-        (a, b) =>
-          b.updated_at.localeCompare(a.updated_at) ||
-          a.html_url.localeCompare(b.html_url),
+        (a, b) => b.updated_at.localeCompare(a.updated_at) || a.html_url.localeCompare(b.html_url),
       );
       const bounded = sorted.slice(cursor, cursor + detailBudget);
       let partial =
@@ -461,10 +414,7 @@ export class GitHubService {
             draft?: boolean;
             title?: string;
             updated_at?: string;
-          }>(
-            `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
-            this.controller.signal,
-          )
+          }>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`, this.controller.signal)
           .catch((error) => {
             if (!this.controller.signal.aborted)
               this.recordInaccessible(
@@ -488,14 +438,12 @@ export class GitHubService {
         const matches = this.engine.db.tasks().filter((t) => {
           const repo = this.engine.db.repository(t.repo_id);
           return (
-            `${repo.owner}/${repo.name}`.toLowerCase() ===
-              repository.toLowerCase() &&
+            `${repo.owner}/${repo.name}`.toLowerCase() === repository.toLowerCase() &&
             t.branch_name === info.head.ref &&
             (repo.origin_url || repo.upstream_url)
               .replace(/^git@github.com:/, "https://github.com/")
               .replace(/\.git$/, "")
-              .toLowerCase() ===
-              `https://github.com/${info.head.repo?.full_name}`.toLowerCase()
+              .toLowerCase() === `https://github.com/${info.head.repo?.full_name}`.toLowerCase()
           );
         });
         const value: GitHubPullRequest = {
@@ -503,11 +451,7 @@ export class GitHubService {
           repository,
           number: pr.number,
           title: info.title || pr.title,
-          state: info.merged
-            ? "MERGED"
-            : info.state === "closed"
-              ? "CLOSED"
-              : "OPEN",
+          state: info.merged ? "MERGED" : info.state === "closed" ? "CLOSED" : "OPEN",
           draft: info.draft,
           head_sha: info.head.sha,
           head_branch: info.head.ref,
@@ -522,8 +466,7 @@ export class GitHubService {
       this.engine.changed();
       const known = [...savedPRs];
       for (const job of this.scheduler.jobs()) {
-        if (known.some((pr) => pr.url.toLowerCase() === job.url.toLowerCase()))
-          continue;
+        if (known.some((pr) => pr.url.toLowerCase() === job.url.toLowerCase())) continue;
         const ref = parsePullRequest(job.url);
         known.push({
           url: ref.url,
@@ -557,23 +500,15 @@ export class GitHubService {
               sha: string;
               repo: { full_name: string } | null;
             };
-          }>(
-            `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`,
-            this.controller.signal,
-          )
+          }>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`, this.controller.signal)
           .catch((error) => {
-            if (!this.controller.signal.aborted)
-              this.recordInaccessible(old, error);
+            if (!this.controller.signal.aborted) this.recordInaccessible(old, error);
             throw error;
           });
         if (["open", "closed"].includes(info.state)) {
           const value = {
             ...old,
-            state: info.merged
-              ? "MERGED"
-              : info.state === "closed"
-                ? "CLOSED"
-                : "OPEN",
+            state: info.merged ? "MERGED" : info.state === "closed" ? "CLOSED" : "OPEN",
             draft: info.draft ?? old.draft,
             head_sha: info.head?.sha || old.head_sha,
             head_branch: info.head?.ref || old.head_branch,
@@ -595,16 +530,12 @@ export class GitHubService {
             JSON.stringify(repo),
             catalogTime,
           );
-        this.engine.db.run(
-          "DELETE FROM github_repositories WHERE synced_at<>?",
-          catalogTime,
-        );
+        this.engine.db.run("DELETE FROM github_repositories WHERE synced_at<>?", catalogTime);
         for (const value of updates) this.savePR(value);
       });
       for (const value of updates) this.scheduler.discovered(value);
       this.detailCursor = (cursor + bounded.length) % Math.max(1, found.length);
-      this.knownCursor =
-        (knownCursor + rechecked.length) % Math.max(1, missing.length);
+      this.knownCursor = (knownCursor + rechecked.length) % Math.max(1, missing.length);
       if (!partial) this.lastSync = now();
       this.error = partial || null;
     } catch (e) {
@@ -643,9 +574,7 @@ export class GitHubService {
       ...pr,
       state: "UNKNOWN",
       last_known_state: pr.state === "UNKNOWN" ? pr.last_known_state : pr.state,
-      access_error: redact(
-        error instanceof Error ? error.message : String(error),
-      ).slice(-3000),
+      access_error: redact(error instanceof Error ? error.message : String(error)).slice(-3000),
     };
     this.savePR(value);
     this.scheduler.discovered(value);

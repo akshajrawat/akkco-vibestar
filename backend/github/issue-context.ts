@@ -7,10 +7,7 @@ import type {
   RepositoryIdentity,
   WatchSource,
 } from "../issue-watch/contracts";
-import {
-  retainedSource,
-  markdownIssueReferences,
-} from "../issue-watch/tracker-exclusions";
+import { retainedSource, markdownIssueReferences } from "../issue-watch/tracker-exclusions";
 
 const githubUrl = (input: string) => {
   const url = new URL(input);
@@ -21,10 +18,7 @@ const githubUrl = (input: string) => {
     url.password ||
     url.port
   )
-    throw new AdeError(
-      "github_identity",
-      "GitHub evidence returned an unsafe source URL.",
-    );
+    throw new AdeError("github_identity", "GitHub evidence returned an unsafe source URL.");
   return url;
 };
 export const contributionPolicy = async (
@@ -40,15 +34,11 @@ export const contributionPolicy = async (
           contributing: z.object({ url: z.string() }).nullable().optional(),
         }),
       })
-      .parse(
-        await reader.read(`repos/${repository.full_name}/community/profile`),
-      );
+      .parse(await reader.read(`repos/${repository.full_name}/community/profile`));
     if (!profile.files.contributing)
       return {
         complete: false,
-        warnings: [
-          "Contribution policy is unavailable; assignment permission is unknown.",
-        ],
+        warnings: ["Contribution policy is unavailable; assignment permission is unknown."],
         source_keys: [],
       };
     const url = new URL(profile.files.contributing.url);
@@ -64,9 +54,7 @@ export const contributionPolicy = async (
     )
       return {
         complete: false,
-        warnings: [
-          "External contribution policy was not fetched; inspect it manually.",
-        ],
+        warnings: ["External contribution policy was not fetched; inspect it manually."],
         source_keys: [],
       };
     const file = z
@@ -80,8 +68,7 @@ export const contributionPolicy = async (
       })
       .parse(await reader.read(`${url.pathname.slice(1)}${url.search}`));
     githubUrl(file.html_url);
-    if (file.size > 1048576)
-      throw new Error("Contribution policy exceeds the source size limit.");
+    if (file.size > 1048576) throw new Error("Contribution policy exceeds the source size limit.");
     const text = new TextDecoder("utf-8", { fatal: true }).decode(
       Buffer.from(file.content, "base64"),
     );
@@ -159,10 +146,7 @@ export const issueContext = async (
         .parse(value);
       const url = githubUrl(comment.html_url);
       if (url.pathname.toLowerCase() !== `/` + base.replace(/^repos\//, ""))
-        throw new AdeError(
-          "github_identity",
-          "Comment belongs to another issue.",
-        );
+        throw new AdeError("github_identity", "Comment belongs to another issue.");
       retain(
         retainedSource({
           key: `comment:${comment.node_id}`,
@@ -206,10 +190,7 @@ export const issueContext = async (
         references: [],
       }),
     );
-    const linked = new Map<
-      string,
-      { url: string; repository: string; number: number }
-    >();
+    const linked = new Map<string, { url: string; repository: string; number: number }>();
     for (const raw of timeline) {
       const event = z
         .object({
@@ -226,20 +207,11 @@ export const issueContext = async (
             .optional(),
         })
         .parse(raw);
-      if (
-        event.event !== "cross-referenced" ||
-        !event.source?.issue?.pull_request
-      )
-        continue;
+      if (event.event !== "cross-referenced" || !event.source?.issue?.pull_request) continue;
       const url = githubUrl(event.source.issue.html_url);
-      const match = url.pathname.match(
-        /^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/,
-      );
+      const match = url.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/);
       if (!match || !Number.isSafeInteger(Number(match[3])))
-        throw new AdeError(
-          "github_identity",
-          "Timeline PR identity is invalid.",
-        );
+        throw new AdeError("github_identity", "Timeline PR identity is invalid.");
       linked.set(url.href, {
         url: url.href,
         repository: `${match[1]}/${match[2]}`.toLowerCase(),
@@ -247,9 +219,7 @@ export const issueContext = async (
       });
     }
     if (linked.size > 10)
-      warnings.push(
-        "More than 10 linked PRs; competing work coverage is incomplete.",
-      );
+      warnings.push("More than 10 linked PRs; competing work coverage is incomplete.");
     for (const link of [...linked.values()].slice(0, 10)) {
       const pr = z
         .object({
@@ -263,9 +233,7 @@ export const issueContext = async (
           user: z.object({ login: z.string() }),
           base: z.object({ repo: z.object({ node_id: z.string() }) }),
         })
-        .parse(
-          await reader.read(`repos/${link.repository}/pulls/${link.number}`),
-        );
+        .parse(await reader.read(`repos/${link.repository}/pulls/${link.number}`));
       if (githubUrl(pr.html_url).href !== link.url)
         throw new AdeError("github_identity", "Linked PR identity changed.");
       const source = retainedSource({
@@ -290,20 +258,11 @@ export const issueContext = async (
         references: [],
       });
       retain(source);
-      const closing = markdownIssueReferences(
-        pr.body || "",
-        link.repository,
-        true,
-      ).some(
+      const closing = markdownIssueReferences(pr.body || "", link.repository, true).some(
         (reference) =>
-          reference.repository === issue.repository &&
-          reference.number === issue.number,
+          reference.repository === issue.repository && reference.number === issue.number,
       );
-      if (
-        pr.state === "open" &&
-        closing &&
-        pr.base.repo.node_id === issue.repository_id
-      )
+      if (pr.state === "open" && closing && pr.base.repo.node_id === issue.repository_id)
         evidence.push({
           kind: "open_pr",
           source_key: source.key,

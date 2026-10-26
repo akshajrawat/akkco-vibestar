@@ -1,11 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  ChevronRight,
-  ChevronDown,
-  Folder,
-  FileCode2,
-  Search,
-} from "lucide-react";
+import { ChevronRight, ChevronDown, Folder, FileCode2, Search } from "lucide-react";
 import type { DiffFile } from "../../lib/types";
 interface TreeNode {
   path: string;
@@ -33,9 +27,7 @@ export const DiffFileTree = ({
   const visibleFiles = useMemo(
     () =>
       files.filter((file) =>
-        `${file.path} ${file.old_path || ""}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
+        `${file.path} ${file.old_path || ""}`.toLowerCase().includes(query.toLowerCase()),
       ),
     [files, query],
   );
@@ -87,14 +79,10 @@ export const DiffFileTree = ({
         </small>
       )}
       <span className="file-identity">
-        <span className="file-basename mono">
-          {file.path.split("/").at(-1)}
-        </span>
+        <span className="file-basename mono">{file.path.split("/").at(-1)}</span>
         {mode === "flat" && (
           <small>
-            {file.path.includes("/")
-              ? file.path.slice(0, file.path.lastIndexOf("/"))
-              : "."}
+            {file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "."}
           </small>
         )}
         {file.old_path && <small>from {file.old_path}</small>}
@@ -113,10 +101,7 @@ export const DiffFileTree = ({
   );
   const render = (node: TreeNode, depth: number): React.ReactNode =>
     Array.from(node.children.values())
-      .sort(
-        (a, b) =>
-          Number(!!a.file) - Number(!!b.file) || a.name.localeCompare(b.name),
-      )
+      .sort((a, b) => Number(!!a.file) - Number(!!b.file) || a.name.localeCompare(b.name))
       .map((child) =>
         child.file ? (
           renderFile(child.file, depth)
@@ -148,9 +133,7 @@ export const DiffFileTree = ({
           <button
             type="button"
             className="file-mode-toggle"
-            aria-label={
-              mode === "tree" ? "Show flat file list" : "Show file tree"
-            }
+            aria-label={mode === "tree" ? "Show flat file list" : "Show file tree"}
             onClick={() => onMode(mode === "tree" ? "flat" : "tree")}
           >
             {mode === "tree" ? "Flat" : "Tree"}

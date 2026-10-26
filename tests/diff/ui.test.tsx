@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { DiffView } from "../../src/components/diff/DiffView";
-import { ChangesView } from "../../src/components/ChangesView";
+import { ChangesView } from "../../src/components/shared/ChangesView";
 import type { FileDiff } from "../../src/lib/types";
 
 afterEach(() => {
@@ -17,21 +17,15 @@ const file: FileDiff = {
 };
 
 it("renders numbered unified and split changes with inert syntax tokens", () => {
-  const ui = render(
-    <DiffView file={file} path="src/example.ts" mode="unified" />,
-  );
+  const ui = render(<DiffView file={file} path="src/example.ts" mode="unified" />);
   expect(
-    ui.container.querySelector('.diff-code[data-side="working"][data-line="1"]')
-      ?.textContent,
+    ui.container.querySelector('.diff-code[data-side="working"][data-line="1"]')?.textContent,
   ).toBe("const value = 2;");
-  expect(ui.container.querySelector(".syntax-keyword")?.textContent).toBe(
-    "const",
-  );
+  expect(ui.container.querySelector(".syntax-keyword")?.textContent).toBe("const");
   ui.rerender(<DiffView file={file} path="src/example.ts" mode="side" />);
   expect(screen.getByRole("columnheader", { name: "Base" })).toBeTruthy();
   expect(
-    ui.container.querySelector('.diff-code[data-side="base"][data-line="1"]')
-      ?.textContent,
+    ui.container.querySelector('.diff-code[data-side="base"][data-line="1"]')?.textContent,
   ).toBe("const value = 1;");
   const html = '<img src=x onerror="alert(1)">';
   ui.rerender(
@@ -47,15 +41,11 @@ it("renders numbered unified and split changes with inert syntax tokens", () => 
     />,
   );
   expect(ui.container.querySelector("img")).toBeNull();
-  expect(
-    ui.container.querySelector('.diff-code[data-side="working"]')?.textContent,
-  ).toBe(html);
+  expect(ui.container.querySelector('.diff-code[data-side="working"]')?.textContent).toBe(html);
 });
 
 it("reveals and folds verified unchanged context with the correct line numbers", () => {
-  const prefix =
-    Array.from({ length: 10 }, (_, index) => `prefix ${index + 1}`).join("\n") +
-    "\n";
+  const prefix = Array.from({ length: 10 }, (_, index) => `prefix ${index + 1}`).join("\n") + "\n";
   const ui = render(
     <DiffView
       file={{
@@ -69,40 +59,22 @@ it("reveals and folds verified unchanged context with the correct line numbers",
     />,
   );
   expect(screen.queryByText("prefix 3")).toBeNull();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Show 10 of 10 unchanged lines" }),
-  );
-  expect(
-    ui.container.querySelector('.diff-code[data-line="3"]')?.textContent,
-  ).toBe("prefix 3");
-  fireEvent.click(
-    screen.getByRole("button", { name: "Fold 10 unchanged lines" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Show 10 of 10 unchanged lines" }));
+  expect(ui.container.querySelector('.diff-code[data-line="3"]')?.textContent).toBe("prefix 3");
+  fireEvent.click(screen.getByRole("button", { name: "Fold 10 unchanged lines" }));
   expect(screen.queryByText("prefix 3")).toBeNull();
 });
 
 it("keeps binary, oversized, unmappable and metadata-only states explicit", () => {
-  const ui = render(
-    <DiffView file={{ ...file, binary: true }} path="image.bin" mode="side" />,
-  );
-  expect(
-    screen.getByText("Binary file. Review it in your editor."),
-  ).toBeTruthy();
+  const ui = render(<DiffView file={{ ...file, binary: true }} path="image.bin" mode="side" />);
+  expect(screen.getByText("Binary file. Review it in your editor.")).toBeTruthy();
   ui.rerender(
-    <DiffView
-      file={{ ...file, unified: "+".repeat(750001) }}
-      path="large.ts"
-      mode="side"
-    />,
+    <DiffView file={{ ...file, unified: "+".repeat(750001) }} path="large.ts" mode="side" />,
   );
   expect(screen.getByText(/exceeds the interactive view limit/)).toBeTruthy();
   expect(ui.container.querySelector("table")).toBeNull();
   ui.rerender(
-    <DiffView
-      file={{ ...file, unified: "malformed patch" }}
-      path="file.ts"
-      mode="unified"
-    />,
+    <DiffView file={{ ...file, unified: "malformed patch" }} path="file.ts" mode="unified" />,
   );
   expect(screen.getByText(/no reliable hunk mappings/)).toBeTruthy();
   expect(screen.getByText("malformed patch")).toBeTruthy();
@@ -117,9 +89,7 @@ it("keeps binary, oversized, unmappable and metadata-only states explicit", () =
       mode="unified"
     />,
   );
-  expect(
-    screen.getByText(/File identity or permissions may have changed/),
-  ).toBeTruthy();
+  expect(screen.getByText(/File identity or permissions may have changed/)).toBeTruthy();
 });
 
 it("persists diff presentation and sends content-bound issue review marks, invalidating changed contents on refresh", async () => {
@@ -174,21 +144,18 @@ it("persists diff presentation and sends content-bound issue review marks, inval
   );
   fireEvent.click(screen.getByRole("button", { name: "Unified diff" }));
   fireEvent.click(screen.getByRole("button", { name: "Show flat file list" }));
-  expect(
-    JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!),
-  ).toMatchObject({ diffMode: "unified", diffTree: "flat" });
+  expect(JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!)).toMatchObject({
+    diffMode: "unified",
+    diffTree: "flat",
+  });
   fireEvent.change(screen.getByLabelText("Filter changed files"), {
     target: { value: "old-name" },
   });
-  expect(
-    screen.getByRole("button", { name: /src\/example.ts · Renamed/ }),
-  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: /src\/example.ts · Renamed/ })).toBeTruthy();
   hash = "b".repeat(64);
   marked = false;
   ui.rerender(<ChangesView {...props} revision={1} />);
-  await vi.waitFor(() =>
-    expect((checkbox as HTMLInputElement).checked).toBe(false),
-  );
+  await vi.waitFor(() => expect((checkbox as HTMLInputElement).checked).toBe(false));
   fireEvent.click(checkbox);
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(

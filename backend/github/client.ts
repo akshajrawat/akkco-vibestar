@@ -1,4 +1,4 @@
-import { execute, capture } from "../execution/process";
+import { execute, capture } from "../execution/runtime/process";
 import { AdeError } from "../domain";
 import type { GitHubRepository, GitHubStatus } from "./contracts";
 export class GitHubClient {
@@ -20,10 +20,7 @@ export class GitHubClient {
   };
   api = async <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
     JSON.parse(
-      await this.gh(
-        ["api", "--hostname", "github.com", "--method", "GET", endpoint],
-        signal,
-      ),
+      await this.gh(["api", "--hostname", "github.com", "--method", "GET", endpoint], signal),
     );
   pages = async <T>(
     endpoint: string,
@@ -42,17 +39,11 @@ export class GitHubClient {
           ? (response as Record<string, unknown>)[collection]
           : response;
       if (!Array.isArray(part))
-        throw new AdeError(
-          "github",
-          "Unexpected repository pagination response",
-        );
+        throw new AdeError("github", "Unexpected repository pagination response");
       rows.push(...part);
       if (part.length < 100) return rows;
     }
-    throw new AdeError(
-      "github",
-      "GitHub pagination limit reached; catalog was not advanced",
-    );
+    throw new AdeError("github", "GitHub pagination limit reached; catalog was not advanced");
   };
   detect = async (signal?: AbortSignal): Promise<GitHubStatus> => {
     const status: GitHubStatus = {
@@ -75,23 +66,15 @@ export class GitHubClient {
         signal,
       );
       if (auth.code !== 0) return status;
-      status.username = (
-        await this.api<{ login: string }>("user", signal)
-      ).login;
+      status.username = (await this.api<{ login: string }>("user", signal)).login;
       status.connected = true;
     } catch (e) {
       status.error = String(e);
     }
     return status;
   };
-  repository = async (
-    name: string,
-    signal?: AbortSignal,
-  ): Promise<GitHubRepository> => {
-    if (
-      !/^[\w.-]+\/[\w.-]+$/.test(name) ||
-      name.split("/").some((p) => p === "." || p === "..")
-    )
+  repository = async (name: string, signal?: AbortSignal): Promise<GitHubRepository> => {
+    if (!/^[\w.-]+\/[\w.-]+$/.test(name) || name.split("/").some((p) => p === "." || p === ".."))
       throw new AdeError("invalid_input", "Use owner/repository");
     try {
       return await this.api<GitHubRepository>(`repos/${name}`, signal);
@@ -126,9 +109,7 @@ export class GitHubClient {
     const search = async (
       from: number,
       until: number,
-    ): Promise<
-      { html_url: string; title: string; number: number; updated_at: string }[]
-    > => {
+    ): Promise<{ html_url: string; title: string; number: number; updated_at: string }[]> => {
       const q = `is:pr author:${username} created:${new Date(from).toISOString()}..${new Date(until).toISOString()}`;
       const endpoint = `search/issues?q=${encodeURIComponent(q)}&per_page=100`;
       const first = await read<{
@@ -142,10 +123,7 @@ export class GitHubClient {
         }[];
       }>(`${endpoint}&page=1`);
       if (first.incomplete_results)
-        throw new AdeError(
-          "github",
-          "GitHub returned incomplete PR results; retry sync",
-        );
+        throw new AdeError("github", "GitHub returned incomplete PR results; retry sync");
       if (first.total_count > 1000) {
         const mid = Math.floor((from + until) / 2000) * 1000;
         if (mid <= from)
@@ -153,19 +131,13 @@ export class GitHubClient {
             "github",
             "More than 1,000 PRs in one second; sync cannot safely enumerate them",
           );
-        return [
-          ...(await search(from, mid)),
-          ...(await search(mid + 1000, until)),
-        ];
+        return [...(await search(from, mid)), ...(await search(mid + 1000, until))];
       }
       const rows = first.items;
       for (let page = 2; page <= Math.ceil(first.total_count / 100); page++) {
         const part = await read<typeof first>(`${endpoint}&page=${page}`);
         if (part.incomplete_results)
-          throw new AdeError(
-            "github",
-            "GitHub returned incomplete PR results; retry sync",
-          );
+          throw new AdeError("github", "GitHub returned incomplete PR results; retry sync");
         rows.push(...part.items);
       }
       if (new Set(rows.map((row) => row.html_url)).size !== first.total_count)
@@ -177,10 +149,7 @@ export class GitHubClient {
     };
     return [
       ...new Map(
-        (await search(Date.UTC(2008, 0, 1), Date.now())).map((p) => [
-          p.html_url,
-          p,
-        ]),
+        (await search(Date.UTC(2008, 0, 1), Date.now())).map((p) => [p.html_url, p]),
       ).values(),
     ];
   };

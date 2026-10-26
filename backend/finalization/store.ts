@@ -1,6 +1,6 @@
 import { AdeError, now } from "../domain";
 import type { Database } from "../storage/database";
-import { redact } from "../execution/process";
+import { redact } from "../execution/runtime/process";
 import { FinalizationSchema, type Finalization } from "./contracts";
 
 export class FinalizationStore {
@@ -30,11 +30,7 @@ export class FinalizationStore {
       id,
       taskId,
     )[0];
-    if (!record)
-      throw new AdeError(
-        "not_found",
-        "Git operation does not belong to this task.",
-      );
+    if (!record) throw new AdeError("not_found", "Git operation does not belong to this task.");
     return this.db.records.decode(
       {
         table: "git_finalizations",
@@ -64,12 +60,7 @@ export class FinalizationStore {
         "This Git request identity already belongs to a different task.",
       );
   };
-  event = (
-    record: Finalization,
-    phase: string,
-    output = "",
-    code: number | null = null,
-  ) => {
+  event = (record: Finalization, phase: string, output = "", code: number | null = null) => {
     const text = Buffer.from(redact(output), "utf8");
     let start = Math.max(0, text.length - 65536);
     while (start < text.length && (text[start] & 0xc0) === 0x80) start++;
@@ -84,10 +75,7 @@ export class FinalizationStore {
   };
   remove = (id: string) =>
     this.db.transaction(() => {
-      this.db.run(
-        "DELETE FROM git_operation_events WHERE finalization_id=?",
-        id,
-      );
+      this.db.run("DELETE FROM git_operation_events WHERE finalization_id=?", id);
       this.db.run("DELETE FROM git_finalizations WHERE id=?", id);
     });
   events = (id: string, before?: number) =>

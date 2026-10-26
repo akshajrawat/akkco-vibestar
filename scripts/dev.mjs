@@ -20,10 +20,7 @@ const vite = spawn(
 vite.stdout.pipe(process.stdout);
 await new Promise((resolve, reject) => {
   vite.stdout.on("data", (data) => {
-    if (
-      data.toString().includes("localhost:1420") ||
-      data.toString().includes("127.0.0.1:1420")
-    )
+    if (data.toString().includes("localhost:1420") || data.toString().includes("127.0.0.1:1420"))
       resolve();
   });
   vite.on("exit", (code) => reject(new Error(`Vite exited ${code}`)));
@@ -35,14 +32,9 @@ let rebuildAgain = false;
 let timer;
 const watchers = new AbortController();
 const quitDesktop = async () => {
-  if (!electron || electron.exitCode !== null || electron.signalCode !== null)
-    return;
+  if (!electron || electron.exitCode !== null || electron.signalCode !== null) return;
   if (host.close) await host.close();
-  else if (
-    electron &&
-    !electron.stdin.destroyed &&
-    !electron.stdin.writableEnded
-  )
+  else if (electron && !electron.stdin.destroyed && !electron.stdin.writableEnded)
     electron.stdin.end("vibestar:quit\n");
 };
 const stop = () => {
@@ -50,8 +42,7 @@ const stop = () => {
   stopping = true;
   watchers.abort();
   clearTimeout(timer);
-  if (electron)
-    void quitDesktop().catch((error) => process.stderr.write(`${error}\n`));
+  if (electron) void quitDesktop().catch((error) => process.stderr.write(`${error}\n`));
   vite.kill();
 };
 const launch = async () => {
@@ -85,9 +76,7 @@ const rebuild = async () => {
       await import(`./build.mjs?reload=${Date.now()}`);
     } while (rebuildAgain && !stopping);
     if (stopping) return;
-    process.stdout.write(
-      "\nExecution core / desktop changed. Restarting Electron…\n",
-    );
+    process.stdout.write("\nExecution core / desktop changed. Restarting Electron…\n");
     const exited = once(electron, "exit");
     await quitDesktop();
     await exited;

@@ -1,4 +1,4 @@
-import { capture, checked } from "../process";
+import { capture, checked } from "../runtime/process";
 import {
   object,
   verifyFlags,
@@ -9,16 +9,10 @@ import {
 import type { NormalizedEvent } from "../../domain";
 // These CLI models expose adjustable thinking effort rather than fixed variants.
 // New unsuffixed models require an explicit capability entry before execution.
-const adjustableModels = new Set([
-  "claude-sonnet-4-6",
-  "claude-opus-4-6-thinking",
-]);
+const adjustableModels = new Set(["claude-sonnet-4-6", "claude-opus-4-6-thinking"]);
 export class AntigravityProvider implements AgentProvider {
   readonly name = "antigravity";
-  detect = async (
-    cwd: string,
-    signal?: AbortSignal,
-  ): Promise<ProviderDetection> => {
+  detect = async (cwd: string, signal?: AbortSignal): Promise<ProviderDetection> => {
     const d: ProviderDetection = {
       provider: this.name,
       installed: false,
@@ -51,11 +45,7 @@ export class AntigravityProvider implements AgentProvider {
             return {
               id,
               label,
-              supportedEfforts: effort
-                ? [effort]
-                : adjustableModels.has(id)
-                  ? d.efforts
-                  : [],
+              supportedEfforts: effort ? [effort] : adjustableModels.has(id) ? d.efforts : [],
             };
           });
         d.connected = d.models.length > 0;
@@ -63,16 +53,9 @@ export class AntigravityProvider implements AgentProvider {
           ? "Authenticated account · managed by Antigravity CLI"
           : undefined;
         if (!d.connected)
-          d.error =
-            "Model discovery returned no available models. Reconnect Antigravity.";
+          d.error = "Model discovery returned no available models. Reconnect Antigravity.";
       } else d.error = models.stderr;
-      d.capabilities = [
-        "plan-mode",
-        "sandbox",
-        "structured-events",
-        "schema",
-        "model-discovery",
-      ];
+      d.capabilities = ["plan-mode", "sandbox", "structured-events", "schema", "model-discovery"];
     } catch (e) {
       d.error = String(e);
     }
@@ -110,9 +93,7 @@ export class AntigravityProvider implements AgentProvider {
           ? ["DONE", "ERROR"].includes(String(step.state))
             ? "command.finished"
             : "command.started"
-          : ["view_file", "list_dir", "grep_search", "find_by_name"].includes(
-                name,
-              )
+          : ["view_file", "list_dir", "grep_search", "find_by_name"].includes(name)
             ? "file.read"
             : [
                   "write_to_file",
@@ -125,17 +106,13 @@ export class AntigravityProvider implements AgentProvider {
               : "analysis.status";
       } else if (type.includes("command"))
         kind = step.state === "DONE" ? "command.finished" : "command.started";
-      else if (type.includes("file") && type.includes("view"))
-        kind = "file.read";
-      else if (type.includes("replace") || type.includes("write"))
-        kind = "file.changed";
+      else if (type.includes("file") && type.includes("view")) kind = "file.read";
+      else if (type.includes("replace") || type.includes("write")) kind = "file.changed";
       const info = object(step.tool_info),
         params = object(info.parameters);
       const reportedExit =
         kind === "command.finished" && typeof info.output === "string"
-          ? info.output.match(
-              /^Command exited with code (-?\d{1,9})\.(?:\r?\n|$)/,
-            )
+          ? info.output.match(/^Command exited with code (-?\d{1,9})\.(?:\r?\n|$)/)
           : null;
       return [
         {
@@ -159,17 +136,12 @@ export class AntigravityProvider implements AgentProvider {
               (reportedExit ? Number(reportedExit[1]) : undefined),
             arguments: info.parameters,
             path:
-              params.AbsolutePath ??
-              params.TargetFile ??
-              params.SearchPath ??
-              params.DirectoryPath,
+              params.AbsolutePath ?? params.TargetFile ?? params.SearchPath ?? params.DirectoryPath,
             status: step.state === "ERROR" ? "failed" : step.state,
             tool: step.tool_name || info.name,
             query: params.SearchString ?? params.Query ?? params.Pattern,
             duration_ms:
-              typeof step.duration_seconds === "number"
-                ? step.duration_seconds * 1000
-                : undefined,
+              typeof step.duration_seconds === "number" ? step.duration_seconds * 1000 : undefined,
           },
         },
       ];
@@ -185,9 +157,7 @@ export class AntigravityProvider implements AgentProvider {
     }
     if (raw.type === "system") return [{ kind: "run.started", data: raw }];
     if (raw.type === "result")
-      return [
-        { kind: raw.is_error ? "run.failed" : "run.completed", data: raw },
-      ];
+      return [{ kind: raw.is_error ? "run.failed" : "run.completed", data: raw }];
     if (raw.type === "assistant") {
       const content = object(raw.message).content;
       if (Array.isArray(content))
@@ -230,10 +200,7 @@ export class AntigravityProvider implements AgentProvider {
     if (raw.type !== "result" && raw.event !== "result") return undefined;
     const nested = object(raw.result);
     const value =
-      raw.structured_output ??
-      nested.structured_output ??
-      nested.response ??
-      raw.result;
+      raw.structured_output ?? nested.structured_output ?? nested.response ?? raw.result;
     if (value && typeof value === "object") return value;
     if (typeof value === "string") {
       try {

@@ -1,28 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import {
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-  mkdir,
-  symlink,
-} from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
-import {
-  checked,
-  capture,
-  processIdentity,
-} from "../../backend/execution/process";
+import { checked, capture, processIdentity } from "../../backend/execution/runtime/process";
 import * as commands from "../../backend/workspace/git-command";
 import { exists } from "../../backend/workspace/paths";
 import { StorageService } from "../../backend/storage/service";
-import {
-  createFixtureEngine,
-  fixtureRepository,
-  prepareFixtureTask,
-} from "../fixtures";
+import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 let dir: string;
 let engine: Awaited<ReturnType<typeof createFixtureEngine>>;
@@ -53,11 +38,7 @@ it.each(["tracked", "untracked", "ignored", "hidden"])(
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, kind);
     const name =
-      kind === "ignored"
-        ? "ignored.txt"
-        : kind === "untracked"
-          ? "personal.txt"
-          : "source.txt";
+      kind === "ignored" ? "ignored.txt" : kind === "untracked" ? "personal.txt" : "source.txt";
     await writeFile(join(task.worktree_path, name), "preserve these bytes\n");
     if (kind === "hidden")
       await checked(
@@ -66,33 +47,21 @@ it.each(["tracked", "untracked", "ignored", "hidden"])(
         task.worktree_path,
       );
     await expect(cleanup(task.id)).rejects.toThrow("local changes");
-    expect(await readFile(join(task.worktree_path, name), "utf8")).toBe(
-      "preserve these bytes\n",
-    );
+    expect(await readFile(join(task.worktree_path, name), "utf8")).toBe("preserve these bytes\n");
     expect(engine.db.task(task.id).worktree_path).toBe(task.worktree_path);
-    expect(
-      await checked("git", ["rev-parse", task.branch_name], repo.path),
-    ).toBe(task.base_commit_sha);
-    expect(await readFile(join(repo.path, "source.txt"), "utf8")).toBe(
-      "base\n",
+    expect(await checked("git", ["rev-parse", task.branch_name], repo.path)).toBe(
+      task.base_commit_sha,
     );
+    expect(await readFile(join(repo.path, "source.txt"), "utf8")).toBe("base\n");
   },
 );
 
 it("reconciles creation before ownership markers using the saved intent and exact Git creation evidence", async () => {
   const { repo } = await fixtureRepository(engine, dir);
   const task = await prepareFixtureTask(engine, repo, "partial-creation");
-  const gitdir = await checked(
-    "git",
-    ["rev-parse", "--absolute-git-dir"],
-    task.worktree_path,
-  );
+  const gitdir = await checked("git", ["rev-parse", "--absolute-git-dir"], task.worktree_path);
   await rm(join(gitdir, "vibestar-task-owner"));
-  await checked(
-    "git",
-    ["config", "--unset", `branch.${task.branch_name}.vibestarTask`],
-    repo.path,
-  );
+  await checked("git", ["config", "--unset", `branch.${task.branch_name}.vibestarTask`], repo.path);
   engine.db.saveTask({
     ...task,
     stage: 0,
@@ -108,9 +77,7 @@ it("reconciles creation before ownership markers using the saved intent and exac
     branch_owned: true,
     workspace_checkpoint: { state: "ready", operation: null },
   });
-  expect(await readFile(join(gitdir, "vibestar-task-owner"), "utf8")).toBe(
-    task.id,
-  );
+  expect(await readFile(join(gitdir, "vibestar-task-owner"), "utf8")).toBe(task.id);
   expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
   expect(await readFile(join(repo.path, "source.txt"), "utf8")).toBe("base\n");
 });
@@ -120,14 +87,8 @@ it.each(["registered", "unregistered"])(
   async (kind) => {
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, `missing-${kind}`);
-    if (kind === "registered")
-      await rm(task.worktree_path, { recursive: true });
-    else
-      await checked(
-        "git",
-        ["worktree", "remove", "--", task.worktree_path],
-        repo.path,
-      );
+    if (kind === "registered") await rm(task.worktree_path, { recursive: true });
+    else await checked("git", ["worktree", "remove", "--", task.worktree_path], repo.path);
     engine.db.saveTask({
       ...task,
       stage: 0,
@@ -146,12 +107,10 @@ it.each(["registered", "unregistered"])(
       branch_name: task.branch_name,
     });
     expect(await exists(task.worktree_path)).toBe(false);
-    expect(
-      await engine.git.recoverTaskPreparation(repo, saved, engine.db.saveTask),
-    ).toBe(true);
-    expect(
-      await checked("git", ["rev-parse", "HEAD"], task.worktree_path),
-    ).toBe(task.base_commit_sha);
+    expect(await engine.git.recoverTaskPreparation(repo, saved, engine.db.saveTask)).toBe(true);
+    expect(await checked("git", ["rev-parse", "HEAD"], task.worktree_path)).toBe(
+      task.base_commit_sha,
+    );
     expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
   },
 );
@@ -163,11 +122,7 @@ it.each(["owner", "head"])(
     const task = await prepareFixtureTask(engine, repo, "foreign");
     const other = await prepareFixtureTask(engine, repo, "other", 2);
     if (kind === "owner") {
-      const gitdir = await checked(
-        "git",
-        ["rev-parse", "--absolute-git-dir"],
-        task.worktree_path,
-      );
+      const gitdir = await checked("git", ["rev-parse", "--absolute-git-dir"], task.worktree_path);
       await writeFile(join(gitdir, "vibestar-task-owner"), "another-task");
     } else {
       await checked(
@@ -185,11 +140,7 @@ it.each(["owner", "head"])(
         task.worktree_path,
       );
     }
-    const head = await checked(
-      "git",
-      ["rev-parse", "HEAD"],
-      task.worktree_path,
-    );
+    const head = await checked("git", ["rev-parse", "HEAD"], task.worktree_path);
     engine.db.saveTask({
       ...task,
       stage: 0,
@@ -206,9 +157,7 @@ it.each(["owner", "head"])(
     });
     expect(engine.db.task(task.id).error).toMatch(/ownership|owner|SHA/i);
     expect(engine.db.task(other.id).id).toBe(other.id);
-    expect(
-      await checked("git", ["rev-parse", "HEAD"], task.worktree_path),
-    ).toBe(head);
+    expect(await checked("git", ["rev-parse", "HEAD"], task.worktree_path)).toBe(head);
   },
 );
 
@@ -216,13 +165,11 @@ it("resumes cleanup after worktree removal without replaying creation or deletin
   const { repo } = await fixtureRepository(engine, dir);
   const task = await prepareFixtureTask(engine, repo, "cleanup-interrupted");
   const original = commands.gitExecute;
-  const spy = vi
-    .spyOn(commands, "gitExecute")
-    .mockImplementation(async (request) => {
-      if (request.args[0] === "update-ref")
-        throw new Error("fixture interruption before ref deletion");
-      return original(request);
-    });
+  const spy = vi.spyOn(commands, "gitExecute").mockImplementation(async (request) => {
+    if (request.args[0] === "update-ref")
+      throw new Error("fixture interruption before ref deletion");
+    return original(request);
+  });
   await expect(cleanup(task.id)).rejects.toThrow("fixture interruption");
   spy.mockRestore();
   expect(await exists(task.worktree_path)).toBe(false);
@@ -240,13 +187,8 @@ it("resumes cleanup after worktree removal without replaying creation or deletin
     workspace_checkpoint: { state: "removed" },
   });
   expect(
-    (
-      await capture(
-        "git",
-        ["show-ref", "--verify", `refs/heads/${task.branch_name}`],
-        repo.path,
-      )
-    ).code,
+    (await capture("git", ["show-ref", "--verify", `refs/heads/${task.branch_name}`], repo.path))
+      .code,
   ).not.toBe(0);
 });
 
@@ -274,20 +216,13 @@ it("preserves a branch changed between cleanup verification and expected-SHA del
     if (request.args[0] === "update-ref" && request.args[1] === "-d")
       await checked(
         "git",
-        [
-          "update-ref",
-          `refs/heads/${task.branch_name}`,
-          alternate,
-          task.base_commit_sha,
-        ],
+        ["update-ref", `refs/heads/${task.branch_name}`, alternate, task.base_commit_sha],
         repo.path,
       );
     return original(request);
   });
   await expect(cleanup(task.id)).rejects.toThrow("Git cleanup stopped");
-  expect(await checked("git", ["rev-parse", task.branch_name], repo.path)).toBe(
-    alternate,
-  );
+  expect(await checked("git", ["rev-parse", task.branch_name], repo.path)).toBe(alternate);
   expect(engine.db.task(task.id).branch_name).toBe(task.branch_name);
 });
 
@@ -303,9 +238,7 @@ it("stops a saved preparation process by start identity on core restart", async 
     child.once("spawn", resolve);
     child.once("error", reject);
   });
-  const exited = new Promise<void>((resolve) =>
-    child.once("exit", () => resolve()),
-  );
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
   try {
     engine.db.saveTask({
       ...task,
@@ -335,35 +268,23 @@ it("stops a saved preparation process by start identity on core restart", async 
 it("refuses cleanup after the worktree metadata owner changes", async () => {
   const { repo } = await fixtureRepository(engine, dir);
   const task = await prepareFixtureTask(engine, repo, "foreign-cleanup");
-  const gitdir = await checked(
-    "git",
-    ["rev-parse", "--absolute-git-dir"],
-    task.worktree_path,
-  );
+  const gitdir = await checked("git", ["rev-parse", "--absolute-git-dir"], task.worktree_path);
   await writeFile(join(gitdir, "vibestar-task-owner"), "another-task");
   await expect(cleanup(task.id)).rejects.toThrow("owner");
-  expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe(
-    "base\n",
-  );
+  expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
   expect(engine.db.task(task.id).worktree_path).toBe(task.worktree_path);
 });
 
 it("never follows a symlinked ownership marker while recovering or cleaning a worktree", async () => {
   const { repo } = await fixtureRepository(engine, dir);
   const task = await prepareFixtureTask(engine, repo, "owner-alias");
-  const gitdir = await checked(
-    "git",
-    ["rev-parse", "--absolute-git-dir"],
-    task.worktree_path,
-  );
+  const gitdir = await checked("git", ["rev-parse", "--absolute-git-dir"], task.worktree_path);
   const marker = join(gitdir, "vibestar-task-owner");
   const canary = join(dir, "personal-owner-fixture");
   await writeFile(canary, "preserve fixture bytes");
   await rm(marker);
   await symlink(canary, marker);
-  await expect(engine.git.recoverTaskPreparation(repo, task)).rejects.toThrow(
-    "ownership marker",
-  );
+  await expect(engine.git.recoverTaskPreparation(repo, task)).rejects.toThrow("ownership marker");
   await expect(cleanup(task.id)).rejects.toThrow("ownership marker");
   expect(await readFile(canary, "utf8")).toBe("preserve fixture bytes");
   expect(await exists(task.worktree_path)).toBe(true);
@@ -387,19 +308,11 @@ it("keeps hidden tracked edits even when a preceding filename resembles an autho
     ],
     task.worktree_path,
   );
-  await checked(
-    "git",
-    ["update-index", "--assume-unchanged", "source.txt"],
-    task.worktree_path,
-  );
+  await checked("git", ["update-index", "--assume-unchanged", "source.txt"], task.worktree_path);
   await writeFile(join(task.worktree_path, "source.txt"), "hidden work\n");
-  expect(
-    await checked("git", ["status", "--porcelain"], task.worktree_path),
-  ).toBe("");
+  expect(await checked("git", ["status", "--porcelain"], task.worktree_path)).toBe("");
   await expect(cleanup(task.id)).rejects.toThrow("hidden index entries");
-  expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe(
-    "hidden work\n",
-  );
+  expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("hidden work\n");
 });
 
 it.each(["cleanup", "recovery"])(
@@ -416,10 +329,7 @@ it.each(["cleanup", "recovery"])(
         restored = true;
         await mkdir(task.worktree_path);
         await writeFile(join(task.worktree_path, ".git"), pointer);
-        await writeFile(
-          join(task.worktree_path, "personal.txt"),
-          "preserve concurrent work\n",
-        );
+        await writeFile(join(task.worktree_path, "personal.txt"), "preserve concurrent work\n");
       }
       return original(request);
     });
@@ -429,12 +339,12 @@ it.each(["cleanup", "recovery"])(
         : engine.git.recoverTaskPreparation(repo, task, engine.db.saveTask),
     ).rejects.toThrow();
     expect(restored).toBe(true);
-    expect(
-      await readFile(join(task.worktree_path, "personal.txt"), "utf8"),
-    ).toBe("preserve concurrent work\n");
-    expect(
-      await checked("git", ["rev-parse", task.branch_name], repo.path),
-    ).toBe(task.base_commit_sha);
+    expect(await readFile(join(task.worktree_path, "personal.txt"), "utf8")).toBe(
+      "preserve concurrent work\n",
+    );
+    expect(await checked("git", ["rev-parse", task.branch_name], repo.path)).toBe(
+      task.base_commit_sha,
+    );
   },
 );
 
@@ -463,8 +373,6 @@ it.each(["removing", "removed"] as const)(
     await expect(
       engine.git.recoverTaskPreparation(repo, saved, engine.db.saveTask),
     ).rejects.toThrow("removal was checkpointed");
-    expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe(
-      "base\n",
-    );
+    expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
   },
 );

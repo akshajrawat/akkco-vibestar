@@ -161,14 +161,7 @@ const contextSchema = z
   .object({
     id: z.string().uuid(),
     job_id: z.string().uuid(),
-    status: z.enum([
-      "running",
-      "completed",
-      "partial",
-      "failed",
-      "cancelled",
-      "interrupted",
-    ]),
+    status: z.enum(["running", "completed", "partial", "failed", "cancelled", "interrupted"]),
     started_at: z.string().datetime(),
     ended_at: z.string().datetime().nullable(),
     phase: z.string(),
@@ -198,9 +191,7 @@ export const RepairSessionSchema = z
     repo_id: z.string().uuid(),
     analysis_id: z.string().uuid(),
     identity: PRIdentitySchema,
-    context: z.custom<PRAnalysisSession>(
-      (value) => contextSchema.safeParse(value).success,
-    ),
+    context: z.custom<PRAnalysisSession>((value) => contextSchema.safeParse(value).success),
     actions: z.array(ReviewActionSchema).min(1),
     instructions: z.string(),
     configuration: z

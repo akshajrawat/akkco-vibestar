@@ -8,12 +8,7 @@ import {
   type GitHubReadPool,
 } from "../github/issue-search";
 import { contributionPolicy, issueContext } from "../github/issue-context";
-import type {
-  WatchCandidate,
-  WatchRevision,
-  WatchScan,
-  WatchSource,
-} from "./contracts";
+import type { WatchCandidate, WatchRevision, WatchScan, WatchSource } from "./contracts";
 import { applyContext, hardExclusions, initialCandidate } from "./eligibility";
 import { digest, previewRules } from "./rules";
 import { trackerExclusions } from "./tracker-exclusions";
@@ -53,37 +48,25 @@ export class IssueWatchScanner {
       this.changed(scan);
     };
     const warn = (message: string) => {
-      if (scan.coverage.warnings.length < 1000)
-        scan.coverage.warnings.push(message.slice(0, 2000));
+      if (scan.coverage.warnings.length < 1000) scan.coverage.warnings.push(message.slice(0, 2000));
     };
     try {
-      const repository = await reader.repository(
-        watch.repository.full_name,
-        watch.repository.id,
-      );
+      const repository = await reader.repository(watch.repository.full_name, watch.repository.id);
       const known = new Map(
-        this.store
-          .results(watch.id, true)
-          .map((candidate) => [candidate.issue.id, candidate]),
+        this.store.results(watch.id, true).map((candidate) => [candidate.issue.id, candidate]),
       );
       if (scan.parent_scan_id)
-        for (const candidate of this.store.candidates(
-          watch.id,
-          scan.parent_scan_id,
-        ))
+        for (const candidate of this.store.candidates(watch.id, scan.parent_scan_id))
           known.set(candidate.issue.id, candidate);
       if (scan.candidate_ids)
-        for (const id of scan.candidate_ids)
-          known.set(id, this.store.savedCandidate(watch.id, id));
+        for (const id of scan.candidate_ids) known.set(id, this.store.savedCandidate(watch.id, id));
       const identities = new Map<string, { id: string; number: number }>();
       scan.coverage.query = issueQuery(repository, rules);
       if (scan.candidate_ids) {
         for (const id of scan.candidate_ids) {
           const candidate = known.get(id);
           if (!candidate)
-            throw new Error(
-              "Selected candidate has no saved identity in this watch.",
-            );
+            throw new Error("Selected candidate has no saved identity in this watch.");
           identities.set(id, { id, number: candidate.issue.number });
         }
         warn(
@@ -95,16 +78,12 @@ export class IssueWatchScanner {
             id: candidate.issue.id,
             number: candidate.issue.number,
           });
-        const discovery = await reader.discover(
-          repository,
-          scan.coverage.query,
-        );
+        const discovery = await reader.discover(repository, scan.coverage.query);
         scan.coverage.search_total = discovery.total;
         scan.coverage.search_complete = discovery.complete;
         for (const warning of discovery.warnings) warn(warning);
         scan.coverage.discovered = discovery.identities.length;
-        for (const identity of discovery.identities)
-          identities.set(identity.id, identity);
+        for (const identity of discovery.identities) identities.set(identity.id, identity);
       }
       if (identities.size > limits.max_candidates) {
         scan.coverage.search_complete = false;
@@ -113,10 +92,7 @@ export class IssueWatchScanner {
         );
       }
       progress("Verifying current issue metadata");
-      for (const identity of [...identities.values()].slice(
-        0,
-        limits.max_candidates,
-      )) {
+      for (const identity of [...identities.values()].slice(0, limits.max_candidates)) {
         try {
           const issue = await reader.issue(repository, identity.number);
           verifyIssueIdentity(issue, identity);
@@ -132,9 +108,7 @@ export class IssueWatchScanner {
           );
         }
       }
-      scan.coverage.excluded = candidates.filter(
-        (candidate) => !candidate.eligible,
-      ).length;
+      scan.coverage.excluded = candidates.filter((candidate) => !candidate.eligible).length;
       progress("Verifying tracker exclusions");
       let exclusions: Set<string>;
       try {
@@ -149,9 +123,7 @@ export class IssueWatchScanner {
         if (repository.full_name !== watch.repository.full_name)
           for (const key of [...exclusions]) {
             if (key.startsWith(`${watch.repository.full_name}#`))
-              exclusions.add(
-                key.replace(watch.repository.full_name, repository.full_name),
-              );
+              exclusions.add(key.replace(watch.repository.full_name, repository.full_name));
           }
         scan.coverage.exclusions_complete = true;
       } catch (error) {
@@ -176,13 +148,10 @@ export class IssueWatchScanner {
         if (reasons.length) {
           candidate.eligible = false;
           candidate.reasons = reasons;
-          if (candidate.claim_state !== "assigned")
-            candidate.claim_state = "ineligible";
+          if (candidate.claim_state !== "assigned") candidate.claim_state = "ineligible";
         }
       }
-      scan.coverage.excluded = candidates.filter(
-        (candidate) => !candidate.eligible,
-      ).length;
+      scan.coverage.excluded = candidates.filter((candidate) => !candidate.eligible).length;
       const selected = candidates.filter((candidate) => candidate.eligible);
       progress("Collecting claim, PR and contribution evidence");
       const policy = selected.length
@@ -224,10 +193,7 @@ export class IssueWatchScanner {
             candidate.claim_state = "maintainer_approval_needed";
         }
         try {
-          const current = await reader.issue(
-            repository,
-            candidate.issue.number,
-          );
+          const current = await reader.issue(repository, candidate.issue.number);
           verifyIssueIdentity(current, {
             id: candidate.issue.id,
             number: candidate.issue.number,
@@ -260,21 +226,13 @@ export class IssueWatchScanner {
         }).preferences.replace(/[\s.,;]+/g, "") || scan.instruction_override,
       );
       const semanticCandidates = candidates.filter(
-        (candidate) =>
-          candidate.eligible && candidate.source_keys.length && semanticNeeded,
+        (candidate) => candidate.eligible && candidate.source_keys.length && semanticNeeded,
       );
-      for (const candidate of semanticCandidates)
-        candidate.semantic_state = "pending";
+      for (const candidate of semanticCandidates) candidate.semantic_state = "pending";
       scan.coverage.semantic_complete = semanticCandidates.length === 0;
       if (semanticCandidates.length) {
         progress("Preparing semantic screening");
-        await this.screen(
-          scan,
-          revision,
-          semanticCandidates,
-          [...sources.values()],
-          signal,
-        );
+        await this.screen(scan, revision, semanticCandidates, [...sources.values()], signal);
       }
       signal.throwIfAborted();
       progress("Rechecking eligibility before saving");
@@ -282,10 +240,7 @@ export class IssueWatchScanner {
         (item) => item.eligible && item.source_keys.length,
       )) {
         try {
-          const current = await reader.issue(
-            repository,
-            candidate.issue.number,
-          );
+          const current = await reader.issue(repository, candidate.issue.number);
           verifyIssueIdentity(current, {
             id: candidate.issue.id,
             number: candidate.issue.number,
@@ -318,21 +273,16 @@ export class IssueWatchScanner {
         if (reasons.length) {
           candidate.eligible = false;
           candidate.reasons = reasons;
-          if (candidate.claim_state !== "assigned")
-            candidate.claim_state = "ineligible";
+          if (candidate.claim_state !== "assigned") candidate.claim_state = "ineligible";
         }
       }
       scan.coverage.excluded = candidates.filter(
         (candidate) =>
           hardExclusions(candidate.issue, rules, exclusions).length > 0 ||
           (!candidate.eligible &&
-            ["ineligible", "competing_pr_detected"].includes(
-              candidate.claim_state,
-            )),
+            ["ineligible", "competing_pr_detected"].includes(candidate.claim_state)),
       ).length;
-      const checked = new Set(
-        candidates.map((candidate) => candidate.issue.id),
-      );
+      const checked = new Set(candidates.map((candidate) => candidate.issue.id));
       for (const old of known.values())
         if (!checked.has(old.issue.id)) {
           candidates.push({
@@ -361,10 +311,7 @@ export class IssueWatchScanner {
           : "failed";
       scan.error = signal.aborted
         ? "Cancelled. Collected evidence was retained; baseline unchanged."
-        : (error instanceof Error ? error.message : String(error)).slice(
-            0,
-            4000,
-          );
+        : (error instanceof Error ? error.message : String(error)).slice(0, 4000);
     } finally {
       if (signal.aborted) scan.status = "cancelled";
       scan.phase =

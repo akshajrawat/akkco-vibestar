@@ -1,19 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  act,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
-import { TaskWorkspace } from "../../src/components/TaskWorkspace";
+import { cleanup, act, fireEvent, render, screen, within } from "@testing-library/react";
+import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
 import { useTaskView, updateTaskView } from "../../src/lib/taskView";
 import { workspaceDetail as detail } from "./fixtures";
 
 const terminal = vi.hoisted(() => ({ mounts: 0 }));
-vi.mock("../../src/components/TaskTerminal", async () => {
+vi.mock("../../src/components/shared/TaskTerminal", async () => {
   const { useEffect } = await import("react");
   return {
     TaskTerminal: () => {
@@ -24,7 +17,7 @@ vi.mock("../../src/components/TaskTerminal", async () => {
     },
   };
 });
-vi.mock("../../src/lib/useWorkspace", () => ({
+vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [], refresh: vi.fn() }),
 }));
 afterEach(() => {
@@ -36,9 +29,7 @@ afterEach(() => {
 const bridge = () => {
   window.innerWidth = 1600;
   const rpc = vi.fn(async (method: string) =>
-    method === "task.diff"
-      ? { files: [], insertions: 0, deletions: 0, base: "base" }
-      : null,
+    method === "task.diff" ? { files: [], insertions: 0, deletions: 0, base: "base" } : null,
   );
   Object.defineProperty(window, "vibestar", {
     configurable: true,
@@ -65,14 +56,7 @@ it("renders verification repair history without interpreting it as repository pr
       timestamp: value.task.updated_at,
     },
   ];
-  render(
-    <TaskWorkspace
-      detail={value}
-      revision={0}
-      onError={vi.fn()}
-      back={vi.fn()}
-    />,
-  );
+  render(<TaskWorkspace detail={value} revision={0} onError={vi.fn()} back={vi.fn()} />);
   expect(screen.getByText("Repository preparation")).toBeTruthy();
   expect(screen.getByLabelText("Task conversation")).toBeTruthy();
 });
@@ -81,39 +65,24 @@ it("keeps chat primary while sidebar tools navigate, resize and expand, preservi
   bridge();
   const id = "layout-primary";
   const ui = render(
-    <TaskWorkspace
-      detail={detail(id)}
-      revision={0}
-      onError={vi.fn()}
-      back={vi.fn()}
-    />,
+    <TaskWorkspace detail={detail(id)} revision={0} onError={vi.fn()} back={vi.fn()} />,
   );
   expect(screen.queryByRole("tab", { name: "Chat" })).toBeNull();
   expect(screen.queryByRole("tablist", { name: "Task views" })).toBeNull();
-  expect(ui.container.querySelector<HTMLElement>(".bottom-dock")?.hidden).toBe(
-    true,
-  );
-  expect(
-    screen.getByRole("complementary", { name: "Secondary workspace" }),
-  ).toBeTruthy();
-  const draft = screen.getByLabelText(
-    "Task conversation",
-  ) as HTMLTextAreaElement;
+  expect(ui.container.querySelector<HTMLElement>(".bottom-dock")?.hidden).toBe(true);
+  expect(screen.getByRole("complementary", { name: "Secondary workspace" })).toBeTruthy();
+  const draft = screen.getByLabelText("Task conversation") as HTMLTextAreaElement;
   fireEvent.change(draft, { target: { value: "Keep this independent draft" } });
   act(() => updateTaskView(id, { followupModel: "selected-fixture-model" }));
   const separator = screen.getByRole("separator", {
     name: "Resize secondary workspace",
   });
   fireEvent.keyDown(separator, { key: "ArrowLeft" });
-  expect(
-    JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!).secondaryWidth,
-  ).toBe(396);
+  expect(JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!).secondaryWidth).toBe(396);
   const pipeline = screen.getByRole("tab", { name: "Workflow" });
   pipeline.focus();
   fireEvent.keyDown(pipeline, { key: "ArrowRight" });
-  expect(
-    screen.getByRole("tab", { name: "Plans" }).getAttribute("aria-selected"),
-  ).toBe("true");
+  expect(screen.getByRole("tab", { name: "Plans" }).getAttribute("aria-selected")).toBe("true");
   expect(screen.getByText("Antigravity original plan")).toBeTruthy();
   expect(draft.isConnected).toBe(true);
   const plans = screen.getByRole("tabpanel", { name: "Plans" });
@@ -131,24 +100,18 @@ it("keeps chat primary while sidebar tools navigate, resize and expand, preservi
   fireEvent.scroll(chat);
   fireEvent.click(screen.getByLabelText("Expand workspace tool"));
   expect(document.activeElement).toBe(screen.getByLabelText("Return to chat"));
-  expect(ui.container.querySelector<HTMLElement>(".chat-main")?.hidden).toBe(
-    true,
-  );
+  expect(ui.container.querySelector<HTMLElement>(".chat-main")?.hidden).toBe(true);
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  expect(ui.container.querySelector<HTMLElement>(".chat-main")?.hidden).toBe(
-    false,
-  );
+  expect(ui.container.querySelector<HTMLElement>(".chat-main")?.hidden).toBe(false);
   expect(draft.value).toBe("Keep this independent draft");
   expect(chat.scrollTop).toBe(300);
-  expect(
-    JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!).followupModel,
-  ).toBe("selected-fixture-model");
+  expect(JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!).followupModel).toBe(
+    "selected-fixture-model",
+  );
   fireEvent.click(screen.getByLabelText("Collapse secondary workspace"));
   expect(screen.queryByRole("complementary")).toBeNull();
   fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
-  expect(
-    screen.getByRole("tab", { name: "Plans" }).getAttribute("aria-selected"),
-  ).toBe("true");
+  expect(screen.getByRole("tab", { name: "Plans" }).getAttribute("aria-selected")).toBe("true");
 });
 
 it("preserves the attached terminal across hiding, Problems, maximize and keyboard toggles", async () => {
@@ -206,9 +169,7 @@ it("uses a dismissible focus-contained drawer on narrow windows and restores foc
   const panel = screen.getByRole("dialog", { name: "Secondary workspace" });
   expect(panel.contains(document.activeElement)).toBe(true);
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  expect(
-    screen.queryByRole("dialog", { name: "Secondary workspace" }),
-  ).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Secondary workspace" })).toBeNull();
   expect(document.activeElement).toBe(trigger);
 });
 

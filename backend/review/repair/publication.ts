@@ -1,8 +1,5 @@
 import { gitExecute, gitCapture } from "../../workspace/git-command";
-import {
-  CommitMessageSchema,
-  createExactCommit,
-} from "../../workspace/commit-message";
+import { CommitMessageSchema, createExactCommit } from "../../workspace/commit-message";
 import { publishFastForward } from "../../workspace/publication";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -10,10 +7,11 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AdeError, now } from "../../domain";
 import type { Engine } from "../../execution/engine";
-import { execute, redact } from "../../execution/process";
+import { execute, redact } from "../../execution/runtime/process";
 import { managedPath, safeFile } from "../../workspace/paths";
-import { RepairStore } from "./store";
-import { RepairWorkspaces, repairAssignment } from "./workspace";
+import type { RepairStore } from "./store";
+import type { RepairWorkspaces } from "./workspace";
+import { repairAssignment } from "./workspace";
 import type { PRIdentity, RepairSession } from "./contracts";
 
 export const PublicationSchema = z
@@ -51,9 +49,7 @@ export const PublicationSchema = z
       })
       .strict(),
     commits: z.array(
-      z
-        .object({ sha: z.string(), parents: z.string(), subject: z.string() })
-        .strict(),
+      z.object({ sha: z.string(), parents: z.string(), subject: z.string() }).strict(),
     ),
     confirmation: z
       .object({
@@ -84,10 +80,7 @@ export class RepairPublisher {
     private readonly engine: Engine,
     private readonly store: RepairStore,
     private readonly workspaces: RepairWorkspaces,
-    private readonly readIdentity: (
-      url: string,
-      signal: AbortSignal,
-    ) => Promise<PRIdentity>,
+    private readonly readIdentity: (url: string, signal: AbortSignal) => Promise<PRIdentity>,
     private readonly transport?: (identity: PRIdentity) => string,
     private readonly push = execute,
   ) {}
@@ -109,11 +102,7 @@ export class RepairPublisher {
       id,
       repairId,
     )[0];
-    if (!row)
-      throw new AdeError(
-        "not_found",
-        "Publication does not belong to this repair.",
-      );
+    if (!row) throw new AdeError("not_found", "Publication does not belong to this repair.");
     return this.engine.db.records.decode(
       {
         table: "repair_publications",
@@ -161,10 +150,7 @@ export class RepairPublisher {
           : undefined,
       });
       if (result.code !== 0)
-        throw new AdeError(
-          "git_repair",
-          `git ${args[0]} exited ${result.code}: ${result.stderr}`,
-        );
+        throw new AdeError("git_repair", `git ${args[0]} exited ${result.code}: ${result.stderr}`);
       return result.stdout.trim();
     } finally {
       finished = true;
@@ -175,19 +161,12 @@ export class RepairPublisher {
     }
   };
   private workspace = async (session: RepairSession) => {
-    const cwd = await this.workspaces.assert(
-      session,
-      this.engine.db.repository(session.repo_id),
-    );
+    const cwd = await this.workspaces.assert(session, this.engine.db.repository(session.repo_id));
     if (
-      (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], cwd)).code ===
-        0 ||
+      (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], cwd)).code === 0 ||
       (await this.git(cwd, ["ls-files", "--unmerged"]))
     )
-      throw new AdeError(
-        "merge_conflict",
-        "Resolve and finish the merge before finalizing.",
-      );
+      throw new AdeError("merge_conflict", "Resolve and finish the merge before finalizing.");
     return cwd;
   };
   approve = async (session: RepairSession, expectedHash: string) => {
@@ -198,19 +177,14 @@ export class RepairPublisher {
       session.verification?.overall !== "approved" ||
       session.verification.items.some((i) => i.status !== "accepted") ||
       !session.implementation ||
-      session.implementation.items.some((i) =>
-        ["blocked", "unresolved"].includes(i.status),
-      )
+      session.implementation.items.some((i) => ["blocked", "unresolved"].includes(i.status))
     )
       throw new AdeError(
         "manual_review",
         "Successful independent verification and the exact reviewed workspace are required before approval.",
       );
     await this.workspace(session);
-    if (
-      (await this.engine.git.repairFingerprint(repairAssignment(session))) !==
-      expectedHash
-    )
+    if ((await this.engine.git.repairFingerprint(repairAssignment(session))) !== expectedHash)
       throw new AdeError(
         "review_changed",
         "Files, index or commits changed since review. Request a fresh review before approving.",
@@ -230,10 +204,7 @@ export class RepairPublisher {
     signal: AbortSignal,
   ) => {
     CommitMessageSchema.parse(message);
-    if (
-      session.status !== "ready_to_publish" ||
-      session.approved_hash !== expectedHash
-    )
+    if (session.status !== "ready_to_publish" || session.approved_hash !== expectedHash)
       throw new AdeError(
         "manual_review",
         "Approve the reviewed workspace before preparing a local commit.",
@@ -242,25 +213,13 @@ export class RepairPublisher {
     return this.engine.git.withLock(repo.id, async () => {
       const cwd = await this.workspace(session);
       const assignment = repairAssignment(session);
-      if (
-        (await this.engine.git.repairFingerprint(assignment)) !== expectedHash
-      )
-        throw new AdeError(
-          "review_changed",
-          "The approved workspace changed before committing.",
-        );
-      const content = await this.engine.git.repairFingerprint(
-        assignment,
-        false,
-      );
+      if ((await this.engine.git.repairFingerprint(assignment)) !== expectedHash)
+        throw new AdeError("review_changed", "The approved workspace changed before committing.");
+      const content = await this.engine.git.repairFingerprint(assignment, false);
       const parent = await this.git(cwd, ["rev-parse", "HEAD"]);
       const diff = await this.engine.git.diff(assignment);
       for (const file of diff.files) await safeFile(cwd, file.path);
-      const clean = !(await this.git(cwd, [
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-      ]));
+      const clean = !(await this.git(cwd, ["status", "--porcelain", "--untracked-files=all"]));
       if (!clean) {
         this.store.activity(session, "commit_intent", {
           parent,
@@ -269,42 +228,19 @@ export class RepairPublisher {
           message,
         });
         await this.git(cwd, ["add", "--all", "--", "."], signal, session);
-        if (
-          content !==
-          (await this.engine.git.repairFingerprint(assignment, false))
-        )
+        if (content !== (await this.engine.git.repairFingerprint(assignment, false)))
           throw new AdeError(
             "review_changed",
             "Workspace changed while staging. Preserve the index and review again.",
           );
-        const checkedDiff = await gitCapture(
-          ["diff", "--cached", "--check"],
-          cwd,
-          signal,
-        );
+        const checkedDiff = await gitCapture(["diff", "--cached", "--check"], cwd, signal);
         if (checkedDiff.code !== 0)
-          throw new AdeError(
-            "commit_validation",
-            checkedDiff.stdout || checkedDiff.stderr,
-          );
+          throw new AdeError("commit_validation", checkedDiff.stdout || checkedDiff.stderr);
         const tree = await this.git(cwd, ["write-tree"], signal, session);
-        const commit = await createExactCommit(
-          cwd,
-          tree,
-          parent,
-          message,
-          signal,
-        );
-        await this.git(
-          cwd,
-          ["update-ref", "HEAD", commit, parent],
-          signal,
-          session,
-        );
+        const commit = await createExactCommit(cwd, tree, parent, message, signal);
+        await this.git(cwd, ["update-ref", "HEAD", commit, parent], signal, session);
       }
-      if (
-        content !== (await this.engine.git.repairFingerprint(assignment, false))
-      )
+      if (content !== (await this.engine.git.repairFingerprint(assignment, false)))
         throw new AdeError(
           "review_changed",
           "Commit content differs from the reviewed workspace. Publishing remains blocked.",
@@ -340,9 +276,7 @@ export class RepairPublisher {
         "Reconcile the existing publication read-only before preparing another push.",
       );
     const cwd = await this.workspace(session);
-    const fingerprint = await this.engine.git.repairFingerprint(
-      repairAssignment(session),
-    );
+    const fingerprint = await this.engine.git.repairFingerprint(repairAssignment(session));
     if (fingerprint !== session.approved_hash)
       throw new AdeError(
         "review_changed",
@@ -363,15 +297,10 @@ export class RepairPublisher {
       );
     const head = await this.git(cwd, ["rev-parse", "HEAD"]);
     if (
-      (await gitCapture(["merge-base", "--is-ancestor", remote, head], cwd))
-        .code !== 0 ||
+      (await gitCapture(["merge-base", "--is-ancestor", remote, head], cwd)).code !== 0 ||
       !session.workspace.fetched_base ||
-      (
-        await gitCapture(
-          ["merge-base", "--is-ancestor", session.workspace.fetched_base, head],
-          cwd,
-        )
-      ).code !== 0
+      (await gitCapture(["merge-base", "--is-ancestor", session.workspace.fetched_base, head], cwd))
+        .code !== 0
     )
       throw new AdeError(
         "ancestry",
@@ -389,11 +318,7 @@ export class RepairPublisher {
       "SELECT id,data FROM repair_activity WHERE repair_id=? AND kind='manual_approval' ORDER BY id DESC LIMIT 1",
       session.id,
     )[0];
-    if (!approval)
-      throw new AdeError(
-        "manual_review",
-        "Manual approval evidence is missing.",
-      );
+    if (!approval) throw new AdeError("manual_review", "Manual approval evidence is missing.");
     const confirmation = this.engine.db.records.decode(
       {
         table: "repair_activity",
@@ -431,11 +356,7 @@ export class RepairPublisher {
         branch: fresh.base.branch,
         sha: session.workspace.fetched_base,
       },
-      dirty: !!(await this.git(cwd, [
-        "status",
-        "--porcelain",
-        "--untracked-files=all",
-      ])),
+      dirty: !!(await this.git(cwd, ["status", "--porcelain", "--untracked-files=all"])),
       changes: {
         files: diff.files.length,
         additions: diff.insertions,
@@ -467,8 +388,7 @@ export class RepairPublisher {
   };
   private validateIdentity = (session: RepairSession, fresh: PRIdentity) => {
     const identity = session.identity;
-    if (fresh.state !== "open")
-      throw new AdeError("pr_closed", "The PR is no longer open.");
+    if (fresh.state !== "open") throw new AdeError("pr_closed", "The PR is no longer open.");
     if (
       fresh.id !== identity.id ||
       fresh.upstream.id !== identity.upstream.id ||
@@ -478,16 +398,9 @@ export class RepairPublisher {
       fresh.head.branch !== identity.head.branch ||
       fresh.base.branch !== identity.base.branch
     )
-      throw new AdeError(
-        "pr_identity",
-        "Publication destination or PR identity changed.",
-      );
+      throw new AdeError("pr_identity", "Publication destination or PR identity changed.");
   };
-  pushConfirmed = async (
-    session: RepairSession,
-    id: string,
-    signal: AbortSignal,
-  ) => {
+  pushConfirmed = async (session: RepairSession, id: string, signal: AbortSignal) => {
     const publication = this.get(session.id, id);
     if (publication.outcome === "published") return publication;
     if (
@@ -500,9 +413,7 @@ export class RepairPublisher {
         "Prepare and confirm a clean, committed publication before pushing.",
       );
     const cwd = await this.workspace(session);
-    const fingerprint = await this.engine.git.repairFingerprint(
-      repairAssignment(session),
-    );
+    const fingerprint = await this.engine.git.repairFingerprint(repairAssignment(session));
     if (
       fingerprint !== publication.fingerprint ||
       fingerprint !== session.approved_hash ||
@@ -516,49 +427,29 @@ export class RepairPublisher {
     const fresh = await this.readIdentity(session.identity.url, signal);
     this.validateIdentity(session, fresh);
     if (!fresh.can_push || fresh.viewer !== publication.confirmation.viewer)
-      throw new AdeError(
-        "permission",
-        "Publishing permission or authenticated identity changed.",
-      );
+      throw new AdeError("permission", "Publishing permission or authenticated identity changed.");
     const destination = this.transport?.(fresh) ?? fresh.head.url;
     // Reject repository-config URL rewrites rather than sending to a different host.
-    if (
-      (await this.git(cwd, ["ls-remote", "--get-url", "--", destination])) !==
-      destination
-    )
+    if ((await this.git(cwd, ["ls-remote", "--get-url", "--", destination])) !== destination)
       throw new AdeError(
         "pr_identity",
         "Git URL rewriting changed the intended publication destination.",
       );
     if (
       fresh.head.sha !== publication.expected_remote_head ||
-      (await this.workspaces.remoteHead(fresh, cwd, signal)) !==
-        publication.expected_remote_head
+      (await this.workspaces.remoteHead(fresh, cwd, signal)) !== publication.expected_remote_head
     )
-      throw new AdeError(
-        "stale_remote_head",
-        "Remote PR head changed before push confirmation.",
-      );
+      throw new AdeError("stale_remote_head", "Remote PR head changed before push confirmation.");
     if (
       (
         await gitCapture(
-          [
-            "merge-base",
-            "--is-ancestor",
-            publication.expected_remote_head,
-            publication.local_head,
-          ],
+          ["merge-base", "--is-ancestor", publication.expected_remote_head, publication.local_head],
           cwd,
         )
       ).code !== 0 ||
       (
         await gitCapture(
-          [
-            "merge-base",
-            "--is-ancestor",
-            publication.upstream_base.sha,
-            publication.local_head,
-          ],
+          ["merge-base", "--is-ancestor", publication.upstream_base.sha, publication.local_head],
           cwd,
         )
       ).code !== 0
@@ -567,10 +458,7 @@ export class RepairPublisher {
         "ancestry",
         "The approved publication is not a normal fast-forward descendant.",
       );
-    const hooks = await managedPath(
-      this.engine.root,
-      join("artifacts", `push-${publication.id}`),
-    );
+    const hooks = await managedPath(this.engine.root, join("artifacts", `push-${publication.id}`));
     await mkdir(hooks, { mode: 0o700 });
     const guard = await managedPath(this.engine.root, join(hooks, "pre-push"));
     const expected = {
@@ -610,8 +498,7 @@ export class RepairPublisher {
         this.push,
       );
       sending = false;
-      if (result.code !== 0)
-        publication.error = redact(result.stderr || result.stdout);
+      if (result.code !== 0) publication.error = redact(result.stderr || result.stdout);
       this.save(publication);
       const reconciled = await this.reconcile(session, publication.id);
       if (reconciled.outcome !== "published" && !reconciled.error) {
@@ -636,8 +523,7 @@ export class RepairPublisher {
   };
   reconcile = async (session: RepairSession, id: string) => {
     const publication = this.get(session.id, id);
-    if (!["pushing", "uncertain"].includes(publication.outcome))
-      return publication;
+    if (!["pushing", "uncertain"].includes(publication.outcome)) return publication;
     try {
       const cwd = await this.workspace(session);
       const remote = await this.workspaces.remoteHead(
@@ -649,8 +535,7 @@ export class RepairPublisher {
         publication.outcome = "published";
         publication.published_at = now();
         this.store.transition(session, "published");
-      } else if (remote === publication.expected_remote_head)
-        publication.outcome = "not_published";
+      } else if (remote === publication.expected_remote_head) publication.outcome = "not_published";
       else {
         publication.outcome = "stale_remote_head";
         this.store.transition(

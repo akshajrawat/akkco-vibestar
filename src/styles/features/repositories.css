@@ -1,0 +1,127 @@
+.repo-catalog-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 5px;
+  border-bottom: 1px solid var(--background-hover);
+}
+.repo-catalog-row > div:first-child {
+  min-width: 0;
+}
+.repo-catalog-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.repo-catalog-row span,
+.repo-catalog-row small {
+  font-size: 11px;
+}
+.repo-catalog-row > div:first-child > span {
+  margin-left: 10px;
+  color: var(--text-muted);
+}
+.repo-catalog-row small {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+}
+.managed-repos {
+  margin-top: 24px;
+}
+.managed-repos h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.managed-repo {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--background-hover);
+}
+.managed-repo summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+.managed-repo summary code {
+  margin-left: auto;
+  font-size: 11px;
+}
+.managed-repo p {
+  font-size: 11px;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+.actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.advanced-repository,
+.manual-watch {
+  margin-top: 23px;
+  max-width: 650px;
+}
+.advanced-repository form,
+.manual-watch form {
+  padding-top: 6px;
+}
+
+.pr-row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.watch-dot,
+.attention-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.watch-dot.enabled {
+  background: var(--accent-green);
+}
+.attention-dot {
+  background: var(--accent-amber);
+}
+.watch-settings {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--background-panel);
+  padding: 10px 14px;
+  margin-bottom: 20px;
+}
+.watch-settings label {
+  margin: 3px 0;
+  font-size: 12px;
+}
+.watch-settings input[type="number"] {
+  width: 85px;
+}
+.checkbox-label {
+  flex-direction: row;
+  align-items: center;
+}
+.checkbox-label input {
+  width: auto;
+  accent-color: var(--accent-blue);
+}
+.inbox-footer {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 15px 0 6px;
+}

@@ -1,62 +1,109 @@
-## Rules for Writing Code
+# Working on Akkco Vibestar
 
-- Only add explicit types when TypeScript cannot infer them clearly from the function or surrounding code.
-- Only use arrow functions, except where the language requires another form.
-- Always use async versions of file operations.
-- After every meaningful repo change, update `ARCHITECTURE.md` so it reflects the current methodology, package structure, and architecture.
-- Only run tests for actual code changes (never for comments, docs, or non-code edits). When running tests, only execute the specific test file relevant to that change; do not run the full test suite (`npm test`) each time unless completing a major milestone or making a major architectural change.
-- Dont keep again and again making a function if such function already exist anywhere from where it can be used
-- Only import the thing you want to use
-- Match the existing codebase’s spacing, indentation, line breaks, and surrounding formatting style; do not introduce a new formatting pattern when nearby code already establishes one.
-- Read `ARCHITECTURE.md` to get an idea of what we are building before any change
-- Always use `npm` as the package manager for running scripts and managing dependencies (do not use pnpm, yarn, or bun).
-- For changes affecting interactive TUI behavior, run the PTY E2E suite (`npm run test:tui`) in addition to normal unit/type/format verification.
+## Overview
 
-### Function Comments
+Vibestar is a local Electron workspace for issue contributions, PR repairs and
+manual issue discovery. Read `ARCHITECTURE.md` before changing architectural code.
+The renderer presents state; the Linux/WSL Node core owns all execution authority.
 
-- Add a brief, high-level block comment (`/** ... */`) above functions that are architectural entrypoints, carry non-obvious invariants, or whose names alone do not fully explain their high-level purpose.
-- Do not add boilerplate comments to trivial, self-explanatory helpers whose names and signatures already make their behavior obvious.
-- Keep comments concise (1–2 sentences) and focused on _why_ the function exists or its role in the pipeline, rather than restating the code or listing `@param` / `@returns` tags.
+## Repository map
 
-### Public API Hygiene
+- `src/app`: app composition, desktop navigation and title bar.
+- `src/features`: feature-owned components, state, hooks and renderer contracts.
+- `src/components/ui`: reusable UI primitives; `shared` and `diff`: shared workspace controls.
+- `src/hooks`: reusable React hooks; `src/lib`: transport, view state and display utilities.
+- `src/styles/index.css`: ordered CSS imports. Preserve cascade order when moving rules.
+- `backend/execution/engine.ts`: stable engine façade and startup/shutdown composition.
+- `backend/execution/engine`: scheduling, lifecycle, workflow, approval and recovery internals.
+- `backend/execution/{agents,providers,runtime,output,terminals,verification}`: execution support.
+- `backend/rpc`: domain request handlers; `backend/rpc.ts`: service composition and dispatch.
+- `backend/{github,issue-watch,review,finalization,workspace,storage}`: trusted domain services.
+- `electron`: main process, isolated preload, stdio bridge and desktop contracts.
+- `tests/{unit,integration,security,terminals,desktop,live}`: named suite categories.
+- `tests/{workspace,verification,pr-repair,issue-watch,finalization,diff}`: domain regressions.
+- `tests/helpers`: shared fixture constructors. Keep domain-only fixtures with their tests.
 
-- Keep package public exports minimal and intentional.
-- Do not export internal helpers, utilities, canonicalizers, serializers, counters, or implementation details from a package `index.ts` unless another package or external consumer genuinely needs them.
-- Prefer exposing stable contracts and domain-level types such as errors, option types, and interfaces rather than internal mechanics.
-- Tests may import internal modules directly when testing implementation-specific behavior; do not widen the production public API only to make tests convenient.
-- Before adding a new export, ask: "Is this part of the package contract, or only an implementation detail?"
-- Removing unnecessary exports is preferred while the project is still pre-stable, before consumers begin depending on them.
+## Code conventions
 
-### Type Extraction
+Follow the repository-wide formatting configuration. Prettier is authoritative.
+Use npm for dependencies and scripts. Prefer inferred types when they are clear.
+Use `import type` for type-only dependencies, particularly renderer/backend contracts.
+Small local types can stay inline; name substantial domain concepts and shared boundaries.
+Prefer existing canonical Zod schemas and inferred types over duplicate contracts.
+Use clear syntax and async filesystem APIs; do not impose syntax changes solely for uniformity.
 
-- Do not replace inline object types with named interfaces mechanically.
-- Keep small, local, one-use types inline when they remain readable.
-- Extract a named type or interface when the shape represents a meaningful domain concept, is reused across files/functions, forms a public or architectural boundary, or has grown large enough that naming improves comprehension.
-- Discriminated-union variants may remain type aliases; do not convert `type` to `interface` purely for stylistic consistency.
-- Prefer semantic names over structural cleanup. A named type should exist because the concept deserves a name, not merely because an inline type exists.
+Keep public exports minimal. Internal helpers need no package barrel or public API.
+Reuse existing error, display, parsing, focus, layout and ownership utilities.
+Add concise block comments for architectural entrypoints and non-obvious invariants;
+avoid comments that simply repeat a trivial function's name.
 
-## Repository Structure
+Keep directories flat while they contain only a few related files. Group growing
+responsibilities by domain, without empty folders or symmetrical `index.ts` files.
+Move feature code to its owner instead of treating nearby reuse as global utility.
 
-- Prefer conceptual grouping over large flat directories.
-- Keep a directory flat while it only contains a small number of closely related files.
-- Create subfolders when a real responsibility or domain has multiple files or is clearly growing.
-- Do not create folders only for symmetry.
-- Do not create `index.ts` files inside every folder unless that folder genuinely needs a public/module boundary.
-- Keep package public APIs stable. Internal refactors should not force consumers to import from internal paths unless a deliberate subpath API is designed.
-- Tests should generally mirror the conceptual structure of the production code.
-- Before adding several new files to an existing directory, check whether that directory should first be reorganized by responsibility.
+## Security invariants
 
-## Architecture Decisions
+- Keep renderer Node integration disabled, context isolation and Chromium sandbox enabled.
+- Validate the main-frame IPC sender and every host mutation's input/confirmation.
+- Preserve core capability negotiation before unsupported mutations.
+- Use argv arrays. Do not interpolate repository paths or model text into a shell.
+- Require the outer sandbox and provider restrictions; missing isolation fails closed.
+- Planning/review stays read-only. Implementation/PTY access is limited to its owned assignment.
+- Keep shared execution slots, maintenance leases and cancellation state authoritative.
+- Canonicalize managed paths, reject aliases and prove worktree/branch/common-directory ownership.
+- Never remove imported source checkouts or unknown/dirty/unpublished work automatically.
+- Keep content fingerprints and integrity Git output separate from redacted display output.
+- Preserve SQLite migrations, backup-before-upgrade, ownership checks and corrupt-record bytes.
+- Provider authentication/session directories are a trusted CLI boundary; do not extract credentials.
+- Persist bounded redacted logs, not OAuth tokens. Preserve streaming redaction across chunks.
+- Distinguish observed command outcomes from provider reports and missing evidence.
+- Preserve explicit workflow startup, approval gates and saved-instruction decisions.
+- PR analysis and Issue Watch require explicit requests; startup/opening must not invoke inference.
+- Publication requires fresh identity, permission, fingerprint, verification, ancestry and remote-SHA checks.
+- Optional contributor/application hooks are not a security boundary. `--no-verify` cannot waive host guards.
+- Do not change the application publisher to execute repository hooks unsandboxed.
+- Contributor hook installers must preserve existing private hooks and hook configuration.
+- Cancellation/restart must not replay provider runs or remote writes.
 
-- Design hard-to-change boundaries with future growth in mind.
-- Keep easy-to-change internals minimal until they are actually needed.
-- Do not add abstractions only because they may be useful someday.
-- Prefer stable interfaces with replaceable implementations.
-- Do not redesign existing architecture unless there is a concrete problem or the task explicitly requires it.
+## Testing
 
-## Change Discipline
+Run tests for code changes, choosing the specific affected test files first:
 
-- Do not modify unrelated files.
-- Do not silently broaden the scope of a task.
-- Preserve existing behavior unless the requested change explicitly changes it.
-- If a change requires modifying an architectural contract, explain why before changing it.
+```bash
+npm exec -- vitest run tests/unit/frontend.test.tsx
+npm exec -- vitest run tests/security/task-ownership.test.ts
+```
+
+`npm test` runs regular unit and domain regressions. Separate projects are available
+through `test:integration`, `test:security` and `test:tui`. Follow the named project
+boundaries when changing test discovery or CI; do not duplicate a full suite in each job.
+
+For interactive terminal behavior, run `npm run test:tui` in addition to relevant
+unit/type/format checks. Execution, storage, Git and authorization changes need the
+relevant integration/security tests. Renderer/style changes need applicable built
+Electron fixtures, keyboard checks and visual comparisons.
+
+Use `npm run verify` for substantial refactors and before final acceptance. It runs
+formatting, lint, types, all deterministic suites and the production build. Desktop,
+installed-browser and native Windows checks have separate prerequisites in `docs/testing.md`.
+Never run live-provider or GitHub-write tests without explicit authorization.
+
+## Source and change discipline
+
+Inspect the current worktree before relying on earlier context. Preserve user edits.
+Keep changes within the task; explain required architectural contract changes first.
+Refactor behavior-preservingly unless a behavior change is explicitly requested.
+Do not invent passing evidence, subscription limits, ownership or migration defaults.
+Do not add speculative abstractions or replace working libraries merely to simplify a tree.
+
+Do not automatically commit, push, tag, release, post messages or change repository settings.
+Do not wipe application state or user-owned files. Tests must use temporary isolated roots,
+local remotes and inert fixture providers rather than live accounts or production data.
+
+## Documentation
+
+Update `ARCHITECTURE.md` when responsibilities, boundaries or data flows change.
+Update README for setup/user-facing entry points and detailed guides for operational contracts.
+Trivial implementation, comment and spelling changes do not require architecture edits.
+Keep chronological evidence in the historical verification record, not the README.
+Preserve third-party notices and avoid unsupported licensing or release claims.

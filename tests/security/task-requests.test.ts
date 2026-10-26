@@ -5,11 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fetchIssue } from "../../backend/workspace/issue";
 import { StorageService } from "../../backend/storage/service";
-import {
-  createFixtureEngine,
-  fixtureRepository,
-  FixtureProvider,
-} from "../fixtures";
+import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
 
 vi.mock("../../backend/workspace/issue", () => ({ fetchIssue: vi.fn() }));
 const context = {
@@ -143,22 +139,11 @@ it("retains a request tombstone after history removal rather than creating anoth
     history: true,
   });
   expect(engine.db.tasks()).toEqual([]);
-  expect(
-    engine.db.all(
-      "SELECT task_id FROM task_requests WHERE request_id=?",
-      request,
-    ),
-  ).toEqual([{ task_id: null }]);
+  expect(engine.db.all("SELECT task_id FROM task_requests WHERE request_id=?", request)).toEqual([
+    { task_id: null },
+  ]);
   await expect(
-    engine.createTask(
-      repo.id,
-      context.url,
-      "Task A",
-      "",
-      "partial",
-      undefined,
-      request,
-    ),
+    engine.createTask(repo.id, context.url, "Task A", "", "partial", undefined, request),
   ).rejects.toThrow("history was removed");
   expect(fetchIssue).toHaveBeenCalledTimes(1);
   expect(engine.db.tasks()).toEqual([]);
@@ -168,23 +153,12 @@ it("rolls back task and request together when reservation fails, then permits an
   const { repo } = await fixtureRepository(engine, dir);
   const request = randomUUID();
   const run = engine.db.run;
-  const spy = vi
-    .spyOn(engine.db, "run")
-    .mockImplementation((sql, ...parameters) => {
-      if (sql.startsWith("INSERT INTO task_requests"))
-        throw new Error("fixture reservation failure");
-      return run(sql, ...parameters);
-    });
+  const spy = vi.spyOn(engine.db, "run").mockImplementation((sql, ...parameters) => {
+    if (sql.startsWith("INSERT INTO task_requests")) throw new Error("fixture reservation failure");
+    return run(sql, ...parameters);
+  });
   await expect(
-    engine.createTask(
-      repo.id,
-      context.url,
-      "Task A",
-      "",
-      "partial",
-      undefined,
-      request,
-    ),
+    engine.createTask(repo.id, context.url, "Task A", "", "partial", undefined, request),
   ).rejects.toThrow("reservation failure");
   expect(engine.db.tasks()).toEqual([]);
   expect(engine.db.all("SELECT * FROM issues")).toEqual([]);
@@ -200,9 +174,7 @@ it("rolls back task and request together when reservation fails, then permits an
     request,
   );
   expect(engine.db.tasks()).toHaveLength(1);
-  expect(engine.db.all("SELECT task_id FROM task_requests")).toEqual([
-    { task_id: task.id },
-  ]);
+  expect(engine.db.all("SELECT task_id FROM task_requests")).toEqual([{ task_id: task.id }]);
 });
 
 it("settles an interrupted context request before closing persistence and never enqueues it on startup", async () => {
@@ -211,11 +183,9 @@ it("settles an interrupted context request before closing persistence and never 
   vi.mocked(fetchIssue).mockImplementation(
     (_reference, _root, signal) =>
       new Promise((_resolve, reject) => {
-        signal!.addEventListener(
-          "abort",
-          () => reject(new Error("fixture context cancelled")),
-          { once: true },
-        );
+        signal!.addEventListener("abort", () => reject(new Error("fixture context cancelled")), {
+          once: true,
+        });
       }),
   );
   const pending = engine.createTask(

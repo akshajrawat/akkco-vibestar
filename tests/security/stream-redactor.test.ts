@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { StreamRedactor } from "../../backend/execution/stream-redactor";
+import { StreamRedactor } from "../../backend/execution/output/stream-redactor";
 
 it.each([
   "ghp_abcdefghijklmnopqrstuvwxyz123456",
@@ -39,18 +39,13 @@ it("preserves safe live prompts, ANSI ordering and Unicode through single-charac
   expect(output).toBe(prompt);
   expect(redactor.finish()).toBe("");
   const colored = new StreamRedactor();
-  expect(colored.push("a\x1b[31mbc\x1b[0m\n") + colored.finish()).toBe(
-    "a\x1b[31mbc\x1b[0m\n",
-  );
+  expect(colored.push("a\x1b[31mbc\x1b[0m\n") + colored.finish()).toBe("a\x1b[31mbc\x1b[0m\n");
 });
 
 it("bounds retained state across unbounded credentials and long lines and never flushes a raw ambiguous prefix", () => {
   const redactor = new StreamRedactor();
-  expect(redactor.push("Authorization: Bearer ")).toBe(
-    "Authorization: [REDACTED]",
-  );
-  for (let i = 0; i < 100; i++)
-    expect(redactor.push("z".repeat(65536))).toBe("");
+  expect(redactor.push("Authorization: Bearer ")).toBe("Authorization: [REDACTED]");
+  for (let i = 0; i < 100; i++) expect(redactor.push("z".repeat(65536))).toBe("");
   expect(redactor.push("\nPrompt: ")).toBe("\nPrompt: ");
   expect(redactor.finish()).toBe("");
   const prefix = new StreamRedactor();
@@ -71,10 +66,7 @@ it("keeps session state independent and drops OSC payloads across split terminat
 
 it("bounds ANSI-obscured prefixes and safely suppresses the remainder of an overlong ambiguous line", () => {
   const redactor = new StreamRedactor();
-  const attack =
-    "s" +
-    "\x1b[0m".repeat(20000) +
-    "x Authorization: Bearer privatecredentialvalue\n";
+  const attack = "s" + "\x1b[0m".repeat(20000) + "x Authorization: Bearer privatecredentialvalue\n";
   expect(redactor.push(attack) + redactor.finish()).toBe("[REDACTED]\n");
   expect(redactor.push("Prompt: ")).toBe("Prompt: ");
 });

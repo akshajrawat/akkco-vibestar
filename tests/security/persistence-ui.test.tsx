@@ -4,9 +4,9 @@ import { Database } from "../../backend/storage/database";
 import { RepositoryIndex } from "../../backend/workspace/discovery";
 import type { Engine } from "../../backend/execution/engine";
 import { Rpc } from "../../backend/rpc";
-import { RepositoryPage } from "../../src/components/RepositoryPage";
-import { TaskNavigation } from "../../src/components/TaskNavigation";
-import { ScheduledPage } from "../../src/components/ScheduledPage";
+import { RepositoryPage } from "../../src/features/repositories/RepositoryPage";
+import { TaskNavigation } from "../../src/features/tasks/TaskNavigation";
+import { ScheduledPage } from "../../src/features/pull-requests/ScheduledPage";
 import type { Snapshot } from "../../src/lib/types";
 
 it("isolates schema-invalid catalog, index, task and PR records before rendering shared history views", async () => {
@@ -25,10 +25,7 @@ it("isolates schema-invalid catalog, index, task and PR records before rendering
       name: "project",
       path: "/fixture/repo",
     };
-    db.run(
-      "INSERT INTO repositories VALUES('repo','fixture','project',?)",
-      JSON.stringify(repo),
-    );
+    db.run("INSERT INTO repositories VALUES('repo','fixture','project',?)", JSON.stringify(repo));
     const healthy = {
       id: "healthy",
       repo_id: "repo",
@@ -49,9 +46,7 @@ it("isolates schema-invalid catalog, index, task and PR records before rendering
       "INSERT INTO tasks(id,repo_id,status,stage,data,created_at) VALUES('bad','repo','completed',6,?,'fixture')",
       badTask,
     );
-    db.run(
-      "INSERT INTO local_repositories VALUES('/fixture/bad','{}','fixture')",
-    );
+    db.run("INSERT INTO local_repositories VALUES('/fixture/bad','{}','fixture')");
     db.run(
       "INSERT INTO settings VALUES('repository_index',?)",
       JSON.stringify({ repositories: true }),
@@ -87,11 +82,7 @@ it("isolates schema-invalid catalog, index, task and PR records before rendering
       changes: [],
       error: null,
     };
-    db.run(
-      "INSERT INTO scheduled_jobs VALUES(?,?)",
-      job.id,
-      JSON.stringify(job),
-    );
+    db.run("INSERT INTO scheduled_jobs VALUES(?,?)", job.id, JSON.stringify(job));
     db.run(
       "INSERT INTO scheduled_jobs VALUES('bad-job',?)",
       JSON.stringify({ ...job, id: "bad-job", pending_snapshot: {} }),
@@ -112,9 +103,7 @@ it("isolates schema-invalid catalog, index, task and PR records before rendering
     expect(snapshot.repository_index?.repositories).toEqual([]);
     expect(snapshot.github?.repositories).toEqual([]);
     const pages = [
-      renderToStaticMarkup(
-        <RepositoryPage snapshot={snapshot} refresh={async () => {}} />,
-      ),
+      renderToStaticMarkup(<RepositoryPage snapshot={snapshot} refresh={async () => {}} />),
       renderToStaticMarkup(
         <TaskNavigation
           repositories={snapshot.repositories}
@@ -124,19 +113,13 @@ it("isolates schema-invalid catalog, index, task and PR records before rendering
         />,
       ),
       renderToStaticMarkup(
-        <ScheduledPage
-          snapshot={snapshot}
-          refresh={async () => {}}
-          open={() => {}}
-        />,
+        <ScheduledPage snapshot={snapshot} refresh={async () => {}} open={() => {}} />,
       ),
     ];
     expect(pages[0]).toContain("fixture");
     expect(pages[1]).toContain("Healthy saved task");
     expect(pages[2]).toContain("Healthy saved PR");
-    expect(
-      new Set(db.records.diagnostics().map((record) => record.table_name)),
-    ).toEqual(
+    expect(new Set(db.records.diagnostics().map((record) => record.table_name))).toEqual(
       new Set([
         "tasks",
         "local_repositories",
@@ -146,9 +129,7 @@ it("isolates schema-invalid catalog, index, task and PR records before rendering
         "pr_analyses",
       ]),
     );
-    expect(db.all("SELECT data FROM tasks WHERE id='bad'")).toEqual([
-      { data: badTask },
-    ]);
+    expect(db.all("SELECT data FROM tasks WHERE id='bad'")).toEqual([{ data: badTask }]);
   } finally {
     await rpc.close();
     db.close();

@@ -3,17 +3,11 @@ import { open } from "node:fs/promises";
 import { AdeError } from "../domain";
 import { managedPath, workspaceEntry } from "../workspace/paths";
 
-export const inspectSelectedFile = async (
-  cwd: string,
-  path: string,
-  untracked = false,
-) => {
+export const inspectSelectedFile = async (cwd: string, path: string, untracked = false) => {
   const entry = await workspaceEntry(cwd, path);
   await managedPath(cwd, path);
   if (
-    /(?:^|\/)(?:\.codex|\.gemini|\.ssh|\.aws|\.azure|\.kube)(?:\/|$)/i.test(
-      path,
-    ) ||
+    /(?:^|\/)(?:\.codex|\.gemini|\.ssh|\.aws|\.azure|\.kube)(?:\/|$)/i.test(path) ||
     /(?:^|\/)\.config\/gh(?:\/|$)/i.test(path) ||
     /(?:^|\/)\.git-credentials$/i.test(path) ||
     /(?:^|\/)(?:\.env(?:\..*)?|\.codex|\.gemini|\.ssh|credentials(?:\..*)?|id_(?:rsa|ed25519)|[^/]*\.(?:pem|key|p12|pfx))$/i.test(
@@ -23,9 +17,7 @@ export const inspectSelectedFile = async (
       (/(?:^|\/)(?:node_modules|dist|build|coverage|\.cache|debug|playwright-report|test-results)(?:\/|$)/i.test(
         path,
       ) ||
-        /(?:^|\/)(?:debug[^/]*\.(?:txt|log)|[^/]*\.(?:log|tmp|bak))$/i.test(
-          path,
-        )))
+        /(?:^|\/)(?:debug[^/]*\.(?:txt|log)|[^/]*\.(?:log|tmp|bak))$/i.test(path)))
   )
     throw new AdeError(
       "unsafe_file",
@@ -37,10 +29,7 @@ export const inspectSelectedFile = async (
       "unsafe_file",
       "Only regular files and deletions can be selected; links and submodules require separate review.",
     );
-  const file = await open(
-    entry.path,
-    constants.O_RDONLY | constants.O_NOFOLLOW,
-  );
+  const file = await open(entry.path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const metadata = await file.stat();
     if (!metadata.isFile() || metadata.size > 4 * 1024 * 1024)

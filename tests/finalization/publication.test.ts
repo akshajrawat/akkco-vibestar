@@ -3,8 +3,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { FinalizationService } from "../../backend/finalization/service";
-import { checked, execute } from "../../backend/execution/process";
-import { createFixtureEngine, FixtureProvider } from "../fixtures";
+import { checked, execute } from "../../backend/execution/runtime/process";
+import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
 import { finalizationFixture } from "./fixtures";
 
 const committedFixture = async () => {
@@ -30,15 +30,11 @@ it("binds normal hook configuration to the preview instead of silently changing 
       ["config", "--local", "core.hooksPath", "/dev/null"],
       f.task.worktree_path,
     );
-    await expect(
-      f.service.commit(f.task.id, record.id, "Exact", false),
-    ).rejects.toThrow("configuration changed");
-    expect(
-      await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path),
-    ).toBe(record.parent);
-    expect(
-      (await f.service.commit(f.task.id, record.id, "Exact", true)).status,
-    ).toBe("committed");
+    await expect(f.service.commit(f.task.id, record.id, "Exact", false)).rejects.toThrow(
+      "configuration changed",
+    );
+    expect(await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path)).toBe(record.parent);
+    expect((await f.service.commit(f.task.id, record.id, "Exact", true)).status).toBe("committed");
   } finally {
     await f.close();
   }
@@ -61,22 +57,18 @@ it("honors configured local hook paths and refuses missing projected hooks inste
     const omitted = await f.preview();
     await f.service.review(f.task.id, omitted.id);
     await f.service.approve(f.task.id, omitted.id);
-    await expect(
-      f.service.commit(f.task.id, omitted.id, "Selected fix", false),
-    ).rejects.toThrow("missing from the selected review workspace");
-    const included = await f.preview([
-      "source.txt",
-      ".review-hooks/pre-commit",
-    ]);
+    await expect(f.service.commit(f.task.id, omitted.id, "Selected fix", false)).rejects.toThrow(
+      "missing from the selected review workspace",
+    );
+    const included = await f.preview(["source.txt", ".review-hooks/pre-commit"]);
     await f.service.review(f.task.id, included.id);
     await f.service.approve(f.task.id, included.id);
-    await expect(
-      f.service.commit(f.task.id, included.id, "Selected fix", false),
-    ).rejects.toThrow("pre-commit exited 17");
-    expect(
-      (await f.service.commit(f.task.id, included.id, "Selected fix", true))
-        .status,
-    ).toBe("committed");
+    await expect(f.service.commit(f.task.id, included.id, "Selected fix", false)).rejects.toThrow(
+      "pre-commit exited 17",
+    );
+    expect((await f.service.commit(f.task.id, included.id, "Selected fix", true)).status).toBe(
+      "committed",
+    );
   } finally {
     await f.close();
   }
@@ -108,21 +100,13 @@ it("rechecks a typed destination without recreating the reviewed local commit", 
       }),
     ).rejects.toThrow();
     await f.service.publish(f.task.id, f.record.id, true);
+    expect(await checked("git", ["rev-parse", `refs/heads/${destination.branch}`], f.fork)).toBe(
+      f.record.head,
+    );
     expect(
       await checked(
         "git",
-        ["rev-parse", `refs/heads/${destination.branch}`],
-        f.fork,
-      ),
-    ).toBe(f.record.head);
-    expect(
-      await checked(
-        "git",
-        [
-          "for-each-ref",
-          "--format=%(refname)",
-          `refs/heads/${f.task.branch_name}`,
-        ],
+        ["for-each-ref", "--format=%(refname)", `refs/heads/${f.task.branch_name}`],
         f.fork,
       ),
     ).toBe("");
@@ -144,12 +128,10 @@ it("runs optional hooks in the sandbox and skips them only on explicit choices",
     );
     const record = await f.preview();
     await f.service.approve(f.task.id, record.id);
-    await expect(
-      f.service.commit(f.task.id, record.id, "Exact", false),
-    ).rejects.toThrow("pre-commit exited 19");
-    expect(
-      await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path),
-    ).toBe(record.parent);
+    await expect(f.service.commit(f.task.id, record.id, "Exact", false)).rejects.toThrow(
+      "pre-commit exited 19",
+    );
+    expect(await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path)).toBe(record.parent);
     await f.service.commit(f.task.id, record.id, "Exact", true);
     await f.service.prepare(f.task.id, record.id);
     await writeFile(
@@ -157,23 +139,17 @@ it("runs optional hooks in the sandbox and skips them only on explicit choices",
       "#!/bin/sh\nprintf 'optional push check failed\\n'\nexit 23\n",
       { mode: 0o700 },
     );
-    await expect(
-      f.service.publish(f.task.id, record.id, false),
-    ).rejects.toThrow("pre-push exited 23");
+    await expect(f.service.publish(f.task.id, record.id, false)).rejects.toThrow(
+      "pre-push exited 23",
+    );
     const result = await f.service.publish(f.task.id, record.id, true);
     expect(result.status).toBe("published");
     const events = f.service.store.events(record.id);
     expect(
-      events.some(
-        (event) =>
-          event.phase === "Optional pre-commit" && event.exit_code === 19,
-      ),
+      events.some((event) => event.phase === "Optional pre-commit" && event.exit_code === 19),
     ).toBe(true);
     expect(
-      events.some(
-        (event) =>
-          event.phase === "Optional pre-push" && event.exit_code === 23,
-      ),
+      events.some((event) => event.phase === "Optional pre-push" && event.exit_code === 23),
     ).toBe(true);
   } finally {
     await f.close();
@@ -191,45 +167,30 @@ it("rejects wrong remotes, changed permissions, viewers, branches and approved c
     await expect(f.service.prepare(f.task.id, f.record.id)).rejects.toThrow(
       "configured contribution",
     );
-    await checked(
-      "git",
-      ["remote", "set-url", "origin", f.repo.origin_url!],
-      f.repo.path,
-    );
+    await checked("git", ["remote", "set-url", "origin", f.repo.origin_url!], f.repo.path);
     f.identity.permissions.push = false;
-    await expect(f.service.prepare(f.task.id, f.record.id)).rejects.toThrow(
-      "cannot publish",
-    );
+    await expect(f.service.prepare(f.task.id, f.record.id)).rejects.toThrow("cannot publish");
     f.identity.permissions.push = true;
     await f.service.prepare(f.task.id, f.record.id);
     f.identity.viewer = "another-account";
-    await expect(
-      f.service.publish(f.task.id, f.record.id, true),
-    ).rejects.toThrow("changed after preparation");
+    await expect(f.service.publish(f.task.id, f.record.id, true)).rejects.toThrow(
+      "changed after preparation",
+    );
     f.identity.viewer = "contributor";
     const changed = f.service.store.get(f.task.id, f.record.id);
     changed.preset.branch = "another-target";
     f.service.store.save(changed);
-    await expect(
-      f.service.publish(f.task.id, f.record.id, true),
-    ).rejects.toThrow("changed after preparation");
+    await expect(f.service.publish(f.task.id, f.record.id, true)).rejects.toThrow(
+      "changed after preparation",
+    );
     changed.preset.branch = f.task.branch_name;
     f.service.store.save(changed);
-    await writeFile(
-      join(f.task.worktree_path, "source.txt"),
-      "changed after commit\n",
-    );
-    await expect(
-      f.service.publish(f.task.id, f.record.id, true),
-    ).rejects.toThrow("changed");
+    await writeFile(join(f.task.worktree_path, "source.txt"), "changed after commit\n");
+    await expect(f.service.publish(f.task.id, f.record.id, true)).rejects.toThrow("changed");
     expect(
       await checked(
         "git",
-        [
-          "for-each-ref",
-          "--format=%(refname)",
-          `refs/heads/${f.task.branch_name}`,
-        ],
+        ["for-each-ref", "--format=%(refname)", `refs/heads/${f.task.branch_name}`],
         f.fork,
       ),
     ).toBe("");
@@ -249,24 +210,15 @@ it("rejects a new-branch race with --no-verify even when the raced head would be
     );
     return execute(request);
   });
-  const service = new FinalizationService(
-    f.engine,
-    async () => f.identity,
-    f.transport,
-    push,
-  );
+  const service = new FinalizationService(f.engine, async () => f.identity, f.transport, push);
   try {
     await service.prepare(f.task.id, f.record.id);
     const result = await service.publish(f.task.id, f.record.id, true);
     expect(push).toHaveBeenCalledOnce();
     expect(result.status).toBe("failed");
-    expect(
-      await checked(
-        "git",
-        ["rev-parse", `refs/heads/${f.task.branch_name}`],
-        f.fork,
-      ),
-    ).toBe(f.record.parent);
+    expect(await checked("git", ["rev-parse", `refs/heads/${f.task.branch_name}`], f.fork)).toBe(
+      f.record.parent,
+    );
     expect(
       service.store
         .events(f.record.id)
@@ -290,38 +242,22 @@ it("reconciles a network interruption after a successful push across restart wit
     if (disconnected) throw new Error("Fixture remote unavailable");
     return f.transport(url);
   };
-  const service = new FinalizationService(
-    f.engine,
-    async () => f.identity,
-    transport,
-    push,
-  );
+  const service = new FinalizationService(f.engine, async () => f.identity, transport, push);
   let reopened: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
   try {
     await service.prepare(f.task.id, f.record.id);
-    expect((await service.publish(f.task.id, f.record.id, true)).status).toBe(
-      "uncertain",
-    );
-    await expect(service.prepare(f.task.id, f.record.id)).rejects.toThrow(
-      "reconcile",
-    );
+    expect((await service.publish(f.task.id, f.record.id, true)).status).toBe("uncertain");
+    await expect(service.prepare(f.task.id, f.record.id)).rejects.toThrow("reconcile");
     await service.close();
     await f.engine.close();
     reopened = await createFixtureEngine(f.root, () => new FixtureProvider());
-    const recovered = new FinalizationService(
-      reopened,
-      async () => f.identity,
-      f.transport,
-      push,
-    );
+    const recovered = new FinalizationService(reopened, async () => f.identity, f.transport, push);
     const result = await recovered.call("reconcile", {
       id: f.task.id,
       operation_id: f.record.id,
     });
     expect(result).toMatchObject({ status: "published", head: f.record.head });
-    expect((await recovered.publish(f.task.id, f.record.id, true)).status).toBe(
-      "published",
-    );
+    expect((await recovered.publish(f.task.id, f.record.id, true)).status).toBe("published");
     expect(push).toHaveBeenCalledOnce();
     await recovered.close();
   } finally {
@@ -343,12 +279,7 @@ it("rejects a concurrent writer, cancels a pending push and requires fresh confi
         );
       }),
   );
-  const service = new FinalizationService(
-    f.engine,
-    async () => f.identity,
-    f.transport,
-    push,
-  );
+  const service = new FinalizationService(f.engine, async () => f.identity, f.transport, push);
   try {
     await service.prepare(f.task.id, f.record.id);
     const pending = service.publish(f.task.id, f.record.id, true);
@@ -358,9 +289,9 @@ it("rejects a concurrent writer, cancels a pending push and requires fresh confi
     ]);
     expect(f.engine.cleanupBlockers(f.task.id)).toHaveLength(1);
     expect(() => f.engine.acquireTerminal(f.task.id)).toThrow("Wait");
-    await expect(async () =>
-      service.prepare(f.task.id, f.record.id),
-    ).rejects.toThrow("already running");
+    await expect(async () => service.prepare(f.task.id, f.record.id)).rejects.toThrow(
+      "already running",
+    );
     await service.call("cancel", { id: f.task.id });
     expect((await pending).status).toBe("not_published");
     expect(f.engine.isActive(f.task.id)).toBe(false);
@@ -405,9 +336,7 @@ it("keeps typed presets local and makes repeated selection requests idempotent",
       "different selected files",
     );
     expect(f.service.store.list(f.task.id)).toHaveLength(1);
-    expect(await readFile(join(f.repo.path, ".git", "index"))).toEqual(
-      sourceIndex,
-    );
+    expect(await readFile(join(f.repo.path, ".git", "index"))).toEqual(sourceIndex);
     expect(f.engine.db.all("SELECT id FROM ai_usage")).toHaveLength(0);
   } finally {
     await f.close();

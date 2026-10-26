@@ -2,18 +2,10 @@ import { securityWorkspace } from "./fixtures";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  checked,
-  execute,
-  type ProcessRequest,
-} from "../../backend/execution/process";
-import {
-  gitCapture,
-  gitChecked,
-  gitExecute,
-} from "../../backend/workspace/git-command";
+import { checked, execute, type ProcessRequest } from "../../backend/execution/runtime/process";
+import { gitCapture, gitChecked, gitExecute } from "../../backend/workspace/git-command";
 import { exists } from "../../backend/workspace/paths";
-import * as processes from "../../backend/execution/process";
+import * as processes from "../../backend/execution/runtime/process";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -30,9 +22,7 @@ it("suppresses fsmonitor on actual workspace reads and leaves source files, inde
   const index = await readFile(join(source, ".git", "index"));
   const config = await readFile(join(source, ".git", "config"));
   await writeFile(join(task.worktree_path, "file.txt"), "changed\n");
-  expect(
-    (await git.diff(task)).files.some((file) => file.path === "file.txt"),
-  ).toBe(true);
+  expect((await git.diff(task)).files.some((file) => file.path === "file.txt")).toBe(true);
   expect(await exists(marker)).toBe(false);
   expect(await readFile(join(source, ".git", "index"))).toEqual(index);
   expect(await readFile(join(source, ".git", "config"))).toEqual(config);
@@ -106,13 +96,9 @@ it("blocks a configured merge driver before a conflicting merge can modify the w
     }),
   ).rejects.toThrow("merge.hostile.driver");
   expect(await exists(marker)).toBe(false);
-  expect(await readFile(join(task.worktree_path, "file.txt"), "utf8")).toBe(
-    "local\n",
-  );
+  expect(await readFile(join(task.worktree_path, "file.txt"), "utf8")).toBe("local\n");
   await checked("git", ["config", "--unset", "merge.hostile.driver"], source);
-  expect(await gitChecked(["rev-parse", "HEAD"], task.worktree_path)).toBe(
-    head,
-  );
+  expect(await gitChecked(["rev-parse", "HEAD"], task.worktree_path)).toBe(head);
   expect(await readFile(join(metadata, "index"))).toEqual(index);
 });
 
@@ -125,17 +111,12 @@ it("suppresses hooks and signing while making an ordinary local commit", async (
   await checked("git", ["config", "commit.gpgSign", "true"], source);
   await writeFile(join(task.worktree_path, "file.txt"), "reviewed\n");
   await gitChecked(["add", "."], task.worktree_path);
-  await gitChecked(
-    ["commit", "-m", "reviewed local commit"],
-    task.worktree_path,
-  );
+  await gitChecked(["commit", "-m", "reviewed local commit"], task.worktree_path);
   expect(await exists(marker)).toBe(false);
-  expect(await gitChecked(["show", "HEAD:file.txt"], task.worktree_path)).toBe(
-    "reviewed",
+  expect(await gitChecked(["show", "HEAD:file.txt"], task.worktree_path)).toBe("reviewed");
+  await expect(gitCapture(["-c", `core.hooksPath=${hooks}`, "status"], source)).rejects.toThrow(
+    "core.hookspath",
   );
-  await expect(
-    gitCapture(["-c", `core.hooksPath=${hooks}`, "status"], source),
-  ).rejects.toThrow("core.hookspath");
 });
 
 it("ignores hostile global/system includes and inherited Git overrides without altering them", async () => {
@@ -158,19 +139,15 @@ it.each(["true", "2", "-1"])(
   "checks per-worktree configuration enabled with %s before executing the selected command",
   async (enabled) => {
     const { source, task, program, marker } = await securityWorkspace();
-    await checked(
-      "git",
-      ["config", "extensions.worktreeConfig", enabled],
-      source,
-    );
+    await checked("git", ["config", "extensions.worktreeConfig", enabled], source);
     await checked(
       "git",
       ["config", "--worktree", "filter.hostile.process", program],
       task.worktree_path,
     );
-    await expect(
-      gitCapture(["status", "--porcelain"], task.worktree_path),
-    ).rejects.toThrow("filter.hostile.process");
+    await expect(gitCapture(["status", "--porcelain"], task.worktree_path)).rejects.toThrow(
+      "filter.hostile.process",
+    );
     expect(await exists(marker)).toBe(false);
   },
 );
@@ -181,13 +158,7 @@ it("binds HTTPS transport, gh authentication and redirect policy without contact
   await gitExecute(
     {
       program: "git",
-      args: [
-        "ls-remote",
-        "--refs",
-        "--",
-        "git@github.com:oppia/oppia.git",
-        "refs/heads/develop",
-      ],
+      args: ["ls-remote", "--refs", "--", "git@github.com:oppia/oppia.git", "refs/heads/develop"],
       cwd: source,
     },
     async (request) => {
@@ -243,9 +214,7 @@ it("rejects partial clones on Git versions that cannot disable implicit transpor
         })
       : original(request),
   );
-  await expect(gitCapture(["show", "HEAD:file.txt"], source)).rejects.toThrow(
-    "Git 2.45 or newer",
-  );
+  await expect(gitCapture(["show", "HEAD:file.txt"], source)).rejects.toThrow("Git 2.45 or newer");
 });
 
 it("fails integrity capture explicitly on overflow and keeps streamed output redacted", async () => {
@@ -271,10 +240,7 @@ it("captures NUL-delimited integrity evidence beyond the display line budget", a
   const { source } = await securityWorkspace();
   const output = await execute({
     program: process.execPath,
-    args: [
-      "-e",
-      "process.stdout.write(('100644 '+ 'a'.repeat(40)+' 0\\tpath\\0').repeat(50000))",
-    ],
+    args: ["-e", "process.stdout.write(('100644 '+ 'a'.repeat(40)+' 0\\tpath\\0').repeat(50000))"],
     cwd: source,
     rawStdoutForIntegrity: true,
   });

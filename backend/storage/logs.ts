@@ -15,9 +15,7 @@ export const readLogTail = async (
       throw new AdeError("isolation", "Log directory is outside managed logs");
     const path = await safeFile(
       dir,
-      runId
-        ? `${runId}${stream === "stdout" ? ".jsonl" : ".stderr.log"}`
-        : "preparation.jsonl",
+      runId ? `${runId}${stream === "stdout" ? ".jsonl" : ".stderr.log"}` : "preparation.jsonl",
     );
     const handle = await open(path, "r");
     try {
@@ -30,18 +28,9 @@ export const readLogTail = async (
         let pending = Buffer.alloc(0);
         let cursor = position;
         let matchedBytes = 0;
-        while (
-          position < size &&
-          matches.length < 200 &&
-          matchedBytes < limit
-        ) {
+        while (position < size && matches.length < 200 && matchedBytes < limit) {
           const buffer = Buffer.alloc(Math.min(limit, size - position));
-          const { bytesRead } = await handle.read(
-            buffer,
-            0,
-            buffer.length,
-            position,
-          );
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
           if (!bytesRead) break;
           position += bytesRead;
           pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
@@ -78,14 +67,9 @@ export const readLogTail = async (
           ? Math.min(size, options.after + limit)
           : Math.min(size, options?.before ?? size);
       let start =
-        options?.after !== undefined
-          ? Math.min(options.after, size)
-          : Math.max(0, end - limit);
+        options?.after !== undefined ? Math.min(options.after, size) : Math.max(0, end - limit);
       const buffer = Buffer.alloc(
-        Math.min(
-          size - start,
-          end - start + (options?.after !== undefined ? 4 : 0),
-        ),
+        Math.min(size - start, end - start + (options?.after !== undefined ? 4 : 0)),
       );
       const position = start;
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);

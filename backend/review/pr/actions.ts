@@ -24,16 +24,8 @@ export const persistReviewActions = (
         "Analysis cited an unknown source or a quotation absent from the original review.",
       );
     if (source.author.toLowerCase() === snapshot.author?.toLowerCase())
-      throw new AdeError(
-        "analysis_evidence",
-        "An author reply cannot be a reviewer request.",
-      );
-    if (
-      source.bot &&
-      !["positive_feedback", "informational"].includes(
-        observation.classification,
-      )
-    )
+      throw new AdeError("analysis_evidence", "An author reply cannot be a reviewer request.");
+    if (source.bot && !["positive_feedback", "informational"].includes(observation.classification))
       throw new AdeError(
         "analysis_evidence",
         "Bot activity cannot be attributed to a human reviewer.",
@@ -73,18 +65,13 @@ export const persistReviewActions = (
         "analysis_evidence",
         "Analysis evidence references unavailable GitHub items.",
       );
-    if (
-      observation.responseState === "answered" &&
-      observation.classification !== "question"
-    )
+    if (observation.responseState === "answered" && observation.classification !== "question")
       throw new AdeError(
         "analysis_evidence",
         "A reply does not establish that a code request was fixed.",
       );
     if (
-      ["author_replied", "partially_answered", "answered"].includes(
-        observation.responseState,
-      ) &&
+      ["author_replied", "partially_answered", "answered"].includes(observation.responseState) &&
       !replies.length
     )
       throw new AdeError(
@@ -93,18 +80,14 @@ export const persistReviewActions = (
       );
     const anchor = `${source.id}/${createHash("sha256").update(observation.originalText.trim()).digest("hex")}`;
     const matched = previous.find(
-      (a) =>
-        a.sourceId === source.id &&
-        a.originalText.trim() === observation.originalText.trim(),
+      (a) => a.sourceId === source.id && a.originalText.trim() === observation.originalText.trim(),
     );
     const existing = observation.existingActionId
       ? previous.find((a) => a.id === observation.existingActionId)
       : matched;
     if (
       observation.existingActionId &&
-      (!existing ||
-        existing.reviewer !== source.author ||
-        existing.sourceId !== source.id)
+      (!existing || existing.reviewer !== source.author || existing.sourceId !== source.id)
     )
       throw new AdeError(
         "analysis_evidence",
@@ -122,20 +105,12 @@ export const persistReviewActions = (
         "Separate observations cannot overwrite one action identity.",
       );
     used.add(id);
-    db.run(
-      "INSERT OR IGNORE INTO pr_review_actions VALUES(?,?,?,?)",
-      id,
-      jobId,
-      anchor,
-      now(),
-    );
+    db.run("INSERT OR IGNORE INTO pr_review_actions VALUES(?,?,?,?)", id, jobId, anchor, now());
     const action: ReviewAction = {
       ...observation,
       affectedFiles: [...new Set(observation.affectedFiles)],
       authorReplyIds: [...new Set(observation.authorReplyIds)],
-      reviewerAcknowledgmentIds: [
-        ...new Set(observation.reviewerAcknowledgmentIds),
-      ],
+      reviewerAcknowledgmentIds: [...new Set(observation.reviewerAcknowledgmentIds)],
       evidenceIds: [...new Set(observation.evidenceIds)],
       commitShas: [...new Set(observation.commitShas)],
       id,

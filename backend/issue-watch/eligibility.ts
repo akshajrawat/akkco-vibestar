@@ -14,8 +14,7 @@ export const hardExclusions = (
   trackerKeys: Set<string>,
 ) => {
   const reasons: string[] = [];
-  if (issue.pull_request)
-    reasons.push("GitHub identified this item as a pull request.");
+  if (issue.pull_request) reasons.push("GitHub identified this item as a pull request.");
   if (issue.state !== "open") reasons.push("Issue is closed.");
   const labels = issue.labels.filter((label) =>
     rules.excluded_labels.includes(label.trim().toLowerCase()),
@@ -25,13 +24,9 @@ export const hardExclusions = (
   if (rules.excluded_issues.some((reference) => issueKey(reference) === key))
     reasons.push("Explicitly excluded issue.");
   if (trackerKeys.has(key))
-    reasons.push(
-      "Referenced by a freshly verified excluded tracker, or is the tracker itself.",
-    );
+    reasons.push("Referenced by a freshly verified excluded tracker, or is the tracker itself.");
   if (rules.unassigned_only && issue.assignees.length)
-    reasons.push(
-      `Assigned to ${issue.assignees.map((actor) => `@${actor}`).join(", ")}.`,
-    );
+    reasons.push(`Assigned to ${issue.assignees.map((actor) => `@${actor}`).join(", ")}.`);
   return reasons;
 };
 
@@ -45,8 +40,7 @@ export const assessClaims = (sources: WatchSource[]) => {
     .filter((item) => item.kind === "comment")
     .sort(
       (a, b) =>
-        (a.created_at || "").localeCompare(b.created_at || "") ||
-        a.key.localeCompare(b.key),
+        (a.created_at || "").localeCompare(b.created_at || "") || a.key.localeCompare(b.key),
     )) {
     if (!source.actor) continue;
     const actor = source.actor.toLowerCase();
@@ -67,9 +61,7 @@ export const assessClaims = (sources: WatchSource[]) => {
       claims.add(actor);
       add("claim_request");
       if (source.created_at !== source.updated_at)
-        warnings.push(
-          "An edited claim needs manual interpretation; age does not expire it.",
-        );
+        warnings.push("An edited claim needs manual interpretation; age does not expire it.");
     }
     if (
       /\b(?:i (?:am no longer|cannot|can't|will not|won't)|i'm no longer|withdraw(?:ing)? my claim|unassign me)\b/i.test(
@@ -83,9 +75,7 @@ export const assessClaims = (sources: WatchSource[]) => {
     const grant = text.match(
       /@([\w-]+)[,\s]+(?:you (?:can|may)|please)\s+(?:work|take|start|proceed)|(?:assign(?:ed|ing) (?:this )?to)\s+@([\w-]+)/i,
     );
-    if (
-      ["OWNER", "MEMBER", "COLLABORATOR"].includes(source.association || "")
-    ) {
+    if (["OWNER", "MEMBER", "COLLABORATOR"].includes(source.association || "")) {
       if (grant) {
         grants.add((grant[1] || grant[2]).toLowerCase());
         add("maintainer_grant");
@@ -152,9 +142,7 @@ export const applyContext = (
   } else if (evidence.some((item) => item.kind === "open_pr")) {
     candidate.eligible = false;
     candidate.claim_state = "competing_pr_detected";
-    candidate.reasons.push(
-      "Confirmed open competing PR with a closing reference.",
-    );
+    candidate.reasons.push("Confirmed open competing PR with a closing reference.");
   } else if (claims.confirmed) {
     candidate.eligible = false;
     candidate.claim_state = "ineligible";
@@ -163,8 +151,7 @@ export const applyContext = (
     );
   } else if (claims.possible) candidate.claim_state = "possibly_claimed";
   else if (claims.wait) candidate.claim_state = "maintainer_approval_needed";
-  else if (candidate.uncertainty.length)
-    candidate.claim_state = "eligibility_uncertain";
+  else if (candidate.uncertainty.length) candidate.claim_state = "eligibility_uncertain";
   else candidate.claim_state = "candidate_for_claim_request";
   return candidate;
 };

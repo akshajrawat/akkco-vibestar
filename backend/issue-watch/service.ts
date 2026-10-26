@@ -4,29 +4,17 @@ import { AdeError, now } from "../domain";
 import type { Engine } from "../execution/engine";
 import { GitHubClient } from "../github/client";
 import { GitHubReadPool, IssueSearch } from "../github/issue-search";
-import { Usage } from "../execution/usage";
+import { Usage } from "../execution/output/usage";
 import { readLogTail } from "../storage/logs";
 import { IssueWatchStore } from "./store";
 import { IssueWatchScanner } from "./scan";
 import { IssueWatchSemantic } from "./semantic";
-import {
-  ScanInput,
-  WatchSaveInput,
-  WatchUpdateInput,
-  type WatchScan,
-} from "./contracts";
-import {
-  confirmConfiguration,
-  digest,
-  previewRules,
-  repositoryName,
-} from "./rules";
+import { ScanInput, WatchSaveInput, WatchUpdateInput, type WatchScan } from "./contracts";
+import { confirmConfiguration, digest, previewRules, repositoryName } from "./rules";
 
 const watchInput = z.object({ watch_id: z.string().uuid() }).strict();
 const scanOwner = watchInput.extend({ scan_id: z.string().uuid() }).strict();
-const candidateOwner = scanOwner
-  .extend({ issue_id: z.string().min(1).max(256) })
-  .strict();
+const candidateOwner = scanOwner.extend({ issue_id: z.string().min(1).max(256) }).strict();
 const page = z.object({
   limit: z.number().int().min(1).max(100).default(50),
   before: z.string().max(100).optional(),
@@ -95,8 +83,7 @@ export class IssueWatchService {
     });
   private assertAvailable = () => {
     this.engine.assertAvailable();
-    if (this.stopped)
-      throw new AdeError("closed", "Issue Watch is shutting down.");
+    if (this.stopped) throw new AdeError("closed", "Issue Watch is shutting down.");
   };
   save = (input: unknown, update = false) => {
     this.assertAvailable();
@@ -105,11 +92,7 @@ export class IssueWatchService {
     const repository = repositoryName(p.repository);
     const preview = confirmConfiguration(repository, p.configuration);
     const requestDigest = digest({ ...p, repository, request_id: undefined });
-    const existing = this.store.existingRequest(
-      p.request_id,
-      requestDigest,
-      "revision",
-    );
+    const existing = this.store.existingRequest(p.request_id, requestDigest, "revision");
     if (existing)
       return Promise.resolve({
         watch: this.store.get(existing.watch_id),
@@ -118,10 +101,7 @@ export class IssueWatchService {
     const pending = this.saving.get(p.request_id);
     if (pending) {
       if (pending.digest !== requestDigest)
-        throw new AdeError(
-          "idempotency",
-          "Pending request identity has different content.",
-        );
+        throw new AdeError("idempotency", "Pending request identity has different content.");
       return pending.promise;
     }
     const controller = new AbortController();
@@ -188,13 +168,8 @@ export class IssueWatchService {
       intent,
       parentId,
     });
-    const existing = this.store.existingRequest(
-      p.request_id,
-      requestDigest,
-      "scan",
-    );
-    if (existing)
-      return { operation_id: existing.scan_id!, scan_id: existing.scan_id! };
+    const existing = this.store.existingRequest(p.request_id, requestDigest, "scan");
+    if (existing) return { operation_id: existing.scan_id!, scan_id: existing.scan_id! };
     const watch = this.store.get(p.watch_id);
     const revision = this.store.revision(watch.id, p.expected_revision);
     if (p.instruction_override) {
@@ -224,19 +199,14 @@ export class IssueWatchService {
         );
       if (
         intent === "retry" &&
-        !["failed", "blocked", "cancelled", "interrupted"].includes(
-          parent.status,
-        )
+        !["failed", "blocked", "cancelled", "interrupted"].includes(parent.status)
       )
         throw new AdeError(
           "invalid_state",
           "Retry requires a failed, blocked, cancelled or interrupted attempt.",
         );
       if (intent === "continue" && parent.status !== "partial")
-        throw new AdeError(
-          "invalid_state",
-          "Continue requires a partial attempt.",
-        );
+        throw new AdeError("invalid_state", "Continue requires a partial attempt.");
     }
     if (p.candidate_ids) {
       if (new Set(p.candidate_ids).size !== p.candidate_ids.length)
@@ -291,14 +261,11 @@ export class IssueWatchService {
         operation_id: reservation.scan.id,
         scan_id: reservation.scan.id,
       };
-    if (
-      !watchProviderSupport[revision.configuration.model.provider].supported
-    ) {
+    if (!watchProviderSupport[revision.configuration.model.provider].supported) {
       scan.status = "blocked";
       scan.phase = "Unsupported provider";
       scan.ended_at = now();
-      scan.error =
-        watchProviderSupport[revision.configuration.model.provider].reason;
+      scan.error = watchProviderSupport[revision.configuration.model.provider].reason;
       this.store.finish(scan, [], watch.last_complete_scan_id);
       this.changed(scan);
       return { operation_id: scan.id, scan_id: scan.id };
@@ -338,8 +305,7 @@ export class IssueWatchService {
   cancel = async (watchId: string, scanId: string) => {
     const scan = this.store.scan(watchId, scanId);
     const active = this.active.get(scanId);
-    if (!active || !["running", "cancelling"].includes(scan.status))
-      return scan;
+    if (!active || !["running", "cancelling"].includes(scan.status)) return scan;
     active.scan.status = "cancelling";
     active.scan.phase = "Cancelling";
     this.store.saveScan(active.scan);
@@ -390,8 +356,7 @@ export class IssueWatchService {
               error: null,
             };
           } catch (error) {
-            if (!(error instanceof AdeError && error.kind === "corrupt_record"))
-              throw error;
+            if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
             return {
               ...watch,
               revision: null,
@@ -425,11 +390,7 @@ export class IssueWatchService {
           .strict()
           .parse(input);
         this.assertAvailable();
-        const result = this.store.archive(
-          p.watch_id,
-          p.expected_revision,
-          p.archived,
-        );
+        const result = this.store.archive(p.watch_id, p.expected_revision, p.archived);
         this.changed();
         return result;
       }
@@ -440,11 +401,7 @@ export class IssueWatchService {
         const p = scanOwner
           .extend({
             request_id: z.string().uuid(),
-            candidate_ids: z
-              .array(z.string().min(1).max(256))
-              .min(1)
-              .max(200)
-              .optional(),
+            candidate_ids: z.array(z.string().min(1).max(256)).min(1).max(200).optional(),
           })
           .strict()
           .parse(input);
@@ -462,9 +419,7 @@ export class IssueWatchService {
             ...(parent.instruction_override
               ? { instruction_override: parent.instruction_override }
               : {}),
-            ...(parent.candidate_ids
-              ? { candidate_ids: parent.candidate_ids }
-              : {}),
+            ...(parent.candidate_ids ? { candidate_ids: parent.candidate_ids } : {}),
             ...(p.candidate_ids ? { candidate_ids: p.candidate_ids } : {}),
           },
           method,
@@ -503,9 +458,7 @@ export class IssueWatchService {
             )[0] || null,
           usage: new Usage(this.engine.db)
             .list()
-            .filter(
-              (row) => row.watch_id === p.watch_id && row.scan_id === p.scan_id,
-            ),
+            .filter((row) => row.watch_id === p.watch_id && row.scan_id === p.scan_id),
         };
       }
       case "events":
@@ -529,18 +482,13 @@ export class IssueWatchService {
             p.watch_id,
           ).length
         )
-          throw new AdeError(
-            "isolation",
-            "Utility run does not belong to this watch and scan.",
-          );
+          throw new AdeError("isolation", "Utility run does not belong to this watch and scan.");
         if (method === "logs")
-          return readLogTail(
-            this.engine.root,
-            `issue-watch-${p.scan_id}`,
-            p.run_id,
-            p.stream,
-            { before: p.before, after: p.after, search: p.search },
-          );
+          return readLogTail(this.engine.root, `issue-watch-${p.scan_id}`, p.run_id, p.stream, {
+            before: p.before,
+            after: p.after,
+            search: p.search,
+          });
         const rows = this.engine.db.all<{
           id: number;
           run_id: string;
@@ -567,17 +515,11 @@ export class IssueWatchService {
       }
       case "candidateDetail": {
         const p = candidateOwner.parse(input);
-        const candidate = this.store.candidate(
-          p.watch_id,
-          p.scan_id,
-          p.issue_id,
-        );
+        const candidate = this.store.candidate(p.watch_id, p.scan_id, p.issue_id);
         return {
           candidate: {
             ...candidate,
-            dismissed_at:
-              this.store.dispositions(p.watch_id).get(candidate.issue.id) ??
-              null,
+            dismissed_at: this.store.dispositions(p.watch_id).get(candidate.issue.id) ?? null,
           },
           sources: this.store
             .sources(p.watch_id, p.scan_id)
@@ -592,11 +534,7 @@ export class IssueWatchService {
         const source = this.store
           .sources(p.watch_id, p.scan_id)
           .find((item) => item.key === p.source_key);
-        if (!source)
-          throw new AdeError(
-            "not_found",
-            "Source does not belong to this scan.",
-          );
+        if (!source) throw new AdeError("not_found", "Source does not belong to this scan.");
         return source;
       }
       case "dismissCandidate": {
@@ -623,11 +561,7 @@ export class IssueWatchService {
     await Promise.allSettled(
       [...this.active.values()]
         .map((active) => active.promise)
-        .concat(
-          [...this.saving.values()].map((saving) =>
-            saving.promise.then(() => {}),
-          ),
-        ),
+        .concat([...this.saving.values()].map((saving) => saving.promise.then(() => {}))),
     );
   };
 }

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { verificationSummary } from "../../backend/execution/verification";
-import { missingVerificationChecks } from "../../backend/execution/verification-recovery";
+import { verificationSummary } from "../../backend/execution/verification/verification";
+import { missingVerificationChecks } from "../../backend/execution/verification/verification-recovery";
 
 const check = (name: string, command: string, kind = "check") => ({
   name,
@@ -27,34 +27,24 @@ it.each([
   "bash -c 'node --check script.js'",
   "sh -c 'node --check script.js'",
   JSON.stringify(["/bin/bash", "-lc", "node --check script.js"]),
-])(
-  "links an exact recorded shell wrapper to the reported check: %s",
-  (command) => {
-    const result = verificationSummary(
-      { verification: [check("Syntax", "node --check script.js")] },
-      [observed(command)],
-    );
-    expect(result).toMatchObject({ canReview: true });
-    expect(result.checks).toMatchObject([
-      { command, outcome: "passed", source: "observed_command" },
-    ]);
-  },
-);
+])("links an exact recorded shell wrapper to the reported check: %s", (command) => {
+  const result = verificationSummary(
+    { verification: [check("Syntax", "node --check script.js")] },
+    [observed(command)],
+  );
+  expect(result).toMatchObject({ canReview: true });
+  expect(result.checks).toMatchObject([{ command, outcome: "passed", source: "observed_command" }]);
+});
 
 it("links the complete logged script without dropping pipelines or granting shell execution to recovery", () => {
-  const script =
-    "set -o pipefail && node --check script.js 2>&1 | tee /tmp/syntax.log";
+  const script = "set -o pipefail && node --check script.js 2>&1 | tee /tmp/syntax.log";
   const command = `/bin/bash -lc '${script}'`;
   const report = { verification: [check("Syntax", script)] };
   expect(verificationSummary(report, [observed(command)]).canReview).toBe(true);
   expect(
-    verificationSummary(report, [
-      observed("/bin/bash -lc 'node --check script.js'"),
-    ]).canReview,
+    verificationSummary(report, [observed("/bin/bash -lc 'node --check script.js'")]).canReview,
   ).toBe(false);
-  const failed = verificationSummary(report, [
-    observed(command, 1, "SyntaxError: Invalid token"),
-  ]);
+  const failed = verificationSummary(report, [observed(command, 1, "SyntaxError: Invalid token")]);
   expect(failed).toMatchObject({ outcome: "failed", canReviewWithGaps: false });
   expect(missingVerificationChecks(failed)).toEqual([]);
 });
@@ -62,10 +52,9 @@ it("links the complete logged script without dropping pipelines or granting shel
 it("preserves literal embedded quotes and expansions inside a quoted script", () => {
   const script = "node -e 'console.log(`${process.version}: \"available\"`)'";
   const command = "/bin/bash -lc '" + script.replaceAll("'", "'\"'\"'") + "'";
-  const result = verificationSummary(
-    { verification: [check("Inventory", script, "setup")] },
-    [observed(command)],
-  );
+  const result = verificationSummary({ verification: [check("Inventory", script, "setup")] }, [
+    observed(command),
+  ]);
   expect(result.checks[0]).toMatchObject({
     outcome: "passed",
     source: "observed_command",
@@ -119,11 +108,7 @@ it("recognizes curl DNS failure and keeps dependent browser setup under that roo
   };
   const result = verificationSummary(report, [
     observed("/bin/bash -lc 'node --check script.js'"),
-    observed(
-      `/bin/bash -lc '${dns}'`,
-      6,
-      "curl: (6) Could not resolve host: registry.npmjs.org",
-    ),
+    observed(`/bin/bash -lc '${dns}'`, 6, "curl: (6) Could not resolve host: registry.npmjs.org"),
   ]);
   expect(result).toMatchObject({
     outcome: "blocked",
@@ -133,17 +118,11 @@ it("recognizes curl DNS failure and keeps dependent browser setup under that roo
   expect(result.blockers).toMatchObject([
     {
       title: "DNS resolution unavailable",
-      checks: [
-        { name: "DNS preflight" },
-        { name: "Install browser" },
-        { name: "Render" },
-      ],
+      checks: [{ name: "DNS preflight" }, { name: "Install browser" }, { name: "Render" }],
     },
   ]);
   expect(result.blockers).toHaveLength(1);
-  expect(result.checks.find((check) => check.name === "Render")?.outcome).toBe(
-    "blocked",
-  );
+  expect(result.checks.find((check) => check.name === "Render")?.outcome).toBe("blocked");
 });
 
 it("does not turn a setup with an unknown prerequisite into an environmental waiver", () => {
@@ -166,9 +145,7 @@ it("does not turn a setup with an unknown prerequisite into an environmental wai
 it("keeps genuine failures ahead of DNS wording and prevents a wrapped test from being mislabeled as setup", () => {
   const result = verificationSummary(
     {
-      verification: [
-        { ...check("Tests", "npm test", "setup"), outcome: "passed" },
-      ],
+      verification: [{ ...check("Tests", "npm test", "setup"), outcome: "passed" }],
     },
     [
       observed(

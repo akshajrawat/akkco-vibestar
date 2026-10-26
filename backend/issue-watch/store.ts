@@ -25,11 +25,7 @@ export class IssueWatchStore {
     data: string,
     parse: (value: unknown) => T,
     identity?: string,
-  ) =>
-    this.db.records.decode(
-      { table, id, column: "data", source: data, identity },
-      parse,
-    );
+  ) => this.db.records.decode({ table, id, column: "data", source: data, identity }, parse);
   list = (archived = false, limit = 100, before?: string) =>
     this.db.records.list(
       "issue_watches",
@@ -43,24 +39,17 @@ export class IssueWatchStore {
       "id",
     );
   get = (id: string) => {
-    const row = this.db.all<{ data: string }>(
-      "SELECT data FROM issue_watches WHERE id=?",
-      id,
-    )[0];
+    const row = this.db.all<{ data: string }>("SELECT data FROM issue_watches WHERE id=?", id)[0];
     if (!row) throw new AdeError("not_found", "Issue Watch not found.");
     return this.decode("issue_watches", id, row.data, WatchSchema.parse, "id");
   };
-  revision = (
-    watchId: string,
-    revision = this.get(watchId).current_revision,
-  ) => {
+  revision = (watchId: string, revision = this.get(watchId).current_revision) => {
     const row = this.db.all<{ data: string }>(
       "SELECT data FROM issue_watch_revisions WHERE watch_id=? AND revision=?",
       watchId,
       revision,
     )[0];
-    if (!row)
-      throw new AdeError("not_found", "Issue Watch revision not found.");
+    if (!row) throw new AdeError("not_found", "Issue Watch revision not found.");
     const value = this.decode(
       "issue_watch_revisions",
       `${watchId}:${revision}`,
@@ -68,10 +57,7 @@ export class IssueWatchStore {
       WatchRevisionSchema.parse,
     );
     if (value.watch_id !== watchId || value.revision !== revision)
-      throw new AdeError(
-        "corrupt_record",
-        "Saved watch revision ownership is inconsistent.",
-      );
+      throw new AdeError("corrupt_record", "Saved watch revision ownership is inconsistent.");
     return value;
   };
   private saveWatch = (watch: ReturnType<IssueWatchStore["get"]>) => {
@@ -90,11 +76,7 @@ export class IssueWatchStore {
       JSON.stringify(value),
     );
   };
-  existingRequest = (
-    requestId: string,
-    requestDigest: string,
-    kind: "revision" | "scan",
-  ) => {
+  existingRequest = (requestId: string, requestDigest: string, kind: "revision" | "scan") => {
     const revision = this.db.all<{
       watch_id: string;
       revision: number;
@@ -107,10 +89,7 @@ export class IssueWatchStore {
       id: string;
       watch_id: string;
       request_digest: string;
-    }>(
-      "SELECT id,watch_id,request_digest FROM issue_watch_scans WHERE request_id=?",
-      requestId,
-    )[0];
+    }>("SELECT id,watch_id,request_digest FROM issue_watch_scans WHERE request_id=?", requestId)[0];
     const row = kind === "revision" ? revision : scan;
     if ((revision || scan) && (!row || row.request_digest !== requestDigest))
       throw new AdeError(
@@ -136,11 +115,7 @@ export class IssueWatchStore {
     expected_revision?: number;
   }) =>
     this.db.transaction(() => {
-      const existing = this.existingRequest(
-        input.request_id,
-        input.request_digest,
-        "revision",
-      );
+      const existing = this.existingRequest(input.request_id, input.request_digest, "revision");
       if (existing)
         return {
           watch: this.get(existing.watch_id),
@@ -157,10 +132,7 @@ export class IssueWatchStore {
           "Watch changed or repository identity differs. Reload the editor.",
         );
       if (previous && this.active(previous.id))
-        throw new AdeError(
-          "busy",
-          "Cancel the active scan before editing this watch.",
-        );
+        throw new AdeError("busy", "Cancel the active scan before editing this watch.");
       const time = now();
       const watch = previous
         ? {
@@ -209,15 +181,9 @@ export class IssueWatchStore {
   archive = (watchId: string, expectedRevision: number, archived: boolean) => {
     const watch = this.get(watchId);
     if (watch.current_revision !== expectedRevision)
-      throw new AdeError(
-        "stale_revision",
-        "Reload this watch before archiving it.",
-      );
+      throw new AdeError("stale_revision", "Reload this watch before archiving it.");
     if (this.active(watchId))
-      throw new AdeError(
-        "busy",
-        "Cancel the active scan before archiving this watch.",
-      );
+      throw new AdeError("busy", "Cancel the active scan before archiving this watch.");
     this.saveWatch({ ...watch, archived, updated_at: now() });
     return this.get(watchId);
   };
@@ -231,20 +197,10 @@ export class IssueWatchStore {
       watchId,
       id,
     )[0];
-    if (!row)
-      throw new AdeError("not_found", "Scan does not belong to this watch.");
-    const scan = this.decode(
-      "issue_watch_scans",
-      id,
-      row.data,
-      ScanSchema.parse,
-      "id",
-    );
+    if (!row) throw new AdeError("not_found", "Scan does not belong to this watch.");
+    const scan = this.decode("issue_watch_scans", id, row.data, ScanSchema.parse, "id");
     if (scan.watch_id !== watchId)
-      throw new AdeError(
-        "corrupt_record",
-        "Saved scan ownership is inconsistent.",
-      );
+      throw new AdeError("corrupt_record", "Saved scan ownership is inconsistent.");
     return { ...scan, status: row.status, ended_at: row.ended_at };
   };
   history = (watchId: string, limit = 50, before?: string) => {
@@ -255,9 +211,7 @@ export class IssueWatchStore {
       this.db.all<{ id: string; data: string }>(
         `SELECT id,data FROM issue_watch_scans WHERE watch_id=? ${cursor ? "AND (started_at<? OR (started_at=? AND rowid<(SELECT rowid FROM issue_watch_scans WHERE id=? AND watch_id=?)))" : ""} ORDER BY started_at DESC,rowid DESC LIMIT ?`,
         watchId,
-        ...(cursor
-          ? [cursor.started_at, cursor.started_at, cursor.id, watchId]
-          : []),
+        ...(cursor ? [cursor.started_at, cursor.started_at, cursor.id, watchId] : []),
         limit,
       ),
       ScanSchema.parse,
@@ -281,15 +235,9 @@ export class IssueWatchStore {
         };
       const watch = this.get(scan.watch_id);
       if (watch.current_revision !== scan.revision)
-        throw new AdeError(
-          "stale_revision",
-          "Reload this watch before scanning.",
-        );
+        throw new AdeError("stale_revision", "Reload this watch before scanning.");
       if (watch.archived)
-        throw new AdeError(
-          "invalid_state",
-          "Restore this watch before scanning.",
-        );
+        throw new AdeError("invalid_state", "Restore this watch before scanning.");
       if (this.active(watch.id))
         throw new AdeError("busy", "This watch already has an active scan.");
       if (scan.parent_scan_id) this.scan(watch.id, scan.parent_scan_id);
@@ -331,11 +279,7 @@ export class IssueWatchStore {
   reserveSemantic = (scan: WatchScan, contextHash: string) =>
     this.db.transaction(() => {
       const saved = this.scan(scan.watch_id, scan.id);
-      if (
-        saved.status !== "running" ||
-        saved.semantic_attempts !== 0 ||
-        saved.utility_run_id
-      )
+      if (saved.status !== "running" || saved.semantic_attempts !== 0 || saved.utility_run_id)
         throw new AdeError(
           "invocation_budget",
           "This scan has no unused semantic invocation slot. Continue or retry requires a new explicit attempt.",
@@ -368,12 +312,7 @@ export class IssueWatchStore {
           scanId,
         )
         .map((row) =>
-          this.decode(
-            "issue_watch_sources",
-            `${scanId}:${row.id}`,
-            row.data,
-            SourceSchema.parse,
-          ),
+          this.decode("issue_watch_sources", `${scanId}:${row.id}`, row.data, SourceSchema.parse),
         );
     return this.db.records.list(
       "issue_watch_sources",
@@ -416,25 +355,15 @@ export class IssueWatchStore {
       scanId,
       issueId,
     )[0];
-    if (!row)
-      throw new AdeError(
-        "not_found",
-        "Candidate does not belong to this scan.",
-      );
+    if (!row) throw new AdeError("not_found", "Candidate does not belong to this scan.");
     const value = this.decode(
       "issue_watch_candidates",
       `${scanId}:${issueId}`,
       row.data,
       CandidateSchema.parse,
     );
-    if (
-      value.issue.id !== issueId ||
-      value.issue.repository_id !== this.get(watchId).repository.id
-    )
-      throw new AdeError(
-        "corrupt_record",
-        "Candidate identity is inconsistent.",
-      );
+    if (value.issue.id !== issueId || value.issue.repository_id !== this.get(watchId).repository.id)
+      throw new AdeError("corrupt_record", "Candidate identity is inconsistent.");
     return value;
   };
   private candidateLocation = (watchId: string, issueId: string) => {
@@ -444,11 +373,7 @@ export class IssueWatchStore {
       watchId,
       issueId,
     )[0];
-    if (!row)
-      throw new AdeError(
-        "not_found",
-        "Candidate has no saved identity in this watch.",
-      );
+    if (!row) throw new AdeError("not_found", "Candidate has no saved identity in this watch.");
     return row.scan_id;
   };
   savedCandidate = (watchId: string, issueId: string) =>
@@ -462,10 +387,7 @@ export class IssueWatchStore {
         )
         .map((row) => [row.issue_id, row.dismissed_at]),
     );
-  summaries = (
-    candidates: WatchCandidate[],
-    watchId: string,
-  ): CandidateSummary[] => {
+  summaries = (candidates: WatchCandidate[], watchId: string): CandidateSummary[] => {
     const dispositions = this.dispositions(watchId);
     return candidates.map((candidate) => {
       const { issue: snapshot, evidence, source_keys, ...rest } = candidate;
@@ -488,9 +410,7 @@ export class IssueWatchStore {
         watchId,
       )
       .flatMap((row) => {
-        const decode = strict
-          ? this.db.records.decode
-          : this.db.records.tryDecode;
+        const decode = strict ? this.db.records.decode : this.db.records.tryDecode;
         const candidate = decode(
           {
             table: "issue_watch_results",
@@ -516,12 +436,7 @@ export class IssueWatchStore {
       issueId,
     )[0];
     const candidate = row
-      ? this.decode(
-          "issue_watch_results",
-          `${watchId}:${issueId}`,
-          row.data,
-          CandidateSchema.parse,
-        )
+      ? this.decode("issue_watch_results", `${watchId}:${issueId}`, row.data, CandidateSchema.parse)
       : this.candidate(watchId, sourceScan, issueId);
     candidate.dismissed_at = dismissed ? now() : null;
     if (!row) {
@@ -557,10 +472,7 @@ export class IssueWatchStore {
   compare = (scan: WatchScan, candidates: WatchCandidate[]) => {
     const watch = this.get(scan.watch_id);
     const previous = new Map(
-      this.results(watch.id, true).map((candidate) => [
-        candidate.issue.id,
-        candidate,
-      ]),
+      this.results(watch.id, true).map((candidate) => [candidate.issue.id, candidate]),
     );
     const dispositions = this.dispositions(watch.id);
     const baseline = watch.last_complete_scan_id
@@ -591,14 +503,11 @@ export class IssueWatchStore {
                 ? "existing_match"
                 : matchedBefore
                   ? "reentered"
-                  : candidate.issue.created_at >
-                      (baseline.ended_at || baseline.started_at)
+                  : candidate.issue.created_at > (baseline.ended_at || baseline.started_at)
                     ? "new_issue"
                     : "newly_matching";
       if (candidate.classification === "newly_matching" && !old)
-        candidate.reasons.push(
-          "Newly discovered match; prior eligibility is unknown.",
-        );
+        candidate.reasons.push("Newly discovered match; prior eligibility is unknown.");
       if (candidate.classification === "newly_matching" && old) {
         const removed = old.issue.labels.filter(
           (label) =>
@@ -607,9 +516,7 @@ export class IssueWatchStore {
             ),
         );
         if (removed.length)
-          candidate.reasons.push(
-            `Previously observed labels removed: ${removed.join(", ")}.`,
-          );
+          candidate.reasons.push(`Previously observed labels removed: ${removed.join(", ")}.`);
         if (old.reasons.some((reason) => reason.includes("excluded tracker")))
           candidate.reasons.push(
             "Previously observed tracker membership no longer excludes this issue in the current verified source set.",
@@ -618,11 +525,7 @@ export class IssueWatchStore {
     }
     return candidates;
   };
-  finish = (
-    scan: WatchScan,
-    candidates: WatchCandidate[],
-    expectedBaseline: string | null,
-  ) =>
+  finish = (scan: WatchScan, candidates: WatchCandidate[], expectedBaseline: string | null) =>
     this.db.transaction(() => {
       const watch = this.get(scan.watch_id);
       if (
@@ -633,12 +536,10 @@ export class IssueWatchStore {
           "stale_revision",
           "Watch revision or baseline changed before completion.",
         );
-      for (const candidate of this.compare(scan, candidates))
-        this.saveCandidate(scan, candidate);
+      for (const candidate of this.compare(scan, candidates)) this.saveCandidate(scan, candidate);
       scan.summary = {};
       for (const candidate of candidates)
-        scan.summary[candidate.classification] =
-          (scan.summary[candidate.classification] || 0) + 1;
+        scan.summary[candidate.classification] = (scan.summary[candidate.classification] || 0) + 1;
       this.saveScan(scan);
       if (scan.status !== "completed") return;
       for (const candidate of candidates) {
@@ -655,9 +556,7 @@ export class IssueWatchStore {
           watch.id,
           candidate.issue.id,
           scan.id,
-          isMatch(candidate)
-            ? scan.id
-            : old?.last_complete_match_scan_id || null,
+          isMatch(candidate) ? scan.id : old?.last_complete_match_scan_id || null,
           candidate.classification,
           candidate.dismissed_at,
           old?.first_seen || scan.started_at,
@@ -686,8 +585,7 @@ export class IssueWatchStore {
             "Core stopped before completion. Collected evidence is retained; retry requires an explicit action.",
         });
       } catch (error) {
-        if (!(error instanceof AdeError && error.kind === "corrupt_record"))
-          throw error;
+        if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
         this.db.run(
           "UPDATE issue_watch_scans SET status='interrupted',ended_at=? WHERE id=?",
           now(),

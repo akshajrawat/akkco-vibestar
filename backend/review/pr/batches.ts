@@ -61,14 +61,11 @@ export class PRAnalysisBatches {
     private readonly engine: Engine,
     private readonly scheduler: Scheduler,
   ) {
-    for (const batch of this.list().filter(
-      (batch) => batch.status === "running",
-    )) {
+    for (const batch of this.list().filter((batch) => batch.status === "running")) {
       batch.status = "interrupted";
       batch.ended_at = now();
       for (const item of batch.items)
-        if (["pending", "running"].includes(item.status))
-          item.status = "interrupted";
+        if (["pending", "running"].includes(item.status)) item.status = "interrupted";
       this.save(batch);
     }
   }
@@ -104,14 +101,10 @@ export class PRAnalysisBatches {
     const p = BatchSelectionSchema.parse(input);
     this.validateSelection(p.job_ids);
     const controller = new AbortController();
-    const signal = AbortSignal.any([
-      controller.signal,
-      AbortSignal.timeout(120000),
-    ]);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]);
     const promise = Promise.resolve().then(async () => {
       let reusable = 0;
-      for (const id of p.job_ids)
-        if (await this.scheduler.inspectForBatch(id, signal)) reusable++;
+      for (const id of p.job_ids) if (await this.scheduler.inspectForBatch(id, signal)) reusable++;
       signal.throwIfAborted();
       return { selected: p.job_ids.length, reusable, checked_at: now() };
     });
@@ -154,10 +147,7 @@ export class PRAnalysisBatches {
       return batch;
     }
     if (this.active.size)
-      throw new AdeError(
-        "busy",
-        "Another PR batch is already running. Cancel or finish it first.",
-      );
+      throw new AdeError("busy", "Another PR batch is already running. Cancel or finish it first.");
     const batch: PRBatch = {
       id: p.request_id,
       digest,
@@ -198,34 +188,24 @@ export class PRAnalysisBatches {
           operation.jobId = item.job_id;
           this.save(batch);
           try {
-            const session = await this.scheduler.analyzeBatchItem(
-              item.job_id,
-              item.analysis_id,
-              {
-                configuration: {
-                  ...batch.configuration.config,
-                  provider: batch.configuration.provider,
-                },
-                authorizeInference: () => {
-                  if (operation.cancelled)
-                    throw new AdeError(
-                      "cancelled",
-                      "Batch cancelled before inference.",
-                    );
-                  if (batch.analyses_used >= batch.max_analyses)
-                    throw new AdeError(
-                      "analysis_cap",
-                      "The authorized AI analysis cap is reached. Current GitHub evidence is retained; authorize another analysis explicitly.",
-                    );
-                  batch.analyses_used++;
-                  this.save(batch);
-                },
+            const session = await this.scheduler.analyzeBatchItem(item.job_id, item.analysis_id, {
+              configuration: {
+                ...batch.configuration.config,
+                provider: batch.configuration.provider,
               },
-            );
-            item.status =
-              session?.status === "running" || !session
-                ? "failed"
-                : session.status;
+              authorizeInference: () => {
+                if (operation.cancelled)
+                  throw new AdeError("cancelled", "Batch cancelled before inference.");
+                if (batch.analyses_used >= batch.max_analyses)
+                  throw new AdeError(
+                    "analysis_cap",
+                    "The authorized AI analysis cap is reached. Current GitHub evidence is retained; authorize another analysis explicitly.",
+                  );
+                batch.analyses_used++;
+                this.save(batch);
+              },
+            });
+            item.status = session?.status === "running" || !session ? "failed" : session.status;
             item.error = session?.error || null;
           } catch (error) {
             item.status = "failed";
@@ -234,8 +214,7 @@ export class PRAnalysisBatches {
           this.save(batch);
         }
         batch.status = operation.cancelled ? "cancelled" : "completed";
-        for (const item of batch.items)
-          if (item.status === "pending") item.status = "cancelled";
+        for (const item of batch.items) if (item.status === "pending") item.status = "cancelled";
       } finally {
         batch.ended_at = now();
         this.save(batch);

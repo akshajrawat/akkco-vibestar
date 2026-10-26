@@ -10,7 +10,7 @@ import {
   fixtureRepository,
   FixtureProvider,
   waitForTask,
-} from "../fixtures";
+} from "../helpers/fixtures";
 
 const settings = {
   ...defaultSettings,
@@ -59,57 +59,35 @@ it("keeps saved instructions independent of retry, feedback and approval across 
       requestId,
     );
     expect(
-      engine.followUp(
-        task.id,
-        "SAVED_ONLY_HELPER",
-        savedConfiguration,
-        true,
-        requestId,
-      ).message.id,
+      engine.followUp(task.id, "SAVED_ONLY_HELPER", savedConfiguration, true, requestId).message.id,
     ).toBe(saved.message.id);
-    expect(() =>
-      engine.followUp(task.id, "Changed request", undefined, true, requestId),
-    ).toThrow("different instruction");
+    expect(() => engine.followUp(task.id, "Changed request", undefined, true, requestId)).toThrow(
+      "different instruction",
+    );
     expect(engine.db.detail(task.id).messages).toHaveLength(1);
     expect(engine.db.detail(task.id).runs).toHaveLength(1);
     await engine.close();
     engine = await createFixtureEngine(root, () => new FixtureProvider());
     await engine.retry(task.id, 1);
     await gate("antigravity_plan");
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain(
-      "SAVED_ONLY_HELPER",
-    );
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain("SAVED_ONLY_HELPER");
     const feedbackRequest = randomUUID();
-    const saveFailure = vi
-      .spyOn(engine.db, "saveTask")
-      .mockImplementationOnce(() => {
-        throw new Error("Persistence interrupted");
-      });
+    const saveFailure = vi.spyOn(engine.db, "saveTask").mockImplementationOnce(() => {
+      throw new Error("Persistence interrupted");
+    });
     expect(() =>
-      engine.followUp(
-        task.id,
-        "FEEDBACK_NOW",
-        undefined,
-        false,
-        feedbackRequest,
-      ),
+      engine.followUp(task.id, "FEEDBACK_NOW", undefined, false, feedbackRequest),
     ).toThrow("Persistence interrupted");
     saveFailure.mockRestore();
     expect(
-      engine.db
-        .detail(task.id)
-        .messages.some((message) => message.content === "FEEDBACK_NOW"),
+      engine.db.detail(task.id).messages.some((message) => message.content === "FEEDBACK_NOW"),
     ).toBe(false);
     expect(engine.db.artifact(task.id, 1).summary).toBe("Fixture plan");
     expect(engine.db.task(task.id).approval_gate).toBe("antigravity_plan");
     engine.followUp(task.id, "FEEDBACK_NOW", undefined, false, feedbackRequest);
     await gate("antigravity_plan");
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "FEEDBACK_NOW",
-    );
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain(
-      "SAVED_ONLY_HELPER",
-    );
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain("FEEDBACK_NOW");
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain("SAVED_ONLY_HELPER");
     await expect(engine.approveStage(task.id)).rejects.toThrow("choose");
     await expect(
       engine.approveStage(task.id, {
@@ -129,13 +107,9 @@ it("keeps saved instructions independent of retry, feedback and approval across 
       message_ids: [saved.message.id],
     });
     await gate("codex_plan");
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain(
-      "SAVED_ONLY_HELPER",
-    );
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain("SAVED_ONLY_HELPER");
     expect(
-      engine.db
-        .detail(task.id)
-        .messages.find((message) => message.id === saved.message.id)?.status,
+      engine.db.detail(task.id).messages.find((message) => message.id === saved.message.id)?.status,
     ).toBe("draft");
     await engine.approveStage(task.id, {
       disposition: "include_next_stage",
@@ -150,9 +124,7 @@ it("keeps saved instructions independent of retry, feedback and approval across 
       status: "delivered",
       run_id: engine.db.detail(task.id).runs.at(-1)?.id,
     });
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "SAVED_ONLY_HELPER",
-    );
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain("SAVED_ONLY_HELPER");
     expect(engine.db.detail(task.id).runs.at(-1)?.provider).toBe("codex");
     const second = engine.followUp(
       task.id,
@@ -161,13 +133,7 @@ it("keeps saved instructions independent of retry, feedback and approval across 
       true,
       randomUUID(),
     );
-    const third = engine.followUp(
-      task.id,
-      "LEAVE_THIS_SAVED",
-      undefined,
-      true,
-      randomUUID(),
-    );
+    const third = engine.followUp(task.id, "LEAVE_THIS_SAVED", undefined, true, randomUUID());
     engine.sendSavedMessage(task.id, second.message.id, {
       provider: "codex",
       config: settings.codex_implementation,
@@ -177,24 +143,12 @@ it("keeps saved instructions independent of retry, feedback and approval across 
     expect(
       engine.db
         .detail(task.id)
-        .messages.filter(
-          (message) => message.content === "SEND_THIS_EXACT_MESSAGE",
-        ),
+        .messages.filter((message) => message.content === "SEND_THIS_EXACT_MESSAGE"),
     ).toHaveLength(1);
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "SEND_THIS_EXACT_MESSAGE",
-    );
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain(
-      "LEAVE_THIS_SAVED",
-    );
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain("SEND_THIS_EXACT_MESSAGE");
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).not.toContain("LEAVE_THIS_SAVED");
     const count = engine.db.detail(task.id).runs.length;
-    engine.followUp(
-      task.id,
-      "SAVED_ONLY_HELPER",
-      savedConfiguration,
-      true,
-      requestId,
-    );
+    engine.followUp(task.id, "SAVED_ONLY_HELPER", savedConfiguration, true, requestId);
     expect(engine.db.detail(task.id).runs).toHaveLength(count);
     await engine.approveStage(task.id, {
       disposition: "keep_saved",

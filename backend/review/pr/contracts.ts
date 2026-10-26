@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { StageConfigSchema, type Settings } from "../../domain";
-import {
-  PullRequestStateSchema,
-  type PullRequestState,
-} from "../../scheduled/contracts";
+import { PullRequestStateSchema, type PullRequestState } from "../../scheduled/contracts";
 
 export const ReviewAnalysisSchema = z
   .object({
@@ -54,34 +51,25 @@ export const ReviewAnalysisSchema = z
   })
   .strict();
 
-export type ReviewObservation = z.infer<
-  typeof ReviewAnalysisSchema
->["observations"][number];
+export type ReviewObservation = z.infer<typeof ReviewAnalysisSchema>["observations"][number];
 
-export const ReviewActionSchema =
-  ReviewAnalysisSchema.shape.observations.element
-    .extend({
-      id: z.string().uuid(),
-      reviewer: z.string(),
-      sourceUrl: z.string().nullable(),
-      sourceThreadId: z.string().nullable(),
-      threadResolved: z.boolean().nullable(),
-      outdated: z.boolean().nullable(),
-      codeStatus: z.literal("unverified"),
-    })
-    .strict();
+export const ReviewActionSchema = ReviewAnalysisSchema.shape.observations.element
+  .extend({
+    id: z.string().uuid(),
+    reviewer: z.string(),
+    sourceUrl: z.string().nullable(),
+    sourceThreadId: z.string().nullable(),
+    threadResolved: z.boolean().nullable(),
+    outdated: z.boolean().nullable(),
+    codeStatus: z.literal("unverified"),
+  })
+  .strict();
 export type ReviewAction = z.infer<typeof ReviewActionSchema>;
 
 export interface PRAnalysisSession {
   id: string;
   job_id: string;
-  status:
-    | "running"
-    | "completed"
-    | "partial"
-    | "failed"
-    | "cancelled"
-    | "interrupted";
+  status: "running" | "completed" | "partial" | "failed" | "cancelled" | "interrupted";
   started_at: string;
   ended_at: string | null;
   phase: string;
@@ -103,14 +91,7 @@ export const PRAnalysisSessionSchema = z
   .object({
     id: z.string(),
     job_id: z.string(),
-    status: z.enum([
-      "running",
-      "completed",
-      "partial",
-      "failed",
-      "cancelled",
-      "interrupted",
-    ]),
+    status: z.enum(["running", "completed", "partial", "failed", "cancelled", "interrupted"]),
     started_at: z.string().optional(),
     ended_at: z.string().nullable().optional(),
     phase: z.string().optional(),

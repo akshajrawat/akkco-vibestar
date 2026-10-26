@@ -1,16 +1,7 @@
 import { readWorktreeOwner } from "../workspace/ownership";
 import { z } from "zod";
 import { gitCapture, gitChecked, gitExecute } from "../workspace/git-command";
-import {
-  lstat,
-  readdir,
-  realpath,
-  rm,
-  mkdir,
-  writeFile,
-  cp,
-  chmod,
-} from "node:fs/promises";
+import { lstat, readdir, realpath, rm, mkdir, writeFile, cp, chmod } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import BetterSqlite3 from "better-sqlite3";
 import { join } from "node:path";
@@ -33,8 +24,7 @@ const directorySize = async (path: string): Promise<number> => {
     if (entry.isSymbolicLink()) return entry.size;
     if (!entry.isDirectory()) return entry.size;
     let size = 0;
-    for (const name of await readdir(path))
-      size += await directorySize(join(path, name));
+    for (const name of await readdir(path)) size += await directorySize(join(path, name));
     return size;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
@@ -46,20 +36,11 @@ export class StorageService {
   private remove = async (relative: string) => {
     const path = await managedPath(this.engine.root, relative);
     if (!inside(this.engine.root, path))
-      throw new AdeError(
-        "isolation",
-        "Cleanup path is outside Vibestar storage",
-      );
+      throw new AdeError("isolation", "Cleanup path is outside Vibestar storage");
     try {
       const entry = await lstat(path);
-      if (
-        !entry.isSymbolicLink() &&
-        !inside(this.engine.root, await realpath(path))
-      )
-        throw new AdeError(
-          "isolation",
-          "Cleanup path resolves outside Vibestar storage",
-        );
+      if (!entry.isSymbolicLink() && !inside(this.engine.root, await realpath(path)))
+        throw new AdeError("isolation", "Cleanup path resolves outside Vibestar storage");
       await rm(path, { recursive: true, force: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -79,8 +60,7 @@ export class StorageService {
     const sizes = Object.fromEntries(
       await Promise.all(
         names.map(
-          async (name) =>
-            [name, await directorySize(join(this.engine.root, name))] as const,
+          async (name) => [name, await directorySize(join(this.engine.root, name))] as const,
         ),
       ),
     );
@@ -88,20 +68,13 @@ export class StorageService {
       root: this.engine.root,
       sizes,
       database:
-        (await directorySize(
-          join(this.engine.root, "state", "vibestar.sqlite"),
-        )) +
-        (await directorySize(
-          join(this.engine.root, "state", "vibestar.sqlite-wal"),
-        )) +
-        (await directorySize(
-          join(this.engine.root, "state", "vibestar.sqlite-shm"),
-        )),
+        (await directorySize(join(this.engine.root, "state", "vibestar.sqlite"))) +
+        (await directorySize(join(this.engine.root, "state", "vibestar.sqlite-wal"))) +
+        (await directorySize(join(this.engine.root, "state", "vibestar.sqlite-shm"))),
       total: Object.values(sizes).reduce((n, value) => n + value, 0),
       measured_at: now(),
-      external_repositories: this.engine.db
-        .repositories()
-        .filter((r) => r.source === "imported").length,
+      external_repositories: this.engine.db.repositories().filter((r) => r.source === "imported")
+        .length,
     };
   };
   clear = (kind: "logs" | "cache") =>
@@ -119,15 +92,10 @@ export class StorageService {
       artifacts: boolean;
       history: boolean;
     },
-  ) =>
-    this.engine.withTaskMaintenance(id, () =>
-      this.cleanupTaskData(id, options),
-    );
+  ) => this.engine.withTaskMaintenance(id, () => this.cleanupTaskData(id, options));
   private disposalDependencies = (id: string) => ({
-    finalizations: this.engine.db.all(
-      "SELECT id FROM git_finalizations WHERE task_id=?",
-      id,
-    ).length,
+    finalizations: this.engine.db.all("SELECT id FROM git_finalizations WHERE task_id=?", id)
+      .length,
     repairs: this.engine.db.all(
       "SELECT id FROM pr_repairs WHERE job_id IN (SELECT id FROM scheduled_jobs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.task_id')=?)",
       id,
@@ -161,10 +129,7 @@ export class StorageService {
     ["removing", "removed"].includes(task.workspace_checkpoint?.state || "") &&
     !!task.worktree_path &&
     !(await exists(task.worktree_path));
-  private emptyDisposalPreview = (
-    task: Task,
-    repo: Repository,
-  ): TaskDisposalPreview => ({
+  private emptyDisposalPreview = (task: Task, repo: Repository): TaskDisposalPreview => ({
     task_id: task.id,
     title: String(task.issue?.title || `Issue #${task.issue_number}`),
     repository: `${repo.owner}/${repo.name}`,
@@ -188,11 +153,7 @@ export class StorageService {
     dependencies: this.disposalDependencies(task.id),
   });
   /** Binds deliberate loss to an owned workspace preview; interrupted removal retains that authorization. */
-  discardTask = (
-    id: string,
-    fingerprint: string,
-    acknowledgeUnpublished: boolean,
-  ) =>
+  discardTask = (id: string, fingerprint: string, acknowledgeUnpublished: boolean) =>
     this.engine.withTaskMaintenance(id, async () => {
       const task = this.engine.db.task(id);
       const repo = this.engine.db.repository(task.repo_id);
@@ -207,10 +168,7 @@ export class StorageService {
         !task.worktree_path &&
         this.emptyDisposalPreview(task, repo).fingerprint !== fingerprint
       )
-        throw new AdeError(
-          "stale_preview",
-          "The task changed. Inspect a fresh discard preview.",
-        );
+        throw new AdeError("stale_preview", "The task changed. Inspect a fresh discard preview.");
       if (await this.disposalRecovery(task)) {
         if (task.disposal_authorization!.fingerprint !== fingerprint)
           throw new AdeError(
@@ -241,9 +199,7 @@ export class StorageService {
     this.engine.withTaskMaintenance(id, async () => {
       const e = this.engine;
       const task = e.db.task(id);
-      if (
-        ["removing", "removed"].includes(task.workspace_checkpoint?.state || "")
-      )
+      if (["removing", "removed"].includes(task.workspace_checkpoint?.state || ""))
         throw new AdeError(
           "removal_pending",
           "Finish the previously confirmed worktree removal before clearing history.",
@@ -294,20 +250,14 @@ export class StorageService {
       let disposal: TaskDisposalPreview | undefined;
       let removalHead: string | undefined;
       if (!task.branch_name && !task.worktree_path) return;
-      if (
-        discard &&
-        (!task.worktree_path || !(await exists(task.worktree_path)))
-      )
+      if (discard && (!task.worktree_path || !(await exists(task.worktree_path))))
         throw new AdeError(
           "ownership",
           "The assigned task worktree is missing. Restore or inspect its ownership before discarding the branch.",
         );
       if (task.worktree_path) await managedPath(e.root, task.worktree_path);
       const common = await e.git.commonDirectory(repo.path);
-      if (
-        task.workspace_checkpoint &&
-        task.workspace_checkpoint.git_common_dir !== common
-      )
+      if (task.workspace_checkpoint && task.workspace_checkpoint.git_common_dir !== common)
         throw new AdeError(
           "ownership",
           "Task common-directory ownership changed; its data was preserved.",
@@ -323,10 +273,7 @@ export class StorageService {
       );
       if (![0, 1].includes(branch.code))
         throw new AdeError("git_cleanup", "Could not verify the task branch");
-      const worktrees = await gitChecked(
-        ["worktree", "list", "--porcelain"],
-        repo.path,
-      );
+      const worktrees = await gitChecked(["worktree", "list", "--porcelain"], repo.path);
       if (
         branch.code === 1 &&
         (!task.worktree_path || !(await exists(task.worktree_path))) &&
@@ -340,12 +287,7 @@ export class StorageService {
         return;
       }
       const marker = await gitCapture(
-        [
-          "config",
-          "--local",
-          "--get",
-          `branch.${task.branch_name}.vibestarTask`,
-        ],
+        ["config", "--local", "--get", `branch.${task.branch_name}.vibestarTask`],
         repo.path,
       );
       const legacyRecord =
@@ -379,13 +321,7 @@ export class StorageService {
       let legacyCreation = !!legacyRecord && branch.code === 1;
       if (legacyRecord && branch.code === 0) {
         const reflog = await gitCapture(
-          [
-            "reflog",
-            "show",
-            "--date=raw",
-            "--format=%gD%x00%gs",
-            `refs/heads/${task.branch_name}`,
-          ],
+          ["reflog", "show", "--date=raw", "--format=%gD%x00%gs", `refs/heads/${task.branch_name}`],
           repo.path,
         );
         const first = reflog.stdout.trim().split("\n").at(-1) ?? "";
@@ -410,9 +346,7 @@ export class StorageService {
       for (const entry of worktrees.split("\n\n")) {
         const lines = entry.split("\n");
         if (!lines.includes(`branch refs/heads/${task.branch_name}`)) continue;
-        const path = lines
-          .find((line) => line.startsWith("worktree "))
-          ?.slice(9);
+        const path = lines.find((line) => line.startsWith("worktree "))?.slice(9);
         if (!path || !task.worktree_path || path !== task.worktree_path)
           throw new AdeError(
             "busy",
@@ -452,37 +386,22 @@ export class StorageService {
             },
           });
           if (result.code !== 0)
-            throw new AdeError(
-              "git_cleanup",
-              `Git cleanup stopped: ${result.stderr}`,
-            );
+            throw new AdeError("git_cleanup", `Git cleanup stopped: ${result.stderr}`);
         } finally {
           finished = true;
-          if (task.workspace_checkpoint)
-            task.workspace_checkpoint.operation = null;
+          if (task.workspace_checkpoint) task.workspace_checkpoint.operation = null;
           e.db.saveTask(task);
         }
       };
       if (task.worktree_path && (await exists(task.worktree_path))) {
         const path = await taskRoot(e.root, task);
         const [taskGit, repoGit] = await Promise.all([
-          gitChecked(
-            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-            path,
-          ),
-          gitChecked(
-            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-            repo.path,
-          ),
+          gitChecked(["rev-parse", "--path-format=absolute", "--git-common-dir"], path),
+          gitChecked(["rev-parse", "--path-format=absolute", "--git-common-dir"], repo.path),
         ]);
         if ((await realpath(taskGit)) !== (await realpath(repoGit)))
-          throw new AdeError(
-            "isolation",
-            "Task worktree belongs to a different repository",
-          );
-        const gitdir = await realpath(
-          await gitChecked(["rev-parse", "--absolute-git-dir"], path),
-        );
+          throw new AdeError("isolation", "Task worktree belongs to a different repository");
+        const gitdir = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], path));
         if (!inside(join(common, "worktrees"), gitdir))
           throw new AdeError(
             "ownership",
@@ -491,36 +410,21 @@ export class StorageService {
         const owner = await readWorktreeOwner(gitdir, "vibestar-task-owner");
         if (
           (owner && owner !== task.id) ||
-          (!owner &&
-            ["ready", "removing"].includes(
-              task.workspace_checkpoint?.state || "",
-            ))
+          (!owner && ["ready", "removing"].includes(task.workspace_checkpoint?.state || ""))
         )
           throw new AdeError(
             "ownership",
             "Task worktree owner is missing or changed; it was preserved.",
           );
-        const current = await gitCapture(
-          ["symbolic-ref", "--quiet", "--short", "HEAD"],
-          path,
-        );
+        const current = await gitCapture(["symbolic-ref", "--quiet", "--short", "HEAD"], path);
         if (
           (current.code === 0 && current.stdout.trim() !== task.branch_name) ||
           ![0, 1].includes(current.code)
         )
-          throw new AdeError(
-            "isolation",
-            "Task worktree has a different branch; it was preserved",
-          );
+          throw new AdeError("isolation", "Task worktree has a different branch; it was preserved");
         const ignored = await gitExecute({
           program: "git",
-          args: [
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "-z",
-          ],
+          args: ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
           cwd: path,
           rawStdoutForIntegrity: true,
         });
@@ -555,14 +459,10 @@ export class StorageService {
         }
         if (
           !discard &&
-          ((await gitChecked(
-            ["status", "--porcelain", "--untracked-files=all"],
-            path,
-          )) ||
+          ((await gitChecked(["status", "--porcelain", "--untracked-files=all"], path)) ||
             ignored.stdout ||
             hidden ||
-            (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], path))
-              .code === 0)
+            (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], path)).code === 0)
         )
           throw new AdeError(
             "git_dirty",
@@ -573,23 +473,12 @@ export class StorageService {
           const changes = await e.git.diff(task);
           disposal = {
             ...this.emptyDisposalPreview(task, repo),
-            modified: changes.files
-              .filter((file) => !file.untracked)
-              .map((file) => file.path),
-            untracked: changes.files
-              .filter((file) => file.untracked)
-              .map((file) => file.path),
+            modified: changes.files.filter((file) => !file.untracked).map((file) => file.path),
+            untracked: changes.files.filter((file) => file.untracked).map((file) => file.path),
             ignored: ignored.stdout.split("\0").filter(Boolean),
             unpublished_commits: Number(
               await gitChecked(
-                [
-                  "rev-list",
-                  "--count",
-                  head,
-                  "--not",
-                  task.base_commit_sha,
-                  "--remotes",
-                ],
+                ["rev-list", "--count", head, "--not", task.base_commit_sha, "--remotes"],
                 path,
               ),
             ),
@@ -621,14 +510,7 @@ export class StorageService {
         if (
           protectUnpushed &&
           (await gitChecked(
-            [
-              "rev-list",
-              "--count",
-              head,
-              "--not",
-              task.base_commit_sha,
-              "--remotes",
-            ],
+            ["rev-list", "--count", head, "--not", task.base_commit_sha, "--remotes"],
             repo.path,
           )) !== "0"
         )
@@ -638,11 +520,7 @@ export class StorageService {
           );
         if (
           branch.code === 0 &&
-          head !==
-            (await gitChecked(
-              ["rev-parse", `refs/heads/${task.branch_name}`],
-              repo.path,
-            ))
+          head !== (await gitChecked(["rev-parse", `refs/heads/${task.branch_name}`], repo.path))
         )
           throw new AdeError(
             "ownership",
@@ -651,9 +529,7 @@ export class StorageService {
         checkpointRemoval(head);
         if (discard && !preview) {
           await taskRoot(e.root, task);
-          if (
-            (await readWorktreeOwner(gitdir, "vibestar-task-owner")) !== task.id
-          )
+          if ((await readWorktreeOwner(gitdir, "vibestar-task-owner")) !== task.id)
             throw new AdeError(
               "ownership",
               "Task ownership changed immediately before discard. Its files were preserved.",
@@ -685,15 +561,10 @@ export class StorageService {
           );
         // Remove only this missing registration; pruning all worktrees could
         // affect unrelated checkouts sharing the same Git metadata.
-        const head =
-          task.workspace_checkpoint?.cleanup_head || task.base_commit_sha;
+        const head = task.workspace_checkpoint?.cleanup_head || task.base_commit_sha;
         if (
           branch.code === 0 &&
-          head !==
-            (await gitChecked(
-              ["rev-parse", `refs/heads/${task.branch_name}`],
-              repo.path,
-            ))
+          head !== (await gitChecked(["rev-parse", `refs/heads/${task.branch_name}`], repo.path))
         )
           throw new AdeError(
             "ownership",
@@ -710,17 +581,10 @@ export class StorageService {
         ]);
       }
       if (branch.code === 0) {
-        const head =
-          removalHead ||
-          task.workspace_checkpoint?.cleanup_head ||
-          task.base_commit_sha;
+        const head = removalHead || task.workspace_checkpoint?.cleanup_head || task.base_commit_sha;
         if (
           !head ||
-          head !==
-            (await gitChecked(
-              ["rev-parse", `refs/heads/${task.branch_name}`],
-              repo.path,
-            ))
+          head !== (await gitChecked(["rev-parse", `refs/heads/${task.branch_name}`], repo.path))
         )
           throw new AdeError(
             "ownership",
@@ -744,35 +608,17 @@ export class StorageService {
             "git_unpushed",
             "Unpushed task commits were preserved. Publish or preserve them separately before resetting.",
           );
-        const checkouts = await gitChecked(
-          ["worktree", "list", "--porcelain"],
-          repo.path,
-        );
-        if (
-          !preview &&
-          checkouts
-            .split("\n")
-            .includes(`branch refs/heads/${task.branch_name}`)
-        )
+        const checkouts = await gitChecked(["worktree", "list", "--porcelain"], repo.path);
+        if (!preview && checkouts.split("\n").includes(`branch refs/heads/${task.branch_name}`))
           throw new AdeError(
             "ownership",
             "Task branch is checked out in another worktree; it was preserved.",
           );
         checkpointRemoval(head);
-        await remove([
-          "update-ref",
-          "-d",
-          `refs/heads/${task.branch_name}`,
-          head,
-        ]);
+        await remove(["update-ref", "-d", `refs/heads/${task.branch_name}`, head]);
         if (marker.code === 0 && !preview)
           await gitChecked(
-            [
-              "config",
-              "--local",
-              "--remove-section",
-              `branch.${task.branch_name}`,
-            ],
+            ["config", "--local", "--remove-section", `branch.${task.branch_name}`],
             repo.path,
           );
       }
@@ -798,15 +644,10 @@ export class StorageService {
     const e = this.engine;
     let task = e.db.task(id);
     if (e.isActive(id) || (task.status === "queued" && !task.archived))
-      throw new AdeError(
-        "busy",
-        "Stop or dequeue this task before deleting its data.",
-      );
+      throw new AdeError("busy", "Stop or dequeue this task before deleting its data.");
     const repo = e.db.repository(task.repo_id);
     if (!preserveWork && (options.worktree || options.history)) {
-      if (
-        e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", id).length
-      )
+      if (e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", id).length)
         throw new AdeError(
           "git_history",
           "Remove this task's owned Git Finalization previews explicitly before deleting its workspace or history.",
@@ -841,12 +682,7 @@ export class StorageService {
           e.db.run(`DELETE FROM ${table} WHERE task_id=?`, id);
       }
       e.db.saveTask({ ...task, archived: true, updated_at: now() });
-      if (
-        !preserveWork &&
-        !task.worktree_path &&
-        options.history &&
-        options.artifacts
-      ) {
+      if (!preserveWork && !task.worktree_path && options.history && options.artifacts) {
         for (const table of ["scheduled_jobs", "github_pull_requests"]) {
           for (const row of e.db.all<{ id: string; data: string }>(
             `SELECT ${table === "scheduled_jobs" ? "id" : "url"} AS id,data FROM ${table}`,
@@ -891,19 +727,12 @@ export class StorageService {
         (t) =>
           e.isActive(t.id) ||
           t.status === "queued" ||
-          ![
-            "completed",
-            "cancelled",
-            "failed",
-            "interrupted",
-            "verification_blocked",
-          ].includes(t.status),
+          !["completed", "cancelled", "failed", "interrupted", "verification_blocked"].includes(
+            t.status,
+          ),
       )
     )
-      throw new AdeError(
-        "busy",
-        "Stop and clean this repository's tasks first.",
-      );
+      throw new AdeError("busy", "Stop and clean this repository's tasks first.");
     for (const task of tasks)
       await this.cleanupTaskData(task.id, {
         worktree: true,
@@ -917,10 +746,7 @@ export class StorageService {
         if (!inside(join(e.root, "repos"), path))
           throw new AdeError("isolation", "Invalid managed repository path");
         if (await exists(join(path, ".git"))) {
-          const worktrees = await gitChecked(
-            ["worktree", "list", "--porcelain"],
-            path,
-          );
+          const worktrees = await gitChecked(["worktree", "list", "--porcelain"], path);
           if (
             worktrees
               .split("\n")
@@ -941,16 +767,13 @@ export class StorageService {
     });
     e.changed();
   };
-  cleanCompleted = () =>
-    this.engine.withStorageMaintenance(this.cleanCompletedData);
+  cleanCompleted = () => this.engine.withStorageMaintenance(this.cleanCompletedData);
   private cleanCompletedData = async () => {
     let count = 0;
     for (const task of this.engine.db
       .tasks()
       .filter(
-        (t) =>
-          ["completed", "cancelled"].includes(t.status) &&
-          (t.worktree_path || t.branch_name),
+        (t) => ["completed", "cancelled"].includes(t.status) && (t.worktree_path || t.branch_name),
       )) {
       await this.cleanupTaskData(task.id, {
         worktree: true,
@@ -962,18 +785,15 @@ export class StorageService {
     }
     return count;
   };
-  removeUnused = () =>
-    this.engine.withStorageMaintenance(this.removeUnusedData);
+  removeUnused = () => this.engine.withStorageMaintenance(this.removeUnusedData);
   private removeUnusedData = async () => {
     const repos = this.engine.db
       .repositories()
       .filter(
         (r) =>
           r.source !== "imported" &&
-          !this.engine.db.all("SELECT id FROM pr_repairs WHERE repo_id=?", r.id)
-            .length &&
-          !this.engine.db.all("SELECT id FROM tasks WHERE repo_id=?", r.id)
-            .length,
+          !this.engine.db.all("SELECT id FROM pr_repairs WHERE repo_id=?", r.id).length &&
+          !this.engine.db.all("SELECT id FROM tasks WHERE repo_id=?", r.id).length,
       );
     for (const repo of repos) await this.removeRepositoryData(repo.id);
     return repos.length;
@@ -986,29 +806,14 @@ export class StorageService {
       let reason = "";
       let fingerprint = "";
       try {
-        if (
-          e
-            .cleanupBlockers(task.id)
-            .some((blocker) => blocker.id !== "storage-maintenance")
-        )
-          throw new AdeError(
-            "busy",
-            "Active task processes must stop before resetting.",
-          );
-        if (
-          e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", task.id)
-            .length
-        )
+        if (e.cleanupBlockers(task.id).some((blocker) => blocker.id !== "storage-maintenance"))
+          throw new AdeError("busy", "Active task processes must stop before resetting.");
+        if (e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", task.id).length)
           throw new AdeError(
             "git_history",
             "Git Finalization records require separate explicit removal.",
           );
-        await this.removeTaskWorkspace(
-          task,
-          e.db.repository(task.repo_id),
-          true,
-          true,
-        );
+        await this.removeTaskWorkspace(task, e.db.repository(task.repo_id), true, true);
         if (task.worktree_path && (await exists(task.worktree_path)))
           fingerprint = await e.git.fingerprint(task);
         await managedPath(e.root, join("logs", task.id));
@@ -1034,21 +839,13 @@ export class StorageService {
         ].filter(Boolean),
       });
     }
-    const repairs = e.db.all<{ id: string; status: string }>(
-      "SELECT id,status FROM pr_repairs",
-    );
+    const repairs = e.db.all<{ id: string; status: string }>("SELECT id,status FROM pr_repairs");
     const finalizations = e.db.all<{ id: string; status: string }>(
       "SELECT id,status FROM git_finalizations",
     );
     const sensitive = [
       ...finalizations.filter((record) =>
-        [
-          "preparing",
-          "reviewing",
-          "committing",
-          "pushing",
-          "uncertain",
-        ].includes(record.status),
+        ["preparing", "reviewing", "committing", "pushing", "uncertain"].includes(record.status),
       ),
       ...e.db.all<{ id: string; status: string }>(
         "SELECT id,status FROM repair_publications WHERE status IN ('pushing','uncertain')",
@@ -1079,9 +876,7 @@ export class StorageService {
       finalizations,
       sensitive,
       retained,
-      blockers: e
-        .cleanupBlockers()
-        .filter((blocker) => blocker.id !== "storage-maintenance"),
+      blockers: e.cleanupBlockers().filter((blocker) => blocker.id !== "storage-maintenance"),
       preserved: [
         "All registered source repositories and managed clones",
         "User-owned branches",
@@ -1090,13 +885,10 @@ export class StorageService {
         "Repair sessions, Git Finalization history and unowned cache/log/runtime data",
       ],
     };
-    const token = createHash("sha256")
-      .update(JSON.stringify(preview))
-      .digest("hex");
+    const token = createHash("sha256").update(JSON.stringify(preview)).digest("hex");
     return { ...preview, token };
   };
-  reset = (token?: string) =>
-    this.engine.withStorageMaintenance(() => this.resetData(token));
+  reset = (token?: string) => this.engine.withStorageMaintenance(() => this.resetData(token));
   private resetData = async (token?: string) => {
     const e = this.engine;
     const preview = await this.previewReset();
@@ -1110,10 +902,7 @@ export class StorageService {
         "busy",
         "Reconcile pending sensitive Git operations before resetting local test data.",
       );
-    const backup = await managedPath(
-      e.root,
-      join("backups", "local-test-reset-" + randomUUID()),
-    );
+    const backup = await managedPath(e.root, join("backups", "local-test-reset-" + randomUUID()));
     await mkdir(backup, { recursive: true, mode: 0o700 });
     const database = join(backup, "vibestar.sqlite");
     await e.db.backup(database);
@@ -1124,10 +913,7 @@ export class StorageService {
     });
     try {
       if (connection.pragma("quick_check", { simple: true }) !== "ok")
-        throw new AdeError(
-          "backup",
-          "SQLite backup validation failed; no task data was removed.",
-        );
+        throw new AdeError("backup", "SQLite backup validation failed; no task data was removed.");
     } finally {
       connection.close();
     }
@@ -1151,10 +937,7 @@ export class StorageService {
       try {
         // Ownership, dirtiness and unpushed commits are rechecked under the same
         // canonical Git lock used by normal task cleanup, after the backup.
-        const usage = e.db.all<{ id: string }>(
-          "SELECT id FROM ai_usage WHERE task_id=?",
-          task.id,
-        );
+        const usage = e.db.all<{ id: string }>("SELECT id FROM ai_usage WHERE task_id=?", task.id);
         const requests = e.db.all<{ request_id: string }>(
           "SELECT request_id FROM task_requests WHERE task_id=?",
           task.id,
@@ -1165,13 +948,9 @@ export class StorageService {
           true,
         );
         e.db.transaction(() => {
-          for (const row of usage)
-            e.db.run("DELETE FROM ai_usage WHERE id=?", row.id);
+          for (const row of usage) e.db.run("DELETE FROM ai_usage WHERE id=?", row.id);
           for (const request of requests)
-            e.db.run(
-              "DELETE FROM task_requests WHERE request_id=?",
-              request.request_id,
-            );
+            e.db.run("DELETE FROM task_requests WHERE request_id=?", request.request_id);
         });
         removed.push(task.id);
       } catch (error) {
@@ -1190,11 +969,7 @@ export class StorageService {
       finalizations: preview.finalizations,
       restart_required: false,
     };
-    await writeFile(
-      join(backup, "result.json"),
-      JSON.stringify(result, null, 2),
-      { mode: 0o600 },
-    );
+    await writeFile(join(backup, "result.json"), JSON.stringify(result, null, 2), { mode: 0o600 });
     e.changed();
     return result;
   };

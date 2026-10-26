@@ -2,7 +2,7 @@ import { migrations } from "./migrations";
 import {
   CommandExecutions,
   CommandEvidenceSchema,
-} from "../execution/command-executions";
+} from "../execution/verification/command-executions";
 import type { NormalizedEvent } from "../domain";
 import BetterSqlite3 from "better-sqlite3";
 import { randomUUID } from "node:crypto";
@@ -31,15 +31,13 @@ export class Database {
       });
       try {
         const table = source
-          .prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
-          )
+          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'")
           .get();
         const version = table
           ? (
-              source
-                .prepare("SELECT max(version) version FROM schema_migrations")
-                .get() as { version: number | null }
+              source.prepare("SELECT max(version) version FROM schema_migrations").get() as {
+                version: number | null;
+              }
             ).version || 0
           : 0;
         if (version < migrations.at(-1)!.version) {
@@ -68,8 +66,7 @@ export class Database {
             .prepare("SELECT version FROM schema_migrations WHERE version=?")
             .get(migration.version)
         ) {
-          const rebuild =
-            "foreign_keys_off" in migration && migration.foreign_keys_off;
+          const rebuild = "foreign_keys_off" in migration && migration.foreign_keys_off;
           if (rebuild) this.connection.pragma("foreign_keys = OFF");
           try {
             this.connection.transaction(() => {
@@ -117,9 +114,7 @@ export class Database {
                   commands.finish(run.id, run.ended_at || now());
               }
               if (this.all("PRAGMA foreign_key_check").length)
-                throw new Error(
-                  "Repository migration failed foreign key verification",
-                );
+                throw new Error("Repository migration failed foreign key verification");
             })();
           } finally {
             if (rebuild) this.connection.pragma("foreign_keys = ON");
@@ -132,15 +127,11 @@ export class Database {
       throw error;
     }
   }
-  run = (sql: string, ...params: unknown[]) =>
-    this.connection.prepare(sql).run(...params);
-  transaction = <T>(operation: () => T) =>
-    this.connection.transaction(operation)();
+  run = (sql: string, ...params: unknown[]) => this.connection.prepare(sql).run(...params);
+  transaction = <T>(operation: () => T) => this.connection.transaction(operation)();
   backup = (path: string) => this.connection.backup(path);
-  all = <T extends object = Record<string, unknown>>(
-    sql: string,
-    ...params: unknown[]
-  ) => this.connection.prepare(sql).all(...params) as T[];
+  all = <T extends object = Record<string, unknown>>(sql: string, ...params: unknown[]) =>
+    this.connection.prepare(sql).all(...params) as T[];
   repositories = () =>
     this.records.list<Repository>(
       "repositories",
@@ -151,10 +142,7 @@ export class Database {
       "id",
     );
   repository = (id: string) => {
-    const row = this.all<{ data: string }>(
-      "SELECT data FROM repositories WHERE id=?",
-      id,
-    )[0];
+    const row = this.all<{ data: string }>("SELECT data FROM repositories WHERE id=?", id)[0];
     if (!row) throw new Error("Repository is not registered");
     return this.records.decode<Repository>(
       {
@@ -178,17 +166,12 @@ export class Database {
   tasks = () =>
     this.records.list<Task>(
       "tasks",
-      this.all<{ id: string; data: string }>(
-        "SELECT id,data FROM tasks ORDER BY created_at DESC",
-      ),
+      this.all<{ id: string; data: string }>("SELECT id,data FROM tasks ORDER BY created_at DESC"),
       TaskRecordSchema.parse,
       "id",
     );
   task = (id: string) => {
-    const row = this.all<{ data: string }>(
-      "SELECT data FROM tasks WHERE id=?",
-      id,
-    )[0];
+    const row = this.all<{ data: string }>("SELECT data FROM tasks WHERE id=?", id)[0];
     if (!row) throw new Error("Task not found");
     return this.records.decode<Task>(
       {
@@ -204,8 +187,7 @@ export class Database {
   assertOwnershipRecords = () => {
     if (
       this.tasks().length !== this.all("SELECT id FROM tasks").length ||
-      this.repositories().length !==
-        this.all("SELECT id FROM repositories").length
+      this.repositories().length !== this.all("SELECT id FROM repositories").length
     )
       throw new AdeError(
         "corrupt_record",
@@ -224,9 +206,7 @@ export class Database {
       t.scope_mode || "partial",
     );
   settings = () => {
-    const row = this.all<{ value: string }>(
-      "SELECT value FROM settings WHERE key='pipeline'",
-    )[0];
+    const row = this.all<{ value: string }>("SELECT value FROM settings WHERE key='pipeline'")[0];
     return row
       ? this.records.decode(
           {
@@ -319,8 +299,7 @@ export class Database {
             ...t,
             status: "interrupted",
             updated_at: now(),
-            error:
-              "Execution stopped. Resume retries the interrupted stage using saved context.",
+            error: "Execution stopped. Resume retries the interrupted stage using saved context.",
           });
         }
       }
@@ -328,34 +307,16 @@ export class Database {
   };
   detail = (id: string) => ({
     task: this.task(id),
-    runs: this.all(
-      "SELECT * FROM agent_runs WHERE task_id=? ORDER BY started_at",
-      id,
-    ),
+    runs: this.all("SELECT * FROM agent_runs WHERE task_id=? ORDER BY started_at", id),
     events: this.all(
       "SELECT * FROM (SELECT * FROM agent_events WHERE task_id=? ORDER BY id DESC LIMIT 2000) ORDER BY id",
       id,
     ),
-    messages: this.all(
-      "SELECT * FROM task_messages WHERE task_id=? ORDER BY created_at",
-      id,
-    ),
-    artifacts: this.all(
-      "SELECT * FROM task_artifacts WHERE task_id=? ORDER BY created_at",
-      id,
-    ),
-    activity: this.all(
-      "SELECT * FROM task_activity WHERE task_id=? ORDER BY id",
-      id,
-    ),
-    usage: this.all(
-      "SELECT * FROM ai_usage WHERE task_id=? ORDER BY started_at",
-      id,
-    ),
-    tests: this.all(
-      "SELECT * FROM test_runs WHERE task_id=? ORDER BY started_at,rowid",
-      id,
-    ),
+    messages: this.all("SELECT * FROM task_messages WHERE task_id=? ORDER BY created_at", id),
+    artifacts: this.all("SELECT * FROM task_artifacts WHERE task_id=? ORDER BY created_at", id),
+    activity: this.all("SELECT * FROM task_activity WHERE task_id=? ORDER BY id", id),
+    usage: this.all("SELECT * FROM ai_usage WHERE task_id=? ORDER BY started_at", id),
+    tests: this.all("SELECT * FROM test_runs WHERE task_id=? ORDER BY started_at,rowid", id),
   });
   close = () => {
     if (this.connection.open) this.connection.close();

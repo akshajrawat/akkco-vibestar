@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { dirname, join } from "node:path";
 import { AdeError } from "../domain";
-import { cleanEnvironment, execute } from "../execution/process";
+import { cleanEnvironment, execute } from "../execution/runtime/process";
 import type { Engine } from "../execution/engine";
 
 const editors = [
@@ -25,9 +25,7 @@ export const discoverEditors = async () => {
           )
         ) {
           const windowsExecutable =
-            editor.id === "code" &&
-            process.env.WSL_DISTRO_NAME &&
-            executable.startsWith("/mnt/")
+            editor.id === "code" && process.env.WSL_DISTRO_NAME && executable.startsWith("/mnt/")
               ? join(dirname(executable), "..", "Code.exe")
               : undefined;
           const windowsLauncher =
@@ -55,11 +53,7 @@ export class Editors {
     editors: await discoverEditors(),
     default: this.engine.db.settings().default_editor,
   });
-  open = async (
-    id: string,
-    kind: "task" | "repository" | "repair",
-    editor: string,
-  ) => {
+  open = async (id: string, kind: "task" | "repository" | "repair", editor: string) => {
     this.engine.assertAvailable();
     const available = await discoverEditors();
     const selected = available.find((e) => e.id === editor);
@@ -89,12 +83,7 @@ export class Editors {
           shell: false,
         });
         child.on("error", (error) =>
-          reject(
-            new AdeError(
-              "editor_failed",
-              `Couldn't start VS Code. ${error.message}`,
-            ),
-          ),
+          reject(new AdeError("editor_failed", `Couldn't start VS Code. ${error.message}`)),
         );
         child.on("spawn", () => {
           child.unref();

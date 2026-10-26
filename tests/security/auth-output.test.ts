@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import type { IPty, IPtyForkOptions } from "node-pty";
 import { tmpdir } from "node:os";
-import { AuthSessions } from "../../backend/execution/auth";
+import { AuthSessions } from "../../backend/execution/terminals/auth";
 import type { CoreEvent } from "../../backend/domain";
 
 const fixture = vi.hoisted(() => ({ script: "", sessions: [] as IPty[] }));
@@ -12,11 +12,7 @@ vi.mock("node-pty", async (original) => {
     spawn: (program: string, args: string[], options: IPtyForkOptions) => {
       expect(program).toBe("codex");
       expect(args).toEqual(["login"]);
-      const pty = module.spawn(
-        process.execPath,
-        ["-e", fixture.script],
-        options,
-      );
+      const pty = module.spawn(process.execPath, ["-e", fixture.script], options);
       fixture.sessions.push(pty);
       return pty;
     },
@@ -75,14 +71,9 @@ it("flushes an ambiguous tail safely before auth.closed", async () => {
   auth.connect("codex");
   try {
     await closed;
-    expect(events.slice(-2).map((event) => event.event)).toEqual([
-      "auth.output",
-      "auth.closed",
-    ]);
+    expect(events.slice(-2).map((event) => event.event)).toEqual(["auth.output", "auth.closed"]);
     expect(events.at(-2)?.text).toBe("[REDACTED]");
-    expect(events.map((event) => event.text || "").join("")).not.toContain(
-      "sk",
-    );
+    expect(events.map((event) => event.text || "").join("")).not.toContain("sk");
   } finally {
     auth.dispose();
   }

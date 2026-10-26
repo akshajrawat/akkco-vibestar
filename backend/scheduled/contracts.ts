@@ -2,9 +2,7 @@ import { z } from "zod";
 import { AdeError } from "../domain";
 export const parsePullRequest = (value: string) => {
   const u = new URL(value);
-  const match = u.pathname.match(
-    /^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/,
-  );
+  const match = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/);
   if (
     u.protocol !== "https:" ||
     u.hostname !== "github.com" ||
@@ -17,10 +15,7 @@ export const parsePullRequest = (value: string) => {
     match.slice(1, 3).some((part) => part === "." || part === "..") ||
     !Number.isSafeInteger(Number(match[3]))
   )
-    throw new AdeError(
-      "invalid_input",
-      "Use an HTTPS github.com/owner/repository/pull/number URL",
-    );
+    throw new AdeError("invalid_input", "Use an HTTPS github.com/owner/repository/pull/number URL");
   return {
     owner: match[1],
     repo: match[2],
@@ -198,9 +193,7 @@ export const PullRequestStateSchema = z
             path: z.string(),
             body: z.string(),
             commentIds: z.array(z.string()).optional(),
-            comments: z
-              .array(z.object({ id: z.string(), body: z.string() }).strict())
-              .optional(),
+            comments: z.array(z.object({ id: z.string(), body: z.string() }).strict()).optional(),
             outdated: z.boolean().optional(),
             line: z.number().nullable().optional(),
             startLine: z.number().nullable().optional(),
@@ -213,12 +206,7 @@ export const PullRequestStateSchema = z
         z
           .object({
             id: z.string(),
-            type: z.enum([
-              "issue_comment",
-              "review_comment",
-              "review",
-              "thread",
-            ]),
+            type: z.enum(["issue_comment", "review_comment", "review", "thread"]),
             author: z.string(),
             body: z.string(),
             createdAt: z.string(),
@@ -283,8 +271,7 @@ export interface ScheduleJob {
   verify_codex: boolean;
   enabled: boolean;
   next_run_at: string;
-  status:
-    "idle" | "polling" | "pending" | "analyzing" | "interrupted" | "error";
+  status: "idle" | "polling" | "pending" | "analyzing" | "interrupted" | "error";
   last_checked_at: string | null;
   last_analyzed_at?: string;
   last_snapshot: PullRequestState | null;
@@ -312,10 +299,7 @@ export interface ScheduleAttention {
   error: string | null;
   dismissed: number;
 }
-export const changedPullRequest = (
-  previous: PullRequestState,
-  current: PullRequestState,
-) => {
+export const changedPullRequest = (previous: PullRequestState, current: PullRequestState) => {
   const changes: string[] = [];
   if (
     current.discussion &&
@@ -326,19 +310,14 @@ export const changedPullRequest = (
     if (
       !previous.comments.some(
         (p) =>
-          p.id === comment.id &&
-          p.body === comment.body &&
-          p.updated_at === comment.updated_at,
+          p.id === comment.id && p.body === comment.body && p.updated_at === comment.updated_at,
       )
     )
       changes.push(`New or edited comment ${comment.id}: ${comment.body}`);
   for (const review of current.reviews)
     if (
       !previous.reviews.some(
-        (p) =>
-          p.id === review.id &&
-          p.body === review.body &&
-          p.state === review.state,
+        (p) => p.id === review.id && p.body === review.body && p.state === review.state,
       )
     )
       changes.push(`Review ${review.state}: ${review.body}`);
@@ -347,27 +326,20 @@ export const changedPullRequest = (
   for (const check of current.checks)
     if (
       !previous.checks.some(
-        (p) =>
-          p.name === check.name &&
-          p.state === check.state &&
-          p.url === check.url,
+        (p) => p.name === check.name && p.state === check.state && p.url === check.url,
       )
     )
       changes.push(`CI ${check.name}: ${check.state} ${check.url}`);
   for (const thread of current.threads || [])
     if (
       !previous.threads?.some(
-        (p) =>
-          p.id === thread.id &&
-          p.resolved === thread.resolved &&
-          p.body === thread.body,
+        (p) => p.id === thread.id && p.resolved === thread.resolved && p.body === thread.body,
       )
     )
       changes.push(
         `Review thread ${thread.resolved ? "resolved" : "unresolved"}: ${thread.path} ${thread.body}`,
       );
-  if (previous.headRefOid !== current.headRefOid)
-    changes.push("PR branch has new commits");
+  if (previous.headRefOid !== current.headRefOid) changes.push("PR branch has new commits");
   if (previous.baseRefOid && current.baseRefOid !== previous.baseRefOid)
     changes.push("Base branch updated");
   if (previous.mergeable !== current.mergeable)
@@ -376,8 +348,7 @@ export const changedPullRequest = (
         ? "Merge conflicts detected"
         : `Merge status: ${current.mergeable}`,
     );
-  if (current.state !== previous.state)
-    changes.push(`PR state: ${current.state}`);
+  if (current.state !== previous.state) changes.push(`PR state: ${current.state}`);
   return {
     changes,
     actionable: current.state === "OPEN" && changes.length > 0,

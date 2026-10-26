@@ -1,4 +1,4 @@
-import { FixtureProvider } from "../fixtures";
+import { FixtureProvider } from "../helpers/fixtures";
 import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
 
 // The failed installation is a task-sandbox /tmp fixture executable. It never
@@ -82,9 +82,7 @@ export class ValidationBlockerProvider extends FixtureProvider {
 export class IndependentReviewProvider extends ValidationBlockerProvider {
   invocation = (request: AgentRunRequest) => {
     if (request.stage !== 5)
-      return new ValidationBlockerProvider(false, "dns_socket").invocation(
-        request,
-      );
+      return new ValidationBlockerProvider(false, "dns_socket").invocation(request);
     const packet = request.prompt.split("COMPLETE REVIEW EVIDENCE: ").at(-1)!;
     return {
       program: process.execPath,

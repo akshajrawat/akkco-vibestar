@@ -1,18 +1,13 @@
 import { GitHubClient } from "../github/client";
 import { AdeError, now, parseIssue } from "../domain";
-import {
-  parsePullRequest,
-  type PullRequestState,
-  type DiscussionEntry,
-} from "./contracts";
+import { parsePullRequest, type PullRequestState, type DiscussionEntry } from "./contracts";
 import { object } from "../execution/providers/contracts";
 export class GitHubMonitor {
   constructor(
     cwd: string,
     private readonly client = new GitHubClient(cwd),
   ) {}
-  private gh = (args: string[], signal: AbortSignal) =>
-    this.client.gh(args, signal);
+  private gh = (args: string[], signal: AbortSignal) => this.client.gh(args, signal);
   discover = async (repository: string, signal: AbortSignal) => {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repository))
       throw new AdeError("invalid_input", "Use owner/repository");
@@ -36,10 +31,7 @@ export class GitHubMonitor {
       ),
     ) as { number: number; title: string; url: string; headRefName: string }[];
   };
-  inspect = async (
-    url: string,
-    signal: AbortSignal,
-  ): Promise<PullRequestState> => {
+  inspect = async (url: string, signal: AbortSignal): Promise<PullRequestState> => {
     const ref = parsePullRequest(url);
     const pr = object(
       JSON.parse(
@@ -63,11 +55,7 @@ export class GitHubMonitor {
       missing: [] as string[],
       warnings: [] as string[],
     };
-    const optional = async <T>(
-      name: string,
-      get: () => Promise<T>,
-      fallback: T,
-    ) => {
+    const optional = async <T>(name: string, get: () => Promise<T>, fallback: T) => {
       try {
         return await get();
       } catch (error) {
@@ -83,11 +71,7 @@ export class GitHubMonitor {
     const base = `repos/${ref.owner}/${ref.repo}`;
     const metadata = await optional(
       "PR identity",
-      () =>
-        client.api<Record<string, unknown>>(
-          `${base}/pulls/${ref.number}`,
-          signal,
-        ),
+      () => client.api<Record<string, unknown>>(`${base}/pulls/${ref.number}`, signal),
       {},
     );
     const linkedUrls = new Set<string>();
@@ -107,10 +91,7 @@ export class GitHubMonitor {
     let threadPages = 0;
     do {
       if (++threadPages > 100)
-        throw new AdeError(
-          "github",
-          "Review thread pagination exceeded its safety limit",
-        );
+        throw new AdeError("github", "Review thread pagination exceeded its safety limit");
       const query = `query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefOid closingIssuesReferences(first:100){nodes{url} pageInfo{hasNextPage endCursor}} reviewThreads(first:100,after:$cursor){nodes{id isResolved isOutdated path line startLine comments(first:100){nodes{id body author{login} createdAt updatedAt url} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}`;
       const result = JSON.parse(
         await this.gh(
@@ -131,17 +112,11 @@ export class GitHubMonitor {
         ),
       );
       if (result.errors)
-        throw new AdeError(
-          "github",
-          "Review thread inspection failed; snapshot was not advanced",
-        );
+        throw new AdeError("github", "Review thread inspection failed; snapshot was not advanced");
       baseRefOid = result.data.repository.pullRequest.baseRefOid;
       const linked = result.data.repository.pullRequest.closingIssuesReferences;
       for (const issue of linked?.nodes || []) linkedUrls.add(issue.url);
-      if (
-        linked?.pageInfo.hasNextPage &&
-        !coverage.missing.includes("linked issue references")
-      ) {
+      if (linked?.pageInfo.hasNextPage && !coverage.missing.includes("linked issue references")) {
         coverage.complete = false;
         coverage.missing.push("linked issue references");
         coverage.warnings.push(
@@ -178,10 +153,7 @@ export class GitHubMonitor {
               "Thread comment pagination did not advance; context is incomplete.",
             );
           if (++count > 100)
-            throw new AdeError(
-              "github",
-              "Thread history exceeds the inspection safety limit",
-            );
+            throw new AdeError("github", "Thread history exceeds the inspection safety limit");
           const part = JSON.parse(
             await this.gh(
               [
@@ -203,10 +175,7 @@ export class GitHubMonitor {
               "Thread history inspection failed; snapshot was not advanced",
             );
           const next = part.data.node.comments;
-          if (
-            next.pageInfo.hasNextPage &&
-            next.pageInfo.endCursor === info.endCursor
-          )
+          if (next.pageInfo.hasNextPage && next.pageInfo.endCursor === info.endCursor)
             throw new AdeError(
               "github",
               "Thread comment pagination did not advance; context is incomplete.",
@@ -237,21 +206,12 @@ export class GitHubMonitor {
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     } while (cursor);
     const commentIds = new Map(
-      inline.map((comment) => [
-        String(comment.id),
-        String(comment.node_id || comment.id),
-      ]),
+      inline.map((comment) => [String(comment.id), String(comment.node_id || comment.id)]),
     );
     const reviewIds = new Map(
-      reviews.map((review) => [
-        String(review.id),
-        String(review.node_id || review.id),
-      ]),
+      reviews.map((review) => [String(review.id), String(review.node_id || review.id)]),
     );
-    const entry = (
-      c: Record<string, unknown>,
-      type: DiscussionEntry["type"],
-    ): DiscussionEntry => {
+    const entry = (c: Record<string, unknown>, type: DiscussionEntry["type"]): DiscussionEntry => {
       const id = String(c.node_id || c.id);
       const thread = threads.find((t) => t.commentIds?.includes(id));
       const user = object(c.user);
@@ -265,21 +225,13 @@ export class GitHubMonitor {
         authorId: String(user.node_id || user.id || ""),
         ...(c.in_reply_to_id
           ? {
-              inReplyToId:
-                commentIds.get(String(c.in_reply_to_id)) ||
-                String(c.in_reply_to_id),
+              inReplyToId: commentIds.get(String(c.in_reply_to_id)) || String(c.in_reply_to_id),
             }
           : {}),
         ...(c.commit_id ? { commitId: String(c.commit_id) } : {}),
-        ...(c.original_commit_id
-          ? { originalCommitId: String(c.original_commit_id) }
-          : {}),
-        ...(typeof c.start_line === "number"
-          ? { startLine: c.start_line }
-          : {}),
-        ...(typeof c.original_line === "number"
-          ? { originalLine: c.original_line }
-          : {}),
+        ...(c.original_commit_id ? { originalCommitId: String(c.original_commit_id) } : {}),
+        ...(typeof c.start_line === "number" ? { startLine: c.start_line } : {}),
+        ...(typeof c.original_line === "number" ? { originalLine: c.original_line } : {}),
         ...(typeof c.original_start_line === "number"
           ? { originalStartLine: c.original_start_line }
           : {}),
@@ -316,10 +268,7 @@ export class GitHubMonitor {
           ...reviews.map((r) => entry(r, "review")),
         ].map((entry) => [entry.id, entry]),
       ).values(),
-    ].sort(
-      (a, b) =>
-        a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
-    );
+    ].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
     for (const thread of threads) {
       for (const comment of thread.comments || []) {
         if (discussion.some((source) => source.id === comment.id)) continue;
@@ -344,10 +293,7 @@ export class GitHubMonitor {
         );
       }
     }
-    discussion.sort(
-      (a, b) =>
-        a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
-    );
+    discussion.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
     for (const source of discussion) {
       if (
         !source.id ||
@@ -366,16 +312,8 @@ export class GitHubMonitor {
       baseInfo = object(metadata.base);
     const headSha = String(head.sha || pr.headRefOid);
     const [files, commits, checks, statuses] = await Promise.all([
-      optional(
-        "changed-file patches",
-        () => pages(`${base}/pulls/${ref.number}/files`),
-        [],
-      ),
-      optional(
-        "commit history",
-        () => pages(`${base}/pulls/${ref.number}/commits`),
-        [],
-      ),
+      optional("changed-file patches", () => pages(`${base}/pulls/${ref.number}/files`), []),
+      optional("commit history", () => pages(`${base}/pulls/${ref.number}/commits`), []),
       optional(
         "check runs",
         () =>
@@ -387,11 +325,7 @@ export class GitHubMonitor {
           ),
         [],
       ),
-      optional(
-        "commit statuses",
-        () => pages(`${base}/commits/${headSha}/statuses`),
-        [],
-      ),
+      optional("commit statuses", () => pages(`${base}/commits/${headSha}/statuses`), []),
     ]);
     for (const [name, expected, actual] of [
       ["changed files", metadata.changed_files, files.length],
@@ -433,11 +367,7 @@ export class GitHubMonitor {
     }
     const fresh = await optional(
       "final PR identity check",
-      () =>
-        client.api<Record<string, unknown>>(
-          `${base}/pulls/${ref.number}`,
-          signal,
-        ),
+      () => client.api<Record<string, unknown>>(`${base}/pulls/${ref.number}`, signal),
       metadata,
     );
     if (
@@ -484,16 +414,10 @@ export class GitHubMonitor {
       coverage,
       identity: {
         prId: String(metadata.node_id || metadata.id || ""),
-        headRepository: object(head.repo).full_name
-          ? String(object(head.repo).full_name)
-          : null,
-        headRepositoryId: object(head.repo).node_id
-          ? String(object(head.repo).node_id)
-          : null,
+        headRepository: object(head.repo).full_name ? String(object(head.repo).full_name) : null,
+        headRepositoryId: object(head.repo).node_id ? String(object(head.repo).node_id) : null,
         headBranch: String(head.ref || ""),
-        baseRepository: String(
-          object(baseInfo.repo).full_name || `${ref.owner}/${ref.repo}`,
-        ),
+        baseRepository: String(object(baseInfo.repo).full_name || `${ref.owner}/${ref.repo}`),
         baseRepositoryId: String(object(baseInfo.repo).node_id || ""),
         baseBranch: String(baseInfo.ref || ""),
       },

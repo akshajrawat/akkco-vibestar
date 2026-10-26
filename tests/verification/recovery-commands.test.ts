@@ -1,9 +1,9 @@
 import { expect, it } from "vitest";
-import { verificationSummary } from "../../backend/execution/verification";
+import { verificationSummary } from "../../backend/execution/verification/verification";
 import {
   missingVerificationChecks,
   verificationRecoveryChecks,
-} from "../../backend/execution/verification-recovery";
+} from "../../backend/execution/verification/verification-recovery";
 
 const check = (command: string) => ({
   name: command,
@@ -27,39 +27,19 @@ it("offers recognizable recorded checks with local-only package execution, exclu
     "/tmp/npx playwright test",
     "npx eslint --fix=true",
   ];
-  const summary = verificationSummary(
-    { verification: commands.map(check) },
-    [],
-  );
+  const summary = verificationSummary({ verification: commands.map(check) }, []);
   const candidates = missingVerificationChecks(summary);
-  expect(candidates.map((candidate) => candidate.command)).toEqual(
-    commands.slice(0, 4),
-  );
-  expect(candidates[0].argv).toEqual([
-    "npx",
-    "--offline",
-    "--no-install",
-    "playwright",
-    "test",
+  expect(candidates.map((candidate) => candidate.command)).toEqual(commands.slice(0, 4));
+  expect(candidates[0].argv).toEqual(["npx", "--offline", "--no-install", "playwright", "test"]);
+  expect(candidates[1].argv).toEqual(["npx", "--offline", "--no-install", "vitest", "run"]);
+  const observed = verificationSummary({ verification: [check("npx playwright test")] }, [
+    {
+      id: "browser",
+      command: JSON.stringify(candidates[0].argv),
+      status: "passed",
+      exit_code: 0,
+    },
   ]);
-  expect(candidates[1].argv).toEqual([
-    "npx",
-    "--offline",
-    "--no-install",
-    "vitest",
-    "run",
-  ]);
-  const observed = verificationSummary(
-    { verification: [check("npx playwright test")] },
-    [
-      {
-        id: "browser",
-        command: JSON.stringify(candidates[0].argv),
-        status: "passed",
-        exit_code: 0,
-      },
-    ],
-  );
   expect(observed).toMatchObject({ canReview: true });
   expect(observed.checks[0]).toMatchObject({
     source: "observed_command",
@@ -133,9 +113,7 @@ it("uses matching selected browser capabilities to offer direct-file checks with
     note: "Capability only",
   };
   expect(missingVerificationChecks(summary)).toEqual([]);
-  expect(
-    missingVerificationChecks(summary, { selected: "isolated", report }),
-  ).toEqual([]);
+  expect(missingVerificationChecks(summary, { selected: "isolated", report })).toEqual([]);
   expect(
     missingVerificationChecks(summary, {
       selected: "installed_browsers",
@@ -143,9 +121,9 @@ it("uses matching selected browser capabilities to offer direct-file checks with
     }).map((candidate) => candidate.name),
   ).toEqual(["Direct-file browser"]);
   expect(summary.canReview).toBe(false);
-  expect(
-    summary.checks.find((check) => check.name === "Playwright setup")?.outcome,
-  ).toBe("blocked");
+  expect(summary.checks.find((check) => check.name === "Playwright setup")?.outcome).toBe(
+    "blocked",
+  );
 });
 
 it("explains missing commands, unavailable prerequisites, setup and unsupported commands without losing any requirement", () => {
@@ -182,10 +160,7 @@ it("explains missing commands, unavailable prerequisites, setup and unsupported 
 
 it("replays a literal simple shell-wrapped check as validated direct argv and retains the recorded identity", () => {
   const recorded = "/bin/bash -lc 'node --check script.js'";
-  const verification = verificationSummary(
-    { verification: [check(recorded)] },
-    [],
-  );
+  const verification = verificationSummary({ verification: [check(recorded)] }, []);
   expect(missingVerificationChecks(verification)).toEqual([
     {
       name: recorded,

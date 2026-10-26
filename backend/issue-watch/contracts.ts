@@ -63,10 +63,7 @@ export const WatchConfigurationSchema = z
         z
           .object({
             id: z.string().min(1).max(200),
-            interpretation: z.enum([
-              "semantic_preference",
-              "confirmed_controls",
-            ]),
+            interpretation: z.enum(["semantic_preference", "confirmed_controls"]),
           })
           .strict(),
       )
@@ -243,13 +240,7 @@ export const CandidateSchema = z
     uncertainty: z.array(z.string().max(1000)).max(100),
     evidence: z.array(ClaimEvidenceSchema).max(1000),
     source_keys: z.array(identity).max(2000),
-    semantic_state: z.enum([
-      "not_needed",
-      "pending",
-      "completed",
-      "unavailable",
-      "invalid",
-    ]),
+    semantic_state: z.enum(["not_needed", "pending", "completed", "unavailable", "invalid"]),
     semantic: SemanticResultSchema.nullable(),
     classification: ClassificationSchema,
     dismissed_at: timestamp.nullable(),
@@ -304,10 +295,7 @@ export const ScanSchema = z
       .string()
       .regex(/^[a-f0-9]{64}$/)
       .nullable(),
-    summary: z.partialRecord(
-      ClassificationSchema,
-      z.number().int().nonnegative(),
-    ),
+    summary: z.partialRecord(ClassificationSchema, z.number().int().nonnegative()),
   })
   .strict();
 export const ScanInput = z
@@ -331,10 +319,7 @@ export type WatchSource = z.infer<typeof SourceSchema>;
 export type WatchCandidate = z.infer<typeof CandidateSchema>;
 export type ClaimEvidence = z.infer<typeof ClaimEvidenceSchema>;
 export type WatchScan = z.infer<typeof ScanSchema>;
-export type CandidateSummary = Omit<
-  WatchCandidate,
-  "issue" | "evidence" | "source_keys"
-> & {
+export type CandidateSummary = Omit<WatchCandidate, "issue" | "evidence" | "source_keys"> & {
   issue: Omit<IssueSnapshot, "body">;
   body_bytes: number;
   evidence_count: number;

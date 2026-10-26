@@ -4,8 +4,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FinalizationService } from "../../backend/finalization/service";
 import { createExactCommit } from "../../backend/workspace/commit-message";
-import { checked, execute } from "../../backend/execution/process";
-import { createFixtureEngine, FixtureProvider } from "../fixtures";
+import { checked, execute } from "../../backend/execution/runtime/process";
+import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
 
 import { finalizationFixture as fixture } from "./fixtures";
 
@@ -26,9 +26,7 @@ it("rejects cross-task request collisions and mismatched saved owners without re
       "SELECT data FROM git_finalizations WHERE id=?",
       record.id,
     )[0].data;
-    expect(() =>
-      f.service.store.save({ ...record, task_id: other.id }),
-    ).toThrow("different task");
+    expect(() => f.service.store.save({ ...record, task_id: other.id })).toThrow("different task");
     expect(
       f.engine.db.all<{ data: string }>(
         "SELECT data FROM git_finalizations WHERE id=?",
@@ -36,26 +34,18 @@ it("rejects cross-task request collisions and mismatched saved owners without re
       )[0].data,
     ).toBe(original);
     const invalid = JSON.stringify({ ...record, task_id: other.id });
-    f.engine.db.run(
-      "UPDATE git_finalizations SET data=? WHERE id=?",
-      invalid,
-      record.id,
-    );
+    f.engine.db.run("UPDATE git_finalizations SET data=? WHERE id=?", invalid, record.id);
     expect(() => f.service.store.get(f.task.id, record.id)).toThrow();
-    await expect(
-      f.service.publish(f.task.id, record.id, true),
-    ).rejects.toThrow();
+    await expect(f.service.publish(f.task.id, record.id, true)).rejects.toThrow();
     expect(
       f.engine.db.all<{ data: string }>(
         "SELECT data FROM git_finalizations WHERE id=?",
         record.id,
       )[0].data,
     ).toBe(invalid);
-    expect(
-      f.engine.db.records
-        .diagnostics()
-        .some((item) => item.record_id === record.id),
-    ).toBe(true);
+    expect(f.engine.db.records.diagnostics().some((item) => item.record_id === record.id)).toBe(
+      true,
+    );
   } finally {
     await f.close();
   }
@@ -69,22 +59,15 @@ it("shares provider execution capacity and reports one cancellable Git activity"
   const f = await fixture(() => new FixtureProvider(() => gate));
   try {
     f.engine.db.saveSettings({ ...f.engine.db.settings(), concurrency: 1 });
-    await writeFile(
-      join(f.task.worktree_path, "extra.txt"),
-      "excluded fixture change\n",
-    );
+    await writeFile(join(f.task.worktree_path, "extra.txt"), "excluded fixture change\n");
     const record = await f.preview();
     const running = f.engine.reviewFinalization(
       f.engine.db.task(f.task.id),
       "Explicit fixture review",
       new AbortController().signal,
     );
-    await vi.waitFor(() =>
-      expect(f.engine.isExecuting(`git-review:${f.task.id}`)).toBe(true),
-    );
-    await expect(f.service.review(f.task.id, record.id)).rejects.toThrow(
-      "execution slots",
-    );
+    await vi.waitFor(() => expect(f.engine.isExecuting(`git-review:${f.task.id}`)).toBe(true));
+    await expect(f.service.review(f.task.id, record.id)).rejects.toThrow("execution slots");
     release();
     await running;
     const reviewed = await f.service.review(f.task.id, record.id);
@@ -121,17 +104,11 @@ it("pages real saved output without exposing internal index snapshots to the ren
       before: result.events[0].id,
     })) as typeof result;
     expect(earlier.events_older).toBe(false);
-    expect(earlier.events.some((event) => event.output === "line 0")).toBe(
-      true,
-    );
+    expect(earlier.events.some((event) => event.output === "line 0")).toBe(true);
     f.service.store.event(record, "Fixture large output", "x".repeat(70000));
-    expect(f.service.store.events(record.id).at(-1)?.output).toContain(
-      "64 KiB event limit",
-    );
+    expect(f.service.store.events(record.id).at(-1)?.output).toContain("64 KiB event limit");
     f.service.store.event(record, "Fixture UTF-8 output", "🛰️".repeat(30000));
-    expect(f.service.store.events(record.id).at(-1)?.output).not.toContain(
-      "\ufffd",
-    );
+    expect(f.service.store.events(record.id).at(-1)?.output).not.toContain("\ufffd");
   } finally {
     await f.close();
   }
@@ -174,23 +151,14 @@ it("commits literal new paths, staged renames and staged deletions without broad
     const cwd = f.task.worktree_path;
     await rename(join(cwd, "rename.txt"), join(cwd, "renamed.txt"));
     await rm(join(cwd, "deleted.txt"));
-    await checked(
-      "git",
-      ["add", "--all", "--", "rename.txt", "renamed.txt", "deleted.txt"],
-      cwd,
-    );
+    await checked("git", ["add", "--all", "--", "rename.txt", "renamed.txt", "deleted.txt"], cwd);
     const literal = ":[literal]*.txt";
     await writeFile(join(cwd, literal), "Literal filename content\n");
     const state = await f.service.inspect(f.task.id);
     expect(
-      state.files.some(
-        (file) => file.path === "renamed.txt" && file.old_path === "rename.txt",
-      ),
+      state.files.some((file) => file.path === "renamed.txt" && file.old_path === "rename.txt"),
     ).toBe(true);
-    const record = await f.preview(
-      ["source.txt", "renamed.txt", "deleted.txt", literal],
-      true,
-    );
+    const record = await f.preview(["source.txt", "renamed.txt", "deleted.txt", literal], true);
     await f.service.review(f.task.id, record.id);
     await f.service.approve(f.task.id, record.id);
     const commit = await f.service.commit(
@@ -199,29 +167,18 @@ it("commits literal new paths, staged renames and staged deletions without broad
       "Explicit rename, deletion and literal path",
       true,
     );
-    expect(
-      await checked("git", ["show", `${commit.head}:${literal}`], cwd),
-    ).toBe("Literal filename content");
-    expect(
-      await checked("git", ["show", `${commit.head}:renamed.txt`], cwd),
-    ).toBe("rename me");
+    expect(await checked("git", ["show", `${commit.head}:${literal}`], cwd)).toBe(
+      "Literal filename content",
+    );
+    expect(await checked("git", ["show", `${commit.head}:renamed.txt`], cwd)).toBe("rename me");
     expect(
       await checked(
         "git",
-        [
-          "ls-tree",
-          "--name-only",
-          commit.head!,
-          "--",
-          "rename.txt",
-          "deleted.txt",
-        ],
+        ["ls-tree", "--name-only", commit.head!, "--", "rename.txt", "deleted.txt"],
         cwd,
       ),
     ).toBe("");
-    expect(await checked("git", ["diff", "--cached", "--name-only"], cwd)).toBe(
-      "",
-    );
+    expect(await checked("git", ["diff", "--cached", "--name-only"], cwd)).toBe("");
   } finally {
     await f.close();
   }
@@ -230,10 +187,7 @@ it("commits literal new paths, staged renames and staged deletions without broad
 it("keeps a subset blocked when the reviewer approves without fresh required command evidence", async () => {
   const f = await fixture();
   try {
-    await writeFile(
-      join(f.task.worktree_path, "check.js"),
-      "const value = 1; void value;\n",
-    );
+    await writeFile(join(f.task.worktree_path, "check.js"), "const value = 1; void value;\n");
     const command = ["node", "--check", "check.js"];
     expect((await f.engine.runCommand(f.task.id, command)).code).toBe(0);
     const report = f.engine.db.artifact(f.task.id, 3);
@@ -273,11 +227,7 @@ it("removes only the unchanged owned preview and its journal while preserving ta
   try {
     const record = await f.preview();
     const index = await readFile(
-      await checked(
-        "git",
-        ["rev-parse", "--git-path", "index"],
-        f.task.worktree_path,
-      ),
+      await checked("git", ["rev-parse", "--git-path", "index"], f.task.worktree_path),
     );
     await expect(
       f.service.call("remove", { id: f.task.id, operation_id: record.id }),
@@ -288,21 +238,15 @@ it("removes only the unchanged owned preview and its journal while preserving ta
       confirmed: true,
     });
     expect(f.service.store.list(f.task.id)).toHaveLength(0);
-    await expect(
-      readFile(join(record.preview_path, "source.txt")),
-    ).rejects.toThrow();
+    await expect(readFile(join(record.preview_path, "source.txt"))).rejects.toThrow();
     expect(
       await readFile(
-        await checked(
-          "git",
-          ["rev-parse", "--git-path", "index"],
-          f.task.worktree_path,
-        ),
+        await checked("git", ["rev-parse", "--git-path", "index"], f.task.worktree_path),
       ),
     ).toEqual(index);
-    expect(
-      await readFile(join(f.task.worktree_path, "source.txt"), "utf8"),
-    ).toBe("independently reviewed change\n");
+    expect(await readFile(join(f.task.worktree_path, "source.txt"), "utf8")).toBe(
+      "independently reviewed change\n",
+    );
   } finally {
     await f.close();
   }
@@ -322,37 +266,26 @@ it.each([
       const originalSource = await readFile(join(f.repo.path, "source.txt"));
       const record = await f.preview();
       expect(record.status).toBe("reviewed");
-      await expect(
-        f.service.commit(f.task.id, record.id, "message", commitSkip),
-      ).rejects.toThrow("Manually approve");
+      await expect(f.service.commit(f.task.id, record.id, "message", commitSkip)).rejects.toThrow(
+        "Manually approve",
+      );
       await f.service.approve(f.task.id, record.id);
       const message = commitSkip
         ? "  Exact title  \n\n# literal comment\nUnicode ✓  "
         : "Exact title without final newline";
-      const committed = await f.service.commit(
-        f.task.id,
-        record.id,
-        message,
-        commitSkip,
-      );
+      const committed = await f.service.commit(f.task.id, record.id, message, commitSkip);
       const object = await execute({
         program: "git",
         args: ["cat-file", "commit", committed.head!],
         cwd: f.task.worktree_path,
       });
-      expect(object.stdout.slice(object.stdout.indexOf("\n\n") + 2)).toBe(
-        message,
-      );
+      expect(object.stdout.slice(object.stdout.indexOf("\n\n") + 2)).toBe(message);
       expect(
-        await checked(
-          "git",
-          ["show", `${committed.head}:source.txt`],
-          f.task.worktree_path,
-        ),
+        await checked("git", ["show", `${committed.head}:source.txt`], f.task.worktree_path),
       ).toBe("independently reviewed change");
-      expect(
-        await f.service.commit(f.task.id, record.id, message, commitSkip),
-      ).toMatchObject({ head: committed.head });
+      expect(await f.service.commit(f.task.id, record.id, message, commitSkip)).toMatchObject({
+        head: committed.head,
+      });
       await expect(
         f.service.call("publish", {
           id: f.task.id,
@@ -369,27 +302,15 @@ it.each([
       });
       const result = await f.service.publish(f.task.id, record.id, pushSkip);
       expect(result.status).toBe("published");
-      expect(
-        await checked(
-          "git",
-          ["rev-parse", `refs/heads/${f.task.branch_name}`],
-          f.fork,
-        ),
-      ).toBe(committed.head);
-      expect(
-        (await f.service.publish(f.task.id, record.id, pushSkip)).status,
-      ).toBe("published");
-      expect(await readFile(join(f.repo.path, ".git", "index"))).toEqual(
-        originalIndex,
+      expect(await checked("git", ["rev-parse", `refs/heads/${f.task.branch_name}`], f.fork)).toBe(
+        committed.head,
       );
-      expect(await readFile(join(f.repo.path, "source.txt"))).toEqual(
-        originalSource,
-      );
+      expect((await f.service.publish(f.task.id, record.id, pushSkip)).status).toBe("published");
+      expect(await readFile(join(f.repo.path, ".git", "index"))).toEqual(originalIndex);
+      expect(await readFile(join(f.repo.path, "source.txt"))).toEqual(originalSource);
       expect(f.engine.db.all("SELECT id FROM ai_usage")).toEqual([]);
       expect(
-        f.service.store
-          .events(record.id)
-          .some((event) => event.phase === "Push verified"),
+        f.service.store.events(record.id).some((event) => event.phase === "Push verified"),
       ).toBe(true);
     } finally {
       await f.close();
@@ -407,55 +328,31 @@ it("keeps unsafe and unrelated files out, freshly reviews a subset and preserves
     await writeFile(join(cwd, ".env"), "FAKE=secret\n");
     await mkdir(join(cwd, ".codex"));
     await writeFile(join(cwd, ".codex", "profile.json"), '{"fixture":true}\n');
-    await writeFile(
-      join(cwd, "innocent.txt"),
-      "-----BEGIN PRIVATE KEY-----\nfixture\n",
-    );
+    await writeFile(join(cwd, "innocent.txt"), "-----BEGIN PRIVATE KEY-----\nfixture\n");
     const originalIndex = await readFile(
       await checked("git", ["rev-parse", "--git-path", "index"], cwd),
     );
     const inspected = await f.service.inspect(f.task.id);
-    expect(
-      inspected.files.filter((file) => file.excluded).map((file) => file.path),
-    ).toEqual(
+    expect(inspected.files.filter((file) => file.excluded).map((file) => file.path)).toEqual(
       expect.arrayContaining([".env", "innocent.txt", ".codex/profile.json"]),
     );
-    await expect(f.preview(["source.txt", ".env"])).rejects.toThrow(
-      "inspected",
-    );
+    await expect(f.preview(["source.txt", ".env"])).rejects.toThrow("inspected");
     const record = await f.preview();
     expect(record.status).toBe("draft");
-    await expect(f.service.approve(f.task.id, record.id)).rejects.toThrow(
-      "independent review",
-    );
-    expect(
-      await readFile(join(record.preview_path, "deleted.txt"), "utf8"),
-    ).toBe("delete me\n");
+    await expect(f.service.approve(f.task.id, record.id)).rejects.toThrow("independent review");
+    expect(await readFile(join(record.preview_path, "deleted.txt"), "utf8")).toBe("delete me\n");
     await expect(readFile(join(record.preview_path, ".env"))).rejects.toThrow();
     const reviewed = await f.service.review(f.task.id, record.id);
     expect(reviewed.review_source).toBe("selection");
-    expect(
-      await readFile(
-        await checked("git", ["rev-parse", "--git-path", "index"], cwd),
-      ),
-    ).toEqual(originalIndex);
+    expect(await readFile(await checked("git", ["rev-parse", "--git-path", "index"], cwd))).toEqual(
+      originalIndex,
+    );
     await f.service.approve(f.task.id, record.id);
-    const committed = await f.service.commit(
-      f.task.id,
-      record.id,
-      "Only the selected fix",
-      true,
-    );
+    const committed = await f.service.commit(f.task.id, record.id, "Only the selected fix", true);
     expect(
-      await checked(
-        "git",
-        ["diff", "--name-only", `${record.parent}..${committed.head}`],
-        cwd,
-      ),
+      await checked("git", ["diff", "--name-only", `${record.parent}..${committed.head}`], cwd),
     ).toBe("source.txt");
-    expect(await checked("git", ["show", ":deleted.txt"], cwd)).toBe(
-      "unrelated staged update",
-    );
+    expect(await checked("git", ["show", ":deleted.txt"], cwd)).toBe("unrelated staged update");
     expect(await readFile(join(cwd, ".env"), "utf8")).toBe("FAKE=secret\n");
     expect(
       f.engine.db.all<{ purpose: string }>(
@@ -464,10 +361,7 @@ it("keeps unsafe and unrelated files out, freshly reviews a subset and preserves
       ),
     ).toEqual([{ purpose: "git-finalization-review" }]);
     expect(
-      f.engine.db.all(
-        "SELECT id FROM task_artifacts WHERE task_id=? AND stage=5",
-        f.task.id,
-      ),
+      f.engine.db.all("SELECT id FROM task_artifacts WHERE task_id=? AND stage=5", f.task.id),
     ).toHaveLength(1);
   } finally {
     await f.close();
@@ -478,25 +372,19 @@ it("requires an explicit decision for selected staged hunks and invalidates chan
   const f = await fixture();
   try {
     await checked("git", ["add", "--", "source.txt"], f.task.worktree_path);
-    await writeFile(
-      join(f.task.worktree_path, "source.txt"),
-      "new unstaged content\n",
-    );
+    await writeFile(join(f.task.worktree_path, "source.txt"), "new unstaged content\n");
     await expect(f.preview()).rejects.toThrow("Explicitly confirm");
     const record = await f.preview(["source.txt"], true);
     expect(record.status).toBe("draft");
     await f.service.review(f.task.id, record.id);
     await f.service.approve(f.task.id, record.id);
-    await writeFile(
-      join(f.task.worktree_path, "source.txt"),
-      "changed after approval\n",
+    await writeFile(join(f.task.worktree_path, "source.txt"), "changed after approval\n");
+    await expect(f.service.commit(f.task.id, record.id, "Blocked", true)).rejects.toThrow(
+      "changed",
     );
-    await expect(
-      f.service.commit(f.task.id, record.id, "Blocked", true),
-    ).rejects.toThrow("changed");
-    expect(
-      await checked("git", ["show", ":source.txt"], f.task.worktree_path),
-    ).toBe("independently reviewed change");
+    expect(await checked("git", ["show", ":source.txt"], f.task.worktree_path)).toBe(
+      "independently reviewed change",
+    );
   } finally {
     await f.close();
   }
@@ -522,16 +410,10 @@ it("reconciles an interrupted local commit read-only and resumes only with expli
     await f.service.close();
     await f.engine.close();
     reopened = await createFixtureEngine(f.root, () => new FixtureProvider());
-    const service = new FinalizationService(
-      reopened,
-      async () => f.identity,
-      f.transport,
-    );
+    const service = new FinalizationService(reopened, async () => f.identity, f.transport);
     expect(service.store.get(f.task.id, record.id).status).toBe("interrupted");
     await service.call("reconcile", { id: f.task.id, operation_id: record.id });
-    expect(
-      await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path),
-    ).toBe(approved.parent);
+    expect(await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path)).toBe(approved.parent);
     await expect(
       service.call("resumeCommit", { id: f.task.id, operation_id: record.id }),
     ).rejects.toThrow();
@@ -541,9 +423,7 @@ it("reconciles an interrupted local commit read-only and resumes only with expli
       confirmed: true,
     });
     expect(resumed).toMatchObject({ status: "committed", head: approved.head });
-    expect(
-      await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path),
-    ).toBe(approved.head);
+    expect(await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path)).toBe(approved.head);
     await service.close();
   } finally {
     await reopened?.close();

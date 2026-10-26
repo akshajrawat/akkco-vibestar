@@ -10,9 +10,7 @@ export interface DesktopInfo {
 }
 export interface DesktopApi {
   rpc: <T>(method: string, params?: unknown) => Promise<T>;
-  subscribe: (
-    callback: (event: import("../backend/domain").CoreEvent) => void,
-  ) => () => void;
+  subscribe: (callback: (event: import("../backend/domain").CoreEvent) => void) => () => void;
   desktopSettings: () => Promise<DesktopInfo>;
   saveDesktopSettings: (config: DesktopSettings) => Promise<void>;
   installHelper: () => Promise<void>;

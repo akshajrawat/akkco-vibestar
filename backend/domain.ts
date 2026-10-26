@@ -2,7 +2,7 @@ import { z } from "zod";
 import type {
   VerificationEnvironment,
   BrowserEnvironmentReport,
-} from "./execution/browser/contracts";
+} from "./execution/verification/browser/contracts";
 export interface ActivityBlocker {
   id: string;
   kind:
@@ -28,15 +28,9 @@ export class AdeError extends Error {
     this.name = "AdeError";
   }
 }
-export const modelEffortError = (
-  provider: string,
-  model: string,
-  effort: string,
-) => {
+export const modelEffortError = (provider: string, model: string, effort: string) => {
   const suffix =
-    provider === "antigravity"
-      ? model.match(/-(low|medium|high|xhigh|max)$/)?.[1]
-      : null;
+    provider === "antigravity" ? model.match(/-(low|medium|high|xhigh|max)$/)?.[1] : null;
   return suffix && suffix !== effort
     ? `Antigravity model ${model} encodes ${suffix} effort and conflicts with ${effort}. Select a matching model or effort.`
     : null;
@@ -76,9 +70,7 @@ export const SettingsSchema = z
       effort: "medium",
       timeout_secs: 120,
     }),
-    default_editor: z
-      .enum(["", "code", "cursor", "windsurf", "codium"])
-      .default(""),
+    default_editor: z.enum(["", "code", "cursor", "windsurf", "codium"]).default(""),
     review_ai: StageConfigSchema.extend({
       provider: z.enum(["antigravity", "codex"]),
     })
@@ -100,11 +92,7 @@ export const SettingsSchema = z
     for (const key of ["antigravity", "antigravity_review"] as const) {
       const config = settings[key];
       if (!config) continue;
-      const error = modelEffortError(
-        "antigravity",
-        config.model,
-        config.effort,
-      );
+      const error = modelEffortError("antigravity", config.model, config.effort);
       if (error)
         context.addIssue({
           code: "custom",
@@ -265,15 +253,13 @@ export interface Task {
   archived?: boolean;
   continuation?: "pipeline" | "planning" | "implementation";
   final_review_hash?: string;
-  final_review_verdict?:
-    "verified" | "code_approved_incomplete" | "changes_requested" | "blocked";
+  final_review_verdict?: "verified" | "code_approved_incomplete" | "changes_requested" | "blocked";
   review_gap_acknowledgment?: {
     fingerprint: string;
     evidence_hash: string;
     acknowledged_at: string;
   };
-  approval_gate?:
-    "antigravity_plan" | "codex_plan" | "implementation" | "final_review";
+  approval_gate?: "antigravity_plan" | "codex_plan" | "implementation" | "final_review";
 }
 // Shared physical assignment; repair workflows do not become issue tasks.
 export type WorkspaceAssignment = Pick<
@@ -342,10 +328,7 @@ export const parseIssue = (input: string): IssueRef => {
   try {
     u = new URL(input.trim());
   } catch {
-    throw new AdeError(
-      "invalid_input",
-      "Use https://github.com/owner/repository/issues/number",
-    );
+    throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
   }
   const m = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/issues\/(\d+)\/?$/);
   if (
@@ -358,10 +341,7 @@ export const parseIssue = (input: string): IssueRef => {
     [".", ".."].includes(m[1]) ||
     [".", ".."].includes(m[2])
   )
-    throw new AdeError(
-      "invalid_input",
-      "Use https://github.com/owner/repository/issues/number",
-    );
+    throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
   const number = Number(m[3]);
   if (!Number.isSafeInteger(number) || number <= 0)
     throw new AdeError("invalid_input", "Invalid GitHub issue number");
@@ -386,9 +366,7 @@ export const branchName = (number: number, scope: string, suffix = 0) =>
   `akkco/${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`;
 export const remoteIdentity = (input: string) => {
   const u = new URL(
-    input.startsWith("git@github.com:")
-      ? `https://github.com/${input.slice(15)}`
-      : input,
+    input.startsWith("git@github.com:") ? `https://github.com/${input.slice(15)}` : input,
   );
   const m = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
   if (
@@ -409,9 +387,6 @@ export const remoteIdentity = (input: string) => {
   return { owner: m[1], name: m[2] };
 };
 export const now = () => new Date().toISOString();
-export const repositoryMatchesIssue = (
-  repository: Repository,
-  reference: IssueRef,
-) =>
+export const repositoryMatchesIssue = (repository: Repository, reference: IssueRef) =>
   `${repository.owner}/${repository.name}`.toLowerCase() ===
   `${reference.owner}/${reference.repo}`.toLowerCase();

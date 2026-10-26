@@ -15,11 +15,7 @@ vi.mock("node:child_process", async (original) => {
     ...module,
     spawn: (program: string, _args: string[], options: SpawnOptions) => {
       expect(program).toBe("codex");
-      const child = module.spawn(
-        process.execPath,
-        ["-e", fixture.script],
-        options,
-      );
+      const child = module.spawn(process.execPath, ["-e", fixture.script], options);
       fixture.children.push(child);
       return child;
     },
@@ -47,9 +43,7 @@ setInterval(()=>{},1000);`;
 it("settles successful discovery only after killing the process group, without starting a model turn", async () => {
   fixture.script = protocol("process.on('SIGTERM',()=>{});");
   const result = await discoverCodexModels(tmpdir());
-  expect(result.models).toMatchObject([
-    { id: "fixture-model", supportedEfforts: ["high"] },
-  ]);
+  expect(result.models).toMatchObject([{ id: "fixture-model", supportedEfforts: ["high"] }]);
   expect(result.subscriptionLimits?.windows[0].usedPercent).toBe(12);
   expect(fixture.children[0].signalCode).toBe("SIGKILL");
   expect(fixture.children[0].stdout?.readableEnded).toBe(true);
@@ -59,19 +53,13 @@ it.each([
   ["line", "process.stdout.write('x'.repeat(300*1024));"],
   ["total", "process.stderr.write('x'.repeat(3*1024*1024));"],
   ["invalid", "console.log('invalid JSON');"],
-])(
-  "bounds %s protocol data and waits for process close",
-  async (_kind, script) => {
-    fixture.script = `${script}setInterval(()=>{},1000);`;
-    await expect(discoverCodexModels(tmpdir())).rejects.toThrow(
-      /limit|Invalid/,
-    );
-    expect(
-      fixture.children[0].exitCode !== null ||
-        fixture.children[0].signalCode !== null,
-    ).toBe(true);
-  },
-);
+])("bounds %s protocol data and waits for process close", async (_kind, script) => {
+  fixture.script = `${script}setInterval(()=>{},1000);`;
+  await expect(discoverCodexModels(tmpdir())).rejects.toThrow(/limit|Invalid/);
+  expect(fixture.children[0].exitCode !== null || fixture.children[0].signalCode !== null).toBe(
+    true,
+  );
+});
 
 it("rejects a repeated pagination cursor", async () => {
   fixture.script = protocol("", "'repeated'");
@@ -90,7 +78,5 @@ it("cancels and settles descendants before returning", async () => {
   await rejected;
   expect(["SIGTERM", "SIGKILL"]).toContain(fixture.children[0].signalCode);
   const stat = await readFile(`/proc/${pid}/stat`, "utf8").catch(() => "");
-  expect(!stat || stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z ")).toBe(
-    true,
-  );
+  expect(!stat || stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z ")).toBe(true);
 });

@@ -37,9 +37,7 @@ export const ActionSchema = z
   })
   .strict();
 export type PullRequestAction = z.infer<typeof ActionSchema>;
-export const discussionEntries = (
-  snapshot: PullRequestState,
-): DiscussionEntry[] =>
+export const discussionEntries = (snapshot: PullRequestState): DiscussionEntry[] =>
   snapshot.discussion || [
     ...snapshot.comments.map((c) => ({
       id: c.id,
@@ -72,5 +70,4 @@ export const discussionEntries = (
   ];
 const acknowledgment =
   /^(?:lgtm|looks good(?: to me)?|got it(?:,? thanks)?|thanks(?: you)?(?: for (?:the (?:explanation|update)|clarifying))?|thank you|approved|perfect|great|okay|ok|sounds good|all good)[.!\s]*$/i;
-export const isAcknowledgment = (text: string) =>
-  acknowledgment.test(text.trim());
+export const isAcknowledgment = (text: string) => acknowledgment.test(text.trim());

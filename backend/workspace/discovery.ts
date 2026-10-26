@@ -4,7 +4,7 @@ import { join, resolve, isAbsolute } from "node:path";
 import { readdir, realpath, lstat } from "node:fs/promises";
 import { AdeError, now, remoteIdentity } from "../domain";
 import type { Database } from "../storage/database";
-import { checked, redact } from "../execution/process";
+import { checked, redact } from "../execution/runtime/process";
 import { inside } from "./paths";
 import { z } from "zod";
 
@@ -111,12 +111,7 @@ export interface RepositoryIndexSnapshot {
   warnings: string[];
 }
 export const discoveryRoot = (value: string, home = homedir()) => {
-  const path =
-    value === "~"
-      ? home
-      : value.startsWith("~/")
-        ? join(home, value.slice(2))
-        : value;
+  const path = value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value;
   if (!isAbsolute(path))
     throw new AdeError(
       "invalid_input",
@@ -172,10 +167,7 @@ export class RepositoryIndex {
         : {}),
     };
   };
-  verifyLocal = async (
-    input: z.infer<typeof LocalRepositoryInput>,
-    allowManaged = false,
-  ) => {
+  verifyLocal = async (input: z.infer<typeof LocalRepositoryInput>, allowManaged = false) => {
     const p = LocalRepositoryInput.parse(input);
     let executionPath = p.path;
     if (p.environment === "windows") {
@@ -191,22 +183,15 @@ export class RepositoryIndex {
           "Windows path conversion did not produce an absolute execution path.",
         );
     } else if (!p.path.startsWith("/") && !p.path.startsWith("~/")) {
-      throw new AdeError(
-        "invalid_input",
-        "Enter an absolute WSL path or a path starting with ~/.",
-      );
+      throw new AdeError("invalid_input", "Enter an absolute WSL path or a path starting with ~/.");
     }
     const path = await realpath(discoveryRoot(executionPath));
     if (discoveryRoot(path) !== path)
       throw new AdeError("invalid_input", "Invalid repository location.");
     const local = await this.inspect(path, undefined, allowManaged);
     if (local.path !== path)
-      throw new AdeError(
-        "invalid_input",
-        `Choose the repository root: ${local.path}`,
-      );
-    const git = (args: string[]) =>
-      gitCapture(["-c", "core.fsmonitor=false", ...args], path);
+      throw new AdeError("invalid_input", `Choose the repository root: ${local.path}`);
+    const git = (args: string[]) => gitCapture(["-c", "core.fsmonitor=false", ...args], path);
     const status = await git([
       "--no-optional-locks",
       "status",
@@ -227,8 +212,7 @@ export class RepositoryIndex {
             git(["remote", "get-url", name]),
             git(["symbolic-ref", "--short", `refs/remotes/${name}/HEAD`]),
           ]);
-          const cleanUrl =
-            indexedRemote(url.code === 0 ? url.stdout.trim() : null) || "";
+          const cleanUrl = indexedRemote(url.code === 0 ? url.stdout.trim() : null) || "";
           let identity: string | null = null;
           try {
             const r = remoteIdentity(cleanUrl);
@@ -240,10 +224,7 @@ export class RepositoryIndex {
             name,
             url: cleanUrl,
             identity,
-            default_branch:
-              head.code === 0
-                ? head.stdout.trim().slice(name.length + 1)
-                : null,
+            default_branch: head.code === 0 ? head.stdout.trim().slice(name.length + 1) : null,
           };
         }),
     );
@@ -257,11 +238,7 @@ export class RepositoryIndex {
           .split("\n")
           .filter(Boolean)
           .filter((ref) => !ref.endsWith("/HEAD"))
-          .map((ref) =>
-            ref
-              .replace(/^refs\/heads\//, "")
-              .replace(/^refs\/remotes\/[^/]+\//, ""),
-          ),
+          .map((ref) => ref.replace(/^refs\/heads\//, "").replace(/^refs\/remotes\/[^/]+\//, "")),
       ),
     ];
     const github = remotes.filter((remote) => remote.identity);
@@ -289,20 +266,11 @@ export class RepositoryIndex {
     signal?: AbortSignal,
     allowManaged = false,
   ): Promise<LocalRepository> => {
-    const top = await realpath(
-      await gitChecked(["rev-parse", "--show-toplevel"], path, signal),
-    );
+    const top = await realpath(await gitChecked(["rev-parse", "--show-toplevel"], path, signal));
     if (!allowManaged && (inside(this.root, top) || top === this.root))
-      throw new AdeError(
-        "isolation",
-        "Vibestar-managed directories cannot be imported.",
-      );
+      throw new AdeError("isolation", "Vibestar-managed directories cannot be imported.");
     const git = async (args: string[]) => {
-      const result = await gitCapture(
-        ["-c", "core.fsmonitor=false", ...args],
-        top,
-        signal,
-      );
+      const result = await gitCapture(["-c", "core.fsmonitor=false", ...args], top, signal);
       return result.code === 0 ? result.stdout.trim() : null;
     };
     const [rawOrigin, rawUpstream, branch, defaultRef] = await Promise.all([
@@ -316,11 +284,7 @@ export class RepositoryIndex {
     const all = await git(["remote", "-v"]);
     const identities = [
       ...new Set(
-        [
-          origin,
-          upstream,
-          ...(all || "").split("\n").map((r) => r.split(/\s+/)[1]),
-        ]
+        [origin, upstream, ...(all || "").split("\n").map((r) => r.split(/\s+/)[1])]
           .filter(Boolean)
           .flatMap((url) => {
             try {
@@ -348,8 +312,8 @@ export class RepositoryIndex {
       .repositories.filter((r) => r.identities.includes(identity.toLowerCase()))
       .sort(
         (a, b) =>
-          Number(a.environment === "windows") -
-            Number(b.environment === "windows") || a.path.localeCompare(b.path),
+          Number(a.environment === "windows") - Number(b.environment === "windows") ||
+          a.path.localeCompare(b.path),
       );
   scan = () => {
     if (this.running) return this.running;
@@ -381,9 +345,7 @@ export class RepositoryIndex {
     const settings = this.db.settings().repository_discovery;
     const roots = [
       ...new Set(
-        [...settings.roots, ...(settings.scan_home ? ["~"] : [])].map((r) =>
-          discoveryRoot(r),
-        ),
+        [...settings.roots, ...(settings.scan_home ? ["~"] : [])].map((r) => discoveryRoot(r)),
       ),
     ];
     const visited = new Set<string>();
@@ -392,20 +354,10 @@ export class RepositoryIndex {
     let entries = 0;
     const visit = async (path: string, depth: number) => {
       signal.throwIfAborted();
-      if (
-        depth > settings.max_depth ||
-        entries >= 30000 ||
-        Date.now() - start > 60000
-      )
-        return;
+      if (depth > settings.max_depth || entries >= 30000 || Date.now() - start > 60000) return;
       try {
         const actual = await realpath(path);
-        if (
-          visited.has(actual) ||
-          actual === this.root ||
-          inside(this.root, actual)
-        )
-          return;
+        if (visited.has(actual) || actual === this.root || inside(this.root, actual)) return;
         visited.add(actual);
         const rows = await readdir(actual, { withFileTypes: true });
         entries += rows.length;
@@ -425,14 +377,8 @@ export class RepositoryIndex {
         }
       } catch (e) {
         signal.throwIfAborted();
-        if (
-          !["ENOENT", "EACCES", "EPERM"].includes(
-            (e as NodeJS.ErrnoException).code || "",
-          )
-        )
-          warnings.push(
-            `${path}: ${e instanceof Error ? e.message : String(e)}`,
-          );
+        if (!["ENOENT", "EACCES", "EPERM"].includes((e as NodeJS.ErrnoException).code || ""))
+          warnings.push(`${path}: ${e instanceof Error ? e.message : String(e)}`);
       }
     };
     for (const root of roots) {
@@ -442,8 +388,7 @@ export class RepositoryIndex {
         if (!(await lstat(root)).isSymbolicLink()) await visit(actual, 0);
       } catch (e) {
         signal.throwIfAborted();
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT")
-          warnings.push(`${root}: ${String(e)}`);
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") warnings.push(`${root}: ${String(e)}`);
       }
     }
     if (entries >= 30000 || Date.now() - start > 60000)

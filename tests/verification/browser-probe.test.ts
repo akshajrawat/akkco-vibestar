@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import { runInNewContext } from "node:vm";
-import { browserEnvironmentProbe } from "../../backend/execution/browser/probe";
-import { BrowserEnvironmentReportSchema } from "../../backend/execution/browser/contracts";
-import { verificationSummary } from "../../backend/execution/verification";
+import { browserEnvironmentProbe } from "../../backend/execution/verification/browser/probe";
+import { BrowserEnvironmentReportSchema } from "../../backend/execution/verification/browser/contracts";
+import { verificationSummary } from "../../backend/execution/verification/verification";
 
 const probe = async (
   options: {
@@ -26,9 +26,7 @@ const probe = async (
     },
     listen: (_port: number, _host: string, callback: () => void) => {
       if (options.socket === false)
-        errorHandler(
-          new Error("listen EPERM: operation not permitted 127.0.0.1"),
-        );
+        errorHandler(new Error("listen EPERM: operation not permitted 127.0.0.1"));
       else {
         server.listening = true;
         callback();
@@ -53,9 +51,7 @@ const probe = async (
               url = value;
             },
             title: async () =>
-              url.startsWith("file:")
-                ? "Vibestar direct file probe"
-                : "Vibestar HTTP probe",
+              url.startsWith("file:") ? "Vibestar direct file probe" : "Vibestar HTTP probe",
           }),
         };
       },
@@ -83,8 +79,7 @@ const probe = async (
       {
         Resolver: class {
           resolve4 = async () => {
-            if (options.dns === false)
-              throw new Error("getaddrinfo EAI_AGAIN registry.npmjs.org");
+            if (options.dns === false) throw new Error("getaddrinfo EAI_AGAIN registry.npmjs.org");
             return ["127.0.0.1"];
           };
           cancel = () => {};
@@ -97,16 +92,12 @@ const probe = async (
   ]);
   const require = Object.assign(
     (name: string) => {
-      if (!modules.has(name))
-        throw new Error(`Unexpected probe capability: ${name}`);
+      if (!modules.has(name)) throw new Error(`Unexpected probe capability: ${name}`);
       return modules.get(name);
     },
     {
       resolve: (name: string) => {
-        if (
-          options.package === false ||
-          name !== "playwright-core/package.json"
-        )
+        if (options.package === false || name !== "playwright-core/package.json")
           throw new Error("MODULE_NOT_FOUND");
         return "/fixture/playwright-core/package.json";
       },
@@ -161,9 +152,7 @@ it("keeps direct-file capability independent of denied HTTP sockets", async () =
 });
 
 it("reports absent packages, binaries and launch failures without any installation capability", async () => {
-  expect((await probe({ package: false })).direct_file.outcome).toBe(
-    "unavailable",
-  );
+  expect((await probe({ package: false })).direct_file.outcome).toBe("unavailable");
   expect((await probe({ browser: false })).browsers).toEqual([]);
   expect((await probe({ launch: false })).direct_file).toMatchObject({
     outcome: "blocked",
@@ -190,7 +179,5 @@ it("never promotes required or optional application checks based on a successful
     },
   ]);
   expect(result).toMatchObject({ outcome: "blocked", canReview: false });
-  expect(result.checks.filter((check) => check.outcome === "passed")).toEqual(
-    [],
-  );
+  expect(result.checks.filter((check) => check.outcome === "passed")).toEqual([]);
 });

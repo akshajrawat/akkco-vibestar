@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   VerificationEnvironmentSchema,
   BrowserEnvironmentReportSchema,
-} from "../execution/browser/contracts";
+} from "../execution/verification/browser/contracts";
 import {
   SettingsSchema,
   FollowupConfigSchema,
@@ -80,12 +80,7 @@ export const TaskRecordSchema = z
     continuation: z.enum(["pipeline", "planning", "implementation"]).optional(),
     final_review_hash: z.string().optional(),
     final_review_verdict: z
-      .enum([
-        "verified",
-        "code_approved_incomplete",
-        "changes_requested",
-        "blocked",
-      ])
+      .enum(["verified", "code_approved_incomplete", "changes_requested", "blocked"])
       .optional(),
     review_gap_acknowledgment: z
       .object({
@@ -96,12 +91,7 @@ export const TaskRecordSchema = z
       .strict()
       .optional(),
     approval_gate: z
-      .enum([
-        "antigravity_plan",
-        "codex_plan",
-        "implementation",
-        "final_review",
-      ])
+      .enum(["antigravity_plan", "codex_plan", "implementation", "final_review"])
       .optional(),
     workspace_checkpoint: z
       .object({

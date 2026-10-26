@@ -1,10 +1,4 @@
-import {
-  isValidElement,
-  useEffect,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
+import { isValidElement, useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy, Check } from "lucide-react";
@@ -18,12 +12,8 @@ const CodeBlock = ({ children }: ComponentProps<"pre">) => {
   }>(children)
     ? children
     : undefined;
-  const code =
-    typeof codeElement?.props.children === "string"
-      ? codeElement.props.children
-      : "";
-  const language =
-    codeElement?.props.className?.match(/language-([\w+-]+)/)?.[1] || "text";
+  const code = typeof codeElement?.props.children === "string" ? codeElement.props.children : "";
+  const language = codeElement?.props.className?.match(/language-([\w+-]+)/)?.[1] || "text";
   const extension =
     new Map([
       ["javascript", "js"],
@@ -62,22 +52,18 @@ const CodeBlock = ({ children }: ComponentProps<"pre">) => {
           {code && code.length <= 24000
             ? code.split("\n").map((line, index, lines) => (
                 <span key={index}>
-                  {highlightCode(line, `snippet.${extension}`).map(
-                    (token, part) => (
-                      <span key={part} className={`syntax-${token.kind}`}>
-                        {token.text}
-                      </span>
-                    ),
-                  )}
+                  {highlightCode(line, `snippet.${extension}`).map((token, part) => (
+                    <span key={part} className={`syntax-${token.kind}`}>
+                      {token.text}
+                    </span>
+                  ))}
                   {index < lines.length - 1 ? "\n" : ""}
                 </span>
               ))
             : code || children}
         </code>
       </pre>
-      {feedback === "Copy unavailable" && (
-        <small role="status">Copy unavailable</small>
-      )}
+      {feedback === "Copy unavailable" && <small role="status">Copy unavailable</small>}
     </div>
   );
 };

@@ -1,0 +1,21 @@
+name: Bug report
+description: Report a reproducible problem.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use an isolated fixture where possible. Do not attach credentials or private state.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and evidence
+      description: Include OS/WSL, Node, commit, relevant redacted logs and screenshots.

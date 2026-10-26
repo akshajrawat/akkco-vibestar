@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Rpc } from "../../backend/rpc";
-import { taskVerification } from "../../backend/execution/task-verification";
+import { taskVerification } from "../../backend/execution/verification/task-verification";
 import { Database } from "../../backend/storage/database";
 import { finalizationFixture } from "../finalization/fixtures";
 
@@ -75,13 +75,9 @@ it("applies an explicit policy and rechecks an accepted review without losing it
     });
     expect(engine.db.detail(task.id).runs).toEqual(original.runs);
     expect(engine.db.detail(task.id).artifacts).toEqual(original.artifacts);
-    expect(await engine.git.fingerprint(engine.db.task(task.id))).toBe(
-      fingerprint,
-    );
+    expect(await engine.git.fingerprint(engine.db.task(task.id))).toBe(fingerprint);
     await expect(service.inspect(task.id)).resolves.toHaveProperty("files");
-    const reopened = await Database.open(
-      join(engine.root, "state", "vibestar.sqlite"),
-    );
+    const reopened = await Database.open(join(engine.root, "state", "vibestar.sqlite"));
     try {
       expect(reopened.task(task.id).verification_policy).toBe("repository");
     } finally {
@@ -129,15 +125,10 @@ it("applies an explicit policy and rechecks an accepted review without losing it
     );
     await engine.recheckEvidence(task.id);
     expect(taskVerification(engine.db, task.id).outcome).toBe("failed");
-    expect(engine.db.task(task.id).final_review_verdict).toBe(
-      "changes_requested",
-    );
+    expect(engine.db.task(task.id).final_review_verdict).toBe("changes_requested");
     await expect(fixture.preview()).rejects.toThrow();
     const path = join(task.worktree_path, "source.txt");
-    await writeFile(
-      path,
-      (await readFile(path, "utf8")) + "Changed after review\n",
-    );
+    await writeFile(path, (await readFile(path, "utf8")) + "Changed after review\n");
     await expect(engine.recheckEvidence(task.id)).rejects.toMatchObject({
       kind: "stale_review",
     });

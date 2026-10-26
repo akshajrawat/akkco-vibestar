@@ -9,12 +9,7 @@ import { IssueSnapshotSchema } from "../../backend/issue-watch/contracts";
 import { retainedSource } from "../../backend/issue-watch/tracker-exclusions";
 import { watchConfiguration } from "./fixtures";
 
-const comment = (
-  actor: string,
-  body: string,
-  day: number,
-  association = "NONE",
-) =>
+const comment = (actor: string, body: string, day: number, association = "NONE") =>
   retainedSource({
     key: `comment:${actor}:${day}`,
     kind: "comment",
@@ -48,18 +43,9 @@ const issue = IssueSnapshotSchema.parse({
 });
 it("keeps independent contributor claims, same-actor withdrawals and maintainer authority distinct", () => {
   const a = comment("alice", "Can I work on this issue?", 1);
-  const grant = comment(
-    "maintainer",
-    "@alice you can work on this.",
-    2,
-    "MEMBER",
-  );
+  const grant = comment("maintainer", "@alice you can work on this.", 2, "MEMBER");
   const b = comment("bob", "I would like to work on this.", 3);
-  const withdrawal = comment(
-    "alice",
-    "I cannot continue; please unassign me.",
-    4,
-  );
+  const withdrawal = comment("alice", "I cannot continue; please unassign me.", 4);
   expect(assessClaims([a, grant])).toMatchObject({
     possible: true,
     confirmed: true,
@@ -73,9 +59,7 @@ it("keeps independent contributor claims, same-actor withdrawals and maintainer 
     confirmed: false,
   });
   expect(
-    assessClaims([
-      comment("contributor", "@alice you can work on this.", 1, "CONTRIBUTOR"),
-    ]),
+    assessClaims([comment("contributor", "@alice you can work on this.", 1, "CONTRIBUTOR")]),
   ).toMatchObject({
     confirmed: false,
     possible: false,
@@ -118,9 +102,9 @@ it("hard rules cannot be disabled by issue/model prose and preserve repository-q
       new Set(["oppia/oppia#1"]),
     ),
   ).toHaveLength(4);
-  expect(
-    hardExclusions({ ...issue, pull_request: true }, rules, new Set()),
-  ).toEqual([expect.stringContaining("pull request")]);
+  expect(hardExclusions({ ...issue, pull_request: true }, rules, new Set())).toEqual([
+    expect.stringContaining("pull request"),
+  ]);
 });
 it("missing evidence, assigned issues and confirmed competing PRs never become claim-ready", () => {
   expect(
@@ -133,11 +117,7 @@ it("missing evidence, assigned issues and confirmed competing PRs never become c
   ).toBe("eligibility_uncertain");
   expect(
     applyContext(
-      initialCandidate(
-        { ...issue, assignees: ["alice"] },
-        watchConfiguration().rules,
-        new Set(),
-      ),
+      initialCandidate({ ...issue, assignees: ["alice"] }, watchConfiguration().rules, new Set()),
       [],
       [],
       [],

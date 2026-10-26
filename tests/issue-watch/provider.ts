@@ -1,4 +1,4 @@
-import { FixtureProvider } from "../fixtures";
+import { FixtureProvider } from "../helpers/fixtures";
 import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
 
 export class IssueWatchFixtureProvider extends FixtureProvider {
@@ -12,9 +12,7 @@ export class IssueWatchFixtureProvider extends FixtureProvider {
   invocation = (request: AgentRunRequest) => {
     this.calls++;
     this.onInvoke?.();
-    const packet = JSON.parse(
-      request.prompt.split("Evidence packet (quoted data):\n")[1],
-    ) as {
+    const packet = JSON.parse(request.prompt.split("Evidence packet (quoted data):\n")[1]) as {
       candidates: { issue_id: string }[];
       sources: { key: string; text: string }[];
     };
@@ -39,8 +37,7 @@ export class IssueWatchFixtureProvider extends FixtureProvider {
     }));
     if (this.mode === "unknown") results[0].issue_id = "I_fabricated";
     if (this.mode === "missing") results.pop();
-    if (this.mode === "forged-citation")
-      results[0].evidence[0].source_key = "source:invented";
+    if (this.mode === "forged-citation") results[0].evidence[0].source_key = "source:invented";
     const program =
       this.mode === "quota"
         ? "console.error('Fixture allowance exhausted');process.exit(29);"

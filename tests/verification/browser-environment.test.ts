@@ -1,26 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import {
-  cp,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-  realpath,
-} from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { sandboxInvocation } from "../../backend/execution/sandbox";
-import { execute } from "../../backend/execution/process";
+import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
+import { execute } from "../../backend/execution/runtime/process";
 import { Rpc } from "../../backend/rpc";
-import {
-  createFixtureEngine,
-  fixtureRepository,
-  prepareFixtureTask,
-} from "../fixtures";
-import { taskVerification } from "../../backend/execution/task-verification";
+import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
+import { taskVerification } from "../../backend/execution/verification/task-verification";
 import { Database } from "../../backend/storage/database";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
@@ -36,10 +23,7 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
   await mkdir(cache, { recursive: true });
   await mkdir(join(fixture.home, ".codex"));
   await writeFile(join(cache, "fixture-browser"), "installed fixture");
-  await writeFile(
-    join(fixture.home, ".codex", "fixture-auth"),
-    "private fixture",
-  );
+  await writeFile(join(fixture.home, ".codex", "fixture-auth"), "private fixture");
   const engine = await createFixtureEngine(join(dir, "data"));
   const rpc = new Rpc(engine);
   try {
@@ -102,16 +86,10 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
       environment: "installed_browsers",
       confirmed: true,
     });
-    expect(engine.db.task(task.id).verification_environment).toBe(
-      "installed_browsers",
-    );
-    const reopened = await Database.open(
-      join(engine.root, "state", "vibestar.sqlite"),
-    );
+    expect(engine.db.task(task.id).verification_environment).toBe("installed_browsers");
+    const reopened = await Database.open(join(engine.root, "state", "vibestar.sqlite"));
     try {
-      expect(reopened.task(task.id).verification_environment).toBe(
-        "installed_browsers",
-      );
+      expect(reopened.task(task.id).verification_environment).toBe("installed_browsers");
     } finally {
       reopened.close();
     }
@@ -146,10 +124,7 @@ it.skipIf(process.env.VIBESTAR_BROWSER_TEST !== "1")(
     const rpc = new Rpc(engine);
     try {
       const { repo } = await fixtureRepository(engine, dir);
-      await writeFile(
-        join(repo.path, ".git", "info", "exclude"),
-        "node_modules/\n",
-      );
+      await writeFile(join(repo.path, ".git", "info", "exclude"), "node_modules/\n");
       await cp(
         await realpath("node_modules/playwright-core"),
         join(repo.path, "node_modules", "playwright-core"),
@@ -176,13 +151,8 @@ it.skipIf(process.env.VIBESTAR_BROWSER_TEST !== "1")(
       expect(await readFile(join(repo.path, ".git", "index"))).toEqual(index);
       expect(taskVerification(engine.db, task.id).canReview).toBe(false);
       expect(engine.db.all("SELECT * FROM agent_runs")).toEqual([]);
-      expect(engine.db.task(task.id).browser_environment_report).toEqual(
-        report,
-      );
-      await writeFile(
-        join(dir, "report.json"),
-        JSON.stringify(report, null, 2),
-      );
+      expect(engine.db.task(task.id).browser_environment_report).toEqual(report);
+      await writeFile(join(dir, "report.json"), JSON.stringify(report, null, 2));
       console.log("Installed browser probe evidence:", dir);
     } finally {
       await rpc.close();

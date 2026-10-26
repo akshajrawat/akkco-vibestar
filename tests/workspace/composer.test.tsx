@@ -1,21 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-  act,
-} from "@testing-library/react";
-import { Composer } from "../../src/components/workspace/Composer";
-import { TaskWorkspace } from "../../src/components/TaskWorkspace";
+import { cleanup, fireEvent, render, screen, within, act } from "@testing-library/react";
+import { Composer } from "../../src/features/chat/Composer";
+import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
 import { updateTaskView } from "../../src/lib/taskView";
 import { workspaceDetail } from "./fixtures";
 import { defaultSettings } from "../../backend/domain";
-import { workspaceContext } from "../../src/components/workspace/context";
+import { workspaceContext } from "../../src/features/workflow/context";
 
-vi.mock("../../src/lib/useWorkspace", () => ({
+vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({
     providers: [
       {
@@ -54,9 +47,7 @@ it("attaches current worktree files independently of the historical repair diff 
     const historical = (input as { layer: string }).layer === "original";
     return {
       original: "base",
-      modified: historical
-        ? "historical PR content"
-        : "current worktree content",
+      modified: historical ? "historical PR content" : "current worktree content",
       unified: historical ? "historical PR diff" : "current repair diff",
       binary: false,
     };
@@ -80,17 +71,13 @@ it("attaches current worktree files independently of the historical repair diff 
     ],
   });
   expect(
-    await options
-      .find((option) => option.label === "Reference a worktree file")!
-      .load("spec.ts"),
+    await options.find((option) => option.label === "Reference a worktree file")!.load("spec.ts"),
   ).toEqual({
     label: "Worktree file: spec.ts",
     text: "current worktree content",
   });
   expect(
-    await options
-      .find((option) => option.label === "Include selected file diff")!
-      .load(""),
+    await options.find((option) => option.label === "Include selected file diff")!.load(""),
   ).toEqual({ label: "Diff: spec.ts · original", text: "historical PR diff" });
   expect(rpc).toHaveBeenCalledWith(
     "repair.file",
@@ -101,9 +88,7 @@ it("attaches current worktree files independently of the historical repair diff 
     expect.objectContaining({ path: "spec.ts", layer: "original" }),
   );
 });
-const setup = (
-  handler?: (method: string, params?: unknown) => Promise<unknown>,
-) => {
+const setup = (handler?: (method: string, params?: unknown) => Promise<unknown>) => {
   const rpc = vi.fn(handler || (async () => null));
   window.innerWidth = 1600;
   Object.defineProperty(window, "vibestar", {
@@ -143,9 +128,7 @@ it("grows long pasted drafts and preserves Enter, Shift+Enter, IME and disabled 
   ui.rerender(<Composer {...props} disabled />);
   fireEvent.keyDown(input, { key: "Enter" });
   expect(send).toHaveBeenCalledTimes(1);
-  expect(localStorage.getItem("vibestar.draft.composer-keys")).toContain(
-    "long paste",
-  );
+  expect(localStorage.getItem("vibestar.draft.composer-keys")).toContain("long paste");
 });
 
 it("previews bounded context as inert text, persists chips per conversation and removes them explicitly", async () => {
@@ -177,19 +160,13 @@ it("previews bounded context as inert text, persists chips per conversation and 
   fireEvent.click(screen.getByRole("button", { name: "Attach context" }));
   await screen.findByText("Unsafe-looking note");
   expect(ui.container.querySelector("img")).toBeNull();
-  expect(
-    screen.getByText(/Snapshot truncated at 4,000/).textContent?.length,
-  ).toBeLessThan(4500);
-  const saved = JSON.parse(
-    localStorage.getItem("vibestar.layout.composer-context")!,
-  );
+  expect(screen.getByText(/Snapshot truncated at 4,000/).textContent?.length).toBeLessThan(4500);
+  const saved = JSON.parse(localStorage.getItem("vibestar.layout.composer-context")!);
   expect(saved.draftContext).toHaveLength(1);
   ui.unmount();
   render(<Composer {...props} />);
   expect(screen.getByText("Unsafe-looking note")).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Remove Unsafe-looking note" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Remove Unsafe-looking note" }));
   expect(screen.queryByLabelText("Attached context")).toBeNull();
 });
 
@@ -233,25 +210,16 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
     }),
   );
   const ui = render(
-    <TaskWorkspace
-      detail={detail}
-      revision={0}
-      onError={vi.fn()}
-      back={vi.fn()}
-    />,
+    <TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />,
   );
-  const input = screen.getByLabelText(
-    "Task conversation",
-  ) as HTMLTextAreaElement;
+  const input = screen.getByLabelText("Task conversation") as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: content } });
   fireEvent.click(screen.getByRole("button", { name: "Save for later" }));
   await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
   await vi.waitFor(() =>
-    expect(
-      screen
-        .getByRole("button", { name: "Save for later" })
-        .hasAttribute("disabled"),
-    ).toBe(false),
+    expect(screen.getByRole("button", { name: "Save for later" }).hasAttribute("disabled")).toBe(
+      false,
+    ),
   );
   fireEvent.click(screen.getByRole("button", { name: "Save for later" }));
   await screen.findByRole("button", { name: "Instruction saved" });
@@ -271,9 +239,7 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
   fireEvent.click(approve);
   fireEvent.click(approve);
   await vi.waitFor(() =>
-    expect(
-      rpc.mock.calls.filter(([method]) => method === "task.approve"),
-    ).toHaveLength(1),
+    expect(rpc.mock.calls.filter(([method]) => method === "task.approve")).toHaveLength(1),
   );
   expect(rpc).toHaveBeenCalledWith("task.approve", {
     id: detail.task.id,
@@ -295,16 +261,10 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
       back={vi.fn()}
     />,
   );
-  expect(
-    (
-      screen.getByLabelText(
-        "Saved instructions on approval",
-      ) as HTMLSelectElement
-    ).value,
-  ).toBe("");
-  expect(
-    screen.queryByText("Approved · next pipeline stage authorized"),
-  ).toBeNull();
+  expect((screen.getByLabelText("Saved instructions on approval") as HTMLSelectElement).value).toBe(
+    "",
+  );
+  expect(screen.queryByText("Approved · next pipeline stage authorized")).toBeNull();
 });
 
 it("keeps chat models independent and shows unavailable accounts without changing provider silently", async () => {
@@ -319,37 +279,23 @@ it("keeps chat models independent and shows unavailable accounts without changin
       timeout_secs: 30,
     },
   };
-  render(
-    <TaskWorkspace
-      detail={detail}
-      revision={0}
-      onError={vi.fn()}
-      back={vi.fn()}
-    />,
-  );
+  render(<TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />);
   screen.getByRole("button", { name: "Choose chat model" }).focus();
   fireEvent.click(screen.getByRole("button", { name: "Choose chat model" }));
   const picker = screen.getByRole("dialog", {
     name: "Chat model configuration",
   });
-  expect(
-    within(picker).getByText(/not available from the official CLI/),
-  ).toBeTruthy();
+  expect(within(picker).getByText(/not available from the official CLI/)).toBeTruthy();
   fireEvent.click(within(picker).getByRole("button", { name: "Antigravity" }));
   expect(within(picker).getByText(/Account is disconnected/)).toBeTruthy();
-  expect(
-    screen.getByRole("button", { name: "Choose chat model" }).textContent,
-  ).toContain("Antigravity");
+  expect(screen.getByRole("button", { name: "Choose chat model" }).textContent).toContain(
+    "Antigravity",
+  );
   fireEvent.keyDown(picker, { key: "Escape" });
-  expect(document.activeElement).toBe(
-    screen.getByRole("button", { name: "Choose chat model" }),
-  );
-  expect(detail.task.execution_settings.codex_implementation.model).toBe(
-    "unavailable-model",
-  );
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Choose chat model" }));
+  expect(detail.task.execution_settings.codex_implementation.model).toBe("unavailable-model");
   expect(
-    JSON.parse(localStorage.getItem(`vibestar.layout.${detail.task.id}`)!)
-      .followupProvider,
+    JSON.parse(localStorage.getItem(`vibestar.layout.${detail.task.id}`)!).followupProvider,
   ).toBe("antigravity");
 });
 
@@ -378,24 +324,13 @@ it("edits an unstarted future stage independently of chat and completed runs", a
       followupModel: "chat-choice",
     }),
   );
-  render(
-    <TaskWorkspace
-      detail={detail}
-      revision={0}
-      onError={vi.fn()}
-      back={vi.fn()}
-    />,
-  );
-  fireEvent.click(
-    screen.getAllByRole("button", { name: "Edit future model" })[0],
-  );
+  render(<TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />);
+  fireEvent.click(screen.getAllByRole("button", { name: "Edit future model" })[0]);
   const editor = screen.getByLabelText("Future stage 3 settings");
   fireEvent.change(within(editor).getByLabelText("Reasoning / effort"), {
     target: { value: "high" },
   });
-  fireEvent.click(
-    within(editor).getByRole("button", { name: "Save future stage" }),
-  );
+  fireEvent.click(within(editor).getByRole("button", { name: "Save future stage" }));
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.configureStage", {
       id: detail.task.id,
@@ -403,8 +338,7 @@ it("edits an unstarted future stage independently of chat and completed runs", a
       config: { model: "fixture-model", effort: "high", timeout_secs: 30 },
     }),
   );
-  expect(
-    JSON.parse(localStorage.getItem(`vibestar.layout.${detail.task.id}`)!)
-      .followupModel,
-  ).toBe("chat-choice");
+  expect(JSON.parse(localStorage.getItem(`vibestar.layout.${detail.task.id}`)!).followupModel).toBe(
+    "chat-choice",
+  );
 });

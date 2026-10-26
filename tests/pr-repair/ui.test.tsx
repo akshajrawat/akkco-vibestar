@@ -1,25 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { defaultSettings } from "../../backend/domain";
-import { SolveReview } from "../../src/components/repair/SolveReview";
-import { RepairWorkspace } from "../../src/components/repair/RepairWorkspace";
-import { PublicationDialog } from "../../src/components/repair/PublicationDialog";
-import { LocalCommitDialog } from "../../src/components/repair/LocalCommitDialog";
+import { SolveReview } from "../../src/features/pull-requests/repair/SolveReview";
+import { RepairWorkspace } from "../../src/features/pull-requests/repair/RepairWorkspace";
+import { PublicationDialog } from "../../src/features/pull-requests/repair/PublicationDialog";
+import { LocalCommitDialog } from "../../src/features/pull-requests/repair/LocalCommitDialog";
 import type {
   RepairPublication,
   RepairDetail,
-} from "../../src/components/repair/types";
+} from "../../src/features/pull-requests/repair/types";
 import type { RepairSession } from "../../backend/review/repair/contracts";
-import { observations, prSnapshot } from "../pr-fixtures";
-vi.mock("../../src/components/TaskTerminal", () => ({
+import { observations, prSnapshot } from "../helpers/pr-fixtures";
+vi.mock("../../src/components/shared/TaskTerminal", () => ({
   TaskTerminal: () => <p>Terminal fixture view</p>,
 }));
 
@@ -180,9 +173,7 @@ const plan: RepairPublication = {
   updated_at: "2026-10-14T10:00:00Z",
   published_at: null,
 };
-const install = (
-  handler: (method: string, params: Record<string, unknown>) => unknown,
-) => {
+const install = (handler: (method: string, params: Record<string, unknown>) => unknown) => {
   const rpc = vi.fn(async (method: string, params: Record<string, unknown>) =>
     handler(method, params),
   );
@@ -314,11 +305,9 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
   });
   first.focus();
   fireEvent.keyDown(first, { key: "End" });
-  expect(
-    within(tabs)
-      .getByRole("tab", { name: "Raw logs" })
-      .getAttribute("aria-selected"),
-  ).toBe("true");
+  expect(within(tabs).getByRole("tab", { name: "Raw logs" }).getAttribute("aria-selected")).toBe(
+    "true",
+  );
   fireEvent.click(screen.getByLabelText("Toggle utility dock"));
   expect(
     within(screen.getByRole("tablist", { name: "Utilities" }))
@@ -366,9 +355,7 @@ it.each([
         analyze={vi.fn()}
       />,
     );
-    const input = (await screen.findByLabelText(
-      "PR repair follow-up",
-    )) as HTMLTextAreaElement;
+    const input = (await screen.findByLabelText("PR repair follow-up")) as HTMLTextAreaElement;
     fireEvent.change(input, {
       target: { value: "Keep this instruction for later" },
     });
@@ -381,9 +368,7 @@ it.each([
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
-    expect(rpc.mock.calls.some(([method]) => method === "repair.start")).toBe(
-      false,
-    );
+    expect(rpc.mock.calls.some(([method]) => method === "repair.start")).toBe(false);
   },
 );
 
@@ -397,24 +382,14 @@ it("shows exact publication values and requires separate commit and explicit pus
         : {},
   );
   const close = vi.fn();
-  render(
-    <PublicationDialog
-      publication={plan}
-      close={close}
-      refresh={async () => {}}
-    />,
-  );
+  render(<PublicationDialog publication={plan} close={close} refresh={async () => {}} />);
   expect(screen.getByText("akshajrawat/oppia")).toBeTruthy();
   expect(screen.getByText("fix-translation-tests")).toBeTruthy();
-  expect(
-    (screen.getByRole("button", { name: "Confirm Push" }) as HTMLButtonElement)
-      .disabled,
-  ).toBe(true);
+  expect((screen.getByRole("button", { name: "Confirm Push" }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
   expect(rpc).not.toHaveBeenCalled();
-  expect(
-    (screen.getByLabelText("Local commit message") as HTMLTextAreaElement)
-      .value,
-  ).toBe("");
+  expect((screen.getByLabelText("Local commit message") as HTMLTextAreaElement).value).toBe("");
   fireEvent.change(screen.getByLabelText("Local commit message"), {
     target: { value: "  Exact title  \n\nDetails\n" },
   });
@@ -428,9 +403,7 @@ it("shows exact publication values and requires separate commit and explicit pus
       ).disabled,
     ).toBe(false),
   );
-  expect(rpc.mock.calls.some(([method]) => method === "repair.publish")).toBe(
-    false,
-  );
+  expect(rpc.mock.calls.some(([method]) => method === "repair.publish")).toBe(false);
   fireEvent.click(screen.getByRole("button", { name: "Confirm Push" }));
   await waitFor(() => expect(close).toHaveBeenCalled());
   expect(rpc).toHaveBeenCalledWith("repair.publish", {
@@ -454,10 +427,9 @@ it("makes local-only approval and commit explicit without preparing or confirmin
     />,
   );
   expect(rpc).not.toHaveBeenCalled();
-  expect(
-    (screen.getByLabelText("Local-only commit message") as HTMLTextAreaElement)
-      .value,
-  ).toBe("");
+  expect((screen.getByLabelText("Local-only commit message") as HTMLTextAreaElement).value).toBe(
+    "",
+  );
   fireEvent.change(screen.getByLabelText("Local-only commit message"), {
     target: { value: "  Local title  \n\nDetails\n" },
   });

@@ -42,10 +42,7 @@ interface TaskView {
   diffLayer: "original" | "upstream" | "repair";
   diffLayerPaths: Partial<Record<"original" | "upstream" | "repair", string>>;
   diffPath: string;
-  diffSelections: Record<
-    string,
-    { start: number; end: number; side: "base" | "working" }
-  >;
+  diffSelections: Record<string, { start: number; end: number; side: "base" | "working" }>;
   diffReview: boolean;
   fullContext: boolean;
   openFile: boolean;
@@ -87,9 +84,7 @@ const legacySections: Record<string, SecondarySection> = {
   "Agent Output": "logs",
 };
 const legacySection = (value: unknown) =>
-  typeof value === "string" && Object.hasOwn(legacySections, value)
-    ? legacySections[value]
-    : null;
+  typeof value === "string" && Object.hasOwn(legacySections, value) ? legacySections[value] : null;
 const savedLayout = (id: string): Partial<TaskView> => {
   try {
     const raw = read(`vibestar.layout.${id}`);
@@ -99,20 +94,15 @@ const savedLayout = (id: string): Partial<TaskView> => {
         ? (value as Record<string, unknown>)
         : {};
     const migrated =
-      legacySection(saved.tab) ||
-      (saved.terminalDock ? legacySection(saved.dockTab) : null);
+      legacySection(saved.tab) || (saved.terminalDock ? legacySection(saved.dockTab) : null);
     return {
-      gitMessageDraft:
-        typeof saved.gitMessageDraft === "string" ? saved.gitMessageDraft : "",
+      gitMessageDraft: typeof saved.gitMessageDraft === "string" ? saved.gitMessageDraft : "",
       savedInstruction:
         saved.savedInstruction &&
         typeof saved.savedInstruction === "object" &&
-        typeof (saved.savedInstruction as Record<string, unknown>).id ===
-          "string" &&
-        typeof (saved.savedInstruction as Record<string, unknown>).content ===
-          "string" &&
-        String((saved.savedInstruction as Record<string, unknown>).content)
-          .length <= 32000
+        typeof (saved.savedInstruction as Record<string, unknown>).id === "string" &&
+        typeof (saved.savedInstruction as Record<string, unknown>).content === "string" &&
+        String((saved.savedInstruction as Record<string, unknown>).content).length <= 32000
           ? (saved.savedInstruction as TaskView["savedInstruction"])
           : null,
       draftContext: Array.isArray(saved.draftContext)
@@ -133,12 +123,9 @@ const savedLayout = (id: string): Partial<TaskView> => {
       messageRequest:
         saved.messageRequest &&
         typeof saved.messageRequest === "object" &&
-        typeof (saved.messageRequest as Record<string, unknown>).id ===
-          "string" &&
-        typeof (saved.messageRequest as Record<string, unknown>).signature ===
-          "string" &&
-        String((saved.messageRequest as Record<string, unknown>).signature)
-          .length <= 50000
+        typeof (saved.messageRequest as Record<string, unknown>).id === "string" &&
+        typeof (saved.messageRequest as Record<string, unknown>).signature === "string" &&
+        String((saved.messageRequest as Record<string, unknown>).signature).length <= 50000
           ? (saved.messageRequest as TaskView["messageRequest"])
           : null,
       secondaryOpen:
@@ -147,8 +134,7 @@ const savedLayout = (id: string): Partial<TaskView> => {
           : raw
             ? !!(migrated || saved.contextPane === "pipeline")
             : window.innerWidth >= 1400,
-      secondarySection:
-        section(saved.secondarySection) || migrated || "pipeline",
+      secondarySection: section(saved.secondarySection) || migrated || "pipeline",
       secondaryPrevious: section(saved.secondaryPrevious),
       secondaryScroll: Object.fromEntries(
         Object.keys(workspaceSections).flatMap((key) => {
@@ -157,17 +143,13 @@ const savedLayout = (id: string): Partial<TaskView> => {
             positions && typeof positions === "object"
               ? (positions as Record<string, unknown>)[key]
               : null;
-          return typeof position === "number" &&
-            Number.isFinite(position) &&
-            position >= 0
+          return typeof position === "number" && Number.isFinite(position) && position >= 0
             ? [[key, Math.min(position, Number.MAX_SAFE_INTEGER)]]
             : [];
         }),
       ),
       planStage: saved.planStage === 2 ? (2 as const) : (1 as const),
-      gitStep: [0, 1, 2, 3].includes(Number(saved.gitStep))
-        ? Number(saved.gitStep)
-        : 0,
+      gitStep: [0, 1, 2, 3].includes(Number(saved.gitStep)) ? Number(saved.gitStep) : 0,
       secondaryWidth: bounded(
         saved.secondaryWidth,
         bounded(Number(read("vibestar.contextWidth")) || 380, 380, 300, 640),
@@ -176,15 +158,10 @@ const savedLayout = (id: string): Partial<TaskView> => {
       ),
       expandedTool: saved.expandedTool === true,
       terminalDock:
-        saved.terminalDock === true &&
-        ["Terminal", "Problems"].includes(String(saved.dockTab)),
-      dockTab:
-        saved.dockTab === "Problems"
-          ? ("Problems" as const)
-          : ("Terminal" as const),
+        saved.terminalDock === true && ["Terminal", "Problems"].includes(String(saved.dockTab)),
+      dockTab: saved.dockTab === "Problems" ? ("Problems" as const) : ("Terminal" as const),
       dockMaximized:
-        saved.dockMaximized === true &&
-        ["Terminal", "Problems"].includes(String(saved.dockTab)),
+        saved.dockMaximized === true && ["Terminal", "Problems"].includes(String(saved.dockTab)),
       bottomHeight: bounded(
         saved.bottomHeight,
         bounded(Number(read("vibestar.dockHeight")) || 260, 260, 140, 700),
@@ -195,10 +172,8 @@ const savedLayout = (id: string): Partial<TaskView> => {
       chatFollow: saved.chatFollow !== false,
       approvalCompact: saved.approvalCompact === true,
       diffPath: typeof saved.diffPath === "string" ? saved.diffPath : "",
-      diffMode:
-        saved.diffMode === "unified" ? ("unified" as const) : ("side" as const),
-      diffTree:
-        saved.diffTree === "flat" ? ("flat" as const) : ("tree" as const),
+      diffMode: saved.diffMode === "unified" ? ("unified" as const) : ("side" as const),
+      diffTree: saved.diffTree === "flat" ? ("flat" as const) : ("tree" as const),
       diffLayer:
         saved.diffLayer === "original" || saved.diffLayer === "upstream"
           ? saved.diffLayer
@@ -210,45 +185,27 @@ const savedLayout = (id: string): Partial<TaskView> => {
             paths && typeof paths === "object"
               ? (paths as Record<string, unknown>)[key]
               : undefined;
-          return typeof value === "string" && value.length < 4000
-            ? [[key, value]]
-            : [];
+          return typeof value === "string" && value.length < 4000 ? [[key, value]] : [];
         }),
       ),
       outputRun: typeof saved.outputRun === "string" ? saved.outputRun : "",
-      outputView: ["readable", "raw", "prompt"].includes(
-        String(saved.outputView),
-      )
+      outputView: ["readable", "raw", "prompt"].includes(String(saved.outputView))
         ? (saved.outputView as TaskView["outputView"])
         : ("readable" as const),
-      outputStream: ["stdout", "stderr", "events"].includes(
-        String(saved.outputStream),
-      )
+      outputStream: ["stdout", "stderr", "events"].includes(String(saved.outputStream))
         ? (saved.outputStream as TaskView["outputStream"])
         : ("stdout" as const),
-      outputFilter: [
-        "all",
-        "messages",
-        "commands",
-        "files",
-        "tests",
-        "errors",
-      ].includes(String(saved.outputFilter))
+      outputFilter: ["all", "messages", "commands", "files", "tests", "errors"].includes(
+        String(saved.outputFilter),
+      )
         ? String(saved.outputFilter)
         : "all",
-      outputSearch:
-        typeof saved.outputSearch === "string"
-          ? saved.outputSearch.slice(0, 256)
-          : "",
+      outputSearch: typeof saved.outputSearch === "string" ? saved.outputSearch.slice(0, 256) : "",
       outputFollow: saved.outputFollow !== false,
       followupProvider:
-        saved.followupProvider === "antigravity"
-          ? ("antigravity" as const)
-          : ("codex" as const),
-      followupModel:
-        typeof saved.followupModel === "string" ? saved.followupModel : null,
-      followupEffort:
-        typeof saved.followupEffort === "string" ? saved.followupEffort : null,
+        saved.followupProvider === "antigravity" ? ("antigravity" as const) : ("codex" as const),
+      followupModel: typeof saved.followupModel === "string" ? saved.followupModel : null,
+      followupEffort: typeof saved.followupEffort === "string" ? saved.followupEffort : null,
     };
   } catch {
     return {};
@@ -311,8 +268,7 @@ export const updateTaskView = (id: string, update: Partial<TaskView>) => {
   };
   try {
     if (update.draft !== undefined || state(id).persistenceError) {
-      if (value.draft)
-        localStorage.setItem(`vibestar.draft.${id}`, value.draft);
+      if (value.draft) localStorage.setItem(`vibestar.draft.${id}`, value.draft);
       else localStorage.removeItem(`vibestar.draft.${id}`);
     }
     const layout = {
@@ -321,10 +277,7 @@ export const updateTaskView = (id: string, update: Partial<TaskView>) => {
       persistenceError: undefined,
       diffSelections: undefined,
     };
-    localStorage.setItem(
-      `vibestar.layout.${id}`,
-      JSON.stringify({ version: 2, ...layout }),
-    );
+    localStorage.setItem(`vibestar.layout.${id}`, JSON.stringify({ version: 2, ...layout }));
   } catch {
     value.persistenceError =
       "Local storage is unavailable. Keep this conversation open and copy your draft before closing.";

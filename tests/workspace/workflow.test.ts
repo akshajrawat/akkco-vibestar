@@ -11,7 +11,7 @@ import {
   fixtureRepository,
   FixtureProvider,
   waitForTask,
-} from "../fixtures";
+} from "../helpers/fixtures";
 
 vi.mock("../../backend/workspace/issue", () => ({ fetchIssue: vi.fn() }));
 const context = {
@@ -76,13 +76,7 @@ afterEach(async () => {
 });
 const idleTask = async () => {
   const { repo } = await fixtureRepository(engine, directory);
-  const task = await engine.createTask(
-    repo.id,
-    context.url,
-    "",
-    "",
-    "whole_issue",
-  );
+  const task = await engine.createTask(repo.id, context.url, "", "", "whole_issue");
   return { repo, task };
 };
 
@@ -98,12 +92,8 @@ it("creates and reopens an idle conversation without preparing files, consuming 
   });
   expect(engine.cleanupBlockers()).toEqual([]);
   expect(engine.db.detail(task.id).usage).toEqual([]);
-  await expect(engine.retry(task.id, 0, true)).rejects.toThrow(
-    "Start workflow",
-  );
-  expect(() => engine.followUp(task.id, "Implement now")).toThrow(
-    "Start workflow",
-  );
+  await expect(engine.retry(task.id, 0, true)).rejects.toThrow("Start workflow");
+  expect(() => engine.followUp(task.id, "Implement now")).toThrow("Start workflow");
   engine.cancel(task.id);
   expect(engine.db.task(task.id).status).toBe("not_started");
   await engine.close();
@@ -156,12 +146,9 @@ it("streams and saves read-only answers, preserves the source and keeps chat out
     provider: "codex",
   });
   expect(await readFile(join(repo.path, "source.txt"), "utf8")).toBe("base\n");
-  expect(
-    await readFile(
-      join(engine.db.task(task.id).worktree_path, "source.txt"),
-      "utf8",
-    ),
-  ).toBe("base\n");
+  expect(await readFile(join(engine.db.task(task.id).worktree_path, "source.txt"), "utf8")).toBe(
+    "base\n",
+  );
   await engine.close();
   engine = await createFixtureEngine(join(directory, "data"), () => provider);
   engine.start();
@@ -184,9 +171,7 @@ it("streams and saves read-only answers, preserves the source and keeps chat out
     summary: "REVIEWED_START_INSTRUCTION",
   };
   await Promise.all([engine.startWorkflow(start), engine.startWorkflow(start)]);
-  await waitForTask(engine, task.id, (status) =>
-    ["awaiting_approval", "failed"].includes(status),
-  );
+  await waitForTask(engine, task.id, (status) => ["awaiting_approval", "failed"].includes(status));
   expect(engine.db.task(task.id).status).toBe("awaiting_approval");
   const plan = engine.db.detail(task.id).runs.at(-1)!;
   expect(plan.prompt).toContain("REVIEWED_START_INSTRUCTION");
@@ -208,13 +193,9 @@ it("streams and saves read-only answers, preserves the source and keeps chat out
     approval_gate: approval,
   });
   expect(engine.db.detail(task.id).runs).toHaveLength(3);
-  expect(engine.db.detail(task.id).runs.at(-1)?.purpose).toBe(
-    "Read-only conversation",
-  );
+  expect(engine.db.detail(task.id).runs.at(-1)?.purpose).toBe("Read-only conversation");
   expect(await readFile(join(repo.path, "source.txt"), "utf8")).toBe("base\n");
-  await expect(
-    engine.startWorkflow({ ...start, summary: "changed" }),
-  ).rejects.toThrow();
+  await expect(engine.startWorkflow({ ...start, summary: "changed" })).rejects.toThrow();
 }, 30000);
 
 it("includes only explicitly selected completed messages and refuses foreign message identities", async () => {
@@ -242,12 +223,8 @@ it("includes only explicitly selected completed messages and refuses foreign mes
     request_id: randomUUID(),
     message_ids: [String(message.id)],
   });
-  await waitForTask(engine, task.id, (status) =>
-    ["awaiting_approval", "failed"].includes(status),
-  );
-  expect(engine.db.detail(task.id).runs.at(-1)!.prompt).toContain(
-    "SELECTED_CHAT_INSTRUCTION",
-  );
+  await waitForTask(engine, task.id, (status) => ["awaiting_approval", "failed"].includes(status));
+  expect(engine.db.detail(task.id).runs.at(-1)!.prompt).toContain("SELECTED_CHAT_INSTRUCTION");
 });
 
 it("retains historical queue authorization through restart while new idle tasks stay idle", async () => {
@@ -277,12 +254,10 @@ it("cancels a read-only conversation without authorizing a workflow or replaying
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const detect = vi
-    .spyOn(provider, "detect")
-    .mockImplementationOnce(async () => {
-      await gate;
-      return detection;
-    });
+  const detect = vi.spyOn(provider, "detect").mockImplementationOnce(async () => {
+    await gate;
+    return detection;
+  });
   const invoke = vi.spyOn(provider, "invocation");
   const request = {
     id: task.id,
@@ -314,9 +289,7 @@ it("keeps failed startup validation idle and permits a fresh explicit retry afte
   });
   const invoke = vi.spyOn(provider, "invocation");
   const request = { id: task.id, request_id: randomUUID() };
-  await expect(engine.startWorkflow(request)).rejects.toThrow(
-    "Connect fixture provider",
-  );
+  await expect(engine.startWorkflow(request)).rejects.toThrow("Connect fixture provider");
   expect(engine.db.task(task.id)).toMatchObject({
     status: "not_started",
     worktree_path: "",
@@ -326,9 +299,7 @@ it("keeps failed startup validation idle and permits a fresh explicit retry afte
   expect(invoke).not.toHaveBeenCalled();
   detect.mockResolvedValue(detection);
   await engine.startWorkflow(request);
-  await waitForTask(engine, task.id, (status) =>
-    ["awaiting_approval", "failed"].includes(status),
-  );
+  await waitForTask(engine, task.id, (status) => ["awaiting_approval", "failed"].includes(status));
   expect(engine.db.task(task.id).status).toBe("awaiting_approval");
   expect(invoke).toHaveBeenCalledOnce();
 });

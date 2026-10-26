@@ -1,5 +1,5 @@
 import { AdeError } from "../domain";
-import { execute, type ProcessRequest } from "../execution/process";
+import { execute, type ProcessRequest } from "../execution/runtime/process";
 import { gitCapture, gitExecute } from "./git-command";
 
 interface PublicationRequest {
@@ -19,12 +19,8 @@ interface PublicationRequest {
 // A lease supplies compare-and-swap, never permission for a non-fast-forward.
 // Immutable object IDs and the ancestry proof make every permitted update FF.
 // Neither a repository hook nor --no-verify can bypass this host boundary.
-export const publishFastForward = async (
-  request: PublicationRequest,
-  executor = execute,
-) => {
-  const { cwd, destination, branch, expectedRemote, localHead, signal } =
-    request;
+export const publishFastForward = async (request: PublicationRequest, executor = execute) => {
+  const { cwd, destination, branch, expectedRemote, localHead, signal } = request;
   const ref = `refs/heads/${branch}`;
   const creating = /^0+$/.test(expectedRemote);
   const ancestor = creating ? request.ancestryBase : expectedRemote;
@@ -37,16 +33,8 @@ export const publishFastForward = async (
   )
     throw new AdeError("publication", "Invalid publication object or branch.");
   if (
-    (
-      await gitCapture(["cat-file", "-t", localHead], cwd, signal)
-    ).stdout.trim() !== "commit" ||
-    (
-      await gitCapture(
-        ["merge-base", "--is-ancestor", ancestor, localHead],
-        cwd,
-        signal,
-      )
-    ).code !== 0
+    (await gitCapture(["cat-file", "-t", localHead], cwd, signal)).stdout.trim() !== "commit" ||
+    (await gitCapture(["merge-base", "--is-ancestor", ancestor, localHead], cwd, signal)).code !== 0
   )
     throw new AdeError(
       "ancestry",

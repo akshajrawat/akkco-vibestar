@@ -1,4 +1,4 @@
-import { createFixtureEngine } from "../fixtures";
+import { createFixtureEngine } from "../helpers/fixtures";
 import { expect, it } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -76,12 +76,8 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
     expect(result.implementation?.items.map((i) => i.actionId)).toEqual(
       session.actions.map((a) => a.id),
     );
-    expect(
-      result.verification?.items.every((i) => i.status === "accepted"),
-    ).toBe(true);
-    expect(result.verification?.tests.some((t) => t.status === "blocked")).toBe(
-      true,
-    );
+    expect(result.verification?.items.every((i) => i.status === "accepted")).toBe(true);
+    expect(result.verification?.tests.some((t) => t.status === "blocked")).toBe(true);
     expect(result.review_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(engine.db.tasks()).toEqual([]);
     const runs = engine.db.all<{
@@ -89,16 +85,11 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
       model: string;
       effort: string;
       task_id: string | null;
-    }>(
-      "SELECT * FROM agent_runs WHERE repair_id=? ORDER BY started_at,rowid",
-      session.id,
-    );
-    expect(runs.map((r) => [r.provider, r.model, r.effort, r.task_id])).toEqual(
-      [
-        ["codex", "repair-model", "xhigh", null],
-        ["antigravity", "repair-model", "high", null],
-      ],
-    );
+    }>("SELECT * FROM agent_runs WHERE repair_id=? ORDER BY started_at,rowid", session.id);
+    expect(runs.map((r) => [r.provider, r.model, r.effort, r.task_id])).toEqual([
+      ["codex", "repair-model", "xhigh", null],
+      ["antigravity", "repair-model", "high", null],
+    ]);
     const tests = engine.db.all<{
       status: string;
       exit_code: number;
@@ -107,10 +98,7 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
     expect(tests).toHaveLength(2);
     expect(
       tests.every(
-        (t) =>
-          t.status === "passed" &&
-          t.exit_code === 0 &&
-          t.stdout.includes("# pass 3"),
+        (t) => t.status === "passed" && t.exit_code === 0 && t.stdout.includes("# pass 3"),
       ),
     ).toBe(true);
     const usage = engine.db.all<{
@@ -118,15 +106,11 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
       input_tokens: number;
     }>("SELECT * FROM ai_usage WHERE repair_id=?", session.id);
     expect(usage).toHaveLength(2);
-    expect(
-      usage.every((u) => u.input_tokens === 40 && u.total_tokens === null),
-    ).toBe(true);
+    expect(usage.every((u) => u.input_tokens === 40 && u.total_tokens === null)).toBe(true);
     expect(await readFile(join(source, "README.md"), "utf8")).toBe(
       "Personal dirty source checkout\n",
     );
-    await expect(service.start(session.id)).rejects.toThrow(
-      "Describe the further fix",
-    );
+    await expect(service.start(session.id)).rejects.toThrow("Describe the further fix");
     const instructionRequest = randomUUID();
     await service.start(
       session.id,
@@ -142,26 +126,19 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
     expect(service.store.get(session.id).workspace.worktree_path).toBe(
       result.workspace.worktree_path,
     );
+    expect(engine.db.all("SELECT * FROM agent_runs WHERE repair_id=?", session.id)).toHaveLength(4);
     expect(
-      engine.db.all("SELECT * FROM agent_runs WHERE repair_id=?", session.id),
-    ).toHaveLength(4);
-    expect(
-      engine.db.all(
-        "SELECT * FROM repair_messages WHERE repair_id=?",
-        session.id,
-      ),
+      engine.db.all("SELECT * FROM repair_messages WHERE repair_id=?", session.id),
     ).toHaveLength(1);
     await service.start(
       session.id,
       "Check the independent review again and retain the same worktree",
       instructionRequest,
     );
-    expect(
-      engine.db.all("SELECT * FROM agent_runs WHERE repair_id=?", session.id),
-    ).toHaveLength(4);
-    await expect(
-      service.start(session.id, "Changed payload", instructionRequest),
-    ).rejects.toThrow("different content");
+    expect(engine.db.all("SELECT * FROM agent_runs WHERE repair_id=?", session.id)).toHaveLength(4);
+    await expect(service.start(session.id, "Changed payload", instructionRequest)).rejects.toThrow(
+      "different content",
+    );
     expect(repo.path).toBe(source);
   } finally {
     await service?.close();
@@ -197,17 +174,17 @@ it("validates selections and creates repairs from analyses without original issu
       action_ids: session.actions.map((a) => a.id),
       instructions: "Keep questions as local explanations",
     };
-    await expect(
-      service.create({ ...request, action_ids: [randomUUID()] }),
-    ).rejects.toThrow("outstanding review observations");
+    await expect(service.create({ ...request, action_ids: [randomUUID()] })).rejects.toThrow(
+      "outstanding review observations",
+    );
     const created = await service.create(request);
     expect(created.id).toBe(request.request_id);
     await waitForRepair(service, created.id);
     expect(service.store.get(created.id).status).toBe("verification_blocked");
     expect(await service.create(request)).toMatchObject({ id: created.id });
-    await expect(
-      service.create({ ...request, instructions: "different" }),
-    ).rejects.toThrow("another repair selection");
+    await expect(service.create({ ...request, instructions: "different" })).rejects.toThrow(
+      "another repair selection",
+    );
   } finally {
     await service?.close();
     await engine.close();
@@ -240,9 +217,7 @@ it("rejects incomplete item reports and preserves cancellation without starting 
     await waitForRepair(service, session.id);
     expect(service.store.get(session.id).status).toBe("failed");
     expect(service.store.get(session.id).error).toContain("exactly one result");
-    expect(
-      engine.db.all("SELECT * FROM agent_runs WHERE repair_id=?", session.id),
-    ).toHaveLength(1);
+    expect(engine.db.all("SELECT * FROM agent_runs WHERE repair_id=?", session.id)).toHaveLength(1);
     waiting = true;
     await service.start(session.id, "Try the selected items again explicitly");
     await new Promise<void>((resolve) => {

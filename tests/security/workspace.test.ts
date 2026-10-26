@@ -1,33 +1,12 @@
 import { expect, it } from "vitest";
-import {
-  chmod,
-  rm,
-  mkdir,
-  readFile,
-  rename,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, rm, mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  createLayout,
-  managedPath,
-  taskRoot,
-} from "../../backend/workspace/paths";
-import { checked } from "../../backend/execution/process";
+import { createLayout, managedPath, taskRoot } from "../../backend/workspace/paths";
+import { checked } from "../../backend/execution/runtime/process";
 import { migrateDataRoot } from "../../backend/storage/migrate-root";
 import { securityWorkspace } from "./fixtures";
 
-it.each([
-  "worktrees",
-  "repos",
-  "state",
-  "logs",
-  "cache",
-  "artifacts",
-  "runtime",
-  "telemetry",
-])(
+it.each(["worktrees", "repos", "state", "logs", "cache", "artifacts", "runtime", "telemetry"])(
   "refuses an escaping %s category and leaves its target intact",
   async (category) => {
     const { dir, root } = await securityWorkspace();
@@ -48,19 +27,13 @@ it.each(["internal", "dangling"])(
     const original = join(root, "worktrees", task.repo_id);
     const moved = `${original}-original`;
     await rename(original, moved);
-    await symlink(
-      kind === "internal" ? moved : join(root, "missing"),
-      original,
-    );
+    await symlink(kind === "internal" ? moved : join(root, "missing"), original);
     await expect(taskRoot(root, task)).rejects.toThrow("symlink");
     await expect(git.fingerprint(task)).rejects.toThrow("symlink");
     await rename(join(root, "repos"), join(root, "repos-original"));
     await symlink(source, join(root, "repos"));
     await expect(
-      git.clone(
-        "https://github.com/fixture/fixture.git",
-        join(root, "repos", "new"),
-      ),
+      git.clone("https://github.com/fixture/fixture.git", join(root, "repos", "new")),
     ).rejects.toThrow("symlink");
     expect(await readFile(join(source, "file.txt"), "utf8")).toBe("base\n");
   },
@@ -72,18 +45,14 @@ it("retains the canonical root identity after its original directory is renamed 
   await mkdir(external);
   await rename(root, join(dir, "old-root"));
   await symlink(external, root);
-  await expect(managedPath(root, "logs/output")).rejects.toThrow(
-    "root or path changed",
-  );
+  await expect(managedPath(root, "logs/output")).rejects.toThrow("root or path changed");
 });
 
 it("blocks root migration before following an escaping source category", async () => {
   const { root, dir, source } = await securityWorkspace();
   await rename(join(root, "state"), join(root, "state-original"));
   await symlink(source, join(root, "state"));
-  await expect(migrateDataRoot(root, join(dir, "target"))).rejects.toThrow(
-    "symlink",
-  );
+  await expect(migrateDataRoot(root, join(dir, "target"))).rejects.toThrow("symlink");
   expect(await readFile(join(source, "file.txt"), "utf8")).toBe("base\n");
 });
 
@@ -94,10 +63,7 @@ it("hashes exact credential-shaped names, large binary bytes, modes, deletions a
   expect(await git.fingerprint(task)).toBe(original);
   await writeFile(join(task.worktree_path, "\ufeffname"), "BOM filename");
   const bomHash = await git.fingerprint(task);
-  await writeFile(
-    join(task.worktree_path, "\ufeffname"),
-    "changed BOM filename",
-  );
+  await writeFile(join(task.worktree_path, "\ufeffname"), "changed BOM filename");
   expect(await git.fingerprint(task)).not.toBe(bomHash);
   const path = join(task.worktree_path, "api_key=fixture-private-name.bin");
   const bytes = Buffer.alloc(35 * 1024 * 1024, 0xa5);
@@ -117,10 +83,7 @@ it("hashes exact credential-shaped names, large binary bytes, modes, deletions a
   await rename(link, join(task.worktree_path, "old-link"));
   await symlink("missing-target", link);
   expect(await git.fingerprint(task)).not.toBe(linkHash);
-  await rename(
-    join(task.worktree_path, "file.txt"),
-    join(task.worktree_path, "renamed.txt"),
-  );
+  await rename(join(task.worktree_path, "file.txt"), join(task.worktree_path, "renamed.txt"));
   expect(await git.fingerprint(task)).not.toBe(beforeMode);
 }, 15000);
 
@@ -134,15 +97,9 @@ it("binds index-only changes and files hidden from Git's normal modified-file li
   expect(await git.fingerprint(task)).not.toBe(original);
   await checked("git", ["restore", "--staged", "file.txt"], task.worktree_path);
   expect(await git.fingerprint(task)).toBe(original);
-  await checked(
-    "git",
-    ["update-index", "--assume-unchanged", "file.txt"],
-    task.worktree_path,
-  );
+  await checked("git", ["update-index", "--assume-unchanged", "file.txt"], task.worktree_path);
   await writeFile(path, "hidden modification\n");
-  expect(
-    await checked("git", ["diff", "--name-only"], task.worktree_path),
-  ).toBe("");
+  expect(await checked("git", ["diff", "--name-only"], task.worktree_path)).toBe("");
   expect(await git.fingerprint(task)).not.toBe(original);
 });
 
@@ -165,16 +122,9 @@ it("fingerprints tracked file/directory/link transformations without following r
   const asDirectory = await git.fingerprint(task);
   expect(asDirectory).not.toBe(original);
   await checked("git", ["add", "."], task.worktree_path);
-  await checked(
-    "git",
-    ["commit", "-m", "file becomes directory"],
-    task.worktree_path,
-  );
+  await checked("git", ["commit", "-m", "file becomes directory"], task.worktree_path);
   await rm(join(task.worktree_path, "file.txt"), { recursive: true });
-  await writeFile(
-    join(task.worktree_path, "file.txt"),
-    "directory becomes file",
-  );
+  await writeFile(join(task.worktree_path, "file.txt"), "directory becomes file");
   const asFile = await git.fingerprint(task);
   expect(asFile).not.toBe(asDirectory);
   await rm(join(task.worktree_path, "file.txt"));
@@ -188,11 +138,7 @@ it("preserves clean uninitialized gitlinks and binds initialized submodule chang
   await mkdir(child);
   await checked("git", ["init", "-b", "main"], child);
   await checked("git", ["config", "user.name", "Fixture"], child);
-  await checked(
-    "git",
-    ["config", "user.email", "fixture@example.invalid"],
-    child,
-  );
+  await checked("git", ["config", "user.email", "fixture@example.invalid"], child);
   await writeFile(join(child, "child.txt"), "child contents");
   await checked("git", ["add", "."], child);
   await checked("git", ["commit", "-m", "child"], child);
@@ -203,21 +149,11 @@ it("preserves clean uninitialized gitlinks and binds initialized submodule chang
   );
   await checked("git", ["commit", "-m", "submodule"], task.worktree_path);
   const initialized = await git.fingerprint(task);
-  await writeFile(
-    join(task.worktree_path, "module", "child.txt"),
-    "changed child",
-  );
+  await writeFile(join(task.worktree_path, "module", "child.txt"), "changed child");
   expect(await git.fingerprint(task)).not.toBe(initialized);
   await checked(
     "git",
-    [
-      "worktree",
-      "add",
-      "-b",
-      "uninitialized",
-      join(task.worktree_path, "..", "second"),
-      "HEAD",
-    ],
+    ["worktree", "add", "-b", "uninitialized", join(task.worktree_path, "..", "second"), "HEAD"],
     task.worktree_path,
   );
   const second = {

@@ -59,11 +59,7 @@ const main = async () => {
   Menu.setApplicationMenu(null);
   const configPath = join(app.getPath("userData"), "desktop.json");
   let config = await readDesktopConfig(configPath);
-  if (
-    !app.isPackaged &&
-    process.env.VIBESTAR_DEV_URL &&
-    process.env.VIBESTAR_DEV_WSL_CONFIG
-  )
+  if (!app.isPackaged && process.env.VIBESTAR_DEV_URL && process.env.VIBESTAR_DEV_WSL_CONFIG)
     config = z
       .object({
         distro: z.string().min(1),
@@ -76,25 +72,18 @@ const main = async () => {
     : join(app.getAppPath(), "dist-core");
   const startCore = () => {
     bridge = new CoreBridge(coreDir, config);
-    bridge.on("event", (event) =>
-      window?.webContents.send("core:event", event),
-    );
+    bridge.on("event", (event) => window?.webContents.send("core:event", event));
     if (process.platform !== "win32" || config.distro) bridge.start();
   };
   startCore();
   const trusted = (event: Electron.IpcMainInvokeEvent) => {
-    if (
-      event.sender !== window?.webContents ||
-      event.senderFrame !== window?.webContents.mainFrame
-    )
+    if (event.sender !== window?.webContents || event.senderFrame !== window?.webContents.mainFrame)
       throw new Error("Untrusted IPC sender");
   };
   ipcMain.handle("core:rpc", async (event, input) => {
     trusted(event);
     try {
-      const p = z
-        .object({ method: z.string().max(100), params: z.unknown() })
-        .parse(input);
+      const p = z.object({ method: z.string().max(100), params: z.unknown() }).parse(input);
       if (!bridge) throw new Error("Core not initialized");
       return { ok: true, result: await bridge.request(p.method, p.params) };
     } catch (error) {
@@ -142,17 +131,11 @@ const main = async () => {
         data_home: z
           .string()
           .max(4000)
-          .refine(
-            (s) => !s || s.startsWith("/"),
-            "Use an absolute Linux data directory",
-          ),
+          .refine((s) => !s || s.startsWith("/"), "Use an absolute Linux data directory"),
         helper_path: z
           .string()
           .max(4000)
-          .refine(
-            (s) => !s || s.startsWith("/"),
-            "Use an absolute Linux helper path",
-          ),
+          .refine((s) => !s || s.startsWith("/"), "Use an absolute Linux helper path"),
       })
       .parse(input);
     if (JSON.stringify(updated) === JSON.stringify(config)) return;
@@ -173,18 +156,11 @@ const main = async () => {
   ipcMain.handle("desktop:external", async (event, url) => {
     trusted(event);
     const u = new URL(z.string().parse(url));
-    if (
-      u.protocol !== "https:" ||
-      u.hostname !== "github.com" ||
-      u.username ||
-      u.password
-    )
+    if (u.protocol !== "https:" || u.hostname !== "github.com" || u.username || u.password)
       throw new Error("Only HTTPS GitHub links may be opened");
     await shell.openExternal(u.href);
   });
-  const area = screen.getDisplayNearestPoint(
-    screen.getCursorScreenPoint(),
-  ).workArea;
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const width = Math.max(800, Math.min(1440, area.width - 80));
   const height = Math.max(540, Math.min(940, area.height - 80));
   window = new BrowserWindow({
@@ -329,19 +305,11 @@ const main = async () => {
   window.on("leave-full-screen", publishState);
   window.on("resize", publishState);
   window.webContents.on("before-input-event", (event, input) => {
-    if (
-      input.type === "keyDown" &&
-      input.key === "F11" &&
-      !input.isAutoRepeat
-    ) {
+    if (input.type === "keyDown" && input.key === "F11" && !input.isAutoRepeat) {
       event.preventDefault();
       if (window) setFullscreen(!window.isFullScreen());
     }
-    if (
-      input.type === "keyDown" &&
-      input.key === "Escape" &&
-      window?.isFullScreen()
-    ) {
+    if (input.type === "keyDown" && input.key === "Escape" && window?.isFullScreen()) {
       event.preventDefault();
       setFullscreen(false);
     }

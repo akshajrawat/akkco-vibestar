@@ -1,0 +1,121 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 34px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay);
+  z-index: 50;
+}
+.modal {
+  background: var(--background-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  padding: 24px;
+  width: 590px;
+  max-width: 94vw;
+  max-height: 90%;
+  overflow: auto;
+  box-shadow: 0 12px 45px var(--overlay);
+  animation: surface-enter var(--motion-enter) ease-out;
+}
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.modal-heading h2 {
+  font-size: 14px;
+}
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 19px;
+}
+.modal-actions small {
+  margin-right: auto;
+  font-size: 10px;
+}
+.resolved-issue {
+  padding: 7px 0 11px;
+  border-bottom: 1px solid var(--border-default);
+}
+.resolved-issue small,
+.resolved-issue strong {
+  display: block;
+}
+.resolved-issue strong {
+  margin: 6px 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.issue-body {
+  white-space: pre-wrap;
+  font-size: 12px;
+  max-height: 190px;
+  overflow: auto;
+  margin: 10px 0;
+}
+.scope-options {
+  padding: 0;
+  border: 0;
+  margin-top: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 15px;
+}
+.scope-options legend {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 0;
+  margin-bottom: 2px;
+}
+.scope-options label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  color: var(--text-secondary);
+}
+.scope-options input {
+  width: auto;
+  accent-color: var(--accent-blue);
+}
+.task-configuration {
+  padding: 7px 0;
+}
+.task-composer .stage-settings {
+  display: block;
+}
+.task-composer .config-block {
+  display: grid;
+  grid-template-columns: 1fr 1fr 90px;
+  gap: 8px;
+  border: 0;
+  padding: 10px 0;
+}
+.task-composer .config-block h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.task-composer .config-block label {
+  margin: 3px 0;
+  font-size: 11px;
+}
+.task-composer .config-block input {
+  width: 100%;
+}

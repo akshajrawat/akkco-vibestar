@@ -1,16 +1,12 @@
 import type { ProviderDetection } from "../../backend/execution/providers/contracts";
-import type { UsageRecord } from "../../backend/execution/usage";
+import type { UsageRecord } from "../../backend/execution/output/usage";
 
 export const readLimits = (
   json: string | null | undefined,
 ): ProviderDetection["subscriptionLimits"] => {
   try {
     const value = JSON.parse(json || "null");
-    if (
-      !value ||
-      typeof value.reportedAt !== "string" ||
-      !Array.isArray(value.windows)
-    )
+    if (!value || typeof value.reportedAt !== "string" || !Array.isArray(value.windows))
       return undefined;
     const windows = value.windows.filter(
       (w: Record<string, unknown>) =>
@@ -26,8 +22,7 @@ export const readLimits = (
     return windows.length
       ? {
           reportedAt: value.reportedAt,
-          planType:
-            typeof value.planType === "string" ? value.planType : undefined,
+          planType: typeof value.planType === "string" ? value.planType : undefined,
           windows,
         }
       : undefined;
@@ -41,9 +36,7 @@ export const limitDeltas = (row: UsageRecord) => {
   if (!before || !after || before.planType !== after.planType) return [];
   return before.windows.flatMap((a) => {
     const b = after.windows.find(
-      (w) =>
-        w.windowDurationMins === a.windowDurationMins &&
-        w.resetsAt === a.resetsAt,
+      (w) => w.windowDurationMins === a.windowDurationMins && w.resetsAt === a.resetsAt,
     );
     return b
       ? [
@@ -67,6 +60,4 @@ export const windowLabel = (minutes: number) =>
         : `${minutes} minute`;
 export const usageRuntime = (row: UsageRecord) =>
   row.duration_ms ??
-  (row.status === "running"
-    ? Math.max(0, Date.now() - Date.parse(row.started_at))
-    : 0);
+  (row.status === "running" ? Math.max(0, Date.now() - Date.parse(row.started_at)) : 0);

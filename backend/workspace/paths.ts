@@ -25,10 +25,7 @@ export const managedPath = async (root: string, path: string) => {
           `Managed storage path ${parent} is a symlink. Restore dedicated directories; Vibestar will not relocate or remove its target.`,
         );
       if (parent !== candidate && !entry.isDirectory())
-        throw new AdeError(
-          "isolation",
-          "A managed storage parent is not a directory.",
-        );
+        throw new AdeError("isolation", "A managed storage parent is not a directory.");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
       throw error;
@@ -43,14 +40,8 @@ export const worktreePath = (
   scope: string,
   suffix = 0,
 ) => {
-  if (!/^[a-zA-Z0-9-]+$/.test(repoId))
-    throw new AdeError("isolation", "Invalid repository ID");
-  return join(
-    root,
-    "worktrees",
-    repoId,
-    `${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`,
-  );
+  if (!/^[a-zA-Z0-9-]+$/.test(repoId)) throw new AdeError("isolation", "Invalid repository ID");
+  return join(root, "worktrees", repoId, `${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`);
 };
 const validateFilePath = (path: string) => {
   if (
@@ -70,12 +61,10 @@ export const workspaceEntry = async (root: string, path: string) => {
   const parts = path.split("/");
   for (const [index, part] of parts.entries()) {
     current = join(current, part);
-    const metadata = await lstat(current).catch(
-      (error: NodeJS.ErrnoException) => {
-        if (["ENOENT", "ENOTDIR"].includes(error.code || "")) return null;
-        throw error;
-      },
-    );
+    const metadata = await lstat(current).catch((error: NodeJS.ErrnoException) => {
+      if (["ENOENT", "ENOTDIR"].includes(error.code || "")) return null;
+      throw error;
+    });
     if (index === parts.length - 1) return { path: destination, metadata };
     // Git can retain a deleted descendant after its parent becomes a file/link.
     // It is absent from the working tree; never follow that parent into a target.
@@ -109,10 +98,7 @@ export const taskRoot = async (root: string, task: WorkspaceAssignment) => {
   const allowed = await managedPath(root, join("worktrees", task.repo_id));
   const path = await realpath(await managedPath(root, task.worktree_path));
   if (!inside(allowed, path))
-    throw new AdeError(
-      "isolation",
-      "Task worktree is outside its managed repository boundary",
-    );
+    throw new AdeError("isolation", "Task worktree is outside its managed repository boundary");
   return path;
 };
 export const createLayout = async (root: string) => {
@@ -135,9 +121,7 @@ export const createLayout = async (root: string) => {
       "/mnt",
     ].includes(candidate) ||
     [".codex", ".gemini"].some(
-      (name) =>
-        candidate === join(homedir(), name) ||
-        inside(join(homedir(), name), candidate),
+      (name) => candidate === join(homedir(), name) || inside(join(homedir(), name), candidate),
     );
   if (!isAbsolute(root) || protectedRoot(resolve(root)))
     throw new AdeError(
@@ -147,10 +131,7 @@ export const createLayout = async (root: string) => {
   await mkdir(root, { recursive: true, mode: 0o700 });
   root = await realpath(root);
   if (protectedRoot(root))
-    throw new AdeError(
-      "invalid_input",
-      "Data directory resolves to a protected root",
-    );
+    throw new AdeError("invalid_input", "Data directory resolves to a protected root");
   for (const d of [
     "repos",
     "worktrees",

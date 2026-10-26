@@ -5,11 +5,7 @@ import { homedir } from "node:os";
 import { inside } from "./paths";
 
 // Reuse installed, ignored dependencies without exposing the source checkout.
-export const taskRuntime = async (
-  source: string,
-  worktree: string,
-  connect = false,
-) => {
+export const taskRuntime = async (source: string, worktree: string, connect = false) => {
   source = await realpath(source);
   worktree = await realpath(worktree);
   const mounts: { source: string; target: string }[] = [];
@@ -19,11 +15,7 @@ export const taskRuntime = async (
     const path = join(source, name);
     const target = join(worktree, name);
     const installed = await realpath(path).catch(() => null);
-    if (
-      !installed ||
-      !inside(source, installed) ||
-      !(await lstat(installed)).isDirectory()
-    )
+    if (!installed || !inside(source, installed) || !(await lstat(installed)).isDirectory())
       continue;
     const tracked = await gitCapture(["ls-files", "--", name], worktree);
     const sourceTracked = await gitCapture(["ls-files", "--", name], source);
@@ -41,14 +33,8 @@ export const taskRuntime = async (
       continue;
     const entry = await lstat(target).catch(() => null);
     if (!entry && connect) await mkdir(target);
-    if (
-      (!entry && connect) ||
-      (entry?.isDirectory() && (await readdir(target)).length === 0)
-    ) {
-      mounts.push(
-        { source: installed, target: path },
-        { source: installed, target },
-      );
+    if ((!entry && connect) || (entry?.isDirectory() && (await readdir(target)).length === 0)) {
+      mounts.push({ source: installed, target: path }, { source: installed, target });
       dependencies.push(name);
     }
   }
@@ -57,10 +43,7 @@ export const taskRuntime = async (
   const toolchainName = `${basename(source)}_tools`;
   const toolchain = join(dirname(source), toolchainName);
   const installedToolchain = await realpath(toolchain).catch(() => null);
-  if (
-    installedToolchain === toolchain &&
-    (await lstat(toolchain)).isDirectory()
-  ) {
+  if (installedToolchain === toolchain && (await lstat(toolchain)).isDirectory()) {
     mounts.push({
       source: toolchain,
       target: join(dirname(worktree), toolchainName),
@@ -70,16 +53,12 @@ export const taskRuntime = async (
   let python: string | null = null;
   let pythonPrefix: string | null = null;
   const versionFile =
-    (await readFile(join(worktree, ".python-version"), "utf8").catch(
-      () => null,
-    )) ??
+    (await readFile(join(worktree, ".python-version"), "utf8").catch(() => null)) ??
     (await readFile(join(source, ".python-version"), "utf8").catch(() => null));
   const version = versionFile?.trim();
   if (
     version &&
-    (version.length > 200 ||
-      !/^[\w.-]+$/.test(version) ||
-      [".", ".."].includes(version))
+    (version.length > 200 || !/^[\w.-]+$/.test(version) || [".", ".."].includes(version))
   )
     warnings.push(
       "Invalid .python-version selection was ignored; no arbitrary environment path was mounted.",
@@ -94,9 +73,7 @@ export const taskRuntime = async (
     ![".", ".."].includes(version)
   )
     candidates.unshift(join(homedir(), ".pyenv", "versions", version));
-  const versions = await realpath(join(homedir(), ".pyenv", "versions")).catch(
-    () => null,
-  );
+  const versions = await realpath(join(homedir(), ".pyenv", "versions")).catch(() => null);
   for (const candidate of candidates) {
     const prefix = await realpath(candidate).catch(() => null);
     if (
@@ -108,9 +85,7 @@ export const taskRuntime = async (
       )
     )
       continue;
-    const binary = await realpath(join(prefix, "bin", "python3")).catch(
-      () => null,
-    );
+    const binary = await realpath(join(prefix, "bin", "python3")).catch(() => null);
     if (!binary) continue;
     const base = dirname(dirname(binary));
     if (!(
@@ -119,13 +94,9 @@ export const taskRuntime = async (
       inside(prefix, binary)
     ))
       continue;
-    if (versions && inside(versions, base))
-      mounts.push({ source: base, target: base });
+    if (versions && inside(versions, base)) mounts.push({ source: base, target: base });
     if (!inside(worktree, prefix))
-      mounts.push(
-        { source: prefix, target: prefix },
-        { source: prefix, target: candidate },
-      );
+      mounts.push({ source: prefix, target: prefix }, { source: prefix, target: candidate });
     python = join(candidate, "bin", "python3");
     pythonPrefix = candidate;
     break;

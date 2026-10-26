@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { now, type Repository } from "../../backend/domain";
-import { checked } from "../../backend/execution/process";
+import { checked } from "../../backend/execution/runtime/process";
 import type { Engine } from "../../backend/execution/engine";
 import type { RepairSession } from "../../backend/review/repair/contracts";
-import { prSnapshot, observations } from "../pr-fixtures";
+import { prSnapshot, observations } from "../helpers/pr-fixtures";
 
 export const repairFixture = async (
   engine: Engine,
@@ -20,11 +20,7 @@ export const repairFixture = async (
   await mkdir(seed);
   await checked("git", ["init", "-b", baseBranch], seed);
   await checked("git", ["config", "user.name", "Repair Fixture"], seed);
-  await checked(
-    "git",
-    ["config", "user.email", "fixture@example.invalid"],
-    seed,
-  );
+  await checked("git", ["config", "user.email", "fixture@example.invalid"], seed);
   await writeFile(
     join(seed, "spec.ts"),
     "export const selectors = ['draft'];\nexport const exploration = 'original-exploration';\n",
@@ -48,39 +44,23 @@ export const repairFixture = async (
   );
   await checked("git", ["add", "."], seed);
   await checked("git", ["commit", "-m", "migrate acceptance test"], seed);
-  await checked(
-    "git",
-    ["push", fork, "HEAD:refs/heads/fix-translation-tests"],
-    seed,
-  );
+  await checked("git", ["push", fork, "HEAD:refs/heads/fix-translation-tests"], seed);
   const head = await checked("git", ["rev-parse", "HEAD"], seed);
   await checked("git", ["switch", baseBranch], seed);
   await writeFile(
     join(seed, options.conflict ? "spec.ts" : "README.md"),
-    options.conflict
-      ? "export const selectors = ['upstream'];\n"
-      : "Latest upstream development\n",
+    options.conflict ? "export const selectors = ['upstream'];\n" : "Latest upstream development\n",
   );
   await checked("git", ["add", "."], seed);
   await checked("git", ["commit", "-m", "advance upstream"], seed);
   await checked("git", ["push", upstream, baseBranch], seed);
   const base = await checked("git", ["rev-parse", "HEAD"], seed);
   const repoId = randomUUID();
-  const source = options.imported
-    ? join(dir, "checkout")
-    : join(engine.root, "repos", repoId);
+  const source = options.imported ? join(dir, "checkout") : join(engine.root, "repos", repoId);
+  await checked("git", ["clone", "--origin", "upstream", upstream, source], dir);
   await checked(
     "git",
-    ["clone", "--origin", "upstream", upstream, source],
-    dir,
-  );
-  await checked(
-    "git",
-    [
-      "fetch",
-      fork,
-      "refs/heads/fix-translation-tests:refs/heads/fix-translation-tests",
-    ],
+    ["fetch", fork, "refs/heads/fix-translation-tests:refs/heads/fix-translation-tests"],
     source,
   );
   await checked("git", ["switch", "fix-translation-tests"], source);
@@ -94,14 +74,8 @@ export const repairFixture = async (
     ["remote", "add", "origin", "https://github.com/akshajrawat/oppia.git"],
     source,
   );
-  await writeFile(
-    join(source, "README.md"),
-    "Personal dirty source checkout\n",
-  );
-  await writeFile(
-    join(source, "personal.txt"),
-    "Preserve this untracked file\n",
-  );
+  await writeFile(join(source, "README.md"), "Personal dirty source checkout\n");
+  await writeFile(join(source, "personal.txt"), "Preserve this untracked file\n");
   const repo: Repository = {
     id: repoId,
     owner: "oppia",

@@ -1,9 +1,5 @@
 import { expect, it } from "vitest";
-import {
-  parseUnifiedDiff,
-  sourceLines,
-  splitDiffRows,
-} from "../../src/lib/diff/parse";
+import { parseUnifiedDiff, sourceLines, splitDiffRows } from "../../src/lib/diff/parse";
 import { highlightCode } from "../../src/lib/diff/highlight";
 
 const patch =
@@ -11,13 +7,7 @@ const patch =
 it("maps replacement, insertion and unchanged lines accurately in unified and split rows", () => {
   const parsed = parseUnifiedDiff(patch);
   expect(parsed.reason).toBeNull();
-  expect(
-    parsed.hunks[0].lines.map((line) => [
-      line.kind,
-      line.oldLine,
-      line.newLine,
-    ]),
-  ).toEqual([
+  expect(parsed.hunks[0].lines.map((line) => [line.kind, line.oldLine, line.newLine])).toEqual([
     ["context", 1, 1],
     ["delete", 2, null],
     ["add", null, 2],
@@ -26,10 +16,7 @@ it("maps replacement, insertion and unchanged lines accurately in unified and sp
     ["context", 4, 5],
   ]);
   expect(
-    splitDiffRows(parsed.hunks[0].lines).map((row) => [
-      row.base?.oldLine,
-      row.working?.newLine,
-    ]),
+    splitDiffRows(parsed.hunks[0].lines).map((row) => [row.base?.oldLine, row.working?.newLine]),
   ).toEqual([
     [1, 1],
     [2, 2],
@@ -63,16 +50,11 @@ it.each([
       [null, null],
     ],
   ],
-] as const)(
-  "handles zero ranges and absent final newlines: %s",
-  (patch, expected) => {
-    const parsed = parseUnifiedDiff(patch);
-    expect(parsed.reason).toBeNull();
-    expect(
-      parsed.hunks[0].lines.map((line) => [line.oldLine, line.newLine]),
-    ).toEqual(expected);
-  },
-);
+] as const)("handles zero ranges and absent final newlines: %s", (patch, expected) => {
+  const parsed = parseUnifiedDiff(patch);
+  expect(parsed.reason).toBeNull();
+  expect(parsed.hunks[0].lines.map((line) => [line.oldLine, line.newLine])).toEqual(expected);
+});
 
 it("rejects inconsistent counts, overlapping hunks, unsafe counters and multi-file patches instead of inventing line mappings", () => {
   for (const patch of [

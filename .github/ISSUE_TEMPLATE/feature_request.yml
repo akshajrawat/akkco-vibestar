@@ -1,0 +1,16 @@
+name: Feature request
+description: Describe a concrete use case and proposed behavior.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+      description: Explain how it fits the existing isolated, explicitly authorized workflows.
+    validations:
+      required: true

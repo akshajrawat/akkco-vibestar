@@ -76,9 +76,7 @@ export class IssueSearch {
   read = async (endpoint: string): Promise<unknown> => {
     this.signal.throwIfAborted();
     if (
-      !/^(?:repos\/[\w.-]+\/[\w.-]+(?:\/|\?|$)|search\/issues\?)/.test(
-        endpoint,
-      ) ||
+      !/^(?:repos\/[\w.-]+\/[\w.-]+(?:\/|\?|$)|search\/issues\?)/.test(endpoint) ||
       endpoint.includes("..") ||
       endpoint.includes("#")
     )
@@ -100,9 +98,7 @@ export class IssueSearch {
     return value;
   };
   repository = async (name: string, expectedId?: string) => {
-    const value = rawRepository.parse(
-      await this.read(`repos/${repositoryName(name)}`),
-    );
+    const value = rawRepository.parse(await this.read(`repos/${repositoryName(name)}`));
     const fullName = repositoryName(value.html_url);
     if (
       fullName !== repositoryName(value.full_name) ||
@@ -119,9 +115,7 @@ export class IssueSearch {
     });
   };
   issue = async (repository: RepositoryIdentity, number: number) => {
-    const value = rawIssue.parse(
-      await this.read(`repos/${repository.full_name}/issues/${number}`),
-    );
+    const value = rawIssue.parse(await this.read(`repos/${repository.full_name}/issues/${number}`));
     const ref = value.pull_request ? null : parseIssue(value.html_url);
     if (
       value.number !== number ||
@@ -145,9 +139,7 @@ export class IssueSearch {
       body: value.body || "",
       state: value.state,
       pull_request: Boolean(value.pull_request),
-      labels: value.labels.map((label) =>
-        typeof label === "string" ? label : label.name,
-      ),
+      labels: value.labels.map((label) => (typeof label === "string" ? label : label.name)),
       assignees: value.assignees.map((actor) => actor.login),
       created_at: value.created_at,
       updated_at: value.updated_at,
@@ -162,21 +154,15 @@ export class IssueSearch {
         `${endpoint}${endpoint.includes("?") ? "&" : "?"}per_page=100&page=${page}`,
       );
       if (!Array.isArray(value))
-        throw new AdeError(
-          "github",
-          "Unexpected Issue Watch pagination response.",
-        );
-      if (value.length > 100)
-        throw new AdeError("github", "Oversized GitHub page.");
+        throw new AdeError("github", "Unexpected Issue Watch pagination response.");
+      if (value.length > 100) throw new AdeError("github", "Oversized GitHub page.");
       const hash = digest(value);
       if (value.length && seen.has(hash))
         throw new CollectionLimit("GitHub pagination did not advance.");
       seen.add(hash);
       rows.push(...value);
       if (rows.length > maxRows)
-        throw new CollectionLimit(
-          "Discussion or tracker exceeded its declared entry limit.",
-        );
+        throw new CollectionLimit("Discussion or tracker exceeded its declared entry limit.");
       if (value.length < 100) return rows;
     }
     throw new CollectionLimit("GitHub discussion pagination limit reached.");
@@ -188,11 +174,7 @@ export class IssueSearch {
     let total = 0;
     let complete = true;
     const warnings: string[] = [];
-    for (
-      let page = 1;
-      page <= Math.ceil(this.limits.max_candidates / 100);
-      page++
-    ) {
+    for (let page = 1; page <= Math.ceil(this.limits.max_candidates / 100); page++) {
       const value = z
         .object({
           total_count: z.number().int().nonnegative(),
@@ -246,10 +228,7 @@ export class IssueSearch {
           `${ref.owner}/${ref.repo}`.toLowerCase() !== repository.full_name ||
           ref.number !== item.number
         )
-          throw new AdeError(
-            "github_identity",
-            "Search result belongs to a different repository.",
-          );
+          throw new AdeError("github_identity", "Search result belongs to a different repository.");
         if (seen.has(item.node_id)) {
           complete = false;
           warnings.push("Search identities overlapped between pages.");

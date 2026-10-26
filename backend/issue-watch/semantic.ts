@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { AdeError } from "../domain";
 import type { Engine } from "../execution/engine";
-import { redact } from "../execution/process";
+import { redact } from "../execution/runtime/process";
 import { managedPath } from "../workspace/paths";
 import {
   SemanticResultSchema,
@@ -26,9 +26,7 @@ export const validateSemanticReport = (
   sources: WatchSource[],
 ) => {
   const report = SemanticReportSchema.parse(value);
-  const allowed = new Map(
-    candidates.map((candidate) => [candidate.issue.id, candidate]),
-  );
+  const allowed = new Map(candidates.map((candidate) => [candidate.issue.id, candidate]));
   const sourceMap = new Map(sources.map((source) => [source.key, source]));
   const seen = new Set<string>();
   for (const result of report.results) {
@@ -67,10 +65,9 @@ export const validateSemanticReport = (
       ...result.uncertainty,
     ].join("\n");
     const actors = new Set(
-      [
-        ...candidate.issue.assignees,
-        ...scope.map((source) => source.actor || ""),
-      ].map((actor) => actor.toLowerCase()),
+      [...candidate.issue.assignees, ...scope.map((source) => source.actor || "")].map((actor) =>
+        actor.toLowerCase(),
+      ),
     );
     for (const match of prose.matchAll(/@([\w-]+)\b/g))
       if (!actors.has(match[1].toLowerCase()))
@@ -79,18 +76,10 @@ export const validateSemanticReport = (
           "Model named an actor absent from retrieved evidence.",
         );
     for (const match of prose.matchAll(/https?:\/\/[^\s<>\])]+/g))
-      if (
-        match[0] !== candidate.issue.url &&
-        !scope.some((source) => source.url === match[0])
-      )
-        throw new AdeError(
-          "invalid_semantic",
-          "Model named a URL absent from retrieved evidence.",
-        );
+      if (match[0] !== candidate.issue.url && !scope.some((source) => source.url === match[0]))
+        throw new AdeError("invalid_semantic", "Model named a URL absent from retrieved evidence.");
     if (
-      ["assigned", "competing_pr_detected", "ineligible"].includes(
-        result.claim_assessment,
-      ) &&
+      ["assigned", "competing_pr_detected", "ineligible"].includes(result.claim_assessment) &&
       result.claim_assessment !== candidate.claim_state
     )
       throw new AdeError(
@@ -149,8 +138,7 @@ export class IssueWatchSemantic {
         return source && !keys.has(key) ? [source] : [];
       });
       if (
-        selected.length >=
-          revision.configuration.limits.max_semantic_candidates ||
+        selected.length >= revision.configuration.limits.max_semantic_candidates ||
         Buffer.byteLength(
           JSON.stringify({
             ...packet,
@@ -163,8 +151,7 @@ export class IssueWatchSemantic {
         candidate.uncertainty.push(
           "Semantic candidate or 128 KiB context budget omitted this issue; Continue Analysis is an explicit additional attempt.",
         );
-        if (packet.omissions.length < 40)
-          packet.omissions.push(candidate.issue.id);
+        if (packet.omissions.length < 40) packet.omissions.push(candidate.issue.id);
         continue;
       }
       selected.push(candidate);
@@ -184,10 +171,7 @@ export class IssueWatchSemantic {
       JSON.parse(context);
       const prompt = instructions + context;
       if (Buffer.byteLength(prompt) > 128 * 1024)
-        throw new AdeError(
-          "context_budget",
-          "Semantic input exceeded 128 KiB.",
-        );
+        throw new AdeError("context_budget", "Semantic input exceeded 128 KiB.");
       const directory = await managedPath(
         this.engine.root,
         join("artifacts", "issue-watch", scan.id),
@@ -211,10 +195,7 @@ export class IssueWatchSemantic {
         schema: SemanticReportSchema,
         configuration: {
           ...revision.configuration.model,
-          timeout_secs: Math.min(
-            120,
-            revision.configuration.model.timeout_secs,
-          ),
+          timeout_secs: Math.min(120, revision.configuration.model.timeout_secs),
         },
         signal,
         context: {
@@ -226,9 +207,7 @@ export class IssueWatchSemantic {
       signal.throwIfAborted();
       const report = validateSemanticReport(value, selected, packet.sources);
       for (const result of report.results) {
-        const candidate = selected.find(
-          (item) => item.issue.id === result.issue_id,
-        )!;
+        const candidate = selected.find((item) => item.issue.id === result.issue_id)!;
         candidate.semantic = result;
         candidate.semantic_state = "completed";
         if (result.relevance === "no_match") {
@@ -276,10 +255,7 @@ export class IssueWatchSemantic {
         "Semantic coverage is incomplete. No automatic retry or provider fallback was started.",
       );
     } finally {
-      scan.utility_run_id = this.store.scan(
-        scan.watch_id,
-        scan.id,
-      ).utility_run_id;
+      scan.utility_run_id = this.store.scan(scan.watch_id, scan.id).utility_run_id;
     }
   };
 }

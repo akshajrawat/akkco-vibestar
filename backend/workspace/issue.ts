@@ -2,11 +2,7 @@ import { AdeError, now, type IssueRef } from "../domain";
 import { GitHubClient } from "../github/client";
 import { object } from "../execution/providers/contracts";
 
-export const fetchIssue = async (
-  reference: IssueRef,
-  cwd: string,
-  signal?: AbortSignal,
-) => {
+export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: AbortSignal) => {
   const client = new GitHubClient(cwd);
   // Authenticated CLI GETs first; public REST is a credential-free fallback.
   const get = async (endpoint: string): Promise<unknown> => {
@@ -34,10 +30,7 @@ export const fetchIssue = async (
     for (let page = 1; page <= 100; page++) {
       const part = await get(`${endpoint}?per_page=100&page=${page}`);
       if (!Array.isArray(part))
-        throw new AdeError(
-          "github",
-          "Unexpected issue context pagination response",
-        );
+        throw new AdeError("github", "Unexpected issue context pagination response");
       rows.push(...part.map(object));
       if (part.length < 100) return rows;
     }
@@ -49,10 +42,7 @@ export const fetchIssue = async (
   const base = `repos/${reference.owner}/${reference.repo}/issues/${reference.number}`;
   const issue = object(await get(base));
   if (issue.pull_request)
-    throw new AdeError(
-      "invalid_input",
-      "URL identifies a pull request, not an issue",
-    );
+    throw new AdeError("invalid_input", "URL identifies a pull request, not an issue");
   const comments = await pages(`${base}/comments`);
   const warnings: string[] = [];
   let timeline: Record<string, unknown>[] = [];
@@ -108,9 +98,7 @@ export const fetchIssue = async (
     }
   }
   if (links.size > 20)
-    warnings.push(
-      `${links.size - 20} linked PRs omitted by the 20-PR context limit.`,
-    );
+    warnings.push(`${links.size - 20} linked PRs omitted by the 20-PR context limit.`);
   return {
     title: issue.title,
     body: issue.body,

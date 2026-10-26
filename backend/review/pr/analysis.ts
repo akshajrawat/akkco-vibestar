@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AdeError, now } from "../../domain";
 import type { Engine } from "../../execution/engine";
-import { redact } from "../../execution/process";
+import { redact } from "../../execution/runtime/process";
 import { discussionEntries, isAcknowledgment } from "../../scheduled/action";
 import {
   parsePullRequest,
@@ -11,11 +11,7 @@ import {
   type PullRequestState,
 } from "../../scheduled/contracts";
 import { persistReviewActions } from "./actions";
-import {
-  ReviewAnalysisSchema,
-  PRAnalysisSessionSchema,
-  type PRAnalysisSession,
-} from "./contracts";
+import { ReviewAnalysisSchema, PRAnalysisSessionSchema, type PRAnalysisSession } from "./contracts";
 
 const contextHash = (snapshot: PullRequestState) =>
   createHash("sha256")
@@ -52,9 +48,7 @@ export class PRAnalysis {
           },
           PRAnalysisSessionSchema.parse,
         );
-        return value
-          ? [{ ...value, status: row.status, ended_at: row.ended_at }]
-          : [];
+        return value ? [{ ...value, status: row.status, ended_at: row.ended_at }] : [];
       });
 
   save = (session: PRAnalysisSession) => {
@@ -87,9 +81,7 @@ export class PRAnalysis {
   ) => {
     signal.throwIfAborted();
     const sources = discussionEntries(snapshot);
-    const previous = this.history(session.job_id).find(
-      (s) => s.id !== session.id && s.report,
-    );
+    const previous = this.history(session.job_id).find((s) => s.id !== session.id && s.report);
     session.snapshot = snapshot;
     session.changes = previous?.snapshot
       ? sources
@@ -104,22 +96,11 @@ export class PRAnalysis {
                   old.resolved === source.resolved,
               ),
           )
-          .map(
-            (source) =>
-              `New or edited ${source.type}: @${source.author} · ${source.id}`,
-          )
+          .map((source) => `New or edited ${source.type}: @${source.author} · ${source.id}`)
       : ["Initial analysis"];
-    if (
-      previous?.snapshot &&
-      previous.snapshot.headRefOid !== snapshot.headRefOid
-    )
-      session.changes.push(
-        "PR head changed; a new commit alone does not prove a fix.",
-      );
-    if (
-      previous?.snapshot &&
-      previous.snapshot.baseRefOid !== snapshot.baseRefOid
-    )
+    if (previous?.snapshot && previous.snapshot.headRefOid !== snapshot.headRefOid)
+      session.changes.push("PR head changed; a new commit alone does not prove a fix.");
+    if (previous?.snapshot && previous.snapshot.baseRefOid !== snapshot.baseRefOid)
       session.changes.push("PR base changed.");
     if (
       previous?.snapshot &&
@@ -127,13 +108,10 @@ export class PRAnalysis {
         previous.snapshot.reviewDecision !== snapshot.reviewDecision ||
         previous.snapshot.mergeable !== snapshot.mergeable)
     )
-      session.changes.push(
-        "PR lifecycle, review decision or mergeability changed.",
-      );
+      session.changes.push("PR lifecycle, review decision or mergeability changed.");
     if (
       previous?.snapshot &&
-      JSON.stringify(previous.snapshot.checks) !==
-        JSON.stringify(snapshot.checks)
+      JSON.stringify(previous.snapshot.checks) !== JSON.stringify(snapshot.checks)
     )
       session.changes.push("CI/check status changed.");
     if (
@@ -144,9 +122,7 @@ export class PRAnalysis {
     )
       session.changes.push("Discussion items removed or unavailable.");
     if (!session.changes.length)
-      session.changes.push(
-        "No discussion changes; context/status inspected again.",
-      );
+      session.changes.push("No discussion changes; context/status inspected again.");
     session.phase = "Assessing review coverage";
     this.save(session);
 
@@ -214,8 +190,7 @@ export class PRAnalysis {
                 (source) =>
                   source.body.trim() &&
                   !source.bot &&
-                  source.author.toLowerCase() !==
-                    snapshot.author?.toLowerCase(),
+                  source.author.toLowerCase() !== snapshot.author?.toLowerCase(),
               )
               .map((source) => ({
                 existingActionId: null,
@@ -224,8 +199,7 @@ export class PRAnalysis {
                 classification: "positive_feedback",
                 priority: "low",
                 affectedFiles: [],
-                recommendedAction:
-                  "No additional code change requested by this acknowledgment.",
+                recommendedAction: "No additional code change requested by this acknowledgment.",
                 authorReplyIds: [],
                 reviewerAcknowledgmentIds: [],
                 responseState: "no_author_reply",
@@ -241,20 +215,14 @@ export class PRAnalysis {
           sourceId: source.sourceId,
           segmentIds: source.segments.map((s) => s.id),
           disposition: "informational",
-          reason:
-            "Author/bot activity or empty review envelope; review state remains visible.",
+          reason: "Author/bot activity or empty review envelope; review state remains visible.",
         })),
         complete: snapshot.coverage?.complete === true,
         warnings: retrievalWarnings,
       };
     } else {
       authorizeInference?.();
-      const workspace = join(
-        this.engine.root,
-        "cache",
-        "utility",
-        session.job_id,
-      );
+      const workspace = join(this.engine.root, "cache", "utility", session.job_id);
       const directory = `analysis-${session.id}`;
       await mkdir(join(workspace, directory), { recursive: true, mode: 0o700 });
       for (const [index, source] of sources.entries()) {
@@ -288,9 +256,7 @@ export class PRAnalysis {
           previousActions: previous?.report?.actions || [],
         }),
       );
-      const contextPaths = contextParts.map(
-        (_, index) => `context-${index}.txt`,
-      );
+      const contextPaths = contextParts.map((_, index) => `context-${index}.txt`);
       for (const [index, body] of contextParts.entries())
         await writeFile(join(workspace, directory, contextPaths[index]), body, {
           mode: 0o600,
@@ -332,9 +298,7 @@ export class PRAnalysis {
           !source ||
           seen.has(coverage.sourceId) ||
           new Set(coverage.segmentIds).size !== coverage.segmentIds.length ||
-          coverage.segmentIds.some(
-            (id) => !source.segments.some((s) => s.id === id),
-          )
+          coverage.segmentIds.some((id) => !source.segments.some((s) => s.id === id))
         )
           throw new AdeError(
             "analysis_coverage",
@@ -366,9 +330,7 @@ export class PRAnalysis {
         ),
         coverage: manifest.map(
           (source) =>
-            output.coverage.find(
-              (entry) => entry.sourceId === source.sourceId,
-            ) || {
+            output.coverage.find((entry) => entry.sourceId === source.sourceId) || {
               sourceId: source.sourceId,
               segmentIds: [],
               disposition: "deferred",

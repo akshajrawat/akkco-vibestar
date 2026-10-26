@@ -1,4 +1,4 @@
-import { capture, checked } from "../process";
+import { capture, checked } from "../runtime/process";
 import {
   object,
   verifyFlags,
@@ -13,10 +13,7 @@ export class CodexProvider implements AgentProvider {
   readonly name = "codex";
   outputSchema = codexSchema;
   parseStructuredOutput = codexResult;
-  detect = async (
-    cwd: string,
-    signal?: AbortSignal,
-  ): Promise<ProviderDetection> => {
+  detect = async (cwd: string, signal?: AbortSignal): Promise<ProviderDetection> => {
     const d: ProviderDetection = {
       provider: this.name,
       installed: false,
@@ -30,9 +27,7 @@ export class CodexProvider implements AgentProvider {
     try {
       d.version = await checked("codex", ["--version"], cwd, signal);
       d.installed = true;
-      verifyFlags(await checked("codex", ["--help"], cwd, signal), [
-        "--no-daemon",
-      ]);
+      verifyFlags(await checked("codex", ["--help"], cwd, signal), ["--no-daemon"]);
       const help = await checked("codex", ["exec", "--help"], cwd, signal);
       verifyFlags(help, [
         "--json",
@@ -54,8 +49,7 @@ export class CodexProvider implements AgentProvider {
       d.connected = login.code === 0 && output.includes("ChatGPT");
       d.accountLabel = d.connected ? "ChatGPT subscription" : undefined;
       if (login.code === 0 && !d.connected)
-        d.error =
-          "API-key login detected. Connect with ChatGPT to use your subscription.";
+        d.error = "API-key login detected. Connect with ChatGPT to use your subscription.";
       if (d.connected) {
         Object.assign(d, await discoverCodexModels(cwd, signal));
         d.efforts = d.models.find((m) => m.isDefault)?.supportedEfforts || [];
@@ -104,9 +98,7 @@ export class CodexProvider implements AgentProvider {
     if (event === "thread.started") kind = "run.started";
     else if (event === "turn.completed") kind = "run.completed";
     else if (event === "turn.failed" || event === "error") kind = "run.failed";
-    else if (
-      ["item.started", "item.updated", "item.completed"].includes(String(event))
-    ) {
+    else if (["item.started", "item.updated", "item.completed"].includes(String(event))) {
       if (item.type === "agent_message") kind = "message";
       else if (item.type === "file_change") kind = "file.changed";
       else if (item.type === "command_execution")
@@ -139,9 +131,7 @@ export class CodexProvider implements AgentProvider {
               stderr: item.stderr,
               exit_code: item.exit_code,
               duration_ms: item.duration_ms,
-              status:
-                item.status ||
-                (event === "item.completed" ? "completed" : "running"),
+              status: item.status || (event === "item.completed" ? "completed" : "running"),
               files: Array.isArray(item.changes)
                 ? item.changes.map((change) => object(change).path)
                 : undefined,

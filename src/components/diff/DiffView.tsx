@@ -1,12 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import type { FileDiff } from "../../lib/types";
 import { highlightCode } from "../../lib/diff/highlight";
-import {
-  parseUnifiedDiff,
-  sourceLines,
-  splitDiffRows,
-  type DiffLine,
-} from "../../lib/diff/parse";
+import { parseUnifiedDiff, sourceLines, splitDiffRows, type DiffLine } from "../../lib/diff/parse";
 import { Button } from "../ui/button";
 
 const Code = ({ text, path }: { text: string; path: string }) => (
@@ -18,15 +13,7 @@ const Code = ({ text, path }: { text: string; path: string }) => (
     ))}
   </code>
 );
-const LineRows = ({
-  lines,
-  split,
-  path,
-}: {
-  lines: DiffLine[];
-  split: boolean;
-  path: string;
-}) =>
+const LineRows = ({ lines, split, path }: { lines: DiffLine[]; split: boolean; path: string }) =>
   split
     ? splitDiffRows(lines).map((row, index) =>
         row.meta ? (
@@ -35,9 +22,7 @@ const LineRows = ({
           </tr>
         ) : (
           <tr key={index}>
-            <td className={`diff-number ${row.base?.kind || "empty"}`}>
-              {row.base?.oldLine}
-            </td>
+            <td className={`diff-number ${row.base?.kind || "empty"}`}>{row.base?.oldLine}</td>
             <td
               className={`diff-code ${row.base?.kind || "empty"}`}
               data-side="base"
@@ -130,8 +115,7 @@ const ContextFold = ({
               disabled={shown >= 2000}
               onClick={() => setShown(Math.min(count, shown + 200))}
             >
-              Show {Math.min(200, count - shown)} of {count - shown} unchanged
-              lines
+              Show {Math.min(200, count - shown)} of {count - shown} unchanged lines
             </Button>
           ) : (
             <Button size="sm" variant="ghost" onClick={() => setShown(0)}>
@@ -139,9 +123,7 @@ const ContextFold = ({
             </Button>
           )}
           {shown >= 2000 && shown < count && (
-            <small>
-              Context display is bounded. Open the complete file in your editor.
-            </small>
+            <small>Context display is bounded. Open the complete file in your editor.</small>
           )}
         </td>
       </tr>
@@ -162,8 +144,7 @@ export const DiffView = ({
   const original = useMemo(() => sourceLines(file.original), [file.original]);
   const modified = useMemo(() => sourceLines(file.modified), [file.modified]);
   const split = mode === "side";
-  if (file.binary)
-    return <p className="empty-row">Binary file. Review it in your editor.</p>;
+  if (file.binary) return <p className="empty-row">Binary file. Review it in your editor.</p>;
   if (parsed.reason)
     return (
       <div className="diff-unavailable">
@@ -194,9 +175,7 @@ export const DiffView = ({
       aria-label={`${split ? "Side-by-side" : "Unified"} diff for ${path}`}
     >
       <table className={`code-diff ${split ? "split" : "unified"}`}>
-        <caption className="sr-only">
-          {path} · base and working line numbers
-        </caption>
+        <caption className="sr-only">{path} · base and working line numbers</caption>
         <colgroup>
           <col className="number-column" />
           {split ? (
@@ -232,12 +211,8 @@ export const DiffView = ({
         <tbody>
           {parsed.hunks.map((hunk, index) => {
             const previous = parsed.hunks[index - 1];
-            const oldStart = previous
-              ? previous.oldStart + previous.oldCount
-              : 1;
-            const newStart = previous
-              ? previous.newStart + previous.newCount
-              : 1;
+            const oldStart = previous ? previous.oldStart + previous.oldCount : 1;
+            const newStart = previous ? previous.newStart + previous.newCount : 1;
             const gap = hunk.oldStart - oldStart;
             return (
               <Fragment key={`${hunk.header}:${index}`}>

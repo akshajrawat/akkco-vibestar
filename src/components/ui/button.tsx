@@ -40,9 +40,7 @@ export const Button = ({
         children
       ) : (
         <>
-          {busy && (
-            <LoaderCircle size={14} className="spinning" aria-hidden="true" />
-          )}
+          {busy && <LoaderCircle size={14} className="spinning" aria-hidden="true" />}
           {children}
         </>
       )}

@@ -34,10 +34,7 @@ export class PersistedRecords {
   };
   private report = (record: StoredJson) => {
     if (!this.ready) {
-      this.pending.set(
-        JSON.stringify([record.table, record.id, record.column]),
-        record,
-      );
+      this.pending.set(JSON.stringify([record.table, record.id, record.column]), record);
       return;
     }
     // Source bytes remain in their original record and pre-migration backup.
@@ -61,10 +58,7 @@ export class PersistedRecords {
       if (Buffer.byteLength(record.source) > 32 * 1024 * 1024)
         throw new Error("Saved record exceeded its decoding budget");
       value = parse(JSON.parse(record.source));
-      if (
-        record.identity &&
-        String(objectValue(value)[record.identity]) !== String(record.id)
-      )
+      if (record.identity && String(objectValue(value)[record.identity]) !== String(record.id))
         throw new Error("Saved identity does not match its owner");
     } catch {
       this.report(record);
@@ -84,15 +78,11 @@ export class PersistedRecords {
       );
     return value;
   };
-  tryDecode = <T = Record<string, unknown>>(
-    record: StoredJson,
-    parse?: (value: unknown) => T,
-  ) => {
+  tryDecode = <T = Record<string, unknown>>(record: StoredJson, parse?: (value: unknown) => T) => {
     try {
       return this.decode(record, parse);
     } catch (error) {
-      if (error instanceof AdeError && error.kind === "corrupt_record")
-        return undefined;
+      if (error instanceof AdeError && error.kind === "corrupt_record") return undefined;
       throw error;
     }
   };

@@ -6,3 +6,8 @@ release/
 coverage/
 *.log
 *.tsbuildinfo
+test-results/
+.husky/_/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

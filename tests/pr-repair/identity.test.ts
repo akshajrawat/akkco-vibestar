@@ -35,10 +35,7 @@ it("reads immutable PR/fork IDs, the actual head/base refs, current base SHA and
             : head,
     );
   const reader = new PRIdentityReader(client);
-  const identity = await reader.read(
-    metadata.html_url,
-    new AbortController().signal,
-  );
+  const identity = await reader.read(metadata.html_url, new AbortController().signal);
   expect(identity).toMatchObject({
     id: "PR_27527",
     head: {
@@ -50,24 +47,22 @@ it("reads immutable PR/fork IDs, the actual head/base refs, current base SHA and
     viewer: "akshajrawat",
     can_push: true,
   });
-  expect(
-    api.mock.calls.some(([endpoint]) =>
-      endpoint.endsWith("git/ref/heads/develop"),
-    ),
-  ).toBe(true);
+  expect(api.mock.calls.some(([endpoint]) => endpoint.endsWith("git/ref/heads/develop"))).toBe(
+    true,
+  );
   metadata.head.repo = { ...head, node_id: "R_unrelated" };
-  await expect(
-    reader.read(metadata.html_url, new AbortController().signal),
-  ).rejects.toThrow("inconsistent");
+  await expect(reader.read(metadata.html_url, new AbortController().signal)).rejects.toThrow(
+    "inconsistent",
+  );
   metadata.head.repo = head;
   metadata.head.ref = "--upload-pack=malicious";
-  await expect(
-    reader.read(metadata.html_url, new AbortController().signal),
-  ).rejects.toThrow("invalid branch");
+  await expect(reader.read(metadata.html_url, new AbortController().signal)).rejects.toThrow(
+    "invalid branch",
+  );
   metadata.head.ref = "fix/translation-tests";
   head.clone_url = "https://example.invalid/attacker.git";
-  await expect(
-    reader.read(metadata.html_url, new AbortController().signal),
-  ).rejects.toThrow("unexpected repository transport");
+  await expect(reader.read(metadata.html_url, new AbortController().signal)).rejects.toThrow(
+    "unexpected repository transport",
+  );
   vi.restoreAllMocks();
 });

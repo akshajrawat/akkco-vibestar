@@ -1,0 +1,114 @@
+/* Explicit repository connections share the existing IDE surfaces. */
+.repository-section-title {
+  margin: 24px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+.repository-section-title small {
+  color: var(--text-muted);
+}
+.repository-empty,
+.active-repository-row {
+  padding: 16px;
+  margin-bottom: 8px;
+  background: var(--background-panel);
+  border: 1px solid var(--border-default);
+}
+.active-repository-row {
+  border-radius: var(--radius-panel);
+}
+.active-repository-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.active-repository-heading strong {
+  font-size: 13px;
+}
+.repository-path {
+  display: block;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.repository-facts {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.repository-facts dt {
+  color: var(--text-secondary);
+}
+.repository-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.repository-facts dd small,
+.repository-facts dd > code {
+  display: block;
+}
+.repository-remote {
+  display: contents;
+}
+.repository-facts dd small {
+  color: var(--text-muted);
+}
+.repository-connect form,
+.verified-repository {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.repository-connect label {
+  min-width: 0;
+  margin: 0;
+}
+.repository-connect select {
+  width: 100%;
+  min-width: 0;
+}
+.verified-repository {
+  border-top: 1px solid var(--border-default);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+.repository-connect h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.repository-connect form > button,
+.verified-repository > button {
+  justify-self: start;
+}
+.repository-connect .scope-options {
+  margin: 0;
+}
+.selected-repository-meta {
+  margin-top: -4px;
+  color: var(--text-secondary);
+}
+.selected-repository-meta small {
+  display: block;
+  margin-top: 4px;
+}
+.workspace-repository-context {
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--background-panel);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.workspace-repository-context summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

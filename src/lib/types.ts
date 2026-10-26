@@ -1,41 +1,49 @@
+import type { Task as CoreTask } from "../../backend/domain";
+import type { DiffFile as CoreDiffFile } from "../../backend/workspace/git";
 import type { Repository, Settings } from "../../backend/domain";
 export type { Repository, Settings, StageConfig } from "../../backend/domain";
-export type Detection =
-  import("../../backend/execution/providers/contracts").ProviderDetection;
-export interface Task {
-  workflow_start?: import("../../backend/domain").Task["workflow_start"];
-  verification_environment?: import("../../backend/execution/browser/contracts").VerificationEnvironment;
-  browser_environment_report?: import("../../backend/execution/browser/contracts").BrowserEnvironmentReport;
-  runtime?: {
-    python: string | null;
-    dependencies: string[];
-    warnings: string[];
-  };
-  preparation_timing?: import("../../backend/domain").Task["preparation_timing"];
-  verification_policy?: import("../../backend/domain").Task["verification_policy"];
-  id: string;
-  repo_id: string;
-  issue_number: number;
-  issue_url: string;
-  claimed_scope: string;
-  scope_mode?: "whole_issue" | "partial";
-  notes: string;
+export type Detection = import("../../backend/execution/providers/contracts").ProviderDetection;
+/** Renderer projection retains sparse historical records and uses canonical task field contracts. */
+export interface Task
+  extends
+    Pick<
+      CoreTask,
+      | "id"
+      | "repo_id"
+      | "issue_number"
+      | "issue_url"
+      | "claimed_scope"
+      | "notes"
+      | "branch_name"
+      | "base_branch"
+      | "base_commit_sha"
+      | "worktree_path"
+      | "created_at"
+      | "updated_at"
+      | "stage"
+      | "error"
+    >,
+    Partial<
+      Pick<
+        CoreTask,
+        | "workflow_start"
+        | "verification_environment"
+        | "browser_environment_report"
+        | "runtime"
+        | "preparation_timing"
+        | "verification_policy"
+        | "scope_mode"
+        | "execution_settings"
+        | "stage_settings"
+        | "archived"
+        | "approval_gate"
+        | "final_review_verdict"
+      >
+    > {
   issue: { title?: string; body?: string };
-  execution_settings?: Settings;
-  stage_settings?: import("../../backend/domain").Task["stage_settings"];
-  branch_name: string;
-  base_branch: string;
-  base_commit_sha: string;
-  worktree_path: string;
-  created_at: string;
-  updated_at: string;
   status: string;
-  archived?: boolean;
-  approval_gate?: import("../../backend/domain").Task["approval_gate"];
-  final_review_verdict?: import("../../backend/domain").Task["final_review_verdict"];
-  stage: number;
-  error: string | null;
 }
+
 export interface Snapshot {
   pr_batches?: import("../../backend/review/pr/batches").PRBatch[];
   capabilities?: {
@@ -132,7 +140,7 @@ export interface TestRun {
 }
 export interface Detail {
   validation?: ReturnType<
-    typeof import("../../backend/execution/verification").verificationSummary
+    typeof import("../../backend/execution/verification/verification").verificationSummary
   >;
   active?: boolean;
   executing?: boolean;
@@ -142,20 +150,11 @@ export interface Detail {
   messages: Message[];
   artifacts: Artifact[];
   tests: TestRun[];
-  usage?: import("../../backend/execution/usage").UsageRecord[];
+  usage?: import("../../backend/execution/output/usage").UsageRecord[];
   activity?: { id: number; kind: string; data: string; timestamp: string }[];
 }
-export interface DiffFile {
-  path: string;
-  old_path: string | null;
-  status: string;
-  staged: boolean;
-  unstaged: boolean;
-  untracked?: boolean;
-  insertions: number;
-  deletions: number;
-  binary: boolean;
-}
+export type DiffFile = Omit<CoreDiffFile, "untracked"> & Partial<Pick<CoreDiffFile, "untracked">>;
+
 export interface Diff {
   files: DiffFile[];
   insertions: number;
@@ -168,27 +167,10 @@ export interface FileDiff {
   binary: boolean;
   unified: string;
 }
-export interface CoreEvent {
-  event: string;
-  task_id?: string;
-  repair_id?: string;
-  watch_id?: string;
-  scan_id?: string;
-  run_id?: string;
-  session_id?: string;
-  text?: string;
-  stream?: string;
-  kind?: string;
-  data?: unknown;
-}
+export type { CoreEvent } from "../../backend/domain";
+
 export type Page =
-  | "Scheduled"
-  | "Tasks"
-  | "Issue Watch"
-  | "Repositories"
-  | "Providers"
-  | "Usage"
-  | "Settings";
+  "Scheduled" | "Tasks" | "Issue Watch" | "Repositories" | "Providers" | "Usage" | "Settings";
 export const stages = [
   "Prepare workspace",
   "Antigravity plan",

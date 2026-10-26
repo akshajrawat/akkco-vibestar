@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { randomUUID, createHash } from "node:crypto";
 import { AdeError, now, StageConfigSchema } from "../domain";
-import { redact } from "../execution/process";
+import { redact } from "../execution/runtime/process";
 import type { Engine } from "../execution/engine";
 import { fileHash } from "./file-hash";
 const noteInput = z
@@ -68,11 +68,7 @@ export class ReviewService {
     );
     const result = [];
     for (const file of diff.files) {
-      const content = await this.engine.git.file(
-        task,
-        file.path,
-        file.old_path,
-      );
+      const content = await this.engine.git.file(task, file.path, file.old_path);
       const hash = fileHash(content.original, content.modified);
       const saved = rows.find((r) => r.path === file.path);
       if (saved && saved.source_hash !== hash)
@@ -85,9 +81,7 @@ export class ReviewService {
         path: file.path,
         hash,
         reviewed: !!saved && saved.source_hash === hash,
-        notes: notes.filter(
-          (n) => n.path === file.path || n.path === file.old_path,
-        ).length,
+        notes: notes.filter((n) => n.path === file.path || n.path === file.old_path).length,
       });
     }
     return result;
@@ -103,16 +97,9 @@ export class ReviewService {
       })
       .strict()
       .parse(input);
-    const content = await this.engine.git.file(
-      this.engine.db.task(p.id),
-      p.path,
-      p.old_path,
-    );
+    const content = await this.engine.git.file(this.engine.db.task(p.id), p.path, p.old_path);
     if (content.binary)
-      throw new AdeError(
-        "binary",
-        "Review binary or oversized files in your editor.",
-      );
+      throw new AdeError("binary", "Review binary or oversized files in your editor.");
     const hash = fileHash(content.original, content.modified);
     if (hash !== p.expected_hash)
       throw new AdeError(
@@ -154,32 +141,20 @@ export class ReviewService {
     if (p.line_end < p.line_start || p.line_end - p.line_start > 199)
       throw new AdeError("selection", "Select between 1 and 200 code lines.");
     const file = await this.engine.git.file(task, p.path, p.old_path);
-    if (file.binary)
-      throw new AdeError("selection", "Select code in a text file.");
-    const lines = (p.side === "base" ? file.original : file.modified).split(
-      "\n",
-    );
+    if (file.binary) throw new AdeError("selection", "Select code in a text file.");
+    const lines = (p.side === "base" ? file.original : file.modified).split("\n");
     if (p.line_end > lines.length)
-      throw new AdeError(
-        "selection",
-        "The selected lines no longer exist. Refresh the diff.",
-      );
+      throw new AdeError("selection", "The selected lines no longer exist. Refresh the diff.");
     const code = lines.slice(p.line_start - 1, p.line_end).join("\n");
     if (code.length > 16000)
-      throw new AdeError(
-        "selection",
-        "Select a smaller section (maximum 16,000 characters).",
-      );
+      throw new AdeError("selection", "Select a smaller section (maximum 16,000 characters).");
     const parent = p.parent_id
       ? this.questions(p.id).find(
           (q) => q.id === p.parent_id && q.path === p.path && q.side === p.side,
         )
       : null;
     if (p.parent_id && !parent)
-      throw new AdeError(
-        "not_found",
-        "The prior question does not belong to this file and task.",
-      );
+      throw new AdeError("not_found", "The prior question does not belong to this file and task.");
     const repository = this.engine.db.repository(task.repo_id);
     const id = randomUUID();
     const created = now();
@@ -214,9 +189,7 @@ export class ReviewService {
         side: p.side,
         lines: [p.line_start, p.line_end],
         selectedCode: code,
-        nearbyCode: lines
-          .slice(Math.max(0, p.line_start - 13), p.line_end + 12)
-          .join("\n"),
+        nearbyCode: lines.slice(Math.max(0, p.line_start - 13), p.line_end + 12).join("\n"),
         diff: file.unified.slice(0, 24000),
         issue: {
           title: task.issue.title,
@@ -230,9 +203,7 @@ export class ReviewService {
             task.id,
           )
           .map((row) => JSON.parse(row.content)),
-        priorQuestion: parent
-          ? { question: parent.question, answer: parent.answer }
-          : null,
+        priorQuestion: parent ? { question: parent.question, answer: parent.answer } : null,
       };
       const answer = z
         .object({ summary: z.string().min(1).max(24000) })
@@ -245,9 +216,7 @@ export class ReviewService {
               question +
               "\nContext:\n" +
               JSON.stringify(context).slice(0, 60000),
-            schema: z
-              .object({ summary: z.string().min(1).max(24000) })
-              .strict(),
+            schema: z.object({ summary: z.string().min(1).max(24000) }).strict(),
             workspace: task.worktree_path,
             context: { taskId: task.id, questionId: id },
             configuration:
@@ -291,9 +260,7 @@ export class ReviewService {
     } catch (error) {
       this.engine.db.run(
         "UPDATE code_questions SET status=?,error=? WHERE id=?",
-        error instanceof AdeError && error.kind === "cancelled"
-          ? "cancelled"
-          : "failed",
+        error instanceof AdeError && error.kind === "cancelled" ? "cancelled" : "failed",
         redact(error instanceof Error ? error.message : String(error)),
         id,
       );
@@ -314,11 +281,7 @@ export class ReviewService {
     const p = noteInput.parse(input);
     const task = this.engine.db.task(p.id);
     const file = await this.engine.git.file(task, p.path, p.old_path);
-    if (file.binary)
-      throw new AdeError(
-        "invalid_input",
-        "Text review notes require a text file",
-      );
+    if (file.binary) throw new AdeError("invalid_input", "Text review notes require a text file");
     const note: ReviewNote = {
       id: randomUUID(),
       task_id: p.id,
@@ -353,8 +316,7 @@ export class ReviewService {
   };
   send = (id: string) => {
     const notes = this.list(id);
-    if (!notes.length)
-      throw new AdeError("invalid_state", "No saved local review notes");
+    if (!notes.length) throw new AdeError("invalid_state", "No saved local review notes");
     return this.engine.followUp(
       id,
       `Apply my local diff review feedback within this task's claimed scope. Notes are local, not GitHub comments. Their paths, line ranges, side and source hashes describe the version reviewed; inspect current files and account for any drift before acting. Do not push, post comments, create PRs or merge.\n${JSON.stringify(notes)}`,

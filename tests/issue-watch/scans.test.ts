@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { migrateDataRoot } from "../../backend/storage/migrate-root";
-import { createFixtureEngine } from "../fixtures";
+import { createFixtureEngine } from "../helpers/fixtures";
 import { IssueWatchStore } from "../../backend/issue-watch/store";
 import { watchConfiguration, watchFixture, githubIssue } from "./fixtures";
 
@@ -51,9 +51,7 @@ it("creates immutable idempotent watches, reads history across restart, and neve
     true,
   )) as typeof first;
   expect(update.revision.revision).toBe(2);
-  expect(f.service.store.revision(first.watch.id, 1).configuration).toEqual(
-    input.configuration,
-  );
+  expect(f.service.store.revision(first.watch.id, 1).configuration).toEqual(input.configuration);
   await expect(
     f.service.save(
       {
@@ -77,9 +75,7 @@ it("dynamically excludes tracker members, enforces current metadata and blocks i
   const configuration = watchConfiguration("Open issues", {
     excluded_labels: ["triage needed"],
     unassigned_only: true,
-    trackers: [
-      { url: "https://github.com/oppia/oppia/issues/27409", comments: "none" },
-    ],
+    trackers: [{ url: "https://github.com/oppia/oppia/issues/27409", comments: "none" }],
   });
   const { watch } = await f.create(configuration);
   f.issues.set(3, { ...githubIssue(3), labels: [{ name: "TRIAGE NEEDED" }] });
@@ -94,30 +90,20 @@ it("dynamically excludes tracker members, enforces current metadata and blocks i
     semantic_attempts: 0,
     coverage: { exclusions_complete: true, checked: 6, excluded: 5 },
   });
-  expect(
-    f.service.store.results(watch.id).find((row) => row.issue.number === 1),
-  ).toMatchObject({
+  expect(f.service.store.results(watch.id).find((row) => row.issue.number === 1)).toMatchObject({
     classification: "initial_discovery",
     claim_state: "candidate_for_claim_request",
   });
-  expect(
-    f.service.store.results(watch.id).filter((row) => row.eligible),
-  ).toHaveLength(1);
+  expect(f.service.store.results(watch.id).filter((row) => row.eligible)).toHaveLength(1);
   f.issues.get(27409)!.body = "#1 and https://github.com/other/repo/issues/2";
   f.issues.get(27409)!.updated_at = "2026-10-02T00:00:00Z";
   const second = await f.scan(watch.id);
   expect(second.status).toBe("completed");
   const results = f.service.store.results(watch.id);
-  expect(results.find((row) => row.issue.number === 1)?.classification).toBe(
-    "no_longer_eligible",
-  );
-  expect(results.find((row) => row.issue.number === 2)?.classification).toBe(
-    "newly_matching",
-  );
+  expect(results.find((row) => row.issue.number === 1)?.classification).toBe("no_longer_eligible");
+  expect(results.find((row) => row.issue.number === 2)?.classification).toBe("newly_matching");
   expect(
-    f.service.store
-      .sources(watch.id, second.id)
-      .find((source) => source.kind === "tracker")?.text,
+    f.service.store.sources(watch.id, second.id).find((source) => source.kind === "tracker")?.text,
   ).toContain("#1");
   f.overrides.set("repos/oppia/oppia/issues/27409", () => {
     throw new Error("Rate limited required tracker");
@@ -157,9 +143,7 @@ it("fails closed on all-comment tracker coverage and keeps body-only scans bound
   );
   const complete = await f.scan(watch.id);
   expect(complete.status).toBe("completed");
-  expect(f.service.store.results(watch.id).every((row) => !row.eligible)).toBe(
-    true,
-  );
+  expect(f.service.store.results(watch.id).every((row) => !row.eligible)).toBe(true);
   f.comments.set(27409, []);
   const blocked = await f.scan(watch.id);
   expect(blocked.status).toBe("blocked");
@@ -188,28 +172,18 @@ it("reserves one durable manual scan, rejects payload/cross-watch reuse and canc
   };
   const first = f.service.launch(request);
   expect(f.service.launch(request)).toEqual(first);
-  expect(() =>
-    f.service.launch({ ...request, instruction_override: "Prefer Python" }),
-  ).toThrow("different operation or payload");
-  expect(() =>
-    f.service.launch({ ...request, request_id: randomUUID() }),
-  ).toThrow("active scan");
-  expect(
-    f.engine
-      .cleanupBlockers()
-      .some((blocker) => blocker.kind === "issue_watch"),
-  ).toBe(true);
+  expect(() => f.service.launch({ ...request, instruction_override: "Prefer Python" })).toThrow(
+    "different operation or payload",
+  );
+  expect(() => f.service.launch({ ...request, request_id: randomUUID() })).toThrow("active scan");
+  expect(f.engine.cleanupBlockers().some((blocker) => blocker.kind === "issue_watch")).toBe(true);
   const cancelled = f.service.cancel(watch.id, first.scan_id);
   release();
   expect((await cancelled).status).toBe("cancelled");
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBeNull();
-  expect(f.service.store.scan(watch.id, first.scan_id).semantic_attempts).toBe(
-    0,
-  );
+  expect(f.service.store.scan(watch.id, first.scan_id).semantic_attempts).toBe(0);
   expect(f.engine.cleanupBlockers()).toEqual([]);
-  expect(() => f.service.store.scan(randomUUID(), first.scan_id)).toThrow(
-    "does not belong",
-  );
+  expect(() => f.service.store.scan(randomUUID(), first.scan_id)).toThrow("does not belong");
   await f.restart();
   expect(f.service.launch(request)).toEqual(first);
   expect(f.service.store.history(watch.id)).toHaveLength(1);
@@ -301,22 +275,18 @@ it("distinguishes reentry, criteria changes, actual creation and historical unkn
   const first = await f.scan(watch.id);
   f.issues.get(1)!.state = "closed";
   const lost = await f.scan(watch.id);
-  expect(
-    f.service.store.candidate(watch.id, lost.id, "I_1").classification,
-  ).toBe("no_longer_eligible");
+  expect(f.service.store.candidate(watch.id, lost.id, "I_1").classification).toBe(
+    "no_longer_eligible",
+  );
   f.issues.get(1)!.state = "open";
   const returned = await f.scan(watch.id);
-  expect(
-    f.service.store.candidate(watch.id, returned.id, "I_1").classification,
-  ).toBe("reentered");
+  expect(f.service.store.candidate(watch.id, returned.id, "I_1").classification).toBe("reentered");
   const baseline = f.service.store.scan(watch.id, returned.id);
   f.service.store.saveScan({ ...baseline, ended_at: "2026-10-01T00:00:00Z" });
   f.issues.set(10, { ...githubIssue(10), created_at: "2026-10-02T00:00:00Z" });
   f.issues.set(11, githubIssue(11));
   const next = await f.scan(watch.id);
-  expect(
-    f.service.store.candidate(watch.id, next.id, "I_10").classification,
-  ).toBe("new_issue");
+  expect(f.service.store.candidate(watch.id, next.id, "I_10").classification).toBe("new_issue");
   expect(f.service.store.candidate(watch.id, next.id, "I_11")).toMatchObject({
     classification: "newly_matching",
     reasons: [expect.stringContaining("prior eligibility is unknown")],
@@ -395,26 +365,22 @@ it("stores claim and competing PR facts while retaining uncertainty from missing
   });
   const competing = await f.scan(watch.id);
   expect(competing.coverage.excluded).toBe(1);
-  expect(
-    f.service.store.candidate(watch.id, competing.id, "I_1"),
-  ).toMatchObject({ eligible: false, claim_state: "competing_pr_detected" });
+  expect(f.service.store.candidate(watch.id, competing.id, "I_1")).toMatchObject({
+    eligible: false,
+    claim_state: "competing_pr_detected",
+  });
   f.overrides.set("repos/oppia/oppia/community/profile", () => {
     throw new Error("policy unavailable");
   });
-  f.overrides.set(
-    "repos/oppia/oppia/issues/2/timeline?per_page=100&page=1",
-    () => {
-      throw new Error("timeline unavailable");
-    },
-  );
+  f.overrides.set("repos/oppia/oppia/issues/2/timeline?per_page=100&page=1", () => {
+    throw new Error("timeline unavailable");
+  });
   const partial = await f.scan(watch.id);
   expect(partial.status).toBe("partial");
   expect(f.service.store.candidate(watch.id, partial.id, "I_2")).toMatchObject({
     claim_state: "eligibility_uncertain",
   });
-  expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(
-    competing.id,
-  );
+  expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(competing.id);
 });
 
 it("preserves watch revisions, source history and baselines through actual data-root migration", async () => {
@@ -440,9 +406,7 @@ it("preserves watch revisions, source history and baselines through actual data-
     const store = new IssueWatchStore(engine.db);
     expect(store.get(watch.id).last_complete_scan_id).toBe(scan.id);
     expect(store.sources(watch.id, scan.id)).toEqual(sources);
-    expect(store.revision(watch.id).configuration.rules.trackers).toHaveLength(
-      1,
-    );
+    expect(store.revision(watch.id).configuration.rules.trackers).toHaveLength(1);
     expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
   } finally {
     await engine.close();
@@ -455,8 +419,7 @@ it("keeps provisional dismissals local and compact reads separate from immutable
   f.overrides.set("repos/oppia/oppia/community/profile", {
     files: { contributing: null },
   });
-  f.issues.get(1)!.body =
-    "Original full evidence retained only in selected details.";
+  f.issues.get(1)!.body = "Original full evidence retained only in selected details.";
   const partial = await f.scan(watch.id);
   expect(partial.status).toBe("partial");
   const original = f.service.store.candidate(watch.id, partial.id, "I_1");
@@ -467,9 +430,7 @@ it("keeps provisional dismissals local and compact reads separate from immutable
   });
   expect(f.service.store.results(watch.id, true)).toEqual([]);
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBeNull();
-  expect(f.service.store.candidate(watch.id, partial.id, "I_1")).toEqual(
-    original,
-  );
+  expect(f.service.store.candidate(watch.id, partial.id, "I_1")).toEqual(original);
   const compact = (await f.service.call("scanDetail", {
     watch_id: watch.id,
     scan_id: partial.id,
@@ -483,18 +444,14 @@ it("keeps provisional dismissals local and compact reads separate from immutable
     }[];
     sources: { text?: string; references?: unknown; body_bytes: number }[];
   };
-  const row = compact.candidates.find(
-    (candidate) => candidate.issue.id === "I_1",
-  )!;
+  const row = compact.candidates.find((candidate) => candidate.issue.id === "I_1")!;
   expect(row.dismissed_at).toEqual(expect.any(String));
   expect(row.issue.body).toBeUndefined();
   expect(row.evidence).toBeUndefined();
   expect(row.source_keys).toBeUndefined();
   expect(row.body_bytes).toBe(Buffer.byteLength(original.issue.body));
   expect(
-    compact.sources.every(
-      (source) => source.text === undefined && source.references === undefined,
-    ),
+    compact.sources.every((source) => source.text === undefined && source.references === undefined),
   ).toBe(true);
   const selected = (await f.service.call("candidateDetail", {
     watch_id: watch.id,
@@ -504,9 +461,7 @@ it("keeps provisional dismissals local and compact reads separate from immutable
   expect(selected.candidate.issue.body).toBe(original.issue.body);
   expect(selected.candidate.dismissed_at).toEqual(expect.any(String));
   await f.restart();
-  expect(f.service.store.dispositions(watch.id).get("I_1")).toEqual(
-    expect.any(String),
-  );
+  expect(f.service.store.dispositions(watch.id).get("I_1")).toEqual(expect.any(String));
   expect(f.service.store.results(watch.id, true)).toEqual([]);
   await f.service.call("dismissCandidate", {
     watch_id: watch.id,
@@ -514,17 +469,13 @@ it("keeps provisional dismissals local and compact reads separate from immutable
     dismissed: false,
   });
   expect(f.service.store.dispositions(watch.id).get("I_1")).toBeNull();
-  expect(f.service.store.candidate(watch.id, partial.id, "I_1")).toEqual(
-    original,
-  );
+  expect(f.service.store.candidate(watch.id, partial.id, "I_1")).toEqual(original);
   f.overrides.delete("repos/oppia/oppia/community/profile");
   const complete = await f.scan(watch.id);
   expect(complete.status).toBe("completed");
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(complete.id);
   expect(
-    f.service.store
-      .results(watch.id)
-      .find((candidate) => candidate.issue.id === "I_1"),
+    f.service.store.results(watch.id).find((candidate) => candidate.issue.id === "I_1"),
   ).toMatchObject({ classification: "initial_discovery", dismissed_at: null });
 });
 
@@ -543,9 +494,7 @@ it("pages equal-timestamp attempts without omissions and rejects a foreign watch
   const third = f.service.store.history(watch.id, 2, second[1].id);
   expect([...first, ...second, ...third].map((scan) => scan.id)).toEqual(ids);
   const other = await f.create();
-  expect(() =>
-    f.service.store.history(other.watch.id, 2, initial.id),
-  ).toThrow();
+  expect(() => f.service.store.history(other.watch.id, 2, initial.id)).toThrow();
   expect(f.service.store.history(watch.id, 2, third[0].id)).toEqual([]);
 });
 
@@ -598,9 +547,7 @@ it("pins required tracker identities across canonical renames and refuses replac
   const renamed = await f.scan(watch.id);
   expect(renamed.status).toBe("completed");
   expect(
-    f.service.store
-      .sources(watch.id, renamed.id)
-      .find((source) => source.kind === "tracker"),
+    f.service.store.sources(watch.id, renamed.id).find((source) => source.kind === "tracker"),
   ).toMatchObject({
     requested_url: tracker.html_url,
     repository_id: "R_tracker",

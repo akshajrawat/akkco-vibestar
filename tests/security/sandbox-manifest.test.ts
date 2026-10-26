@@ -1,22 +1,11 @@
 import { expect, it, vi } from "vitest";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  rm,
-  symlink,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
-import { sandboxInvocation } from "../../backend/execution/sandbox";
-import { execute } from "../../backend/execution/process";
-import {
-  createFixtureEngine,
-  fixtureRepository,
-  prepareFixtureTask,
-} from "../fixtures";
+import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
+import { execute } from "../../backend/execution/runtime/process";
+import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
 vi.mock("node:os", async (original) => {
@@ -32,26 +21,14 @@ it("mounts only the selected provider state and toolchain from a home outside /h
   const other = join(fixture.home, ".gemini");
   await mkdir(state, { recursive: true });
   await mkdir(other);
-  await writeFile(
-    join(state, "session-fixture"),
-    "provider-owned fixture state",
-  );
+  await writeFile(join(state, "session-fixture"), "provider-owned fixture state");
   await writeFile(join(other, "other-fixture"), "unselected state");
   await writeFile(join(fixture.home, "personal-fixture"), "private fixture");
-  const packageRoot = join(
-    fixture.home,
-    ".local",
-    "share",
-    "node_modules",
-    "fixture-cli",
-  );
+  const packageRoot = join(fixture.home, ".local", "share", "node_modules", "fixture-cli");
   const localBin = join(fixture.home, ".local", "bin");
   await mkdir(join(packageRoot, "bin"), { recursive: true });
   await mkdir(localBin, { recursive: true });
-  await writeFile(
-    join(packageRoot, "helper.cjs"),
-    "module.exports='TOOLCHAIN_OK';",
-  );
+  await writeFile(join(packageRoot, "helper.cjs"), "module.exports='TOOLCHAIN_OK';");
   const socket = join(external, "host.socket");
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(socket, resolve));
@@ -96,12 +73,8 @@ const fs=require('node:fs/promises');const net=require('node:net');
     const result = await execute({ ...invocation, cwd: task.worktree_path });
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain("TOOLCHAIN_OK");
-    expect(await readFile(join(state, "new-session-fixture"), "utf8")).toBe(
-      "provider update",
-    );
-    expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe(
-      "base\n",
-    );
+    expect(await readFile(join(state, "new-session-fixture"), "utf8")).toBe("provider update");
+    expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
     const relative = join(task.worktree_path, "fixture-check.sh");
     await writeFile(relative, "#!/bin/sh\nprintf 'RELATIVE_TOOL_OK\\n'\n", {
       mode: 0o700,
@@ -113,10 +86,7 @@ const fs=require('node:fs/promises');const net=require('node:net');
       "../../fixture-check.sh",
       join(task.worktree_path, "node_modules", ".bin", "fixture-check"),
     );
-    for (const program of [
-      "./fixture-check.sh",
-      "./node_modules/.bin/fixture-check",
-    ]) {
+    for (const program of ["./fixture-check.sh", "./node_modules/.bin/fixture-check"]) {
       const command = await sandboxInvocation(
         engine.root,
         engine.db,
