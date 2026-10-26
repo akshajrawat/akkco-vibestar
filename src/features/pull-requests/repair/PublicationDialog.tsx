@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import { useDialogFocus } from "../../../hooks/useDialogFocus";
 import { containDialogFocus } from "../../../lib/keyboard";
 import { Button } from "../../../components/ui/button";
@@ -19,6 +20,7 @@ export const PublicationDialog = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dialog = useDialogFocus();
+
   const action = async (operation: "commit" | "push" | "keep") => {
     setBusy(true);
     setError("");
@@ -35,6 +37,7 @@ export const PublicationDialog = ({
           message,
           confirmed: true,
         });
+
         setPlan(
           await rpc<RepairPublication>("repair.preparePublication", {
             id: plan.repair_id,
@@ -46,6 +49,7 @@ export const PublicationDialog = ({
           publication_id: plan.id,
           confirmed: true,
         });
+
         setPlan(result);
         if (result.outcome === "published") close();
         else
@@ -54,6 +58,7 @@ export const PublicationDialog = ({
               `Publication ${result.outcome.replaceAll("_", " ")}. Review history before retrying.`,
           );
       }
+
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -61,6 +66,7 @@ export const PublicationDialog = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -80,6 +86,7 @@ export const PublicationDialog = ({
             ×
           </Button>
         </div>
+
         <dl className="repository-facts">
           <dt>Pull request</dt>
           <dd>{plan.pr_url.replace("https://github.com/", "").replace("/pull/", " #")}</dd>
@@ -119,6 +126,7 @@ export const PublicationDialog = ({
             @{plan.confirmation.viewer} · {new Date(plan.confirmation.approved_at).toLocaleString()}
           </dd>
         </dl>
+
         <details>
           <summary>Local commits ({plan.commits.length})</summary>
           {plan.commits.map((commit) => (
@@ -127,6 +135,7 @@ export const PublicationDialog = ({
             </p>
           ))}
         </details>
+
         {plan.dirty && (
           <label>
             Local commit message
@@ -139,25 +148,30 @@ export const PublicationDialog = ({
             />
           </label>
         )}
+
         <p className="subtle">
           {plan.dirty
             ? "Commit the reviewed files locally before confirming publication."
             : "Confirm Push updates this exact existing PR branch through a normal fast-forward push."}
         </p>
+
         {error && (
           <p className="error-box" role="alert">
             {error}
           </p>
         )}
+
         <div className="actions">
           <Button variant="secondary" disabled={busy} onClick={() => void action("keep")}>
             Keep Local
           </Button>
+
           {plan.dirty && (
             <Button disabled={busy || !message.length} onClick={() => void action("commit")}>
               Commit Locally
             </Button>
           )}
+
           <Button
             disabled={busy || plan.dirty || plan.outcome !== "prepared"}
             onClick={() => void action("push")}

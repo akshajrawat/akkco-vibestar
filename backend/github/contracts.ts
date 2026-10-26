@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 export const GitHubRepositorySchema = z
   .object({
     id: z.number().int(),
@@ -20,6 +21,7 @@ export const GitHubRepositorySchema = z
     updated_at: z.string(),
   })
   .loose();
+
 export const GitHubPullRequestSchema = z
   .object({
     url: z.string(),
@@ -37,6 +39,7 @@ export const GitHubPullRequestSchema = z
     task_id: z.string().nullable(),
   })
   .loose();
+
 export interface GitHubRepository {
   id: number;
   full_name: string;
@@ -50,6 +53,7 @@ export interface GitHubRepository {
   parent?: { full_name: string; clone_url: string; default_branch: string };
   updated_at: string;
 }
+
 export interface GitHubPullRequest {
   url: string;
   repository: string;
@@ -65,6 +69,7 @@ export interface GitHubPullRequest {
   updated_at: string;
   task_id: string | null;
 }
+
 export interface GitHubStatus {
   installed: boolean;
   connected: boolean;
@@ -72,6 +77,7 @@ export interface GitHubStatus {
   version: string;
   error: string | null;
 }
+
 export interface WatchSettings {
   auto_watch: boolean;
   interval_minutes: number;

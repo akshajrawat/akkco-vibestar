@@ -7,6 +7,7 @@ import { taskRoot } from "../../workspace/paths";
 import type { VerificationEnvironment } from "../verification/browser/contracts";
 import { execute } from "../runtime/process";
 import { sandboxInvocation } from "../runtime/sandbox";
+
 /** Runs validated argv in the assigned sandbox and persists observed command evidence. */
 export class CommandExecution {
   constructor(
@@ -16,6 +17,7 @@ export class CommandExecution {
     >,
     private readonly state: ExecutionState,
   ) {}
+
   manual = async (
     id: string,
     argv: string[],
@@ -41,6 +43,7 @@ export class CommandExecution {
     const t = repair || this.host.db.task(id);
     const cwd = await taskRoot(this.host.root, t);
     const run = randomUUID();
+
     this.host.db.run(
       `INSERT INTO test_runs(id,${repair ? "repair_id" : "task_id"},command,status,started_at) VALUES(?,?,?,'running',?)`,
       run,
@@ -48,6 +51,7 @@ export class CommandExecution {
       JSON.stringify(argv),
       now(),
     );
+
     const owner = repair ? { repair_id: id } : { task_id: id };
     this.host.publish({ event: "changed", ...owner });
     try {
@@ -62,6 +66,7 @@ export class CommandExecution {
         },
         verification?.readOnly || false,
       );
+
       const output = await execute({
         ...invocation,
         cwd,
@@ -76,15 +81,18 @@ export class CommandExecution {
           ),
         onLine: (stream, text) => {
           const column = stream === "stdout" ? "stdout" : "stderr";
+
           this.host.db.run(
             `UPDATE test_runs SET ${column}=substr(${column}||?,-1048576),output_truncated=CASE WHEN length(${column})+length(?)>1048576 THEN 1 ELSE output_truncated END WHERE id=?`,
             `${text}\n`,
             `${text}\n`,
             run,
           );
+
           this.host.publish({ event: "command.output", ...owner, stream, text });
         },
       });
+
       this.host.db.run(
         "UPDATE test_runs SET status=?,ended_at=?,exit_code=?,duration_ms=?,stdout=?,stderr=?,output_truncated=0 WHERE id=?",
         output.code === 0 ? "passed" : "failed",
@@ -95,6 +103,7 @@ export class CommandExecution {
         output.stderr,
         run,
       );
+
       return output;
     } catch (e) {
       this.host.db.run(
@@ -104,11 +113,13 @@ export class CommandExecution {
         String(e),
         run,
       );
+
       throw e;
     } finally {
       this.host.publish({ event: "changed", ...owner });
     }
   };
+
   runCommand = async (id: string, argv: string[], diagnostic = false) => {
     this.host.assertAvailable();
     if (this.state.taskMaintenance.has(id))
@@ -116,6 +127,7 @@ export class CommandExecution {
     if (this.host.isActive(id))
       throw new AdeError("invalid_state", "Task already has an active process");
     const controller = new AbortController();
+
     const output = Promise.resolve().then(() =>
       this.manual(id, argv, controller.signal, true, undefined, {
         environment: this.host.db.task(id).verification_environment,
@@ -123,6 +135,7 @@ export class CommandExecution {
         timeoutMs: diagnostic ? 25000 : undefined,
       }),
     );
+
     const promise = output
       .then(() => {})
       .catch(() => {})
@@ -131,6 +144,7 @@ export class CommandExecution {
         this.host.changed(id);
         void this.host.drain();
       });
+
     this.state.active.set(id, { controller, promise });
     return output;
   };

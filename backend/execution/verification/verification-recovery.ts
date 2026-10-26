@@ -20,6 +20,7 @@ export const verificationRecoveryChecks = (
         argv: null,
         reason,
       });
+
       if (check.kind === "setup")
         return unavailable(
           "This is a setup prerequisite. Inspect the environment or prepare the required tooling before rerunning dependent checks; installation is never replayed automatically.",
@@ -28,10 +29,12 @@ export const verificationRecoveryChecks = (
         return unavailable(
           "No executable command was saved for this check. Prepare a repeatable test command before it can be run.",
         );
+
       const capability =
         environment?.report?.environment === (environment?.selected || "isolated")
           ? environment?.report
           : undefined;
+
       if (
         check.prerequisite &&
         !check.prerequisite.split(";").every((reference) =>
@@ -74,12 +77,14 @@ export const verificationRecoveryChecks = (
       const args = rawArgs;
       if (executable === "npx")
         while (["--offline", "--no-install"].includes(args[0])) args.shift();
+
       const npm =
         executable === "npm" &&
         ((args.length === 1 && args[0] === "test") ||
           (args.length === 2 &&
             args[0] === "run" &&
             /^(?:test(?::[\w-]+)?|lint|typecheck|build|format:check)$/.test(args[1])));
+
       const node =
         executable === "node" &&
         ["--check", "--test"].includes(args[0]) &&
@@ -88,11 +93,13 @@ export const verificationRecoveryChecks = (
           .every(
             (arg) => !arg.startsWith("-") && !arg.startsWith("/") && !arg.split("/").includes(".."),
           );
+
       const npx =
         executable === "npx" &&
         ((args[0] === "playwright" && args[1] === "test") ||
           (args[0] === "vitest" && args[1] === "run") ||
           ["tsc", "eslint"].includes(args[0]));
+
       const direct = ["pytest", "tsc", "eslint"].includes(executable || "");
       if (
         args.some((arg) =>

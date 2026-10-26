@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import type { TaskDisposalPreview } from "../../../backend/storage/disposal";
 import { rpc } from "../../lib/api";
 import { CleanupError } from "../../components/shared/CleanupError";
@@ -21,6 +22,7 @@ export const TaskCleanup = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const dialog = useDialogFocus();
+
   const perform = async () => {
     setBusy(true);
     setError(undefined);
@@ -41,6 +43,7 @@ export const TaskCleanup = ({
           acknowledge_unpublished: acknowledged,
         });
       }
+
       done();
     } catch (failure) {
       setError(failure);
@@ -50,8 +53,10 @@ export const TaskCleanup = ({
       setBusy(false);
     }
   };
+
   const dependencies =
     !!preview && (preview.dependencies.finalizations > 0 || preview.dependencies.repairs > 0);
+
   return (
     <div className="modal-backdrop">
       <section
@@ -65,6 +70,7 @@ export const TaskCleanup = ({
             event.stopPropagation();
             close();
           }
+
           containDialogFocus(event);
         }}
       >
@@ -103,6 +109,7 @@ export const TaskCleanup = ({
                       setError(undefined);
                     }}
                   />
+
                   <span>
                     <strong>{title}</strong>
                     <small>{description}</small>
@@ -118,9 +125,11 @@ export const TaskCleanup = ({
               <br />
               {preview.repository} · {preview.branch || "No branch prepared"}
             </p>
+
             <p className="warning">
               The owned worktree and branch, conversation, plans and run history will be lost.
             </p>
+
             <p>
               {preview.modified.length} modified · {preview.untracked.length} untracked ·{" "}
               {preview.ignored.length} ignored files
@@ -131,6 +140,7 @@ export const TaskCleanup = ({
               Dependencies: {preview.dependencies.finalizations} Git Finalization ·{" "}
               {preview.dependencies.repairs} PR repair
             </p>
+
             <details>
               <summary>Files to discard</summary>
               {(
@@ -156,6 +166,7 @@ export const TaskCleanup = ({
                 </section>
               ))}
             </details>
+
             {!!preview.unpublished_commits && (
               <label className="checkbox-label">
                 <input
@@ -167,6 +178,7 @@ export const TaskCleanup = ({
                 commits.
               </label>
             )}
+
             {dependencies && (
               <p className="error-box">
                 Remove dependent finalization previews and repair sessions explicitly before
@@ -175,6 +187,7 @@ export const TaskCleanup = ({
             )}
           </>
         )}
+
         {!!error && (
           <CleanupError
             error={error}
@@ -185,6 +198,7 @@ export const TaskCleanup = ({
             canRetry={false}
           />
         )}
+
         {busy && (
           <p role="status">
             {choice === "discard" && !preview
@@ -192,6 +206,7 @@ export const TaskCleanup = ({
               : "Applying your task choice…"}
           </p>
         )}
+
         <div className="modal-actions">
           {preview && (
             <Button
@@ -205,9 +220,11 @@ export const TaskCleanup = ({
               Back
             </Button>
           )}
+
           <Button disabled={busy} variant="ghost" onClick={close}>
             Cancel
           </Button>
+
           <Button
             disabled={busy || dependencies || !!(preview?.unpublished_commits && !acknowledged)}
             variant={

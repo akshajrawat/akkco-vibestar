@@ -1,9 +1,11 @@
 import { CheckCircle2, GitCommitHorizontal, Upload } from "lucide-react";
+
 import type { GitPreset } from "../../../backend/finalization/contracts";
 import { Button } from "../../components/ui/button";
 import { errorMessage, rpc } from "../../lib/api";
 import { workflows } from "./presets";
 import type { FinalizationController, GitFinalizationProps } from "./useGitFinalization";
+
 /** Renders the commit portion without owning operation authority or duplicating wizard state. */
 export const FinalizationCommit = ({
   controller,
@@ -66,12 +68,14 @@ export const FinalizationCommit = ({
     perform,
     call,
   } = controller;
+
   return (
     <section className="git-commit-panel" hidden={step === 0}>
       <h3>
         <GitCommitHorizontal size={17} />{" "}
         {step === 1 ? "Commit" : step === 2 ? "Publish" : "Confirm"}
       </h3>
+
       <div hidden={step !== 2}>
         <p>
           Destination repository:{" "}
@@ -80,6 +84,7 @@ export const FinalizationCommit = ({
               "Contribution fork not connected"}
           </strong>
         </p>
+
         {!repository?.origin_url && (
           <div className="notice">
             <p>Connect your fork to publish. You can still keep a local commit.</p>
@@ -88,6 +93,7 @@ export const FinalizationCommit = ({
             </Button>
           </div>
         )}
+
         <details>
           <summary>Saved task presets</summary>
           <label>
@@ -112,6 +118,7 @@ export const FinalizationCommit = ({
             </select>
           </label>
         </details>
+
         <div className="git-hook-options">
           <label>
             Publication
@@ -133,17 +140,20 @@ export const FinalizationCommit = ({
             </select>
           </label>
         </div>
+
         <p className="muted">
           --no-verify skips optional Git checks. Workspace authorization, selected-file review,
           ancestry and remote SHA guards always apply. Normal hooks run in the read-only sandbox;
           hooks that rewrite messages must be resolved explicitly.
         </p>
+
         {snapshot.hook_configuration === "/dev/null" && (
           <p className="warning-box">
             Repository/worktree configuration disables optional hooks. Mandatory verification and
             publication checks still apply.
           </p>
         )}
+
         <div className="form-grid" hidden={!repository?.origin_url}>
           <label>
             Target remote
@@ -161,6 +171,7 @@ export const FinalizationCommit = ({
               }}
             />
           </label>
+
           <label>
             Target branch
             <input
@@ -178,6 +189,7 @@ export const FinalizationCommit = ({
             />
           </label>
         </div>
+
         <Button
           size="sm"
           disabled={locked}
@@ -196,6 +208,7 @@ export const FinalizationCommit = ({
         >
           Save task preset
         </Button>
+
         <Button
           variant="default"
           disabled={locked || (!repository?.origin_url && preset.push !== "none")}
@@ -204,6 +217,7 @@ export const FinalizationCommit = ({
           Review operation
         </Button>
       </div>
+
       <div hidden={step !== 1}>
         <label>
           Exact commit message
@@ -218,6 +232,7 @@ export const FinalizationCommit = ({
             placeholder="Type your own commit message…"
           />
         </label>
+
         <Button
           variant="ghost"
           size="sm"
@@ -228,10 +243,12 @@ export const FinalizationCommit = ({
         >
           Use original issue text
         </Button>
+
         <details>
           <summary>Exact proposed message</summary>
           <pre className="git-exact-message">{message || "No message entered."}</pre>
         </details>
+
         <details>
           <summary>Advanced commit options</summary>
           <label className="inline-check">
@@ -250,10 +267,12 @@ export const FinalizationCommit = ({
             Skip optional commit hooks
           </label>
         </details>
+
         <Button variant="default" disabled={locked || !message.length} onClick={() => setStep(2)}>
           Continue to publish
         </Button>
       </div>
+
       <div hidden={step !== 3}>
         <p>
           {committed ? "Publish" : "Commit"} {record?.paths.length || selection.length} reviewed
@@ -263,10 +282,12 @@ export const FinalizationCommit = ({
             : ` and push to ${repository?.origin_url?.replace(/^https:\/\/github.com\//, "").replace(/\.git$/, "") || "your contribution fork"}:${preset.branch}`}
           .
         </p>
+
         <details>
           <summary>Exact commit message</summary>
           <pre className="git-exact-message">{message}</pre>
         </details>
+
         <label className="inline-check">
           <input
             type="checkbox"
@@ -276,6 +297,7 @@ export const FinalizationCommit = ({
           />
           I confirm this exact message and the approved selected files.
         </label>
+
         <Button
           variant="default"
           busy={!!busy && busy.startsWith("Creating")}
@@ -286,6 +308,7 @@ export const FinalizationCommit = ({
         >
           {preset.push === "none" ? "Confirm local commit" : "Commit and prepare push"}
         </Button>
+
         {record?.head && (
           <p className="git-commit-success">
             <CheckCircle2 size={16} />
@@ -294,10 +317,12 @@ export const FinalizationCommit = ({
             </span>
           </p>
         )}
+
         <section className="git-publish-panel">
           <h3>
             <Upload size={17} /> Publish
           </h3>
+
           {record?.destination ? (
             <>
               <dl className="repository-facts">
@@ -326,6 +351,7 @@ export const FinalizationCommit = ({
                   </code>
                 </dd>
               </dl>
+
               {record.status === "prepared" && (
                 <>
                   <label className="inline-check">
@@ -337,6 +363,7 @@ export const FinalizationCommit = ({
                     />
                     Publish this exact commit to the repository and branch shown above.
                   </label>
+
                   <Button
                     variant="default"
                     disabled={
@@ -355,6 +382,7 @@ export const FinalizationCommit = ({
                   </Button>
                 </>
               )}
+
               {record.status === "published" && (
                 <p className="git-commit-success">
                   <CheckCircle2 size={16} />
@@ -369,6 +397,7 @@ export const FinalizationCommit = ({
                 : "Connect a contribution fork in Repositories to enable publication. Local commits remain available."}
             </p>
           )}
+
           {record &&
             (["committed", "not_published"].includes(record.status) ||
               (record.status === "prepared" && destinationDirty)) && (
@@ -388,6 +417,7 @@ export const FinalizationCommit = ({
                 Check destination for push
               </Button>
             )}
+
           {record &&
             ["uncertain", "pushing", "committing", "interrupted"].includes(record.status) && (
               <>
@@ -400,6 +430,7 @@ export const FinalizationCommit = ({
                 >
                   Reconcile state
                 </Button>
+
                 {record.status === "interrupted" && record.head && (
                   <Button
                     disabled={locked}

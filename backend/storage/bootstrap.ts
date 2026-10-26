@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readFile, writeFile, realpath } from "node:fs/promises";
+
 import { exists } from "../workspace/paths";
 import { migrateDataRoot } from "./migrate-root";
 import { AdeError } from "../domain";
@@ -11,9 +12,11 @@ export const dataRootChoice = async (home = homedir(), configured = process.env.
   if (configured) {
     if (await exists(join(configured, "runtime", "migration-pending.json"))) {
       const actual = await realpath(configured);
+
       const journal = JSON.parse(
         await readFile(join(actual, "runtime", "migration-pending.json"), "utf8"),
       );
+
       if (typeof journal.source !== "string" || journal.target !== actual)
         throw new AdeError("migration", "Interrupted migration metadata could not be verified.");
       return {
@@ -21,8 +24,10 @@ export const dataRootChoice = async (home = homedir(), configured = process.env.
         migration: { old_root: journal.source as string, new_root: actual },
       };
     }
+
     return { root: configured, migration: null };
   }
+
   if (await exists(join(root, "runtime", "migration-pending.json")))
     return { root, migration: { old_root: old, new_root: root } };
   if (await exists(join(root, "state", "vibestar.sqlite"))) return { root, migration: null };
@@ -30,11 +35,14 @@ export const dataRootChoice = async (home = homedir(), configured = process.env.
     const saved = await readFile(join(old, "state", "data-root-choice.json"), "utf8").catch(
       () => "",
     );
+
     if (saved === '"old"') return { root: old, migration: null };
     return { root, migration: { old_root: old, new_root: root } };
   }
+
   return { root, migration: null };
 };
+
 export const chooseDataRoot = async (
   migration: { old_root: string; new_root: string },
   choice: "migrate" | "old" | "fresh",
@@ -44,8 +52,10 @@ export const chooseDataRoot = async (
     await writeFile(join(migration.old_root, "state", "data-root-choice.json"), '"old"', {
       mode: 0o600,
     });
+
     return migration.old_root;
   }
+
   if (await exists(join(migration.new_root, "runtime", "migration-pending.json")))
     throw new AdeError(
       "migration",

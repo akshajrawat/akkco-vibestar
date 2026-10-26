@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Minus, Square, Copy, X } from "lucide-react";
+
 export const TitleBar = ({
   onPalette,
   currentTask,
@@ -14,8 +15,10 @@ export const TitleBar = ({
   const [error, setError] = useState("");
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const manualDragging = window.electronWindow.manualDragging;
+
   useEffect(() => {
     let mounted = true;
+
     void window.electronWindow
       .getState()
       .then((value) => {
@@ -25,27 +28,33 @@ export const TitleBar = ({
         }
       })
       .catch((e) => setError(String(e)));
+
     const key = (event: KeyboardEvent) => {
       if (event.key === "F11" && !event.repeat) {
         event.preventDefault();
         void window.electronWindow.fullscreen();
       }
+
       if (event.key === "Escape" && fullscreen) {
         event.preventDefault();
         void window.electronWindow.fullscreen();
       }
     };
+
     window.addEventListener("keydown", key);
+
     const unsubscribe = window.electronWindow.onStateChanged((value) => {
       setMaximized(value.maximized);
       setFullscreen(value.fullscreen);
     });
+
     return () => {
       mounted = false;
       unsubscribe();
       window.removeEventListener("keydown", key);
     };
   }, [fullscreen]);
+
   const control = (action: () => Promise<void>) => void action().catch((e) => setError(String(e)));
   return (
     <header
@@ -91,11 +100,13 @@ export const TitleBar = ({
           {currentTask || "Search tasks and commands"} <kbd>Ctrl+Shift+P</kbd>
         </button>
       )}
+
       {error && (
         <span role="alert" className="titlebar-error">
           {error}
         </span>
       )}
+
       <div className="window-controls" aria-label="Window controls">
         <button
           aria-label="Minimize window"
@@ -103,6 +114,7 @@ export const TitleBar = ({
         >
           <Minus size={14} />
         </button>
+
         <button
           aria-label={
             fullscreen ? "Exit fullscreen" : maximized ? "Restore window" : "Maximize window"
@@ -111,6 +123,7 @@ export const TitleBar = ({
         >
           {maximized || fullscreen ? <Copy size={12} /> : <Square size={12} />}
         </button>
+
         <button
           className="window-close"
           aria-label="Close window"

@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import type { Detail } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { detailVerification } from "../../lib/verification";
@@ -28,26 +29,34 @@ const RecoveryDialog = ({
   const [busy, setBusy] = useState(false);
   const [requestId] = useState(() => crypto.randomUUID());
   const [instructions, setInstructions] = useState("");
+
   const pending = detail.messages.filter((message) =>
     ["draft", "queued"].includes(message.status || ""),
   );
+
   const artifact = [...detail.artifacts]
     .reverse()
     .find((entry) => entry.stage === 3 && entry.kind === "plan");
+
   const verification = detailVerification(detail);
+
   const policy =
     detail.task.verification_policy === "repository" ? "extended_browser" : "repository";
+
   const recovery = verificationRecoveryChecks(verification, {
     selected: detail.task.verification_environment,
     report: detail.task.browser_environment_report,
   });
+
   const checks = recovery.filter((check) => check.argv);
   const unavailableChecks = recovery.filter((check) => !check.argv);
+
   const browserChecks = verification.checks.some((check) =>
     /browser|playwright|puppeteer|chromium/i.test(
       `${check.name} ${check.command} ${check.prerequisite}`,
     ),
   );
+
   const act = async (operation: () => Promise<unknown>, dismiss = true) => {
     setBusy(true);
     try {
@@ -59,6 +68,7 @@ const RecoveryDialog = ({
       setBusy(false);
     }
   };
+
   const title =
     kind === "policy"
       ? "Verification policy"
@@ -69,6 +79,7 @@ const RecoveryDialog = ({
           : checks.length
             ? "Run missing checks"
             : "Prepare missing checks";
+
   return (
     <div className="modal-backdrop">
       <section
@@ -93,15 +104,18 @@ const RecoveryDialog = ({
                 ? "Use repository and issue checks. Extra manual browser checks and setup observations that are not needed by required checks will be optional."
                 : "Restore the original required status of the additional manual checks."}
             </p>
+
             <p>
               Repository automated tests, explicit issue acceptance checks and actual failures
               remain required. Skipped checks stay recorded as unexecuted.
             </p>
+
             <ul>
               {verification.optionalCandidates.map((check, index) => (
                 <li key={index}>{check.name}</li>
               ))}
             </ul>
+
             <Button
               disabled={busy}
               onClick={() =>
@@ -118,6 +132,7 @@ const RecoveryDialog = ({
                 ? "Use repository checks and skip extra manual checks"
                 : "Restore additional required checks"}
             </Button>
+
             <p className="subtle">
               Rechecks saved tool results and diff hygiene. Keeps the existing independent review
               and starts no agent.
@@ -130,6 +145,7 @@ const RecoveryDialog = ({
                 ? "Select a recorded check to execute in the task's selected verification environment."
                 : "Each missing check needs an executable command and available prerequisites before it can run."}
             </p>
+
             {checks.length > 0 &&
               checks.map((check) => (
                 <article key={check.command}>
@@ -152,6 +168,7 @@ const RecoveryDialog = ({
                   </Button>
                 </article>
               ))}
+
             {unavailableChecks.length > 0 && (
               <>
                 <p className="warning">
@@ -161,13 +178,16 @@ const RecoveryDialog = ({
                   Recheck saved evidence only reruns diff hygiene; it does not create test commands
                   or repair the environment.
                 </p>
+
                 <Button disabled={busy} onClick={prepare}>
                   Prepare runnable checks with Codex
                 </Button>
+
                 <p className="subtle">
                   Review and authorize one Codex iteration to create missing test commands. Browser
                   checks remain unverified until they actually run.
                 </p>
+
                 <ul>
                   {unavailableChecks.map((check, index) => (
                     <li key={index}>
@@ -176,6 +196,7 @@ const RecoveryDialog = ({
                     </li>
                   ))}
                 </ul>
+
                 {browserChecks && (
                   <BrowserEnvironment
                     task={detail.task}
@@ -193,10 +214,12 @@ const RecoveryDialog = ({
               Authorize one Codex iteration in this task's original worktree. Codex receives the
               exact command failures, outstanding checks and final review findings.
             </p>
+
             <p>
               When checks have no runnable command, Codex prepares repeatable test scripts and
               records their exact commands and prerequisites.
             </p>
+
             <ul>
               {verification.checks
                 .filter((check) => check.required && check.outcome !== "passed")
@@ -206,10 +229,12 @@ const RecoveryDialog = ({
                   </li>
                 ))}
             </ul>
+
             <p>
               Codex must investigate prerequisites before retrying an unsuccessful installation.
               Further agent iterations require another explicit request.
             </p>
+
             <Button
               disabled={busy}
               onClick={() =>
@@ -230,6 +255,7 @@ const RecoveryDialog = ({
               Inspect the implementation and outstanding checks before authorizing independent
               Antigravity review. Required unexecuted checks remain unverified.
             </p>
+
             {!preview ? (
               <Button
                 disabled={busy}
@@ -258,6 +284,7 @@ const RecoveryDialog = ({
                     </li>
                   ))}
                 </ul>
+
                 {pending.length > 0 && (
                   <label>
                     Saved instructions
@@ -273,6 +300,7 @@ const RecoveryDialog = ({
                     </select>
                   </label>
                 )}
+
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
@@ -281,10 +309,12 @@ const RecoveryDialog = ({
                   />
                   I reviewed the implementation and acknowledge these verification gaps.
                 </label>
+
                 <p className="subtle">
                   Code approval with gaps keeps changes locally. Git Finalization remains
                   unavailable until required checks pass.
                 </p>
+
                 <Button
                   disabled={
                     busy ||
@@ -319,6 +349,7 @@ const RecoveryDialog = ({
             )}
           </>
         )}
+
         <div className="actions">
           <Button variant="ghost" disabled={busy} onClick={close}>
             Close
@@ -343,15 +374,19 @@ export const VerificationRecovery = ({
   const [kind, setKind] = useState<"checks" | "review" | "fix" | "policy">();
   const [busy, setBusy] = useState(false);
   const verification = detailVerification(detail);
+
   const recovery = verificationRecoveryChecks(verification, {
     selected: detail.task.verification_environment,
     report: detail.task.browser_environment_report,
   });
+
   const runnable = recovery.some((check) => check.argv);
   const unavailable = disabled || busy || !!detail.active || !!detail.executing;
+
   const boundary =
     (detail.task.stage === 4 && detail.task.status === "verification_blocked") ||
     detail.task.approval_gate === "implementation";
+
   const actions = [
     {
       id: "checks",
@@ -392,12 +427,14 @@ export const VerificationRecovery = ({
       available: true,
       run: () => {
         setBusy(true);
+
         void rpc("task.verification.recheck", { id: detail.task.id })
           .catch((error) => onError(errorMessage(error)))
           .finally(() => setBusy(false));
       },
     },
   ].filter((action) => action.available);
+
   const primary =
     verification.outcome === "failed" || detail.task.final_review_verdict === "changes_requested"
       ? "fix"
@@ -406,6 +443,7 @@ export const VerificationRecovery = ({
         : boundary && verification.canReviewWithGaps
           ? "review"
           : "recheck";
+
   const renderAction = (action: (typeof actions)[number]) => (
     <Button
       key={action.id}
@@ -417,6 +455,7 @@ export const VerificationRecovery = ({
       {action.label}
     </Button>
   );
+
   return (
     <div className="verification-recovery">
       {verification.canReview &&
@@ -425,15 +464,18 @@ export const VerificationRecovery = ({
             Required checks passed. Recheck saved evidence to open implementation approval.
           </p>
         )}
+
       <div className="actions">
         {actions.filter((action) => action.id === primary).map(renderAction)}
       </div>
+
       <details>
         <summary>More options</summary>
         <div className="actions">
           {actions.filter((action) => action.id !== primary).map(renderAction)}
         </div>
       </details>
+
       {kind && (
         <RecoveryDialog
           key={kind}

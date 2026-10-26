@@ -2,12 +2,14 @@ import { z } from "zod";
 
 export const VerificationEnvironmentSchema = z.enum(["isolated", "installed_browsers"]);
 export type VerificationEnvironment = z.infer<typeof VerificationEnvironmentSchema>;
+
 const observation = z
   .object({
     outcome: z.enum(["available", "blocked", "unavailable"]),
     detail: z.string().max(6000),
   })
   .strict();
+
 export const BrowserEnvironmentReportSchema = z
   .object({
     checked_at: z.string().datetime(),
@@ -21,4 +23,5 @@ export const BrowserEnvironmentReportSchema = z
     note: z.string(),
   })
   .strict();
+
 export type BrowserEnvironmentReport = z.infer<typeof BrowserEnvironmentReportSchema>;

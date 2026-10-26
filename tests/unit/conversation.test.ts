@@ -1,10 +1,12 @@
 import { expect, it } from "vitest";
+
 import { discussionEntries, isAcknowledgment } from "../../backend/scheduled/action";
 import { prSnapshot } from "../helpers/pr-fixtures";
 import type { PullRequestState } from "../../backend/scheduled/contracts";
 
 it("preserves exact source wording, authorship, thread relationships and chronology for current PR analysis", () => {
   const snapshot = structuredClone(prSnapshot);
+
   snapshot.discussion!.push(
     {
       id: "author-reply",
@@ -28,9 +30,11 @@ it("preserves exact source wording, authorship, thread relationships and chronol
       updatedAt: "2026-10-02T12:00:00Z",
     },
   );
+
   const before = structuredClone(snapshot);
   expect(discussionEntries(snapshot)).toEqual(before.discussion);
   expect(snapshot).toEqual(before);
+
   expect(discussionEntries(snapshot).map((entry) => entry.id)).toEqual([
     "review-1",
     "author-reply",
@@ -68,6 +72,7 @@ it("reads legacy comments, reviews and thread identities without inferring that 
       },
     ],
   };
+
   expect(discussionEntries(snapshot)).toMatchObject([
     {
       id: "comment",
@@ -112,6 +117,7 @@ it("retains older unresolved discussion and the complete source set beyond one u
     createdAt: `timestamp-${index}`,
     updatedAt: `timestamp-${index}`,
   }));
+
   const result = discussionEntries({ ...prSnapshot, discussion: entries });
   expect(result).toHaveLength(600);
   expect(result[0].body).toContain("Unresolved original request");

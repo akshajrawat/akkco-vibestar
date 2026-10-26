@@ -34,17 +34,21 @@ vi.mock("../../src/hooks/useWorkspace", () => ({
     refresh: vi.fn(),
   }),
 }));
+
 const resources: Awaited<ReturnType<typeof watchFixture>>[] = [];
+
 afterEach(async () => {
   cleanup();
   localStorage.clear();
   for (const f of resources.splice(0)) await f.close();
   vi.restoreAllMocks();
 });
+
 const setup = async () => {
   localStorage.clear();
   const f = await watchFixture();
   resources.push(f);
+
   const snapshot: Snapshot = {
     repositories: [],
     tasks: [],
@@ -52,13 +56,16 @@ const setup = async () => {
     settings: f.engine.db.settings(),
     capabilities: { manual_issue_watch: true, issue_watch_contract: 1 },
   };
+
   const listeners = new Set<(event: CoreEvent) => void>();
+
   const api = vi.fn(async (method: string, params: unknown) => {
     if (method.startsWith("issueWatch.")) return f.service.call(method.slice(11), params);
     if (method === "snapshot") return snapshot;
     if (method === "usage.info") return { database: "fixture.sqlite" };
     throw new Error(`Unexpected renderer RPC ${method}`);
   });
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: {
@@ -70,10 +77,12 @@ const setup = async () => {
       openExternal: vi.fn().mockResolvedValue(undefined),
     },
   });
+
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
   });
+
   f.engine.on("event", (event) => listeners.forEach((listener) => listener(event)));
   return {
     f,
@@ -92,6 +101,7 @@ it("loads older local history pages without GitHub reads or inference", async ()
   const reads = f.api.mock.calls.length;
   const infer = vi.spyOn(f.engine.utility, "run");
   render(<IssueWatchPage snapshot={snapshot} initialWatchId={watch.id} startTask={vi.fn()} />);
+
   const load = await screen.findByRole(
     "button",
     {
@@ -99,10 +109,13 @@ it("loads older local history pages without GitHub reads or inference", async ()
     },
     { timeout: 5000 },
   );
+
   fireEvent.click(load);
+
   await waitFor(() =>
     expect(screen.queryByRole("button", { name: "Load older attempts" })).toBeNull(),
   );
+
   const select = screen.getByLabelText("Scan history");
   expect(within(select).getAllByRole("option")).toHaveLength(54);
   fireEvent.change(select, { target: { value: first.id } });
@@ -117,18 +130,23 @@ it("previews and saves a watch without inference or a scan, using an explicitly 
   render(<IssueWatchPage snapshot={snapshot} startTask={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "New watch" }));
   const dialog = screen.getByRole("dialog", { name: "New Issue Watch" });
+
   fireEvent.change(within(dialog).getByLabelText("Watch name"), {
     target: { value: "Contribution search" },
   });
+
   fireEvent.change(within(dialog).getByLabelText("GitHub repository"), {
     target: { value: "oppia/oppia" },
   });
+
   fireEvent.change(within(dialog).getByLabelText("Describe issues to find"), {
     target: { value: "Open issues" },
   });
+
   fireEvent.change(within(dialog).getByLabelText("Model"), {
     target: { value: "fixture-model" },
   });
+
   expect(within(dialog).queryByRole("button", { name: "Preview hard filters" })).toBeNull();
   await within(dialog).findByText(/Open issues · Unassigned/);
   expect(f.api).not.toHaveBeenCalled();
@@ -149,6 +167,7 @@ it("opens saved results and the existing prefilled task form without queueing a 
   const { f, snapshot, api } = await setup();
   const { watch } = await f.create();
   const infer = vi.spyOn(f.engine.utility, "run");
+
   const Handoff = () => {
     const [prefill, setPrefill] = useState<{ url: string; notes: string }>();
     return (
@@ -157,6 +176,7 @@ it("opens saved results and the existing prefilled task form without queueing a 
           snapshot={snapshot}
           startTask={(url, notes) => setPrefill({ url, notes })}
         />
+
         {prefill && (
           <NewTask
             initialIssueUrl={prefill.url}
@@ -168,6 +188,7 @@ it("opens saved results and the existing prefilled task form without queueing a 
       </>
     );
   };
+
   render(<Handoff />);
   fireEvent.click(await screen.findByRole("button", { name: "Scan Now" }));
   await screen.findByText("Scan complete within the declared collection scope");
@@ -176,12 +197,15 @@ it("opens saved results and the existing prefilled task form without queueing a 
   await screen.findByText("Original issue 1");
   fireEvent.click(screen.getByRole("button", { name: "Start Vibestar Task" }));
   const form = screen.getByRole("dialog", { name: "New task" });
+
   expect((within(form).getByLabelText("Issue URL") as HTMLInputElement).value).toBe(
     "https://github.com/oppia/oppia/issues/1",
   );
+
   expect(
     (within(form).getByLabelText("Optional instructions") as HTMLTextAreaElement).value,
   ).toContain("Issue Watch discovery");
+
   expect(api.mock.calls.some(([method]) => method === "task.create")).toBe(false);
   expect(f.engine.db.tasks()).toEqual([]);
   expect(infer).not.toHaveBeenCalled();
@@ -190,6 +214,7 @@ it("opens saved results and the existing prefilled task form without queueing a 
 it("isolates unsafe Markdown, skips images and opens only verified HTTPS GitHub links", async () => {
   await setup();
   const error = vi.fn();
+
   const rendered = render(
     <IssueMarkdown
       text={
@@ -198,10 +223,12 @@ it("isolates unsafe Markdown, skips images and opens only verified HTTPS GitHub 
       onError={error}
     />,
   );
+
   expect(rendered.container.querySelector("script")).toBeNull();
   expect(rendered.container.querySelector("img")).toBeNull();
   expect(screen.getAllByRole("link")).toHaveLength(1);
   fireEvent.click(screen.getByRole("link", { name: "issue" }));
+
   expect(window.vibestar.openExternal).toHaveBeenCalledWith(
     "https://github.com/oppia/oppia/issues/1",
   );
@@ -209,6 +236,7 @@ it("isolates unsafe Markdown, skips images and opens only verified HTTPS GitHub 
 
 it("requires a helper capability before any feature RPC and keeps completion notices local and deduplicated", async () => {
   const { snapshot, api, emit } = await setup();
+
   const rendered = render(
     <IssueWatchPage
       snapshot={{
@@ -218,9 +246,11 @@ it("requires a helper capability before any feature RPC and keeps completion not
       startTask={vi.fn()}
     />,
   );
+
   expect(screen.getByText(/Update the execution helper/)).toBeTruthy();
   expect(api).not.toHaveBeenCalled();
   rendered.unmount();
+
   const Notices = () => {
     const { notices } = useWatchNotifications(true);
     return (
@@ -231,8 +261,10 @@ it("requires a helper capability before any feature RPC and keeps completion not
       </div>
     );
   };
+
   const page = render(<Notices />);
   await Promise.resolve();
+
   const event = {
     event: "issue-watch.completed",
     watch_id: "watch",
@@ -242,6 +274,7 @@ it("requires a helper capability before any feature RPC and keeps completion not
       summary: { initial_discovery: 2, manual_review: 1 },
     },
   };
+
   emit(event);
   emit(event);
   await screen.findByText(/2 initial discoveries, 0 existing matches, 1 require manual review/);

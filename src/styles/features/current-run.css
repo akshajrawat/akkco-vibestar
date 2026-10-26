@@ -1,4 +1,5 @@
 /* Execution, review and usage stay dense and share the existing IDE surfaces. */
+
 .current-run {
   display: flex;
   align-items: center;
@@ -9,19 +10,23 @@
   background: var(--background-panel);
   flex-shrink: 0;
 }
+
 .current-run-text {
   flex: 1;
   min-width: 0;
 }
+
 .current-run-text > div {
   display: flex;
   flex-wrap: wrap;
   column-gap: 4px;
 }
+
 .current-run-text span,
 .current-run-text time {
   color: var(--text-secondary);
 }
+
 .current-run-text small {
   display: block;
   color: var(--text-muted);
@@ -30,26 +35,32 @@
   white-space: nowrap;
   margin-top: 4px;
 }
+
 .workspace > .current-run {
   padding: 8px 14px;
   flex-wrap: wrap;
 }
+
 .workspace > .current-run .current-run-text {
   flex-basis: 280px;
 }
+
 .editor-launcher {
   display: inline-flex;
   position: relative;
 }
+
 .editor-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin: 18px 0;
 }
+
 .compact-modal {
   max-width: 560px;
 }
+
 .workspace-body > .usage-panel,
 .workspace-main > .usage-panel {
   flex: 1;

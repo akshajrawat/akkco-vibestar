@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Expand, Minimize2, X } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+
 import {
   useTaskView,
   updateTaskView,
@@ -24,12 +25,14 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
   scrollPositions.current = view.secondaryScroll;
   const [narrow, setNarrow] = useState(window.innerWidth < 1200);
   const dialog = useDialogFocus(view.secondaryOpen && narrow && !view.expandedTool);
+
   useEffect(() => {
     if (view.secondaryOpen && view.expandedTool && !expanded.current) {
       previousFocus.current =
         document.activeElement instanceof HTMLElement && document.activeElement !== document.body
           ? document.activeElement
           : null;
+
       dialog.current
         ?.querySelector<HTMLButtonElement>("button[aria-label='Return to chat']")
         ?.focus();
@@ -39,12 +42,15 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
       else if (previousFocus.current?.isConnected) previousFocus.current.focus();
       else focusWorkspace(anchor.current?.closest(".workspace"));
     }
+
     expanded.current = view.expandedTool;
   }, [view.expandedTool, view.secondaryOpen, narrow, dialog]);
+
   useEffect(() => {
     if (content.current)
       content.current.scrollTop = scrollPositions.current[view.secondarySection] || 0;
   }, [view.secondarySection, view.secondaryOpen, view.expandedTool]);
+
   useEffect(() => {
     const parent = anchor.current?.parentElement;
     if (!parent || typeof ResizeObserver === "undefined") return;
@@ -52,13 +58,16 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
     observer.observe(parent);
     return () => observer.disconnect();
   }, []);
+
   const close = () => {
     updateTaskView(id, { secondaryOpen: false, expandedTool: false });
+
     anchor.current
       ?.closest(".workspace")
       ?.querySelector<HTMLButtonElement>(".secondary-toggle")
       ?.focus();
   };
+
   return (
     <>
       <div ref={anchor} className="secondary-anchor" />
@@ -71,6 +80,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
               onClick={close}
             />
           )}
+
           {!narrow && !view.expandedTool && (
             <ResizeHandle
               label="Resize secondary workspace"
@@ -81,6 +91,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
               onChange={(secondaryWidth) => updateTaskView(id, { secondaryWidth })}
             />
           )}
+
           <aside
             ref={dialog}
             className={`context-pane secondary-workspace ${narrow ? "secondary-drawer" : ""} ${view.expandedTool ? "secondary-expanded" : ""}`}
@@ -95,6 +106,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
                 if (view.expandedTool) updateTaskView(id, { expandedTool: false });
                 else close();
               }
+
               if (narrow && !view.expandedTool) containDialogFocus(e);
             }}
           >
@@ -111,6 +123,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
                   <ArrowLeft size={14} />
                 </Button>
               )}
+
               <Button
                 size="icon"
                 variant="ghost"
@@ -119,6 +132,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
               >
                 {view.expandedTool ? <Minimize2 size={14} /> : <Expand size={14} />}
               </Button>
+
               <Button
                 size="icon"
                 variant="ghost"
@@ -128,6 +142,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
                 <X size={14} />
               </Button>
             </header>
+
             <div
               role="tablist"
               aria-label="Workspace tools"
@@ -156,6 +171,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
                 </button>
               ))}
             </div>
+
             <div
               className="secondary-content"
               ref={content}

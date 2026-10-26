@@ -1,9 +1,11 @@
 import { z } from "zod";
+
 import { StageConfigSchema } from "../domain";
 
 const identity = z.string().min(1).max(256);
 const text = z.string().max(1048576);
 const timestamp = z.string().datetime({ offset: true });
+
 export const RepositoryIdentitySchema = z
   .object({
     id: identity,
@@ -14,6 +16,7 @@ export const RepositoryIdentitySchema = z
     url: z.string().max(500),
   })
   .strict();
+
 export const IssueReferenceSchema = z
   .object({
     repository: z
@@ -23,6 +26,7 @@ export const IssueReferenceSchema = z
     number: z.number().int().positive().safe(),
   })
   .strict();
+
 export const WatchRulesSchema = z
   .object({
     compiler_version: z.literal(1),
@@ -45,6 +49,7 @@ export const WatchRulesSchema = z
     competing_pull_requests: z.literal("exclude_confirmed_open"),
   })
   .strict();
+
 export const WatchLimitsSchema = z
   .object({
     max_candidates: z.number().int().min(1).max(200).default(200),
@@ -53,6 +58,7 @@ export const WatchLimitsSchema = z
     max_requests: z.number().int().min(5).max(400).default(400),
   })
   .strict();
+
 export const WatchConfigurationSchema = z
   .object({
     prompt: z.string().min(1).max(8000),
@@ -76,6 +82,7 @@ export const WatchConfigurationSchema = z
     limits: WatchLimitsSchema,
   })
   .strict();
+
 export const WatchSaveInput = z
   .object({
     request_id: z.string().uuid(),
@@ -84,10 +91,12 @@ export const WatchSaveInput = z
     configuration: WatchConfigurationSchema,
   })
   .strict();
+
 export const WatchUpdateInput = WatchSaveInput.extend({
   watch_id: z.string().uuid(),
   expected_revision: z.number().int().positive(),
 }).strict();
+
 export const WatchSchema = z
   .object({
     id: z.string().uuid(),
@@ -100,6 +109,7 @@ export const WatchSchema = z
     last_complete_scan_id: z.string().uuid().nullable(),
   })
   .strict();
+
 export const WatchRevisionSchema = z
   .object({
     watch_id: z.string().uuid(),
@@ -121,6 +131,7 @@ export const WatchRevisionSchema = z
       .max(200),
   })
   .strict();
+
 export const IssueSnapshotSchema = z
   .object({
     id: identity,
@@ -139,6 +150,7 @@ export const IssueSnapshotSchema = z
     comment_count: z.number().int().nonnegative(),
   })
   .strict();
+
 export const SourceSchema = z
   .object({
     key: identity,
@@ -167,6 +179,7 @@ export const SourceSchema = z
     references: z.array(IssueReferenceSchema).max(2000),
   })
   .strict();
+
 export const ClaimStateSchema = z.enum([
   "candidate_for_claim_request",
   "possibly_claimed",
@@ -176,6 +189,7 @@ export const ClaimStateSchema = z.enum([
   "eligibility_uncertain",
   "ineligible",
 ]);
+
 export const ClaimEvidenceSchema = z
   .object({
     kind: z.enum([
@@ -195,6 +209,7 @@ export const ClaimEvidenceSchema = z
     authority: z.enum(["github_fact", "text_interpretation"]),
   })
   .strict();
+
 export const SemanticResultSchema = z
   .object({
     issue_id: identity,
@@ -218,6 +233,7 @@ export const SemanticResultSchema = z
       .max(30),
   })
   .strict();
+
 export const ClassificationSchema = z.enum([
   "initial_discovery",
   "new_issue",
@@ -230,6 +246,7 @@ export const ClassificationSchema = z.enum([
   "not_rechecked",
   "excluded",
 ]);
+
 export const CandidateSchema = z
   .object({
     issue: IssueSnapshotSchema,
@@ -246,6 +263,7 @@ export const CandidateSchema = z
     dismissed_at: timestamp.nullable(),
   })
   .strict();
+
 export const CoverageSchema = z
   .object({
     query: z.string().max(4000),
@@ -264,6 +282,7 @@ export const CoverageSchema = z
     warnings: z.array(z.string().max(2000)).max(1000),
   })
   .strict();
+
 export const ScanStatusSchema = z.enum([
   "running",
   "cancelling",
@@ -274,6 +293,7 @@ export const ScanStatusSchema = z.enum([
   "cancelled",
   "interrupted",
 ]);
+
 export const ScanSchema = z
   .object({
     id: z.string().uuid(),
@@ -298,6 +318,7 @@ export const ScanSchema = z
     summary: z.partialRecord(ClassificationSchema, z.number().int().nonnegative()),
   })
   .strict();
+
 export const ScanInput = z
   .object({
     watch_id: z.string().uuid(),
@@ -307,6 +328,7 @@ export const ScanInput = z
     candidate_ids: z.array(identity).min(1).max(200).optional(),
   })
   .strict();
+
 export type Watch = z.infer<typeof WatchSchema>;
 export type WatchRules = z.infer<typeof WatchRulesSchema>;
 export type WatchRevision = z.infer<typeof WatchRevisionSchema>;
@@ -314,11 +336,11 @@ export type WatchConfiguration = z.infer<typeof WatchConfigurationSchema>;
 export type WatchLimits = z.infer<typeof WatchLimitsSchema>;
 export type RepositoryIdentity = z.infer<typeof RepositoryIdentitySchema>;
 export type IssueSnapshot = z.infer<typeof IssueSnapshotSchema>;
-export type IssueReference = z.infer<typeof IssueReferenceSchema>;
 export type WatchSource = z.infer<typeof SourceSchema>;
 export type WatchCandidate = z.infer<typeof CandidateSchema>;
 export type ClaimEvidence = z.infer<typeof ClaimEvidenceSchema>;
 export type WatchScan = z.infer<typeof ScanSchema>;
+
 export type CandidateSummary = Omit<WatchCandidate, "issue" | "evidence" | "source_keys"> & {
   issue: Omit<IssueSnapshot, "body">;
   body_bytes: number;

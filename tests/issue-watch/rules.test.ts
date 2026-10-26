@@ -1,4 +1,5 @@
 import { it, expect } from "vitest";
+
 import {
   confirmConfiguration,
   previewRules,
@@ -9,10 +10,12 @@ import { watchConfiguration } from "./fixtures";
 it("previews the exact Oppia scenario without a model and requires unresolved decisions", () => {
   const prompt =
     "Watch for open issues that are not triage needed and are not present in https://github.com/oppia/oppia/issues/27409. Make sure I can reasonably request assignment and no other contributor has already claimed them. Prefer actionable, well-scoped issues.";
+
   const preview = previewRules({
     repository: "https://github.com/Oppia/Oppia",
     prompt,
   });
+
   expect(preview.rules).toMatchObject({
     open_only: true,
     exclude_pull_requests: true,
@@ -20,15 +23,18 @@ it("previews the exact Oppia scenario without a model and requires unresolved de
     trackers: [{ url: "https://github.com/oppia/oppia/issues/27409", comments: "none" }],
     unassigned_only: true,
   });
+
   expect(preview.preferences).toContain("well-scoped");
   const configuration = watchConfiguration(prompt);
   expect(confirmConfiguration("oppia/oppia", configuration).digest).toBe(preview.digest);
+
   expect(() =>
     confirmConfiguration("oppia/oppia", {
       ...configuration,
       ambiguity_decisions: [],
     }),
   ).toThrow("Confirm every");
+
   expect(() =>
     confirmConfiguration("oppia/oppia", {
       ...configuration,
@@ -36,6 +42,7 @@ it("previews the exact Oppia scenario without a model and requires unresolved de
     }),
   ).toThrow("Preview");
 });
+
 it("distinguishes explicit bans, tracker proposals and bare references", () => {
   const preview = previewRules({
     repository: "oppia/oppia",
@@ -50,15 +57,19 @@ it("distinguishes explicit bans, tracker proposals and bare references", () => {
       ],
     },
   });
+
   expect(preview.rules.excluded_issues).toEqual([{ repository: "oppia/oppia", number: 12 }]);
+
   expect(preview.rules.trackers).toEqual([
     { url: "https://github.com/oppia/oppia/issues/27409", comments: "none" },
     { url: "https://github.com/other/repo/issues/1", comments: "all" },
   ]);
+
   expect(preview.ambiguities.some((item) => item.text === "#15")).toBe(true);
   expect(preview.ambiguities.some((item) => item.id === "remaining-requirements")).toBe(true);
   expect(preview.rules.excluded_labels).toEqual(["needs triage"]);
 });
+
 it.each([
   "https://evil.test/a/b",
   "https://user@github.com/a/b",

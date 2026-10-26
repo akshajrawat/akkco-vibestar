@@ -1,4 +1,5 @@
 import { it, expect } from "vitest";
+
 import { markdownIssueReferences } from "../../backend/issue-watch/tracker-exclusions";
 
 it("parses visible Markdown references with repository identity and skips examples and PRs", () => {
@@ -11,6 +12,7 @@ it("parses visible Markdown references with repository identity and skips exampl
     "[reference][issue]\n\n[issue]: https://github.com/oppia/oppia/issues/11",
     "<div>#12</div>",
   ].join("\n\n");
+
   expect(markdownIssueReferences(markdown, "Oppia/Oppia")).toEqual([
     { repository: "oppia/oppia", number: 1 },
     { repository: "oppia/oppia", number: 11 },
@@ -19,6 +21,7 @@ it("parses visible Markdown references with repository identity and skips exampl
     { repository: "other/repo", number: 1 },
   ]);
 });
+
 it("bounds reference sets and does not recursively resolve issue content", () => {
   expect(() =>
     markdownIssueReferences(

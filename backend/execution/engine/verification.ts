@@ -7,6 +7,7 @@ import { CommandExecutions } from "../verification/command-executions";
 import { object } from "../providers/contracts";
 import { taskVerification } from "../verification/task-verification";
 import { missingVerificationChecks } from "../verification/verification-recovery";
+
 /** Binds verification recovery and review authority to retained evidence and current content. */
 export class VerificationTransitions {
   constructor(
@@ -24,6 +25,7 @@ export class VerificationTransitions {
     >,
     private readonly state: ExecutionState,
   ) {}
+
   verificationEvidenceHash = (id: string) =>
     createHash("sha256")
       .update(
@@ -37,6 +39,7 @@ export class VerificationTransitions {
         }),
       )
       .digest("hex");
+
   reviewGapsPreview = async (id: string) => {
     this.host.assertAvailable();
     const task = this.host.db.task(id);
@@ -55,6 +58,7 @@ export class VerificationTransitions {
       checks: verification.checks.filter((check) => check.required && check.outcome !== "passed"),
     };
   };
+
   savedReviewVerdict = (id: string) => {
     const review = object(this.host.db.artifact(id, 5));
     const verification = taskVerification(this.host.db, id);
@@ -69,10 +73,12 @@ export class VerificationTransitions {
           ? ("verified" as const)
           : ("code_approved_incomplete" as const);
   };
+
   recheckEvidence = async (id: string) => {
     await this.host.withTaskMaintenance(id, async () => {
       new CommandExecutions(this.host.db).recoverToolExits(id);
     });
+
     const task = this.host.db.task(id);
     if (task.stage < 5 || !task.final_review_hash) return this.host.retry(id, 4);
     return this.host.withTaskMaintenance(id, async () => {
@@ -81,12 +87,14 @@ export class VerificationTransitions {
           "stale_review",
           "The worktree changed since independent review. Review the changed implementation before accepting it.",
         );
+
       const output = await this.host.manual(
         id,
         ["git", "diff", "--check", task.base_commit_sha, "--"],
         undefined,
         true,
       );
+
       if (output.code !== 0)
         throw new AdeError("validation", "git diff --check failed. Inspect Tests.");
       const verdict = this.savedReviewVerdict(id);
@@ -96,6 +104,7 @@ export class VerificationTransitions {
           "stale_review",
           "The worktree changed during validation. Review the changed implementation before accepting it.",
         );
+
       const updated = {
         ...current,
         final_review_verdict: verdict,
@@ -106,10 +115,12 @@ export class VerificationTransitions {
           : current.status,
         updated_at: now(),
       };
+
       this.host.db.saveTask(updated);
       return updated;
     });
   };
+
   setVerificationPolicy = async (id: string, policy: "repository" | "extended_browser") => {
     await this.host.withTaskMaintenance(id, async () => {
       const task = this.host.db.task(id);
@@ -119,12 +130,14 @@ export class VerificationTransitions {
           "Wait for implementation before changing verification policy.",
         );
       await this.host.git.assertTask(task);
+
       this.host.db.transaction(() => {
         this.host.db.saveTask({
           ...this.host.db.task(id),
           verification_policy: policy,
           updated_at: now(),
         });
+
         this.host.db.run(
           "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'verification_policy',?,?)",
           id,
@@ -133,14 +146,18 @@ export class VerificationTransitions {
         );
       });
     });
+
     return this.recheckEvidence(id);
   };
+
   runMissingCheck = async (id: string, command: string) => {
     const task = this.host.db.task(id);
+
     const candidate = missingVerificationChecks(taskVerification(this.host.db, id), {
       selected: task.verification_environment,
       report: task.browser_environment_report,
     }).find((check) => check.command === command);
+
     if (!candidate)
       throw new AdeError(
         "invalid_input",
@@ -148,18 +165,22 @@ export class VerificationTransitions {
       );
     return this.host.runCommand(id, candidate.argv);
   };
+
   fixWithCodex = (id: string, requestId: string) => {
     this.host.assertAvailable();
+
     const existing = this.host.db.all<{
       task_id: string;
       content: string;
       configuration: string;
     }>("SELECT task_id,content,configuration FROM task_messages WHERE id=?", requestId)[0];
+
     if (existing) {
       if (existing.task_id !== id)
         throw new AdeError("invalid_input", "Repair request belongs to another task.");
       return { disposition: "already_requested" };
     }
+
     if (this.host.isActive(id) || this.state.taskMaintenance.has(id))
       throw new AdeError("busy", "Wait for task activity to finish before requesting Codex fixes.");
     const task = this.host.db.task(id);
@@ -170,10 +191,12 @@ export class VerificationTransitions {
       );
     const evidence = taskVerification(this.host.db, id);
     const settings = task.execution_settings || this.host.db.settings();
+
     const review = this.host.db.all<{ output: string }>(
       "SELECT output FROM agent_runs WHERE task_id=? AND stage=5 ORDER BY started_at DESC,rowid DESC LIMIT 1",
       id,
     )[0]?.output;
+
     const context = JSON.stringify({
       verification: evidence,
       review,
@@ -182,12 +205,14 @@ export class VerificationTransitions {
         id,
       ),
     });
+
     this.host.db.run(
       "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'verification_repair',?,?)",
       id,
       context,
       now(),
     );
+
     return this.host.followUp(
       id,
       "Fix the demonstrated implementation failures and rerun affected checks in this original worktree. Read the saved verification repair evidence in TASK CONTEXT. For required checks without an executable recorded command, prepare repeatable test scripts using the project's tooling, run feasible checks and report their exact commands, outcomes and prerequisites. Prefer supported check-only npm scripts, node --test, pytest or npx playwright test so Run missing checks can replay the saved commands. Use stable check names to link the new commands to the existing requirements; do not discard requirements or claim unexecuted checks passed. Investigate environmental gaps without repeating failed installation attempts unless prerequisites changed. One Codex iteration is authorized; further iterations require a new explicit request.",

@@ -16,10 +16,12 @@ it("disables every legacy automatic PR inspection while retaining snapshots, con
   const old = new Sqlite(path);
   for (const migration of migrations.filter((m) => m.version <= 16)) {
     old.exec(migration.sql);
+
     old
       .prepare("INSERT OR IGNORE INTO schema_migrations VALUES(?,?)")
       .run(migration.version, "before");
   }
+
   old.prepare("INSERT INTO settings VALUES('github_watch',?)").run(
     JSON.stringify({
       auto_watch: true,
@@ -27,6 +29,7 @@ it("disables every legacy automatic PR inspection while retaining snapshots, con
       verify_codex: true,
     }),
   );
+
   old.prepare("INSERT INTO settings VALUES('pipeline',?)").run(JSON.stringify(defaultSettings));
   for (const status of ["idle", "pending", "polling", "analyzing", "error", "interrupted"]) {
     old.prepare("INSERT INTO scheduled_jobs VALUES(?,?)").run(
@@ -44,21 +47,25 @@ it("disables every legacy automatic PR inspection while retaining snapshots, con
       }),
     );
   }
+
   old
     .prepare(
       "INSERT INTO scheduled_attention(id,job_id,created_at,summary,changes,analysis) VALUES('attention','idle','before','Saved review','[]','saved analysis')",
     )
     .run();
+
   old
     .prepare(
       "INSERT INTO scheduled_agent_runs(id,job_id,stage,provider,model,effort,prompt,status,started_at,output) VALUES('run','idle',1,'codex','saved-model','high','saved prompt','completed','before','saved result')",
     )
     .run();
+
   old
     .prepare(
       "INSERT INTO ai_usage(id,job_id,purpose,provider,model,effort,started_at,status,input_tokens) VALUES('run','idle','PR Review Analysis','codex','saved-model','high','before','completed',123)",
     )
     .run();
+
   old.close();
   try {
     for (let iteration = 0; iteration < 2; iteration++) {
@@ -75,18 +82,22 @@ it("disables every legacy automatic PR inspection while retaining snapshots, con
           if (["pending", "polling", "analyzing"].includes(job.id))
             expect(job.status).toBe("interrupted");
         }
+
         expect(
           JSON.parse(
             db.all<{ value: string }>("SELECT value FROM settings WHERE key='github_watch'")[0]
               .value,
           ).auto_watch,
         ).toBe(false);
+
         expect(db.all("SELECT summary,analysis FROM scheduled_attention")).toEqual([
           { summary: "Saved review", analysis: "saved analysis" },
         ]);
+
         expect(db.all("SELECT prompt,output FROM scheduled_agent_runs")).toEqual([
           { prompt: "saved prompt", output: "saved result" },
         ]);
+
         expect(db.all("SELECT input_tokens FROM ai_usage")).toEqual([{ input_tokens: 123 }]);
         expect(db.settings()).toEqual(defaultSettings);
       } finally {
@@ -105,6 +116,7 @@ it("recovers unfinished PR analysis without changing a queued issue's scheduling
       "INSERT INTO repositories VALUES('repo','upstream','project',?)",
       JSON.stringify({ id: "repo" }),
     );
+
     db.run(
       "INSERT INTO tasks(id,repo_id,status,stage,data,created_at) VALUES('issue','repo','queued',2,?,'before')",
       JSON.stringify({
@@ -115,11 +127,14 @@ it("recovers unfinished PR analysis without changing a queued issue's scheduling
         updated_at: "before",
       }),
     );
+
     db.run("INSERT INTO task_artifacts VALUES('plan','issue',1,'plan','saved plan','before')");
+
     db.run(
       "INSERT INTO scheduled_jobs VALUES('job',?)",
       JSON.stringify({ id: "job", enabled: false, status: "analyzing" }),
     );
+
     db.run(
       "INSERT INTO pr_analyses VALUES('analysis','job','running','before',NULL,?)",
       JSON.stringify({
@@ -130,18 +145,23 @@ it("recovers unfinished PR analysis without changing a queued issue's scheduling
         snapshot: prSnapshot,
       }),
     );
+
     db.recover();
+
     expect(db.task("issue")).toMatchObject({
       status: "queued",
       stage: 2,
       updated_at: "before",
     });
+
     expect(db.all("SELECT content FROM task_artifacts")).toEqual([{ content: "saved plan" }]);
     const service = new PRAnalysis({ db } as Engine);
+
     expect(service.history("job")[0]).toMatchObject({
       status: "interrupted",
       snapshot: prSnapshot,
     });
+
     expect(service.history("job")[0].error).toContain("Analyze Again explicitly");
     expect(db.all("SELECT * FROM ai_usage")).toEqual([]);
   } finally {

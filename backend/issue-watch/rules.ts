@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
+
 import { z } from "zod";
+
 import { AdeError, parseIssue, remoteIdentity } from "../domain";
 import { WatchRulesSchema, type WatchConfiguration } from "./contracts";
 
 export const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
 export const repositoryName = (input: string) => {
   const value = input.trim();
   const identity = remoteIdentity(value.includes("://") ? value : `https://github.com/${value}`);
@@ -12,8 +15,10 @@ export const repositoryName = (input: string) => {
     throw new AdeError("invalid_input", "Use owner/repository or its HTTPS GitHub URL.");
   return `${identity.owner}/${identity.name}`.toLowerCase();
 };
+
 export const issueKey = (reference: { repository: string; number: number }) =>
   `${reference.repository.toLowerCase()}#${reference.number}`;
+
 const controls = WatchRulesSchema.pick({
   excluded_labels: true,
   excluded_issues: true,
@@ -22,6 +27,7 @@ const controls = WatchRulesSchema.pick({
 })
   .partial()
   .strict();
+
 export const PreviewInput = z
   .object({
     repository: z.string().min(1).max(500),
@@ -33,36 +39,44 @@ export const PreviewInput = z
 export const previewRules = (input: unknown) => {
   const p = PreviewInput.parse(input);
   const repository = repositoryName(p.repository);
+
   const explanation: {
     start: number;
     end: number;
     text: string;
     rule: string;
   }[] = [];
+
   const ambiguities: { id: string; text: string; explanation: string }[] = [];
   const labels = new Set<string>();
   const trackers = new Map<string, "none" | "all">();
   const excluded = new Map<string, { repository: string; number: number }>();
+
   const add = (start: number, text: string, rule: string) => {
     explanation.push({ start, end: start + text.length, text, rule });
   };
+
   for (const match of p.prompt.matchAll(
     /(?:not|exclude|without|no)[^.!?\n]{0,35}?\btriage[ -]needed\b/gi,
   )) {
     labels.add("triage needed");
+
     add(
       match.index,
       match[0],
       'Exclude exact label "triage needed" (case insensitive); similar labels need explicit controls.',
     );
   }
+
   for (const match of p.prompt.matchAll(/(?:-label:|exclude\s+labels?\s+)"([^"\n]{1,100})"/gi)) {
     labels.add(match[1].trim().toLowerCase());
     add(match.index, match[0], `Exclude exact label ${match[1]}.`);
   }
+
   const references = p.prompt.matchAll(
     /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+(?:[?#][^\s)>,]*)?|(?<![\w/#])#([1-9]\d*)\b/g,
   );
+
   for (const match of references) {
     const reference = match[1]
       ? { repository, number: Number(match[1]) }
@@ -73,6 +87,7 @@ export const previewRules = (input: unknown) => {
             number: ref.number,
           };
         })();
+
     const before = p.prompt.slice(Math.max(0, match.index - 100), match.index);
     const url = `https://github.com/${reference.repository}/issues/${reference.number}`;
     if (
@@ -94,10 +109,12 @@ export const previewRules = (input: unknown) => {
       });
     }
   }
+
   const unassigned =
     /\b(?:unassigned|no\s+assignee|not\s+(?:already\s+)?claimed|no\s+other\s+contributor[^.!?\n]*claimed|request\s+assignment)\b/i.test(
       p.prompt,
     );
+
   for (const match of p.prompt.matchAll(
     /\b(?:open issues?|unassigned|no\s+assignee|not\s+(?:already\s+)?claimed|no\s+other\s+contributor[^.!?\n]*claimed|request\s+assignment)\b/gi,
   ))
@@ -112,15 +129,19 @@ export const previewRules = (input: unknown) => {
       ...reference,
       repository: repositoryName(reference.repository),
     };
+
     excluded.set(issueKey(normalized), normalized);
   }
+
   for (const tracker of p.controls?.trackers || []) {
     const ref = parseIssue(tracker.url);
+
     trackers.set(
       `https://github.com/${ref.owner.toLowerCase()}/${ref.repo.toLowerCase()}/issues/${ref.number}`,
       tracker.comments,
     );
   }
+
   let remaining = p.prompt;
   for (const span of [...explanation].sort((a, b) => b.start - a.start))
     remaining =
@@ -134,6 +155,7 @@ export const previewRules = (input: unknown) => {
       explanation:
         "Some requirements are outside this small deterministic grammar. Confirm the visible hard controls or acknowledge the remaining text as AI preferences; they are not guaranteed hard filters.",
     });
+
   const rules = WatchRulesSchema.parse({
     compiler_version: 1,
     open_only: true,
@@ -147,6 +169,7 @@ export const previewRules = (input: unknown) => {
     active_claims: "review_possible_exclude_confirmed",
     competing_pull_requests: "exclude_confirmed_open",
   });
+
   return {
     compiler_version: 1 as const,
     repository,
@@ -175,6 +198,7 @@ export const confirmConfiguration = (repository: string, configuration: WatchCon
       unassigned_only: configuration.rules.unassigned_only,
     }),
   });
+
   if (
     preview.digest !== configuration.preview_digest ||
     digest(preview.rules) !== digest(configuration.rules)
@@ -183,9 +207,11 @@ export const confirmConfiguration = (repository: string, configuration: WatchCon
       "stale_preview",
       "Preview the current prompt and hard controls again before saving.",
     );
+
   const decisions = new Map(
     configuration.ambiguity_decisions.map((decision) => [decision.id, decision.interpretation]),
   );
+
   if (
     decisions.size !== configuration.ambiguity_decisions.length ||
     [...decisions.keys()].some((id) => !preview.ambiguities.some((item) => item.id === id)) ||

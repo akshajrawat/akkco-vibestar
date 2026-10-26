@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+
 import { PlanView } from "../../src/features/workflow/PlanView";
 import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
 import { NewTask } from "../../src/features/tasks/NewTask";
@@ -9,6 +10,7 @@ import { defaultSettings } from "../../backend/domain";
 import { plan1 } from "../helpers/fixtures";
 import type { Detail, Run } from "../../src/lib/types";
 import type { ScheduleJob } from "../../backend/scheduled/contracts";
+
 vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({
     providers: [
@@ -44,7 +46,9 @@ vi.mock("../../src/hooks/useWorkspace", () => ({
     refresh: vi.fn(),
   }),
 }));
+
 afterEach(cleanup);
+
 const task: Detail["task"] = {
   id: "gate-ui",
   repo_id: "repo",
@@ -64,6 +68,7 @@ const task: Detail["task"] = {
   error: null,
   approval_gate: "antigravity_plan",
 };
+
 const run: Run = {
   id: "draft",
   stage: 1,
@@ -80,8 +85,10 @@ const run: Run = {
   output: null,
   error: "Cancelled",
 };
+
 it("shows a cancelled streamed draft and exact prompt with an explicit recovery action", () => {
   const recover = vi.fn();
+
   render(
     <PlanView
       artifacts={[]}
@@ -104,22 +111,27 @@ it("shows a cancelled streamed draft and exact prompt with an explicit recovery 
       acceptDraft={recover}
     />,
   );
+
   expect(screen.getByText("Streamed draft")).toBeTruthy();
   expect(screen.getByText("Fixture plan")).toBeTruthy();
   expect(screen.getByText(run.prompt)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Use this draft…" }));
   expect(recover).toHaveBeenCalledWith(run);
 });
+
 it("keeps compact review controls beside the composer without an automatic modal and preserves an independent draft on approval", async () => {
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     value: () => {},
     configurable: true,
   });
+
   const rpc = vi.fn(async () => null);
+
   Object.defineProperty(window, "vibestar", {
     value: { rpc },
     configurable: true,
   });
+
   render(
     <TaskWorkspace
       detail={{
@@ -143,42 +155,52 @@ it("keeps compact review controls beside the composer without an automatic modal
       onError={vi.fn()}
     />,
   );
+
   expect(screen.getByRole("region", { name: "Pipeline review required" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
   expect(screen.queryByRole("dialog", { name: "Stage review required" })).toBeNull();
   expect(screen.queryByRole("tab", { name: "Changes" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Split Changes beside chat" })).toBeNull();
   const draft = screen.getByLabelText("Task conversation") as HTMLTextAreaElement;
+
   fireEvent.change(draft, {
     target: { value: "Do not submit this draft on approval" },
   });
+
   fireEvent.click(screen.getByRole("button", { name: "View plan" }));
   expect(screen.getByText("Antigravity original plan")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Approve → Codex refinement" }));
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.approve", {
       id: task.id,
       artifact_id: "plan",
     }),
   );
+
   expect(draft.value).toBe("Do not submit this draft on approval");
   expect(rpc).not.toHaveBeenCalledWith("task.followup", expect.anything());
 });
+
 it("populates actual model selectors and supported efforts in New Task", async () => {
   const rpc = vi.fn(async () => ({
     repositories: [],
     settings: defaultSettings,
     root: "/data",
   }));
+
   Object.defineProperty(window, "vibestar", {
     value: { rpc },
     configurable: true,
   });
+
   render(<NewTask close={vi.fn()} created={vi.fn()} />);
   expect(await screen.findAllByText("Gemini fixture · Low")).toHaveLength(2);
+
   const models = screen
     .getAllByRole("combobox", { hidden: true })
     .filter((e) => e.id.endsWith("-models"));
+
   expect(models).toHaveLength(4);
   fireEvent.change(models[0], { target: { value: "gemini-fixture-low" } });
   expect((models[0] as HTMLSelectElement).value).toBe("gemini-fixture-low");
@@ -194,7 +216,9 @@ it("retains the task request identity across transport retries and changes it af
     path: "/fixture/project",
     base_branch: "main",
   };
+
   let attempts = 0;
+
   const rpc = vi.fn(async (method: string, input?: Record<string, unknown>) => {
     if (method === "snapshot")
       return {
@@ -213,17 +237,22 @@ it("retains the task request identity across transport retries and changes it af
       if (attempts < 3) throw new Error("fixture transport failure");
       return { id: "created-task", ...input };
     }
+
     return {};
   });
+
   Object.defineProperty(window, "vibestar", {
     value: { rpc },
     configurable: true,
   });
+
   const created = vi.fn();
   render(<NewTask close={vi.fn()} created={created} />);
+
   fireEvent.change(screen.getByLabelText("Issue URL"), {
     target: { value: "https://github.com/fixture/project/issues/1" },
   });
+
   await screen.findByText("Fixture preview");
   for (let attempt = 1; attempt <= 2; attempt++) {
     await vi.waitFor(() =>
@@ -235,27 +264,34 @@ it("retains the task request identity across transport retries and changes it af
         ).disabled,
       ).toBe(false),
     );
+
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
     await vi.waitFor(() => expect(attempts).toBe(attempt));
   }
+
   await vi.waitFor(() =>
     expect(
       (screen.getByRole("button", { name: "Create task" }) as HTMLButtonElement).disabled,
     ).toBe(false),
   );
+
   fireEvent.change(screen.getByLabelText("Optional instructions"), {
     target: { value: "New user instructions" },
   });
+
   fireEvent.click(screen.getByRole("button", { name: "Create task" }));
   await vi.waitFor(() => expect(created).toHaveBeenCalledWith("created-task"));
+
   const requests = rpc.mock.calls
     .filter(([method]) => method === "task.create")
     .map(([, input]) => input!);
+
   expect(requests).toHaveLength(3);
   expect(requests[0].request_id).toMatch(/^[a-f0-9-]{36}$/);
   expect(requests[1].request_id).toBe(requests[0].request_id);
   expect(requests[2].request_id).not.toBe(requests[1].request_id);
 });
+
 it("does not let a previous inspection failure mask a retry that is currently analyzing", () => {
   render(<PrState job={{ status: "analyzing", error: "previous failure" } as ScheduleJob} />);
   expect(screen.getByText(/ANALYZING DISCUSSION/)).toBeTruthy();

@@ -1,5 +1,7 @@
 import { z } from "zod";
+
 import type { DiscussionEntry, PullRequestState } from "./contracts";
+
 export const ActionSchema = z
   .object({
     manualActionRequired: z.boolean(),
@@ -36,7 +38,9 @@ export const ActionSchema = z
     lastMeaningfulActivityAt: z.string().optional(),
   })
   .strict();
+
 export type PullRequestAction = z.infer<typeof ActionSchema>;
+
 export const discussionEntries = (snapshot: PullRequestState): DiscussionEntry[] =>
   snapshot.discussion || [
     ...snapshot.comments.map((c) => ({
@@ -68,6 +72,8 @@ export const discussionEntries = (snapshot: PullRequestState): DiscussionEntry[]
       resolved: t.resolved,
     })),
   ];
+
 const acknowledgment =
   /^(?:lgtm|looks good(?: to me)?|got it(?:,? thanks)?|thanks(?: you)?(?: for (?:the (?:explanation|update)|clarifying))?|thank you|approved|perfect|great|okay|ok|sounds good|all good)[.!\s]*$/i;
+
 export const isAcknowledgment = (text: string) => acknowledgment.test(text.trim());

@@ -1,10 +1,12 @@
 import { it, expect } from "vitest";
 import { _electron } from "playwright-core";
+
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+
 import { Rpc } from "../../backend/rpc";
 import { defaultSettings, parseIssue } from "../../backend/domain";
 import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
@@ -14,6 +16,7 @@ import {
   FixtureProvider,
   plan1,
 } from "../helpers/fixtures";
+
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
@@ -24,6 +27,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
     await mkdir(evidence);
     const agy = new AntigravityProvider();
     const fixture = new FixtureProvider();
+
     const engine = await createFixtureEngine(join(dir, "fixture"), () => ({
       ...fixture,
       name: "antigravity",
@@ -49,17 +53,22 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         ],
       }),
     }));
+
     const rpc = new Rpc(engine);
+
     engine.db.saveSettings({
       ...defaultSettings,
       antigravity: { model: "next-model", effort: "low", timeout_secs: 30 },
     });
+
     const { repo } = await fixtureRepository(engine, dir);
     const emptyRoot = join(dir, "empty-core");
     const empty = await createFixtureEngine(emptyRoot);
     await empty.close();
+
     const home = join(dir, "isolated-home"),
       cli = join(dir, "blocked-cli");
+
     await mkdir(home);
     await mkdir(cli);
     for (const name of ["codex", "agy", "gh"])
@@ -68,6 +77,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         "#!/bin/sh\necho 'Real CLI disabled in fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+
     const app = await _electron.launch({
       executablePath: require("electron") as string,
       args: [resolve(".")],
@@ -80,6 +90,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       },
       timeout: 30000,
     });
+
     let forward: ((event: unknown) => void) | undefined;
     try {
       const page = await app.firstWindow();
@@ -88,6 +99,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       page.on("pageerror", (e) => errors.push(e.message));
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
       const detection = await fixture.detect();
+
       await page.exposeFunction("fixtureRpc", (method: string, params: unknown) =>
         method === "providers.detect"
           ? ["codex", "antigravity"].map((provider) => ({
@@ -96,8 +108,10 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
             }))
           : rpc.call(method, params),
       );
+
       await app.evaluate(({ ipcMain, BrowserWindow }) => {
         ipcMain.removeHandler("core:rpc");
+
         ipcMain.handle("core:rpc", async (_event, request) => {
           try {
             return {
@@ -111,6 +125,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
           }
         });
       });
+
       forward = (event) => {
         void app
           .evaluate(
@@ -120,7 +135,9 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
           )
           .catch(() => {});
       };
+
       engine.on("event", forward);
+
       const task = engine.enqueue(
         repo,
         parseIssue("https://github.com/fixture/fixture/issues/1"),
@@ -128,7 +145,9 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         "",
         { title: "Output harness", body: "Fixture only" },
       );
+
       const historic = randomUUID();
+
       engine.db.run(
         "INSERT INTO agent_runs(id,task_id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,output) VALUES(?,?,3,'codex','historic-model','xhigh','Exact historical prompt','completed',?,?,0,?)",
         historic,
@@ -140,19 +159,24 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
           observations: [{ file: "source.txt", detail: "Nested review evidence" }],
         }),
       );
+
       const logDir = join(engine.root, "logs", task.id);
       await mkdir(logDir, { recursive: true });
+
       await writeFile(
         join(logDir, `${historic}.jsonl`),
         `historical needle beyond the UI tail\n${'{"type":"saved","text":"fixture history"}\n'.repeat(40000)}last historical line\n`,
       );
+
       await writeFile(join(logDir, `${historic}.stderr.log`), "historical stderr only\n");
       await page.locator(".tree-task").first().click();
+
       await expect
         .poll(() => page.getByLabel("Current agent run").innerText(), {
           timeout: 10000,
         })
         .toContain("reported-fixture-model");
+
       if (await page.getByLabel("Collapse secondary workspace").count())
         await page.getByLabel("Collapse secondary workspace").click();
       expect(await page.locator("aside.context-pane").count()).toBe(0);
@@ -161,88 +185,111 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       expect(await page.getByLabel("Current agent run").innerText()).toContain("high");
       await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.getByRole("button", { name: "Readable", exact: true }).click();
+
       await page
         .locator(".logs-panel .tool-event")
         .filter({ hasText: "npm test" })
         .locator("summary")
         .first()
         .click();
+
       await expect
         .poll(() => page.getByLabel("Agent output transcript").innerText(), {
           timeout: 10000,
         })
         .toContain("second check passed");
+
       expect(await page.getByLabel("Current agent run").isVisible()).toBe(true);
       await page.screenshot({ path: join(evidence, "active-readable.png") });
       await page.getByRole("button", { name: "Raw", exact: true }).click();
+
       await expect
         .poll(() => page.locator(".logs-panel .raw-log").innerText(), {
           timeout: 10000,
         })
         .toContain('"step_update"');
+
       await page.screenshot({ path: join(evidence, "active-raw-stdout.png") });
       await page.getByLabel("Raw output stream").selectOption("stderr");
+
       await expect
         .poll(() => page.locator(".logs-panel .raw-log").innerText(), {
           timeout: 10000,
         })
         .toContain("[REDACTED]");
+
       expect(await page.locator(".logs-panel .raw-log").innerText()).not.toContain(
         "fixture-secret",
       );
+
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus());
       await page.getByRole("button", { name: "Copy output", exact: true }).click();
       await page.getByText("Copied", { exact: true }).waitFor();
+
       await expect
         .poll(() => app.evaluate(({ clipboard }) => clipboard.readText()), {
           timeout: 10000,
         })
         .toContain("[REDACTED]");
+
       await page.screenshot({ path: join(evidence, "active-raw-stderr.png") });
       await page.getByRole("button", { name: "Approve → Codex refinement" }).waitFor();
       await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.getByRole("button", { name: "Readable", exact: true }).click();
       await page.getByLabel("Expand workspace tool").click();
+
       const interrupted = page
         .locator(".logs-panel .tool-event[data-state=interrupted]")
         .filter({ hasText: "pending-check" });
+
       await interrupted.waitFor();
       await interrupted.scrollIntoViewIfNeeded();
       await interrupted.locator("summary").first().click();
+
       expect(
         await page.locator(".logs-panel .tool-event[data-state=interrupted] .success").count(),
       ).toBe(0);
+
       await page.screenshot({
         path: join(evidence, "completed-and-interrupted-tools.png"),
       });
+
       await page.getByLabel("Select run").selectOption(historic);
+
       await page
         .locator(".logs-panel")
         .getByText("Nested review evidence", { exact: true })
         .waitFor();
+
       await page.getByRole("button", { name: "Saved prompt", exact: true }).click();
+
       expect(await page.locator(".logs-panel .raw-log").innerText()).toBe(
         "Exact historical prompt",
       );
+
       await page.getByRole("button", { name: "Raw", exact: true }).click();
       await page.getByLabel("Raw output stream").selectOption("stdout");
       await page.getByLabel("Agent output transcript").focus();
       await page.keyboard.press("Control+f");
       await page.keyboard.type("historical needle");
+
       await expect
         .poll(() => page.locator(".logs-panel .raw-log").innerText(), {
           timeout: 10000,
         })
         .toContain("historical needle beyond the UI tail");
+
       await page.screenshot({ path: join(evidence, "historical-search.png") });
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Load earlier output", exact: true }).waitFor();
       if (await page.getByRole("button", { name: "Follow output", exact: true }).count())
         await page.getByRole("button", { name: "Follow output", exact: true }).click();
       await page.getByRole("button", { name: "Pause scrolling", exact: true }).click();
+
       await page.screenshot({
         path: join(evidence, "historical-raw-paused.png"),
       });
+
       await page.getByLabel("Return to chat").click();
       await page.getByRole("tab", { name: "Usage", exact: true }).first().click();
       await page.getByText("Antigravity Plan", { exact: true }).first().waitFor();
@@ -257,6 +304,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Follow output", exact: true }).waitFor();
       expect(errors).toEqual([]);
       expect(engine.db.all("SELECT id FROM pr_analyses")).toEqual([]);
+
       await writeFile(
         join(evidence, "results.json"),
         JSON.stringify(
@@ -270,6 +318,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
           2,
         ),
       );
+
       console.log("Agent output visual evidence", evidence);
     } catch (e) {
       await (
@@ -277,6 +326,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       )
         .screenshot({ path: join(evidence, "failure.png") })
         .catch(() => {});
+
       console.log("Agent output failure evidence", evidence);
       throw e;
     } finally {

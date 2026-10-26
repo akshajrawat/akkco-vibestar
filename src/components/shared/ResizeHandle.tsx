@@ -1,4 +1,5 @@
 import { useRef } from "react";
+
 export const ResizeHandle = ({
   label,
   value,
@@ -52,6 +53,7 @@ export const ResizeHandle = ({
       onKeyDown={(e) => {
         if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
           e.preventDefault();
+
           onChange(
             clamp(
               value + (["ArrowLeft", "ArrowUp"].includes(e.key) ? -16 : 16) * (reverse ? -1 : 1),

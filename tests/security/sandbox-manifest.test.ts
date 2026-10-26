@@ -1,13 +1,16 @@
 import { expect, it, vi } from "vitest";
+
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
+
 import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
 import { execute } from "../../backend/execution/runtime/process";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
+
 vi.mock("node:os", async (original) => {
   const module = await original<typeof import("node:os")>();
   return { ...module, homedir: () => fixture.home || module.homedir() };
@@ -36,6 +39,7 @@ it("mounts only the selected provider state and toolchain from a home outside /h
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, "sandbox-manifest");
+
     const hidden = [
       join(fixture.home, "personal-fixture"),
       join(other, "other-fixture"),
@@ -44,6 +48,7 @@ it("mounts only the selected provider state and toolchain from a home outside /h
       socket,
       join(engine.root, "state", "vibestar.sqlite"),
     ];
+
     const code = `#!/usr/bin/env node
 const fs=require('node:fs/promises');const net=require('node:net');
 (async()=>{
@@ -57,9 +62,11 @@ const fs=require('node:fs/promises');const net=require('node:net');
  console.log(require('../helper.cjs'));
 })().catch(error=>{console.error(error);process.exitCode=1;});
 `;
+
     const entry = join(packageRoot, "bin", "fixture.cjs");
     await writeFile(entry, code, { mode: 0o700 });
     await symlink(entry, join(localBin, "vibestar-fixture-cli"));
+
     const invocation = await sandboxInvocation(
       engine.root,
       engine.db,
@@ -69,6 +76,7 @@ const fs=require('node:fs/promises');const net=require('node:net');
       undefined,
       "codex",
     );
+
     expect(invocation.args.join(" ")).not.toContain("--ro-bind / /");
     const result = await execute({ ...invocation, cwd: task.worktree_path });
     expect(result.code, result.stderr).toBe(0);
@@ -76,16 +84,20 @@ const fs=require('node:fs/promises');const net=require('node:net');
     expect(await readFile(join(state, "new-session-fixture"), "utf8")).toBe("provider update");
     expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
     const relative = join(task.worktree_path, "fixture-check.sh");
+
     await writeFile(relative, "#!/bin/sh\nprintf 'RELATIVE_TOOL_OK\\n'\n", {
       mode: 0o700,
     });
+
     await mkdir(join(task.worktree_path, "node_modules", ".bin"), {
       recursive: true,
     });
+
     await symlink(
       "../../fixture-check.sh",
       join(task.worktree_path, "node_modules", ".bin", "fixture-check"),
     );
+
     for (const program of ["./fixture-check.sh", "./node_modules/.bin/fixture-check"]) {
       const command = await sandboxInvocation(
         engine.root,
@@ -94,6 +106,7 @@ const fs=require('node:fs/promises');const net=require('node:net');
         { program, args: [] },
         true,
       );
+
       const output = await execute({ ...command, cwd: task.worktree_path });
       expect(output.code, output.stderr).toBe(0);
       expect(output.stdout).toContain("RELATIVE_TOOL_OK");
@@ -102,6 +115,7 @@ const fs=require('node:fs/promises');const net=require('node:net');
     await engine.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     fixture.home = "";
+
     await Promise.all([
       rm(dir, { recursive: true, force: true }),
       rm(external, { recursive: true, force: true }),

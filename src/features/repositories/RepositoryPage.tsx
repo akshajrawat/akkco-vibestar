@@ -24,18 +24,23 @@ export const RepositoryPage = ({
   const [error, setError] = useState("");
   const [verified, setVerified] = useState<Record<string, string>>({});
   const [connection, setConnection] = useState<{ path: string }>();
+
   const [candidates, setCandidates] = useState<{
     repository: string;
     candidates: LocalRepository[];
   }>();
+
   const active = snapshot.repositories.filter((r) => r.connected !== false);
   const visible = (text: string) => text.toLowerCase().includes(query.toLowerCase());
+
   const discovered = (snapshot.repository_index?.repositories || []).filter(
     (r) => !active.some((a) => a.path === r.path) && visible(r.path + " " + r.identities.join(" ")),
   );
+
   const rows = (snapshot.github?.repositories || []).filter((r) =>
     visible(r.full_name + " " + (r.description || "")),
   );
+
   const action = async (method: string, params: unknown, key: string) => {
     setBusy(key);
     setError("");
@@ -48,6 +53,7 @@ export const RepositoryPage = ({
       setBusy("");
     }
   };
+
   const find = async (repository: string) => {
     setBusy(repository);
     setError("");
@@ -55,6 +61,7 @@ export const RepositoryPage = ({
       const result = await rpc<{ candidates: LocalRepository[] }>("repositories.candidates", {
         repository,
       });
+
       setCandidates({ repository, candidates: result.candidates });
       await refresh();
     } catch (e) {
@@ -63,11 +70,13 @@ export const RepositoryPage = ({
       setBusy("");
     }
   };
+
   const verify = async (id: string) => {
     setBusy(id);
     setError("");
     try {
       const result = await rpc<{ branch: string; dirty: boolean }>("repository.verify", { id });
+
       setVerified((previous) => ({
         ...previous,
         [id]: `Verified · current branch ${result.branch}${result.dirty ? " · local changes preserved" : " · clean checkout"}`,
@@ -78,6 +87,7 @@ export const RepositoryPage = ({
       setBusy("");
     }
   };
+
   const originLabel = (url: string | null) => {
     if (!url) return "None";
     try {
@@ -87,6 +97,7 @@ export const RepositoryPage = ({
       return url;
     }
   };
+
   return (
     <div className="page repository-library">
       <PageHeader
@@ -98,6 +109,7 @@ export const RepositoryPage = ({
               <Plus size={14} />
               Connect local repository
             </Button>
+
             <Button
               busy={busy === "scan"}
               disabled={!!busy}
@@ -105,6 +117,7 @@ export const RepositoryPage = ({
             >
               {busy === "scan" ? "Scanning…" : "Scan local"}
             </Button>
+
             <Button
               busy={busy === "sync" || !!snapshot.github?.phase}
               disabled={!!busy}
@@ -116,11 +129,13 @@ export const RepositoryPage = ({
           </>
         }
       />
+
       {snapshot.github?.phase && (
         <p className="operation-status" role="status">
           {snapshot.github.phase}
         </p>
       )}
+
       <div className="library-search">
         <Search size={14} />
         <input
@@ -130,11 +145,13 @@ export const RepositoryPage = ({
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+
       {error && (
         <p className="error-box" role="alert">
           {error}
         </p>
       )}
+
       {!!snapshot.github?.clones?.length && (
         <section aria-label="Managed clone activity">
           <h2 className="repository-section-title">Managed clones</h2>
@@ -143,10 +160,12 @@ export const RepositoryPage = ({
           ))}
         </section>
       )}
+
       <section aria-labelledby="active-repositories-title">
         <h2 id="active-repositories-title" className="repository-section-title">
           Active repositories <small>{active.length}</small>
         </h2>
+
         {!active.length && (
           <div className="repository-empty">
             <strong>No active repositories</strong>
@@ -155,6 +174,7 @@ export const RepositoryPage = ({
               <Button variant="default" onClick={() => setConnection({ path: "" })}>
                 Connect local repository
               </Button>
+
               <Button
                 disabled={!!busy}
                 onClick={() => void action("repositories.scan", {}, "scan")}
@@ -164,6 +184,7 @@ export const RepositoryPage = ({
             </div>
           </div>
         )}
+
         {active
           .filter((r) => visible(r.owner + "/" + r.name + " " + r.path))
           .map((r) => (
@@ -187,6 +208,7 @@ export const RepositoryPage = ({
                   <MoreHorizontal size={16} />
                 </Button>
               </div>
+
               <div
                 id={`repository-details-${r.id}`}
                 popover="auto"
@@ -198,6 +220,7 @@ export const RepositoryPage = ({
                   <h2>
                     {r.owner}/{r.name}
                   </h2>
+
                   <Button
                     variant="ghost"
                     size="icon"
@@ -208,6 +231,7 @@ export const RepositoryPage = ({
                     <X size={16} />
                   </Button>
                 </div>
+
                 <p className="subtle">
                   {r.environment === "windows" || r.path?.startsWith("/mnt/") ? "Windows" : "WSL"} ·{" "}
                   {r.distro || snapshot.execution_environment?.distro || "Configured environment"}
@@ -224,6 +248,7 @@ export const RepositoryPage = ({
                   <dt>Base</dt>
                   <dd>{r.base_branch}</dd>
                 </dl>
+
                 <div className="actions">
                   <Button
                     size="sm"
@@ -233,6 +258,7 @@ export const RepositoryPage = ({
                   >
                     Open
                   </Button>
+
                   <Button
                     size="sm"
                     disabled={!!busy}
@@ -240,9 +266,11 @@ export const RepositoryPage = ({
                   >
                     Fetch
                   </Button>
+
                   <Button size="sm" disabled={!!busy} onClick={() => void verify(r.id)}>
                     Verify
                   </Button>
+
                   <Button
                     size="sm"
                     variant="ghost"
@@ -263,6 +291,7 @@ export const RepositoryPage = ({
                     Disconnect
                   </Button>
                 </div>
+
                 {verified[r.id] && (
                   <p className="success" role="status">
                     {verified[r.id]}
@@ -272,11 +301,13 @@ export const RepositoryPage = ({
             </div>
           ))}
       </section>
+
       {!!discovered.length && (
         <section aria-labelledby="discovered-repositories-title">
           <h2 id="discovered-repositories-title" className="repository-section-title">
             Discovered local <small>{discovered.length}</small>
           </h2>
+
           {discovered.map((r) => (
             <div className="repo-catalog-row" key={r.path}>
               <div>
@@ -295,22 +326,27 @@ export const RepositoryPage = ({
           ))}
         </section>
       )}
+
       <section aria-labelledby="github-repositories-title">
         <h2 id="github-repositories-title" className="repository-section-title">
           GitHub repositories <small>All</small>
         </h2>
+
         {!snapshot.github?.status?.connected && (
           <p className="empty-row">Connect GitHub in Providers to browse your repositories.</p>
         )}
+
         {rows.map((r) => {
           const managed = snapshot.repositories.find(
             (local) =>
               local.source !== "imported" &&
               `${local.owner}/${local.name}`.toLowerCase() === r.full_name.toLowerCase(),
           );
+
           const cloning = snapshot.github?.clones?.some(
             (c) => c.repository_id === managed?.id && ["resolving", "cloning"].includes(c.status),
           );
+
           return (
             <div className="repo-catalog-row" key={r.id}>
               <div>
@@ -340,6 +376,7 @@ export const RepositoryPage = ({
             </div>
           );
         })}
+
         {!rows.length && snapshot.github?.status?.connected && (
           <p className="empty-row">
             {query
@@ -348,6 +385,7 @@ export const RepositoryPage = ({
           </p>
         )}
       </section>
+
       {connection && (
         <ConnectLocalRepository
           distro={snapshot.execution_environment?.distro || "Configured WSL distribution"}
@@ -356,6 +394,7 @@ export const RepositoryPage = ({
           connected={refresh}
         />
       )}
+
       {candidates && (
         <div className="modal-backdrop">
           <section
@@ -386,10 +425,12 @@ export const RepositoryPage = ({
                 separate Vibestar-managed clone.
               </p>
             )}
+
             <p className="subtle">
               Clone destination: {snapshot.root}/repos/&lt;managed repository ID&gt;. Vibestar owns
               the new clone; your existing checkouts remain user-owned.
             </p>
+
             <div className="actions">
               <Button
                 onClick={() => {
@@ -399,6 +440,7 @@ export const RepositoryPage = ({
               >
                 Enter local path
               </Button>
+
               <Button
                 disabled={!!busy}
                 onClick={async () => {
@@ -416,6 +458,7 @@ export const RepositoryPage = ({
               >
                 Clone with Vibestar
               </Button>
+
               <Button variant="ghost" onClick={() => setCandidates(undefined)}>
                 Cancel
               </Button>

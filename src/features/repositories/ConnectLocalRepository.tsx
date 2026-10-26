@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X, Check } from "lucide-react";
+
 import type { VerifiedLocalRepository } from "../../../backend/workspace/discovery";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
@@ -25,6 +26,7 @@ export const ConnectLocalRepository = ({
   const [base, setBase] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
   const verify = async () => {
     setBusy(true);
     setError("");
@@ -34,6 +36,7 @@ export const ConnectLocalRepository = ({
         environment,
         path,
       });
+
       setVerification(result);
       setUpstream(result.upstream_remote || "");
       setOrigin(result.origin_remote || "");
@@ -44,6 +47,7 @@ export const ConnectLocalRepository = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -61,6 +65,7 @@ export const ConnectLocalRepository = ({
             <X size={16} />
           </Button>
         </div>
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -105,15 +110,18 @@ export const ConnectLocalRepository = ({
               }}
             />
           </label>
+
           <Button type="submit" disabled={busy || !path.trim()}>
             {busy ? "Checking…" : "Verify repository"}
           </Button>
         </form>
+
         {verification && (
           <div className="verified-repository">
             <h3 className="success">
               <Check size={14} /> Repository verified
             </h3>
+
             <dl className="repository-facts">
               {verification.windows_path && (
                 <>
@@ -143,6 +151,7 @@ export const ConnectLocalRepository = ({
                 </div>
               ))}
             </dl>
+
             <label>
               Upstream repository
               <select
@@ -166,6 +175,7 @@ export const ConnectLocalRepository = ({
                   ))}
               </select>
             </label>
+
             <label>
               Origin / fork
               <select value={origin} disabled={busy} onChange={(e) => setOrigin(e.target.value)}>
@@ -179,6 +189,7 @@ export const ConnectLocalRepository = ({
                   ))}
               </select>
             </label>
+
             <label>
               Base branch
               <select
@@ -195,11 +206,13 @@ export const ConnectLocalRepository = ({
                 ))}
               </select>
             </label>
+
             <p className="subtle">
               User-owned checkout
               {verification.dirty ? " · local changes detected and preserved" : ""}. Agents work in
               isolated Vibestar worktrees. Your files, remotes and current branch stay in place.
             </p>
+
             <Button
               variant="default"
               disabled={busy || !upstream || !base}
@@ -213,6 +226,7 @@ export const ConnectLocalRepository = ({
                     origin_remote: origin || null,
                     base_branch: base,
                   });
+
                   await connected();
                   close();
                 } catch (e) {
@@ -226,6 +240,7 @@ export const ConnectLocalRepository = ({
             </Button>
           </div>
         )}
+
         {error && (
           <p className="error-box" role="alert">
             {error}

@@ -3,15 +3,18 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { TerminalSquare, Square, PanelBottom } from "lucide-react";
+
 import { rpc, subscribe, errorMessage } from "../../lib/api";
 import { Button } from "../ui/button";
 import { terminalTheme } from "../../lib/theme";
 import type { Task } from "../../lib/types";
+
 interface TerminalSnapshot {
   session_id: string;
   output: string;
   sequence: number;
 }
+
 export const TaskTerminal = ({
   task,
   onError,
@@ -30,6 +33,7 @@ export const TaskTerminal = ({
   const [session, setSession] = useState("");
   const [busy, setBusy] = useState(false);
   const prefix = owner === "repair" ? "repair.terminal" : "terminal";
+
   const attach = useCallback((snapshot: TerminalSnapshot | null) => {
     terminal.current?.clear();
     if (snapshot) {
@@ -39,8 +43,10 @@ export const TaskTerminal = ({
       for (const event of replay.current || [])
         if (event.sequence > snapshot.sequence) terminal.current?.write(event.text);
     }
+
     replay.current = null;
   }, []);
+
   useEffect(() => {
     const term = new Terminal({
       fontSize: 12,
@@ -48,15 +54,18 @@ export const TaskTerminal = ({
       scrollback: 3000,
       theme: terminalTheme(),
     });
+
     const fit = new FitAddon();
     term.loadAddon(fit);
     if (container.current) {
       term.open(container.current);
       fit.fit();
     }
+
     terminal.current = term;
     let alive = true;
     replay.current = [];
+
     const sub = subscribe((event) => {
       if ((owner === "repair" ? event.repair_id : event.task_id) !== task.id) return;
       if (event.event === "terminal.output") {
@@ -64,12 +73,14 @@ export const TaskTerminal = ({
         if (replay.current) replay.current.push({ text: event.text || "", sequence });
         else if (event.session_id === sessionRef.current) term.write(event.text || "");
       }
+
       if (event.event === "terminal.closed" && event.session_id === sessionRef.current) {
         sessionRef.current = "";
         setSession("");
         term.writeln("\r\n[Task terminal exited]");
       }
     });
+
     void rpc<TerminalSnapshot | null>(`${prefix}.status`, { id: task.id })
       .then((snapshot) => {
         if (alive) attach(snapshot);
@@ -77,6 +88,7 @@ export const TaskTerminal = ({
       .catch((e) => {
         if (alive) onError(errorMessage(e));
       });
+
     const input = term.onData((text) => {
       if (sessionRef.current)
         void rpc(`${prefix}.input`, {
@@ -85,13 +97,16 @@ export const TaskTerminal = ({
           text,
         }).catch((e) => onError(errorMessage(e)));
     });
+
     let lastSize = "";
+
     const observer = new ResizeObserver(() => {
       if (!container.current?.clientHeight) return;
       fit.fit();
       const size = `${term.cols}/${term.rows}`;
       if (sessionRef.current && size !== lastSize) {
         lastSize = size;
+
         void rpc(`${prefix}.resize`, {
           id: task.id,
           session_id: sessionRef.current,
@@ -100,6 +115,7 @@ export const TaskTerminal = ({
         }).catch((e) => onError(errorMessage(e)));
       }
     });
+
     if (container.current) observer.observe(container.current);
     return () => {
       alive = false;
@@ -110,6 +126,7 @@ export const TaskTerminal = ({
       terminal.current = null;
     };
   }, [task.id, onError, attach, owner, prefix]);
+
   const start = async () => {
     setBusy(true);
     replay.current = [];
@@ -119,6 +136,7 @@ export const TaskTerminal = ({
         cols: Math.max(20, terminal.current?.cols || 100),
         rows: Math.max(4, terminal.current?.rows || 20),
       });
+
       attach(snapshot);
       terminal.current?.focus();
     } catch (e) {
@@ -128,6 +146,7 @@ export const TaskTerminal = ({
       setBusy(false);
     }
   };
+
   const close = async () => {
     setBusy(true);
     try {
@@ -140,6 +159,7 @@ export const TaskTerminal = ({
       setBusy(false);
     }
   };
+
   return (
     <section className="task-terminal">
       <header>
@@ -153,6 +173,7 @@ export const TaskTerminal = ({
             Dock
           </Button>
         )}
+
         {session ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => void close()}>
             <Square size={12} />

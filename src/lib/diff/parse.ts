@@ -4,6 +4,7 @@ export interface DiffLine {
   oldLine: number | null;
   newLine: number | null;
 }
+
 export interface DiffHunk {
   header: string;
   oldStart: number;
@@ -22,10 +23,12 @@ export const sourceLines = (text: string) => {
 
 export const parseUnifiedDiff = (patch: string) => {
   const hunks: DiffHunk[] = [];
+
   const unavailable = (reason: "oversized" | "unrecognized") => ({
     hunks: [] as DiffHunk[],
     reason,
   });
+
   if (patch.length > 750000) return unavailable("oversized");
   const lines = patch.split("\n");
   if (lines.length > 12000) return unavailable("oversized");
@@ -33,9 +36,11 @@ export const parseUnifiedDiff = (patch: string) => {
   let oldLine = 0;
   let newLine = 0;
   let files = 0;
+
   const complete = () =>
     !hunk ||
     (oldLine === hunk.oldStart + hunk.oldCount && newLine === hunk.newStart + hunk.newCount);
+
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index].replace(/\r$/, "");
     if (line.startsWith("diff --git ")) {
@@ -43,15 +48,18 @@ export const parseUnifiedDiff = (patch: string) => {
       hunk = undefined;
       continue;
     }
+
     const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(line);
     if (header) {
       if (!complete()) return unavailable("unrecognized");
+
       const [oldStart, oldCount, newStart, newCount] = [
         Number(header[1]),
         Number(header[2] ?? 1),
         Number(header[3]),
         Number(header[4] ?? 1),
       ];
+
       if (
         hunk &&
         (oldStart < hunk.oldStart + hunk.oldCount || newStart < hunk.newStart + hunk.newCount)
@@ -63,6 +71,7 @@ export const parseUnifiedDiff = (patch: string) => {
         )
       )
         return unavailable("unrecognized");
+
       hunk = {
         header: line,
         oldStart,
@@ -71,11 +80,13 @@ export const parseUnifiedDiff = (patch: string) => {
         newCount,
         lines: [],
       };
+
       hunks.push(hunk);
       oldLine = oldStart;
       newLine = newStart;
       continue;
     }
+
     if (!hunk) continue;
     if (line.startsWith("\\ No newline at end of file"))
       hunk.lines.push({
@@ -107,6 +118,7 @@ export const parseUnifiedDiff = (patch: string) => {
       });
     else if (index !== lines.length - 1 || line) return unavailable("unrecognized");
   }
+
   if (
     !complete() ||
     (!hunks.length &&
@@ -123,12 +135,14 @@ export const splitDiffRows = (lines: DiffLine[]) => {
   const rows: { base?: DiffLine; working?: DiffLine; meta?: string }[] = [];
   let removed: DiffLine[] = [];
   let added: DiffLine[] = [];
+
   const flush = () => {
     for (let index = 0; index < Math.max(removed.length, added.length); index++)
       rows.push({ base: removed[index], working: added[index] });
     removed = [];
     added = [];
   };
+
   for (const line of lines) {
     if (line.kind === "delete") removed.push(line);
     else if (line.kind === "add") added.push(line);
@@ -137,6 +151,7 @@ export const splitDiffRows = (lines: DiffLine[]) => {
       rows.push(line.kind === "meta" ? { meta: line.text } : { base: line, working: line });
     }
   }
+
   flush();
   return rows;
 };

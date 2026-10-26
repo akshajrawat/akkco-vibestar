@@ -5,6 +5,7 @@ import { FinalizationSchema, type Finalization } from "./contracts";
 
 export class FinalizationStore {
   constructor(private readonly db: Database) {}
+
   private validate = (taskId: string, source: unknown) => {
     const record = FinalizationSchema.parse(source);
     if (record.task_id !== taskId)
@@ -14,6 +15,7 @@ export class FinalizationStore {
       );
     return record;
   };
+
   list = (taskId: string) =>
     this.db.records.list(
       "git_finalizations",
@@ -24,12 +26,14 @@ export class FinalizationStore {
       (source) => this.validate(taskId, source),
       "id",
     );
+
   get = (taskId: string, id: string) => {
     const record = this.db.all<{ data: string }>(
       "SELECT data FROM git_finalizations WHERE id=? AND task_id=?",
       id,
       taskId,
     )[0];
+
     if (!record) throw new AdeError("not_found", "Git operation does not belong to this task.");
     return this.db.records.decode(
       {
@@ -42,9 +46,11 @@ export class FinalizationStore {
       (source) => this.validate(taskId, source),
     );
   };
+
   save = (record: Finalization) => {
     record.updated_at = now();
     const value = FinalizationSchema.parse(record);
+
     const result = this.db.run(
       "INSERT INTO git_finalizations VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,data=excluded.data,updated_at=excluded.updated_at WHERE git_finalizations.task_id=excluded.task_id",
       value.id,
@@ -54,12 +60,14 @@ export class FinalizationStore {
       value.created_at,
       value.updated_at,
     );
+
     if (result.changes !== 1)
       throw new AdeError(
         "ownership",
         "This Git request identity already belongs to a different task.",
       );
   };
+
   event = (record: Finalization, phase: string, output = "", code: number | null = null) => {
     const text = Buffer.from(redact(output), "utf8");
     let start = Math.max(0, text.length - 65536);
@@ -73,11 +81,13 @@ export class FinalizationStore {
       now(),
     );
   };
+
   remove = (id: string) =>
     this.db.transaction(() => {
       this.db.run("DELETE FROM git_operation_events WHERE finalization_id=?", id);
       this.db.run("DELETE FROM git_finalizations WHERE id=?", id);
     });
+
   events = (id: string, before?: number) =>
     this.db
       .all<{

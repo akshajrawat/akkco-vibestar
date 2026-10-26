@@ -1,4 +1,5 @@
 import { GitBranch, X } from "lucide-react";
+
 import { Button } from "../../components/ui/button";
 import { ListSkeleton } from "../../components/ui/PageHeader";
 import { errorMessage } from "../../lib/api";
@@ -8,10 +9,12 @@ import { FinalizationCommit } from "./FinalizationCommit";
 import { FinalizationFiles } from "./FinalizationFiles";
 import { FinalizationOutput } from "./FinalizationOutput";
 import { useGitFinalization, type GitFinalizationProps } from "./useGitFinalization";
+
 /** Composes the existing Files, Commit, Publish and Confirm journey around one task-local controller. */
 export const GitFinalization = (props: GitFinalizationProps) => {
   const { task, repository, close, complete } = props;
   const controller = useGitFinalization(props);
+
   const {
     connectingFork,
     setConnectingFork,
@@ -41,6 +44,7 @@ export const GitFinalization = (props: GitFinalizationProps) => {
         }}
       />
     );
+
   return (
     <div className="modal-backdrop">
       <section
@@ -62,6 +66,7 @@ export const GitFinalization = (props: GitFinalizationProps) => {
             <h2 id="git-finalization-title">Git Finalization</h2>
             <p>Select reviewed files, keep your exact message and confirm the destination.</p>
           </div>
+
           <Button
             variant="ghost"
             size="icon"
@@ -72,6 +77,7 @@ export const GitFinalization = (props: GitFinalizationProps) => {
             <X size={18} />
           </Button>
         </header>
+
         <details className="git-workspace-details">
           <summary>Workspace identity</summary>
           <dl className="repository-facts">
@@ -93,21 +99,25 @@ export const GitFinalization = (props: GitFinalizationProps) => {
             </dd>
           </dl>
         </details>
+
         {error && (
           <p className="error-box" role="alert">
             {error}
           </p>
         )}
+
         {notice && (
           <p className="notice" role="status">
             {notice}
           </p>
         )}
+
         {taskView.persistenceError && (
           <p className="error-box" role="alert">
             {taskView.persistenceError}
           </p>
         )}
+
         {!snapshot ? (
           <>
             <ListSkeleton label="Loading changed files and Git history" />
@@ -144,10 +154,12 @@ export const GitFinalization = (props: GitFinalizationProps) => {
             <FinalizationOutput controller={controller} snapshot={snapshot} task={task} />
           </>
         )}
+
         <footer className="git-finalization-footer">
           <small>
             Task branch <code>{task.branch_name}</code>
           </small>
+
           <div className="actions">
             {task.status === "ready_for_review" && !record?.head && (
               <Button
@@ -167,6 +179,7 @@ export const GitFinalization = (props: GitFinalizationProps) => {
                 Mark task complete
               </Button>
             )}
+
             <Button variant="secondary" disabled={locked} onClick={close}>
               Keep local and close
             </Button>

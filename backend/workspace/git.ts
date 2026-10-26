@@ -32,12 +32,14 @@ import {
   worktreePath,
   workspaceEntry,
 } from "./paths";
+
 export class GitWorkspace {
   constructor(
     private readonly root: string,
     private readonly repository?: (id: string) => Repository,
     private readonly transport?: (url: string) => string,
   ) {}
+
   private registeredPath = async (id: string) => {
     const repo = this.repository?.(id);
     if (repo && repo.source !== "imported") {
@@ -45,10 +47,13 @@ export class GitWorkspace {
         throw new AdeError("isolation", "Managed repository is outside its authorized root.");
       await managedPath(this.root, repo.path);
     }
+
     return repo?.path;
   };
+
   commonDirectory = async (cwd: string) =>
     realpath(await gitChecked(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd));
+
   acquireWrite = async (cwd: string, identity: string) => {
     const common = await this.commonDirectory(cwd);
     const key = createHash("sha256").update(identity).digest("hex");
@@ -69,28 +74,34 @@ export class GitWorkspace {
       throw error;
     }
   };
+
   withLock = async <T>(repoId: string, operation: () => Promise<T>) => {
     if (!/^[\w-]+$/.test(repoId))
       throw new AdeError("invalid_input", "Invalid repository lock key");
     const repository = await this.registeredPath(repoId);
+
     const common =
       repository && (await exists(join(repository, ".git")))
         ? await this.commonDirectory(repository)
         : null;
+
     const path = common || join(this.root, "state", `repo-${repoId}.lock`);
     if (!common) await writeFile(path, "", { flag: "a", mode: 0o600 });
+
     const release = await lockfile.lock(path, {
       ...(common ? { lockfilePath: join(common, "vibestar-operation.lock") } : {}),
       stale: 30000,
       update: 10000,
       retries: { retries: 30, minTimeout: 250, maxTimeout: 2000 },
     });
+
     try {
       return await operation();
     } finally {
       await release();
     }
   };
+
   clone = async (
     url: string,
     path: string,
@@ -102,6 +113,7 @@ export class GitWorkspace {
     await managedPath(this.root, path);
     await mkdir(dirname(path), { recursive: true });
     await managedPath(this.root, path);
+
     const result = await gitExecute({
       program: "git",
       allowLocalTransport: !!this.transport,
@@ -120,12 +132,14 @@ export class GitWorkspace {
       progressLines: true,
       onLine: (_, line) => onProgress?.(line),
     });
+
     if (result.code !== 0)
       throw new AdeError(
         "clone_failed",
         `Couldn't clone repository. ${result.stderr.slice(-4000)}`,
       );
   };
+
   fetch = async (repo: Repository, signal?: AbortSignal) => {
     const result = await gitExecute({
       program: "git",
@@ -134,9 +148,11 @@ export class GitWorkspace {
       signal,
       allowLocalTransport: !!this.transport,
     });
+
     if (result.code !== 0) throw new AdeError("git_fetch", `Git fetch failed: ${result.stderr}`);
     repo.last_fetched = now();
   };
+
   private fetchArgs = (repo: Repository, branch: string) => [
     "fetch",
     "--no-write-fetch-head",
@@ -146,10 +162,12 @@ export class GitWorkspace {
     this.transport?.(repo.upstream_url) ?? repo.upstream_url,
     `+refs/heads/${branch}:${this.baseRef(repo, branch)}`,
   ];
+
   private baseRef = (repo: Repository, branch: string) =>
     repo.source === "imported"
       ? `refs/vibestar/${repo.id}/${branch}`
       : `refs/remotes/upstream/${branch}`;
+
   prepare = async (
     repo: Repository,
     t: Task,
@@ -162,23 +180,29 @@ export class GitWorkspace {
       if (t.worktree_path) {
         if (await this.reconcileTaskPreparation(repo, t, checkpoint)) return;
       }
+
       t.workspace_checkpoint = {
         state: "fetching",
         git_common_dir: await this.commonDirectory(repo.path),
         started_at: now(),
         operation: null,
       };
+
       checkpoint?.(t);
+
       const command = (args: string[]) =>
         this.taskOperation(repo, t, args, signal, checkpoint, trace);
+
       await command(this.fetchArgs(repo, t.base_branch));
       repo.last_fetched = now();
       await gitChecked(["check-ref-format", "--branch", t.base_branch], repo.path, signal);
+
       const base = await gitChecked(
         ["rev-parse", "--verify", `${this.baseRef(repo, t.base_branch)}^{commit}`],
         repo.path,
         signal,
       );
+
       if (!/^[a-f0-9]{40,64}$/.test(base))
         throw new AdeError("git_base", "Invalid base commit SHA");
       for (let suffix = 0; suffix < 10000; suffix++) {
@@ -187,6 +211,7 @@ export class GitWorkspace {
           t.scope_mode === "whole_issue" ? "whole-issue" : t.claimed_scope,
           suffix,
         );
+
         const path = worktreePath(
           this.root,
           repo.id,
@@ -194,12 +219,15 @@ export class GitWorkspace {
           t.scope_mode === "whole_issue" ? "whole-issue" : t.claimed_scope,
           suffix,
         );
+
         await managedPath(this.root, path);
+
         const existing = await gitCapture(
           ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
           repo.path,
           signal,
         );
+
         if (existing.code === 0 || (await exists(path))) continue;
         await mkdir(dirname(path), { recursive: true });
         await managedPath(this.root, path);
@@ -218,9 +246,11 @@ export class GitWorkspace {
         t.base_commit_sha = base;
         t.base_branch = repo.base_branch;
         t.worktree_path = await realpath(path);
+
         const gitdir = await realpath(
           await gitChecked(["rev-parse", "--absolute-git-dir"], t.worktree_path),
         );
+
         if (!inside(join(t.workspace_checkpoint.git_common_dir, "worktrees"), gitdir))
           throw new AdeError(
             "ownership",
@@ -231,8 +261,10 @@ export class GitWorkspace {
         checkpoint?.(t);
         return;
       }
+
       throw new AdeError("branch_collision", "Unable to find a unique branch name");
     });
+
   private taskOperation = async (
     repo: Repository,
     task: Task,
@@ -243,6 +275,7 @@ export class GitWorkspace {
   ) => {
     const started = now();
     let finished = false;
+
     const o = await gitExecute({
       program: "git",
       args,
@@ -251,12 +284,14 @@ export class GitWorkspace {
       allowLocalTransport: !!this.transport,
       onSpawn: (pid, identity) => {
         if (finished || !identity || !task.workspace_checkpoint) return;
+
         task.workspace_checkpoint.operation = {
           kind: args[0],
           pid,
           identity,
           started_at: started,
         };
+
         checkpoint?.(task);
       },
     }).finally(() => {
@@ -264,18 +299,22 @@ export class GitWorkspace {
       if (task.workspace_checkpoint) task.workspace_checkpoint.operation = null;
       checkpoint?.(task);
     });
+
     await trace?.({
       argv: ["git", ...args],
       cwd: repo.path,
       started_at: started,
       ...o,
     });
+
     if (o.code !== 0)
       throw new AdeError("git_prepare", `git ${args[0]} exited ${o.code}: ${o.stderr}`);
     return o.stdout.trim();
   };
+
   recoverTaskPreparation = (repo: Repository, task: Task, checkpoint?: (task: Task) => void) =>
     this.withLock(repo.id, () => this.reconcileTaskPreparation(repo, task, checkpoint));
+
   private reconcileTaskPreparation = async (
     repo: Repository,
     task: Task,
@@ -298,19 +337,24 @@ export class GitWorkspace {
         "ownership",
         "Task creation common directory changed; preserve the checkpoint for recovery.",
       );
+
     const branch = await gitCapture(
       ["rev-parse", "--verify", `refs/heads/${task.branch_name}`],
       repo.path,
     );
+
     const marker = await gitCapture(
       ["config", "--local", "--get", `branch.${task.branch_name}.vibestarTask`],
       repo.path,
     );
+
     const registrations = await gitChecked(["worktree", "list", "--porcelain"], repo.path);
+
     const existence = await gitCapture(
       ["show-ref", "--verify", "--quiet", `refs/heads/${task.branch_name}`],
       repo.path,
     );
+
     if (
       existence.code === 1 &&
       !(await exists(task.worktree_path)) &&
@@ -323,6 +367,7 @@ export class GitWorkspace {
       checkpoint?.(task);
       return false;
     }
+
     for (const entry of registrations.split("\n\n")) {
       const lines = entry.split("\n");
       if (
@@ -334,6 +379,7 @@ export class GitWorkspace {
           "Task branch is registered outside its saved worktree; it was preserved.",
         );
     }
+
     if (branch.code !== 0 || branch.stdout.trim() !== task.base_commit_sha)
       throw new AdeError(
         "ownership",
@@ -349,6 +395,7 @@ export class GitWorkspace {
         ["reflog", "show", "--format=%gD%x00%gs", "--date=raw", `refs/heads/${task.branch_name}`],
         repo.path,
       );
+
       const [selector, message] = creation.split("\0");
       const created = Number(selector.match(/@\{(\d+) /)?.[1]);
       const started = Date.parse(task.workspace_checkpoint?.started_at || "") / 1000;
@@ -375,21 +422,25 @@ export class GitWorkspace {
             "Interrupted worktree creation has changed contents or Git metadata. Preserve it for inspection.",
           );
       }
+
       await gitChecked(
         ["config", "--local", `branch.${task.branch_name}.vibestarTask`, task.id],
         repo.path,
       );
     }
+
     if (!(await exists(task.worktree_path))) {
       if (registrations.split("\n").includes(`worktree ${task.worktree_path}`)) {
         const entry = registrations
           .split("\n\n")
           .find((value) => value.split("\n").includes(`worktree ${task.worktree_path}`));
+
         if (!entry?.split("\n").includes(`HEAD ${task.base_commit_sha}`))
           throw new AdeError(
             "ownership",
             "Missing worktree registration changed; it was preserved.",
           );
+
         // The path is absent and its exact registration, branch and creation
         // identity were verified above. No working files can be discarded.
         await this.taskOperation(
@@ -400,8 +451,10 @@ export class GitWorkspace {
           checkpoint,
         );
       }
+
       await mkdir(dirname(task.worktree_path), { recursive: true });
       await managedPath(this.root, task.worktree_path);
+
       await this.taskOperation(
         repo,
         task,
@@ -410,6 +463,7 @@ export class GitWorkspace {
         checkpoint,
       );
     }
+
     const cwd = await this.assertTask(task);
     if (
       (await this.commonDirectory(cwd)) !== common ||
@@ -430,6 +484,7 @@ export class GitWorkspace {
       );
     await writeWorktreeOwner(gitdir, "vibestar-task-owner", task.id);
     task.branch_owned = true;
+
     task.workspace_checkpoint = {
       ...task.workspace_checkpoint,
       state: "ready",
@@ -437,9 +492,11 @@ export class GitWorkspace {
       started_at: task.workspace_checkpoint?.started_at || now(),
       operation: null,
     };
+
     checkpoint?.(task);
     return true;
   };
+
   assertTask = async (t: WorkspaceAssignment) => {
     await this.registeredPath(t.repo_id);
     const cwd = await taskRoot(this.root, t);
@@ -451,13 +508,18 @@ export class GitWorkspace {
       );
     return cwd;
   };
+
   fingerprint = async (t: WorkspaceAssignment) =>
     `issue-v2:${await this.workspaceFingerprint(t, true, true)}`;
+
   repairFingerprint = (t: WorkspaceAssignment, includeHistory = true) =>
     this.workspaceFingerprint(t, includeHistory);
+
   contentFingerprint = (t: WorkspaceAssignment) => this.workspaceFingerprint(t, false, true);
+
   disposalFingerprint = (t: WorkspaceAssignment) =>
     this.workspaceFingerprint(t, true, true, undefined, 0, true);
+
   private workspaceFingerprint = async (
     t: WorkspaceAssignment,
     includeHistory: boolean,
@@ -476,6 +538,7 @@ export class GitWorkspace {
         "Submodule fingerprint boundary is unsafe or exceeds the nesting limit.",
       );
     const hash = createHash("sha256").update(t.base_commit_sha);
+
     const output = async (args: string[], directory = cwd) => {
       const result = await gitExecute({
         program: "git",
@@ -483,6 +546,7 @@ export class GitWorkspace {
         cwd: directory,
         rawStdoutForIntegrity: true,
       });
+
       if (result.code !== 0 || result.stdout_truncated)
         throw new AdeError(
           "fingerprint",
@@ -490,21 +554,26 @@ export class GitWorkspace {
         );
       return result.stdout;
     };
+
     const index = await output(["ls-files", "--stage", "-z"]);
+
     const gitlinks = new Set(
       index
         .split("\0")
         .filter((entry) => entry.startsWith("160000 "))
         .map((entry) => entry.slice(entry.indexOf("\t") + 1)),
     );
+
     if (includeHistory) {
       hash.update(await output(["rev-parse", "HEAD"]));
+
       hash.update(
         await output(
           allTracked ? ["ls-files", "--stage", "-v", "-z"] : ["ls-files", "--stage", "-z"],
         ),
       );
     }
+
     const paths = new Set(
       (
         (await output([
@@ -526,6 +595,7 @@ export class GitWorkspace {
         .split("\0")
         .filter(Boolean),
     );
+
     for (const path of [...paths].sort()) {
       hash.update(`\0${path}\0`);
       const { path: file, metadata } = await workspaceEntry(cwd, path);
@@ -533,6 +603,7 @@ export class GitWorkspace {
         hash.update("deleted");
         continue;
       }
+
       hash.update(String(metadata.mode & 0o111));
       if (metadata.isSymbolicLink()) {
         hash.update("symlink:");
@@ -572,6 +643,7 @@ export class GitWorkspace {
           hash.update("directory");
           continue;
         }
+
         if (!(await exists(join(file, ".git")))) {
           if ((await readdir(file)).length)
             throw new AdeError(
@@ -581,13 +653,17 @@ export class GitWorkspace {
           hash.update("uninitialized-gitlink");
           continue;
         }
+
         const top = await realpath((await output(["rev-parse", "--show-toplevel"], file)).trim());
+
         const common = await realpath(
           (await output(["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim(),
         );
+
         const nestedCommon = await realpath(
           (await output(["rev-parse", "--path-format=absolute", "--git-common-dir"], file)).trim(),
         );
+
         if (top !== file || !inside(common, nestedCommon))
           throw new AdeError(
             "fingerprint",
@@ -595,6 +671,7 @@ export class GitWorkspace {
           );
         const head = (await output(["rev-parse", "HEAD"], file)).trim();
         hash.update("gitlink:");
+
         hash.update(
           await this.workspaceFingerprint(
             { ...t, base_commit_sha: head },
@@ -607,8 +684,10 @@ export class GitWorkspace {
         );
       } else throw new AdeError("fingerprint", "Review changes include an unsupported file type.");
     }
+
     return hash.digest("hex");
   };
+
   file = async (t: WorkspaceAssignment, path: string, oldPath?: string | null, head?: string) => {
     const cwd = await this.assertTask(t);
     const file = await safeFile(cwd, path);
@@ -636,7 +715,9 @@ export class GitWorkspace {
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
+
     const binary = bytes.includes(0) || original.stdout.includes("\0");
+
     const unified = await gitCapture(
       [
         "diff",
@@ -650,6 +731,7 @@ export class GitWorkspace {
       ],
       cwd,
     );
+
     const addedPatch =
       original.code !== 0 && bytes.length && !unified.stdout
         ? await gitCapture(
@@ -657,6 +739,7 @@ export class GitWorkspace {
             cwd,
           )
         : null;
+
     return {
       original: original.code === 0 ? original.stdout : "",
       modified: bytes.toString("utf8"),
@@ -664,8 +747,10 @@ export class GitWorkspace {
       unified: unified.stdout || addedPatch?.stdout || "",
     };
   };
+
   diff = async (t: WorkspaceAssignment, head?: string) => {
     const cwd = await this.assertTask(t);
+
     const output = await gitCapture(
       [
         "diff",
@@ -678,6 +763,7 @@ export class GitWorkspace {
       ],
       cwd,
     );
+
     if (output.code !== 0) throw new AdeError("diff", output.stderr);
     const fields = output.stdout.split("\0");
     const files: DiffFile[] = [];
@@ -686,6 +772,7 @@ export class GitWorkspace {
       const old = fields[i++];
       if (!status) break;
       const renamed = status.startsWith("R") || status.startsWith("C");
+
       files.push({
         path: renamed ? fields[i++] : old,
         old_path: renamed ? old : null,
@@ -698,6 +785,7 @@ export class GitWorkspace {
         binary: false,
       });
     }
+
     const untracked = await gitCapture(["ls-files", "--others", "--exclude-standard", "-z"], cwd);
     for (const path of head ? [] : untracked.stdout.split("\0").filter(Boolean))
       files.push({
@@ -711,17 +799,21 @@ export class GitWorkspace {
         deletions: 0,
         binary: false,
       });
+
     const porcelain = await gitCapture(
       ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
       cwd,
     );
+
     const rows = head ? [] : porcelain.stdout.split("\0");
     for (let i = 0; i < rows.length; i++) {
       const line = rows[i];
       if (line.length < 4) continue;
+
       const x = line[0],
         y = line[1],
         path = line.slice(3);
+
       if (x === "R" || x === "C") i++;
       let file = files.find((f) => f.path === path);
       if (!file) {
@@ -736,12 +828,15 @@ export class GitWorkspace {
           deletions: 0,
           binary: false,
         };
+
         files.push(file);
       }
+
       file.staged = x !== " " && x !== "?";
       file.unstaged = y !== " ";
       file.untracked = x === "?";
     }
+
     for (const f of files) {
       try {
         const content = await this.file(t, f.path, f.old_path, head);
@@ -760,6 +855,7 @@ export class GitWorkspace {
             ],
             cwd,
           );
+
           for (const line of stats.stdout.split("\n")) {
             const [a, d] = line.split("\t");
             f.insertions += Number(a) || 0;
@@ -772,6 +868,7 @@ export class GitWorkspace {
         } else throw e;
       }
     }
+
     return {
       files,
       insertions: files.reduce((n, f) => n + f.insertions, 0),
@@ -779,6 +876,7 @@ export class GitWorkspace {
       base: t.base_commit_sha,
     };
   };
+
   discard = async (t: Task, path?: string) => {
     const cwd = await this.assertTask(t);
     for (const f of (await this.diff(t)).files.filter((f) => !path || f.path === path)) {
@@ -793,8 +891,10 @@ export class GitWorkspace {
         await gitCapture(["rm", "--cached", "--ignore-unmatch", "--", f.path], cwd);
         if (await exists(file)) await rm(file);
       }
+
       if (f.old_path) {
         await safeFile(cwd, f.old_path);
+
         await gitChecked(
           ["restore", "--source", t.base_commit_sha, "--staged", "--worktree", "--", f.old_path],
           cwd,
@@ -803,6 +903,7 @@ export class GitWorkspace {
     }
   };
 }
+
 export interface DiffFile {
   path: string;
   old_path: string | null;
@@ -814,4 +915,5 @@ export interface DiffFile {
   deletions: number;
   binary: boolean;
 }
+
 const countLines = (s: string) => (s ? s.split("\n").length - (s.endsWith("\n") ? 1 : 0) : 0);

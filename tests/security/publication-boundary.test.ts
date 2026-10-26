@@ -1,7 +1,9 @@
 import { expect, it } from "vitest";
+
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { checked, execute } from "../../backend/execution/runtime/process";
 import { publishFastForward } from "../../backend/workspace/publication";
 
@@ -13,12 +15,14 @@ const fixture = async () => {
   await checked("git", ["init", "-b", "contribution"], cwd);
   await checked("git", ["config", "user.name", "Fixture"], cwd);
   await checked("git", ["config", "user.email", "fixture@example.invalid"], cwd);
+
   const commit = async (text: string) => {
     await writeFile(join(cwd, "source.txt"), text);
     await checked("git", ["add", "--", "source.txt"], cwd);
     await checked("git", ["commit", "-m", text], cwd);
     return checked("git", ["rev-parse", "HEAD"], cwd);
   };
+
   const expectedRemote = await commit("base");
   await checked("git", ["clone", "--bare", cwd, destination], root);
   const intermediate = await commit("intermediate");
@@ -46,15 +50,19 @@ it.each([false, true])(
       const result = await publishFastForward({ ...request, skipHooks }, async (command) => {
         // Advance after all host checks but before the Git advertisement.
         await checked("git", ["fetch", request.cwd, "HEAD"], request.destination);
+
         await checked(
           "git",
           ["update-ref", "refs/heads/contribution", intermediate],
           request.destination,
         );
+
         return execute(command);
       });
+
       expect(result.code).not.toBe(0);
       expect(result.stdout + result.stderr).toContain("stale info");
+
       expect(await checked("git", ["rev-parse", "contribution"], request.destination)).toBe(
         intermediate,
       );
@@ -69,10 +77,13 @@ it("skips a private hook without skipping the independent ancestry or exact ref 
   try {
     const hooksPath = join(root, "hooks");
     await mkdir(hooksPath);
+
     await writeFile(join(hooksPath, "pre-push"), "#!/bin/sh\nexit 19\n", {
       mode: 0o700,
     });
+
     expect((await publishFastForward({ ...request, hooksPath })).code).not.toBe(0);
+
     await expect(
       publishFastForward({
         ...request,
@@ -82,10 +93,13 @@ it("skips a private hook without skipping the independent ancestry or exact ref 
         localHead: request.expectedRemote,
       }),
     ).rejects.toThrow("fast-forward");
+
     await expect(
       publishFastForward({ ...request, skipHooks: true, branch: "../other" }),
     ).rejects.toThrow("Invalid");
+
     expect((await publishFastForward({ ...request, hooksPath, skipHooks: true })).code).toBe(0);
+
     expect(await checked("git", ["rev-parse", "contribution"], request.destination)).toBe(
       request.localHead,
     );

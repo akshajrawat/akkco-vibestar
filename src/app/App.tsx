@@ -11,6 +11,7 @@ import {
   Search,
   Activity,
 } from "lucide-react";
+
 import type { Page } from "../lib/types";
 import { useWorkspace, useDetail } from "../hooks/useWorkspace";
 import { Overview } from "../features/tasks/Overview";
@@ -40,6 +41,7 @@ import { RepairWorkspace } from "../features/pull-requests/repair/RepairWorkspac
 import { IssueWatchPage } from "../features/issue-watch/IssueWatchPage";
 import { UsageView } from "../features/usage/UsageView";
 import { useWatchNotifications } from "../features/issue-watch/notifications";
+
 const navigation = [
   ["Tasks", ListTodo],
   ["Scheduled", GitPullRequest],
@@ -49,6 +51,7 @@ const navigation = [
   ["Usage", Activity],
   ["Settings", Settings],
 ] as const;
+
 const NavigationPane = ({ width, children }: { width: number; children: ReactNode }) => {
   const present = useIsPresent();
   const reduced = useReducedMotion();
@@ -71,18 +74,24 @@ const NavigationPane = ({ width, children }: { width: number; children: ReactNod
 export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
   const [page, setPage] = useState<Page>("Tasks");
+
   const [taskId, setTaskId] = useState<string | null>(() =>
     localStorage.getItem("vibestar.activeTask"),
   );
+
   const [palette, setPalette] = useState(false);
+
   const [repairId, setRepairId] = useState<string | null>(() =>
     localStorage.getItem("vibestar.activeRepair"),
   );
+
   const [newTask, setNewTask] = useState(false);
+
   const [taskPrefill, setTaskPrefill] = useState<{
     url: string;
     notes: string;
   }>();
+
   const [watchId, setWatchId] = useState<string | null>(null);
   const notifications = useWatchNotifications(snapshot?.capabilities?.manual_issue_watch === true);
   const [sidebar, setSidebar] = useState(true);
@@ -91,6 +100,7 @@ export const App = () => {
   const activeView = useTaskView(workspaceId || "");
   const { detail, error: detailError } = useDetail(taskId, revision);
   const onError = useCallback((s: string) => setError(s), [setError]);
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.isComposing) return;
@@ -98,20 +108,24 @@ export const App = () => {
         e.preventDefault();
         setPalette((v) => !v);
       }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
         setSidebar((v) => !v);
       }
     };
+
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
+
   useEffect(() => {
     if (snapshot && taskId && !snapshot.tasks.some((t) => t.id === taskId)) {
       setTaskId(null);
       localStorage.removeItem("vibestar.activeTask");
     }
   }, [snapshot, taskId]);
+
   const open = (id: string) => {
     setRepairId(null);
     localStorage.removeItem("vibestar.activeRepair");
@@ -119,6 +133,7 @@ export const App = () => {
     setPage("Tasks");
     localStorage.setItem("vibestar.activeTask", id);
   };
+
   const navigate = (p: Page) => {
     setPage(p);
     setWatchId(null);
@@ -126,6 +141,7 @@ export const App = () => {
     setRepairId(null);
     localStorage.removeItem("vibestar.activeRepair");
   };
+
   const openRepair = (id: string) => {
     setTaskId(null);
     setRepairId(id);
@@ -133,7 +149,9 @@ export const App = () => {
     localStorage.removeItem("vibestar.activeTask");
     localStorage.setItem("vibestar.activeRepair", id);
   };
+
   const count = snapshot?.attention?.length || 0;
+
   const content =
     page === "Scheduled" && snapshot ? (
       <ScheduledPage
@@ -159,6 +177,7 @@ export const App = () => {
           if (!id) return;
           if (row.task_id) open(id);
           else openRepair(id);
+
           updateTaskView(id, {
             secondaryOpen: true,
             secondarySection: "run-details",
@@ -186,6 +205,7 @@ export const App = () => {
         back={() => navigate("Scheduled")}
         analyze={(jobId) => {
           navigate("Scheduled");
+
           void rpc("scheduled.analyze", {
             id: jobId,
             request_id: crypto.randomUUID(),
@@ -228,6 +248,7 @@ export const App = () => {
         {!error && <ListSkeleton label="Loading the saved workspace" />}
       </div>
     );
+
   return (
     <div className="desktop-shell">
       <TitleBar
@@ -239,6 +260,7 @@ export const App = () => {
             : undefined
         }
       />
+
       <div className="app-shell">
         {snapshot?.migration && <DataMigration migration={snapshot.migration} refresh={refresh} />}
         <AnimatePresence initial={false}>
@@ -247,6 +269,7 @@ export const App = () => {
               <div className="brand">
                 VIBESTAR <small>LOCAL</small>
               </div>
+
               <Button
                 className="new-task-button"
                 aria-label="New task"
@@ -258,10 +281,12 @@ export const App = () => {
                 <span className="spacer" />
                 <kbd>＋</kbd>
               </Button>
+
               <div className="sidebar-label">
                 <button onClick={() => navigate("Tasks")}>Tasks</button>
                 <small>{snapshot?.tasks.length || 0}</small>
               </div>
+
               <TaskNavigation
                 repositories={snapshot?.repositories || []}
                 tasks={snapshot?.tasks || []}
@@ -269,19 +294,23 @@ export const App = () => {
                 open={open}
                 onError={onError}
               />
+
               {!!snapshot?.repairs?.length && (
                 <div className="repair-navigation">
                   <div className="sidebar-label">
                     PULL REQUESTS <small>{snapshot.repairs.length}</small>
                   </div>
+
                   {snapshot.repositories.map((repository) => {
                     const repairs =
                       snapshot.repairs?.filter((repair) => repair.repo_id === repository.id) || [];
+
                     return repairs.length ? (
                       <div key={repository.id}>
                         <small className="repair-repository-label">
                           {repository.owner}/{repository.name}
                         </small>
+
                         {repairs.map((repair) => (
                           <button
                             key={repair.id}
@@ -298,6 +327,7 @@ export const App = () => {
                   })}
                 </div>
               )}
+
               <nav className="sidebar-tools">
                 {navigation
                   .filter(([label]) => label !== "Tasks")
@@ -333,6 +363,7 @@ export const App = () => {
                     </button>
                   ))}
               </nav>
+
               <div className="sidebar-footer">
                 <span className="local-dot" />
                 {snapshot?.github?.status?.connected
@@ -343,6 +374,7 @@ export const App = () => {
             </NavigationPane>
           )}
         </AnimatePresence>
+
         {sidebar && (
           <ResizeHandle
             label="Resize navigation pane"
@@ -352,12 +384,14 @@ export const App = () => {
             max={380}
           />
         )}
+
         <main className="main-area">
           {snapshot?.warning && (
             <p className="helper-warning" role="alert">
               {snapshot.warning}
             </p>
           )}
+
           {error && (
             <div className="global-error">
               <div>
@@ -367,6 +401,7 @@ export const App = () => {
                   <pre>{error}</pre>
                 </details>
               </div>
+
               <Button
                 size="icon"
                 variant="ghost"
@@ -377,6 +412,7 @@ export const App = () => {
               </Button>
             </div>
           )}
+
           {notifications.notices.length > 0 && (
             <div
               className="watch-notifications"
@@ -402,6 +438,7 @@ export const App = () => {
                       View results
                     </Button>
                   </div>
+
                   <Button
                     size="icon"
                     variant="ghost"
@@ -416,6 +453,7 @@ export const App = () => {
           )}
           {content}
         </main>
+
         {palette && (
           <CommandPalette
             close={() => setPalette(false)}
@@ -508,6 +546,7 @@ export const App = () => {
             ]}
           />
         )}
+
         {newTask && (
           <NewTask
             initialIssueUrl={taskPrefill?.url}
@@ -518,10 +557,12 @@ export const App = () => {
             }}
             created={async (id) => {
               await refresh();
+
               updateTaskView(id, {
                 secondaryOpen: window.innerWidth >= 1200,
                 secondarySection: "pipeline",
               });
+
               open(id);
             }}
           />

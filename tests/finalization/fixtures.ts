@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { FinalizationService } from "../../backend/finalization/service";
 import { checked } from "../../backend/execution/runtime/process";
 import { defaultSettings, now } from "../../backend/domain";
@@ -23,28 +24,34 @@ export const finalizationFixture = async (
   const fork = join(dir, "fork.git");
   await checked("git", ["clone", "--bare", repo.path, fork], dir);
   await checked("git", ["update-ref", "-d", `refs/heads/${task.branch_name}`], fork);
+
   await checked(
     "git",
     ["remote", "add", "origin", "https://github.com/contributor/fixture.git"],
     repo.path,
   );
+
   await checked(
     "git",
     ["remote", "set-url", "upstream", "https://github.com/fixture/fixture.git"],
     repo.path,
   );
+
   repo.origin_url = "https://github.com/contributor/fixture.git";
   repo.upstream_url = "https://github.com/fixture/fixture.git";
   engine.db.saveRepository(repo);
   await writeFile(join(task.worktree_path, "source.txt"), "independently reviewed change\n");
   task.status = "ready_for_review";
   task.stage = 6;
+
   task.execution_settings = {
     ...defaultSettings,
     antigravity: { model: "next-model", effort: "low", timeout_secs: 30 },
   };
+
   task.final_review_hash = await engine.git.fingerprint(task);
   engine.db.saveTask(task);
+
   engine.db.run(
     "INSERT INTO agent_runs(id,task_id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,purpose) VALUES(?,?,3,'codex','next-model','low','Saved fixture implementation; no real inference','completed',?,?,0,'fixture implementation')",
     randomUUID(),
@@ -52,6 +59,7 @@ export const finalizationFixture = async (
     now(),
     now(),
   );
+
   const diffCheck = await engine.runCommand(task.id, [
     "git",
     "diff",
@@ -59,8 +67,10 @@ export const finalizationFixture = async (
     task.base_commit_sha,
     "--",
   ]);
+
   if (diffCheck.code !== 0)
     throw new Error(`Fixture pinned-base validation failed: ${diffCheck.stderr}`);
+
   engine.db.run(
     "INSERT INTO task_artifacts VALUES(?,?,3,'plan',?,?)",
     randomUUID(),
@@ -75,6 +85,7 @@ export const finalizationFixture = async (
     }),
     now(),
   );
+
   engine.db.run(
     "INSERT INTO task_artifacts VALUES(?,?,5,'plan',?,?)",
     randomUUID(),
@@ -88,6 +99,7 @@ export const finalizationFixture = async (
     }),
     now(),
   );
+
   const identity = {
     id: "fork-42",
     full_name: "contributor/fixture",
@@ -96,11 +108,14 @@ export const finalizationFixture = async (
     parent: { full_name: "fixture/fixture" },
     viewer: "contributor",
   };
+
   const transport = (url: string) => {
     if (url !== repo.origin_url) throw new Error("Unexpected test transport");
     return fork;
   };
+
   const service = new FinalizationService(engine, async () => identity, transport);
+
   const preview = async (paths = ["source.txt"], replace = false) =>
     service.preview({
       id: task.id,
@@ -109,11 +124,13 @@ export const finalizationFixture = async (
       paths,
       replace_selected_staged: replace,
     });
+
   const close = async () => {
     await service.close();
     await engine.close();
     await rm(dir, { recursive: true, force: true });
   };
+
   return {
     dir,
     root,

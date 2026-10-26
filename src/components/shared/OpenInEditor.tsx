@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Code2 } from "lucide-react";
+
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../ui/button";
 
@@ -18,8 +19,10 @@ export const OpenInEditor = ({
     editors: { id: string; label: string }[];
     default: string;
   }>();
+
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
   const open = async (editor: string) => {
     setBusy(true);
     setError("");
@@ -32,6 +35,7 @@ export const OpenInEditor = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="editor-launcher">
       <Button
@@ -59,6 +63,7 @@ export const OpenInEditor = ({
         <Code2 size={14} />
         {busy ? "Opening editor…" : kind !== "repository" ? "Open in VS Code" : "Open in Editor ▾"}
       </Button>
+
       {kind !== "repository" && (
         <Button
           size="sm"
@@ -80,6 +85,7 @@ export const OpenInEditor = ({
           ▾
         </Button>
       )}
+
       {selection && (
         <div className="modal-backdrop" onClick={() => setSelection(undefined)}>
           <section
@@ -103,12 +109,14 @@ export const OpenInEditor = ({
                 and install its editor server.
               </p>
             )}
+
             {!selection.editors.length && (
               <p>
                 No supported editor CLI detected. Install code, cursor, windsurf or codium in your
                 execution environment.
               </p>
             )}
+
             <div className="editor-options">
               {selection.editors.map((editor) => (
                 <Button key={editor.id} disabled={busy} onClick={() => void open(editor.id)}>
@@ -117,11 +125,13 @@ export const OpenInEditor = ({
                 </Button>
               ))}
             </div>
+
             {error && (
               <p className="error-box" role="alert">
                 {error}
               </p>
             )}
+
             <div className="actions">
               <Button
                 onClick={() =>
@@ -130,6 +140,7 @@ export const OpenInEditor = ({
               >
                 Open folder
               </Button>
+
               <Button
                 onClick={() =>
                   void navigator.clipboard.writeText(path).catch((e) => setError(errorMessage(e)))
@@ -137,6 +148,7 @@ export const OpenInEditor = ({
               >
                 Copy path
               </Button>
+
               <Button variant="ghost" onClick={() => setSelection(undefined)}>
                 Close
               </Button>
@@ -144,6 +156,7 @@ export const OpenInEditor = ({
           </section>
         </div>
       )}
+
       {error && !selection && (
         <small role="alert" className="failure">
           {error}

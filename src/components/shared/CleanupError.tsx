@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import type { ActivityBlocker } from "../../../backend/domain";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../ui/button";
@@ -22,8 +23,10 @@ export const CleanupError = ({
   const [stopping, setStopping] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [stopError, setStopError] = useState("");
+
   useEffect(() => {
     let alive = true;
+
     void rpc<ActivityBlocker[]>("storage.blockers", { task_id: taskId })
       .then((items) => {
         if (alive) setBlockers(items);
@@ -31,10 +34,12 @@ export const CleanupError = ({
       .catch((failure) => {
         if (alive) setStopError(errorMessage(failure));
       });
+
     return () => {
       alive = false;
     };
   }, [error, taskId]);
+
   const stop = async () => {
     setStopping(true);
     setStopError("");
@@ -45,6 +50,7 @@ export const CleanupError = ({
           ids: blockers.filter((b) => b.stoppable).map((b) => b.id),
         }),
       );
+
       setStopped(true);
     } catch (failure) {
       setStopError(errorMessage(failure));
@@ -52,12 +58,14 @@ export const CleanupError = ({
       setStopping(false);
     }
   };
+
   const technical =
     error && typeof error === "object" && "technical" in error
       ? String(error.technical)
       : error instanceof Error
         ? error.stack || error.message
         : String(error);
+
   const permanent =
     !!error &&
     typeof error === "object" &&
@@ -72,6 +80,7 @@ export const CleanupError = ({
       "git_operation",
       "git_index",
     ].includes(String(error.kind));
+
   return (
     <section
       className={`operation-error ${blockers.length ? "operation-blocked" : ""}`}
@@ -106,12 +115,14 @@ export const CleanupError = ({
             {stopping ? "Stopping…" : "Stop blockers"}
           </Button>
         )}
+
         {canRetry && !permanent && (!blockers.length || stopped) && (
           <Button size="sm" disabled={busy || stopping} onClick={retry}>
             Try again
           </Button>
         )}
       </div>
+
       <details>
         <summary>Technical details</summary>
         <pre>{technical}</pre>

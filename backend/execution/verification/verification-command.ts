@@ -12,6 +12,7 @@ const literalWords = (command: string) => {
       else word += character;
       continue;
     }
+
     if (character === "\\") {
       const next = command[++index];
       if (next === undefined) return null;
@@ -20,12 +21,14 @@ const literalWords = (command: string) => {
       started = true;
       continue;
     }
+
     if (quote === '"') {
       if (character === '"') quote = "";
       else if (["$", "`"].includes(character)) return null;
       else word += character;
       continue;
     }
+
     if (["'", '"'].includes(character)) {
       quote = character;
       started = true;
@@ -39,6 +42,7 @@ const literalWords = (command: string) => {
       started = true;
     }
   }
+
   if (quote) return null;
   if (started) words.push(word);
   return words;
@@ -52,6 +56,7 @@ export const verificationCommandText = (command: string) => {
   } catch {
     // Provider displays commonly wrap the literal script in shell quoting.
   }
+
   if (!words && /^(?:\/(?:usr\/)?bin\/)?(?:bash|sh)\s/.test(command)) words = literalWords(command);
   return words?.length === 3 &&
     /^(?:\/(?:usr\/)?bin\/)?(?:bash|sh)$/.test(words[0]) &&

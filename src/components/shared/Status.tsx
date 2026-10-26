@@ -1,8 +1,10 @@
 import { activeStatuses } from "../../lib/types";
+
 export const Status = ({ status }: { status: string }) => {
   const running = [...activeStatuses, "codex_implementing", "antigravity_verifying"].includes(
     status,
   );
+
   const color = running
     ? "running"
     : ["completed", "passed", "ready_for_review", "published"].includes(status)
@@ -23,6 +25,7 @@ export const Status = ({ status }: { status: string }) => {
             ].includes(status)
           ? "warning"
           : "muted";
+
   return (
     <span className={`status status-chip ${color}`} title={status.replaceAll("_", " ")}>
       <i />

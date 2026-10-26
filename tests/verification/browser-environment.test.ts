@@ -1,8 +1,10 @@
 import { expect, it, vi } from "vitest";
+
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
 import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
 import { execute } from "../../backend/execution/runtime/process";
 import { Rpc } from "../../backend/rpc";
@@ -11,6 +13,7 @@ import { taskVerification } from "../../backend/execution/verification/task-veri
 import { Database } from "../../backend/storage/database";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
+
 vi.mock("node:os", async (original) => {
   const module = await original<typeof import("node:os")>();
   return { ...module, homedir: () => fixture.home || module.homedir() };
@@ -29,6 +32,7 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, randomUUID());
+
     const plain = await sandboxInvocation(
       engine.root,
       engine.db,
@@ -36,8 +40,10 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
       { program: process.execPath, args: [] },
       true,
     );
+
     expect(plain.args).not.toContain(cache);
     const code = `const fs=require('node:fs/promises');(async()=>{if(await fs.readFile(${JSON.stringify(join(cache, "fixture-browser"))},'utf8')!=='installed fixture')throw Error('cache unavailable');try{await fs.writeFile(${JSON.stringify(join(cache, "mutated"))},'bad');throw Error('cache writable');}catch(error){if(error.code!=='EROFS')throw error;}try{await fs.readFile(${JSON.stringify(join(fixture.home, ".codex", "fixture-auth"))});throw Error('credentials exposed');}catch(error){if(error.code!=='ENOENT')throw error;}console.log('read-only browser tools');})().catch(error=>{console.error(error);process.exitCode=1;});`;
+
     const selected = await sandboxInvocation(
       engine.root,
       engine.db,
@@ -49,9 +55,11 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
       },
       true,
     );
+
     const result = await execute({ ...selected, cwd: task.worktree_path });
     expect(result.code, result.stderr).toBe(0);
     expect(result.stdout).toContain("read-only browser tools");
+
     await expect(
       sandboxInvocation(
         engine.root,
@@ -67,12 +75,14 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
         "codex",
       ),
     ).rejects.toThrow("explicit manual verification");
+
     await expect(
       rpc.call("task.browser.configure", {
         id: task.id,
         environment: "installed_browsers",
       }),
     ).rejects.toThrow();
+
     await expect(
       rpc.call("task.browser.configure", {
         id: task.id,
@@ -81,11 +91,13 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
         path: fixture.home,
       }),
     ).rejects.toThrow();
+
     await rpc.call("task.browser.configure", {
       id: task.id,
       environment: "installed_browsers",
       confirmed: true,
     });
+
     expect(engine.db.task(task.id).verification_environment).toBe("installed_browsers");
     const reopened = await Database.open(join(engine.root, "state", "vibestar.sqlite"));
     try {
@@ -93,8 +105,10 @@ it("limits installed-browser mounts to explicit manual verification, keeps them 
     } finally {
       reopened.close();
     }
+
     await rm(cache, { recursive: true });
     await symlink(join(dir, "data"), cache);
+
     await expect(
       sandboxInvocation(
         engine.root,
@@ -125,28 +139,34 @@ it.skipIf(process.env.VIBESTAR_BROWSER_TEST !== "1")(
     try {
       const { repo } = await fixtureRepository(engine, dir);
       await writeFile(join(repo.path, ".git", "info", "exclude"), "node_modules/\n");
+
       await cp(
         await realpath("node_modules/playwright-core"),
         join(repo.path, "node_modules", "playwright-core"),
         { recursive: true },
       );
+
       const task = await prepareFixtureTask(engine, repo, randomUUID());
       const source = await readFile(join(repo.path, "source.txt"));
       const index = await readFile(join(repo.path, ".git", "index"));
       const isolated = await rpc.call("task.browser.inspect", { id: task.id });
       expect(isolated).toMatchObject({ environment: "isolated" });
+
       await rpc.call("task.browser.configure", {
         id: task.id,
         environment: "installed_browsers",
         confirmed: true,
       });
+
       const report = await rpc.call("task.browser.inspect", { id: task.id });
+
       expect(report).toMatchObject({
         environment: "installed_browsers",
         direct_file: { outcome: "available" },
         http: { outcome: "available" },
         socket: { outcome: "available" },
       });
+
       expect(await readFile(join(repo.path, "source.txt"))).toEqual(source);
       expect(await readFile(join(repo.path, ".git", "index"))).toEqual(index);
       expect(taskVerification(engine.db, task.id).canReview).toBe(false);

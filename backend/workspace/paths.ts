@@ -1,11 +1,14 @@
 import { homedir } from "node:os";
 import { realpath, stat, mkdir, lstat } from "node:fs/promises";
 import { isAbsolute, join, relative, dirname, sep, resolve } from "node:path";
+
 import { AdeError, slug, type WorkspaceAssignment } from "../domain";
+
 export const inside = (root: string, path: string) => {
   const r = relative(root, path);
   return r !== "" && !r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute(r);
 };
+
 // root is the canonical identity retained by createLayout, not a fresh trust boundary.
 export const managedPath = async (root: string, path: string) => {
   const candidate = resolve(root, path);
@@ -31,8 +34,10 @@ export const managedPath = async (root: string, path: string) => {
       throw error;
     }
   }
+
   return candidate;
 };
+
 export const worktreePath = (
   root: string,
   repoId: string,
@@ -43,6 +48,7 @@ export const worktreePath = (
   if (!/^[a-zA-Z0-9-]+$/.test(repoId)) throw new AdeError("isolation", "Invalid repository ID");
   return join(root, "worktrees", repoId, `${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`);
 };
+
 const validateFilePath = (path: string) => {
   if (
     !path ||
@@ -53,6 +59,7 @@ const validateFilePath = (path: string) => {
   )
     throw new AdeError("isolation", "Invalid relative file path");
 };
+
 export const workspaceEntry = async (root: string, path: string) => {
   validateFilePath(path);
   const canonicalRoot = await realpath(root);
@@ -61,17 +68,21 @@ export const workspaceEntry = async (root: string, path: string) => {
   const parts = path.split("/");
   for (const [index, part] of parts.entries()) {
     current = join(current, part);
+
     const metadata = await lstat(current).catch((error: NodeJS.ErrnoException) => {
       if (["ENOENT", "ENOTDIR"].includes(error.code || "")) return null;
       throw error;
     });
+
     if (index === parts.length - 1) return { path: destination, metadata };
     // Git can retain a deleted descendant after its parent becomes a file/link.
     // It is absent from the working tree; never follow that parent into a target.
     if (!metadata?.isDirectory()) return { path: destination, metadata: null };
   }
+
   throw new AdeError("isolation", "Invalid workspace entry");
 };
+
 export const safeFile = async (root: string, path: string) => {
   validateFilePath(path);
   const canonicalRoot = await realpath(root);
@@ -90,8 +101,10 @@ export const safeFile = async (root: string, path: string) => {
       parent = next;
     }
   }
+
   return file;
 };
+
 export const taskRoot = async (root: string, task: WorkspaceAssignment) => {
   if (!/^[a-zA-Z0-9-]+$/.test(task.repo_id))
     throw new AdeError("isolation", "Invalid repository ID");
@@ -101,6 +114,7 @@ export const taskRoot = async (root: string, task: WorkspaceAssignment) => {
     throw new AdeError("isolation", "Task worktree is outside its managed repository boundary");
   return path;
 };
+
 export const createLayout = async (root: string) => {
   const protectedRoot = (candidate: string) =>
     candidate === homedir() ||
@@ -123,6 +137,7 @@ export const createLayout = async (root: string) => {
     [".codex", ".gemini"].some(
       (name) => candidate === join(homedir(), name) || inside(join(homedir(), name), candidate),
     );
+
   if (!isAbsolute(root) || protectedRoot(resolve(root)))
     throw new AdeError(
       "invalid_input",
@@ -146,8 +161,10 @@ export const createLayout = async (root: string) => {
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await managedPath(root, d);
   }
+
   return root;
 };
+
 export const exists = async (path: string) =>
   stat(path).then(
     () => true,

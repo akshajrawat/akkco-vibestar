@@ -1,19 +1,23 @@
 /** Converts paste/drop text to label names, accepting URLs only for the selected repository's GitHub issue search. */
 export const parseLabelInput = (text: string, repository: string) => {
   if (text.length > 16000) throw new Error("Label input is too long.");
+
   const target = repository
     .trim()
     .replace(/^https:\/\/github\.com\//i, "")
     .replace(/\/$/, "")
     .replace(/\.git$/, "")
     .toLowerCase();
+
   const labels: string[] = [];
+
   const add = (value: string) => {
     const label = value.trim();
     if (!label || label.length > 100 || /[\x00-\x1f\x7f<>]/.test(label))
       throw new Error("Use a label name of 1–100 characters.");
     if (!labels.some((item) => item.toLowerCase() === label.toLowerCase())) labels.push(label);
   };
+
   const input = text.trim().replace(/\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/g, "$2");
   for (const part of input
     .split(/[\n,]+/)
@@ -30,6 +34,7 @@ export const parseLabelInput = (text: string, repository: string) => {
       } catch {
         throw new Error("This label URL is malformed.");
       }
+
       const path = url.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/issues\/?$/);
       if (
         url.protocol !== "https:" ||
@@ -54,6 +59,7 @@ export const parseLabelInput = (text: string, repository: string) => {
       add(part);
     }
   }
+
   if (labels.length > 30) throw new Error("Choose at most 30 excluded labels.");
   return labels;
 };

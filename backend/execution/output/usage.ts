@@ -29,9 +29,12 @@ export interface UsageRecord {
   subscription_limits_after: string | null;
   provider_session_id: string | null;
 }
+
 export class Usage {
   private readonly steps = new Map<string, Map<number, Record<string, unknown>>>();
+
   constructor(private readonly db: Database) {}
+
   start = (
     id: string,
     value: Pick<
@@ -51,6 +54,7 @@ export class Usage {
       value.effort,
       now(),
     );
+
   observe = (id: string, raw: Record<string, unknown>) => {
     const result = object(raw.result);
     const step = object(raw.step_update);
@@ -74,6 +78,7 @@ export class Usage {
     } else if (Object.keys(usage).length) this.steps.delete(id);
     const details = object(usage.output_tokens_details);
     const input = object(usage.input_tokens_details);
+
     const values = {
       input_tokens: usage.input_tokens,
       cached_input_tokens:
@@ -86,6 +91,7 @@ export class Usage {
         details.reasoning_tokens,
       total_tokens: usage.total_tokens,
     };
+
     for (const [key, value] of Object.entries(values))
       if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
         this.db.run(`UPDATE ai_usage SET ${key}=? WHERE id=?`, value, id);
@@ -93,6 +99,7 @@ export class Usage {
     if (typeof model === "string" && model)
       this.db.run("UPDATE ai_usage SET model=? WHERE id=? AND model=''", model, id);
   };
+
   recordLimits = (id: string, limits: ProviderDetection["subscriptionLimits"], after = false) => {
     if (limits)
       this.db.run(
@@ -101,6 +108,7 @@ export class Usage {
         id,
       );
   };
+
   finish = (id: string, start: number, status: string, error: string | null = null) => {
     this.steps.delete(id);
     return this.db.run(
@@ -112,6 +120,7 @@ export class Usage {
       id,
     );
   };
+
   list = (taskId?: string, days?: number) =>
     this.db.all<UsageRecord>(
       `SELECT * FROM ai_usage WHERE (? IS NULL OR task_id=?) AND (? IS NULL OR started_at>=?) ORDER BY started_at DESC`,

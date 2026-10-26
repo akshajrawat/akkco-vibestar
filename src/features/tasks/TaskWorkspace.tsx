@@ -59,16 +59,20 @@ export const TaskWorkspace = ({
   const [busy, setBusy] = useState(false);
   const [conversationMode, setConversationMode] = useState<"chat" | "changes">("chat");
   const noticeContext = `${t.id}:${t.stage}:${t.status}:${t.approval_gate}:${detail.runs.at(-1)?.id}:${detail.artifacts.at(-1)?.id}`;
+
   const [statusNotice, setStatusNotice] = useState<{
     message: string;
     context: string;
   }>();
+
   const notice = statusNotice?.context === noticeContext ? statusNotice.message : "";
   const setNotice = (message: string) => setStatusNotice({ message, context: noticeContext });
+
   const [instructionChoice, setInstructionChoice] = useState<{
     ids: string;
     disposition: "keep_saved" | "include_next_stage";
   }>();
+
   const [finalizing, setFinalizing] = useState(false);
   const [sent, setSent] = useState<Message[]>([]);
   const sending = useRef(false);
@@ -79,19 +83,24 @@ export const TaskWorkspace = ({
   const active = !!detail.executing || activeStatuses.includes(t.status);
   const occupied = !!detail.active;
   const watchChanges = active || occupied;
+
   const feedbackStage =
     t.stage <= 1
       ? "Antigravity planning"
       : t.stage === 2
         ? "Codex plan refinement"
         : "implementation";
+
   const verification = detailVerification(detail);
+
   const messages = [
     ...detail.messages,
     ...sent.filter((message) => !detail.messages.some((row) => row.id === message.id)),
   ];
+
   const pending = messages.filter((message) => ["draft", "queued"].includes(message.status || ""));
   const pendingIds = pending.map((message) => message.id);
+
   const approvalArtifact = [...detail.artifacts]
     .reverse()
     .find(
@@ -106,19 +115,26 @@ export const TaskWorkspace = ({
                 ? 3
                 : 5),
     );
+
   const pendingKey = `${t.approval_gate}:${approvalArtifact?.id}:${pendingIds.join(",")}`;
+
   const chosenInstructions =
     instructionChoice?.ids === pendingKey ? instructionChoice.disposition : "";
+
   const currentDraft = useRef(view);
+
   useEffect(() => {
     currentDraft.current = view;
   }, [view]);
+
   const content = composerContent(view);
+
   const saved =
     (view.savedInstruction?.content === content
       ? messages.find((message) => message.id === view.savedInstruction?.id)
       : undefined) ||
     pending.find((message) => message.status === "draft" && message.content === content);
+
   const inspect = (name: string) => {
     const sections: Record<string, SecondarySection> = {
       Plan: "plans",
@@ -129,10 +145,13 @@ export const TaskWorkspace = ({
       "Agent Output": "logs",
       "Final review": "final-review",
     };
+
     openWorkspaceTool(t.id, sections[name] || "pipeline");
   };
+
   const dock = (dockTab: "Terminal" | "Problems") =>
     updateTaskView(t.id, { terminalDock: true, dockTab });
+
   const currentRun = () => {
     updateTaskView(t.id, {
       outputRun:
@@ -140,8 +159,10 @@ export const TaskWorkspace = ({
         detail.runs.at(-1)?.id ||
         "",
     });
+
     openWorkspaceTool(t.id, "run-details");
   };
+
   useEffect(() => {
     if (!promptOpen) return;
     const previous = document.activeElement;
@@ -150,10 +171,12 @@ export const TaskWorkspace = ({
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, [promptOpen]);
+
   useEffect(() => {
     if (!t.worktree_path) return;
     let alive = true;
     let fetching = false;
+
     const refresh = async () => {
       if (fetching) return;
       fetching = true;
@@ -166,6 +189,7 @@ export const TaskWorkspace = ({
         fetching = false;
       }
     };
+
     refreshDiff.current = refresh;
     void refresh();
     const timer = watchChanges ? setInterval(() => void refresh(), 2000) : undefined;
@@ -175,9 +199,11 @@ export const TaskWorkspace = ({
       if (timer) clearInterval(timer);
     };
   }, [t.id, t.worktree_path, watchChanges, onError]);
+
   useEffect(() => {
     void refreshDiff.current?.();
   }, [revision]);
+
   const action = async (method: string, params: unknown = { id: t.id }) => {
     if (acting.current) return;
     acting.current = true;
@@ -192,6 +218,7 @@ export const TaskWorkspace = ({
       setBusy(false);
     }
   };
+
   const submit = async (saveOnly = false) => {
     if (!content || content.length > 32000 || busy || sending.current) return;
     if (saveOnly && saved) {
@@ -200,18 +227,23 @@ export const TaskWorkspace = ({
           ? "Instruction already delivered"
           : "Instruction saved for later · no agent started",
       );
+
       return;
     }
+
     const configuration = followupConfiguration(t, view);
     const question = !saveOnly && conversationMode === "chat";
+
     const signature = JSON.stringify({
       content,
       configuration,
       saveOnly,
       question,
     });
+
     const request_id =
       view.messageRequest?.signature === signature ? view.messageRequest.id : crypto.randomUUID();
+
     updateTaskView(t.id, { messageRequest: { id: request_id, signature } });
     sending.current = true;
     setBusy(true);
@@ -234,6 +266,7 @@ export const TaskWorkspace = ({
                 request_id,
               },
       );
+
       if (result.message)
         setSent((messages) => [
           ...messages.filter((message) => message.id !== result.message!.id),
@@ -255,6 +288,7 @@ export const TaskWorkspace = ({
                 ? "Feedback queued for the next safe stage boundary"
                 : "Feedback sent · continuation authorized",
         );
+
         // Preserve edits made while this request was in flight.
         if (composerContent(currentDraft.current) === content)
           updateTaskView(t.id, {
@@ -270,6 +304,7 @@ export const TaskWorkspace = ({
       sending.current = false;
     }
   };
+
   return (
     <div
       ref={shell}
@@ -291,6 +326,7 @@ export const TaskWorkspace = ({
           >
             #{t.issue_number}
           </button>
+
           <strong className="task-title" title={t.issue?.title}>
             {t.claimed_scope || t.issue?.title || "Entire issue"}
           </strong>
@@ -324,6 +360,7 @@ export const TaskWorkspace = ({
           </Button>
         </div>
       </header>
+
       {promptOpen && (
         <div
           className="modal-backdrop"
@@ -343,6 +380,7 @@ export const TaskWorkspace = ({
                 e.stopPropagation();
                 setPromptOpen(false);
               }
+
               containDialogFocus(e);
             }}
           >
@@ -350,12 +388,14 @@ export const TaskWorkspace = ({
               <h2>Agent prompts</h2>
               <Button onClick={() => setPromptOpen(false)}>Close</Button>
             </div>
+
             {[...detail.runs].reverse().map((run) => (
               <RunPrompt key={run.id} run={run} />
             ))}
           </section>
         </div>
       )}
+
       {draftRun && (
         <div className="modal-backdrop">
           <section
@@ -370,6 +410,7 @@ export const TaskWorkspace = ({
               The draft is checked against the plan schema and unchanged worktree. The original run
               keeps its actual outcome. You will review this plan before starting the next agent.
             </p>
+
             <div className="actions">
               <Button
                 disabled={busy}
@@ -378,11 +419,13 @@ export const TaskWorkspace = ({
                     id: t.id,
                     run_id: draftRun.id,
                   });
+
                   setDraftRun(undefined);
                 }}
               >
                 Use draft
               </Button>
+
               <Button disabled={busy} onClick={() => setDraftRun(undefined)}>
                 Cancel
               </Button>
@@ -390,6 +433,7 @@ export const TaskWorkspace = ({
           </section>
         </div>
       )}
+
       {finalizing && (
         <GitFinalization
           task={t}
@@ -399,6 +443,7 @@ export const TaskWorkspace = ({
           complete={() => action("task.complete")}
         />
       )}
+
       <div className="workspace-content">
         <ChatSurface
           id={t.id}
@@ -428,6 +473,7 @@ export const TaskWorkspace = ({
                   <AgentResponse text={t.issue?.body || "No description"} />
                 </details>
               </article>
+
               {(t.worktree_path || active) && (
                 <section className="preparation-turn">
                   <strong>
@@ -435,6 +481,7 @@ export const TaskWorkspace = ({
                       ? "Read-only chat workspace"
                       : "Repository preparation"}
                   </strong>
+
                   {detail.activity
                     ?.filter((row) => ["preparation", "chat_preparation"].includes(row.kind))
                     .map((row) => {
@@ -445,6 +492,7 @@ export const TaskWorkspace = ({
                         stderr: string;
                         duration_ms: number;
                       };
+
                       return (
                         <details key={row.id}>
                           <summary>
@@ -458,17 +506,20 @@ export const TaskWorkspace = ({
                         </details>
                       );
                     })}
+
                   {t.worktree_path && (
                     <p className="mono subtle">
                       <GitBranch size={12} />
                       {t.branch_name}
                     </p>
                   )}
+
                   {t.stage === 0 && active && (
                     <p className="subtle">Fetching upstream and creating an isolated worktree…</p>
                   )}
                 </section>
               )}
+
               {detail.activity
                 ?.filter((row) => row.kind === "chat_error")
                 .slice(-1)
@@ -479,6 +530,7 @@ export const TaskWorkspace = ({
                     logs={() => inspect("Logs")}
                   />
                 ))}
+
               <AgentTimeline
                 expandResults={false}
                 events={detail.events}
@@ -488,13 +540,16 @@ export const TaskWorkspace = ({
                   !active && !occupied
                     ? (message) => {
                         const signature = JSON.stringify({ retry: message.id });
+
                         const request_id =
                           view.messageRequest?.signature === signature
                             ? view.messageRequest.id
                             : crypto.randomUUID();
+
                         updateTaskView(t.id, {
                           messageRequest: { id: request_id, signature },
                         });
+
                         void action("task.message.retry", {
                           id: t.id,
                           message_id: message.id,
@@ -509,6 +564,7 @@ export const TaskWorkspace = ({
                   updateTaskView(t.id, {
                     draft: message.content.split("\n\nLinked PR review context (untrusted):")[0],
                   });
+
                   shell.current?.querySelector("textarea")?.focus();
                 }}
                 files={diff?.files}
@@ -517,6 +573,7 @@ export const TaskWorkspace = ({
                   inspect("Changes");
                 }}
               />
+
               {t.error &&
                 (t.stage !== 4 || detail.tests.length === 0) &&
                 !(
@@ -533,11 +590,13 @@ export const TaskWorkspace = ({
                     logs={() => inspect("Logs")}
                   />
                 )}
+
               {!!diff?.files.length && (
                 <details className="chat-changes" open>
                   <summary>
                     Changed {diff.files.length} {diff.files.length === 1 ? "file" : "files"}
                   </summary>
+
                   {diff.files.map((file) => (
                     <div className="edited-file" key={file.path}>
                       <button
@@ -555,6 +614,7 @@ export const TaskWorkspace = ({
                   ))}
                 </details>
               )}
+
               {detail.tests.length > 0 && (
                 <section className="validation-turn">
                   <button onClick={() => inspect("Tests")}>
@@ -585,6 +645,7 @@ export const TaskWorkspace = ({
                           : " · Inspect outstanding requirements"}
                     </span>
                   </button>
+
                   {t.stage >= 4 && (
                     <details>
                       <summary>Host validation details</summary>
@@ -597,6 +658,7 @@ export const TaskWorkspace = ({
                   )}
                 </section>
               )}
+
               {t.status === "ready_for_review" && (
                 <p className="ready-review">
                   <Check size={14} />
@@ -606,6 +668,7 @@ export const TaskWorkspace = ({
                   <ChevronRight size={14} />
                 </p>
               )}
+
               {t.final_review_verdict && (
                 <FinalReviewSummary
                   detail={detail}
@@ -645,6 +708,7 @@ export const TaskWorkspace = ({
                         updateTaskView(t.id, {
                           planStage: t.approval_gate === "codex_plan" ? 2 : 1,
                         });
+
                         openWorkspaceTool(t.id, "plans");
                       } else if (t.approval_gate === "implementation") inspect("Tests");
                       else inspect("Final review");
@@ -657,6 +721,7 @@ export const TaskWorkspace = ({
                         ? "tests"
                         : "review"}
                   </Button>
+
                   <Button
                     size="sm"
                     variant="ghost"
@@ -666,6 +731,7 @@ export const TaskWorkspace = ({
                   >
                     Request changes
                   </Button>
+
                   <Button
                     size="sm"
                     variant="default"
@@ -712,6 +778,7 @@ export const TaskWorkspace = ({
                           ? "Approve → Antigravity review & tests"
                           : "Accept review"}
                   </Button>
+
                   {pending.length > 0 && (
                     <div className="instruction-choice">
                       <details>
@@ -719,10 +786,12 @@ export const TaskWorkspace = ({
                           {pending.length} saved pending{" "}
                           {pending.length === 1 ? "instruction" : "instructions"}
                         </summary>
+
                         {pending.map((message) => (
                           <pre key={message.id}>{message.content}</pre>
                         ))}
                       </details>
+
                       <label>
                         Saved instructions on approval
                         <select
@@ -745,6 +814,7 @@ export const TaskWorkspace = ({
                           )}
                         </select>
                       </label>
+
                       <small>
                         Your unsent composer draft stays independent. Including saved instructions
                         keeps the next stage's configured provider and model.
@@ -768,6 +838,7 @@ export const TaskWorkspace = ({
                     inspect={() => inspect("Tests")}
                   />
                 )}
+
               {t.status === "reviewed_with_gaps" && (
                 <p className="warning">
                   Code review accepted · changes kept locally.{" "}
@@ -776,6 +847,7 @@ export const TaskWorkspace = ({
                     : "Complete required verification before Git Finalization."}
                 </p>
               )}
+
               {["ready_for_review", "completed"].includes(t.status) && (
                 <Button size="sm" onClick={() => setFinalizing(true)}>
                   Git Finalization
@@ -858,6 +930,7 @@ export const TaskWorkspace = ({
             />
           }
         />
+
         <SecondaryWorkspace id={t.id}>
           {view.secondarySection === "pipeline" ? (
             <PipelineView
@@ -910,15 +983,18 @@ export const TaskWorkspace = ({
                 changes={() => inspect("Changes")}
                 tests={() => inspect("Tests")}
               />
+
               {t.stage >= 4 && (
                 <VerificationRecovery detail={detail} onError={onError} disabled={busy} />
               )}
+
               <OpenInEditor
                 id={t.id}
                 kind="task"
                 path={t.worktree_path}
                 disabled={!t.worktree_path}
               />
+
               {detail.runs
                 .filter((run) => run.stage === 5)
                 .map((run) => (
@@ -928,6 +1004,7 @@ export const TaskWorkspace = ({
           )}
         </SecondaryWorkspace>
       </div>
+
       <BottomDock
         id={t.id}
         terminal={<TaskTerminal task={t} onError={onError} />}
@@ -946,6 +1023,7 @@ export const TaskWorkspace = ({
           </div>
         }
       />
+
       <footer className="workspace-status">
         <GitBranch size={11} />
         <span>{t.branch_name || "Preparing worktree"}</span>
@@ -959,6 +1037,7 @@ export const TaskWorkspace = ({
           <PanelBottom size={13} />
           Terminal
         </Button>
+
         <Button size="sm" variant="ghost" onClick={() => dock("Problems")}>
           Problems
         </Button>

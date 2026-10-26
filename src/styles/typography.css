@@ -5,6 +5,7 @@
   font-style: normal;
   font-display: swap;
 }
+
 @font-face {
   font-family: "Geist Mono";
   src: url("../assets/fonts/Geist-Mono.woff2") format("woff2");
@@ -12,6 +13,7 @@
   font-style: normal;
   font-display: swap;
 }
+
 :root {
   color-scheme: dark;
   --background-app: #17181b;

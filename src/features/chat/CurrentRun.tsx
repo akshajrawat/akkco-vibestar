@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import type { Detail } from "../../lib/types";
 import { duration } from "../../lib/format";
 import { runActivity } from "./output/activity";
@@ -20,6 +21,7 @@ export const CurrentRun = ({
 }) => {
   const runningRun = [...detail.runs].reverse().find((r) => r.status === "running");
   const status = detail.task?.status || detail.status || "";
+
   const active =
     !!runningRun ||
     [
@@ -33,15 +35,19 @@ export const CurrentRun = ({
       "codex_implementing",
       "antigravity_verifying",
     ].includes(status);
+
   const run = runningRun || (!active ? detail.runs.at(-1) : undefined);
   const model = run?.model || "CLI default · model not reported";
   const [, tick] = useState(0);
+
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(timer);
   }, [active]);
+
   if (!active && !run) return null;
+
   const labels: Record<string, string> = {
     queued: "Queued",
     preparing: "Preparing repository",
@@ -53,6 +59,7 @@ export const CurrentRun = ({
     codex_implementing: "Implementing review fixes",
     antigravity_verifying: "Independent review & tests",
   };
+
   const stage =
     run?.purpose === "Read-only conversation"
       ? "Conversation · read-only"
@@ -70,6 +77,7 @@ export const CurrentRun = ({
                 "Reviewing changes & tests",
               ][run.stage]
             : labels[status];
+
   const activity = runActivity(detail.events, run);
   return (
     <section className="current-run compact-activity" aria-label="Current agent run">
@@ -82,12 +90,14 @@ export const CurrentRun = ({
                 ? "Codex"
                 : run?.provider || stage}
           </strong>
+
           {run && (
             <span>
               {" "}
               · {stage} · {model} · {run.effort} · {active ? "running" : run.status}
             </span>
           )}
+
           <time aria-label="Run runtime">
             {" "}
             ·{" "}
@@ -102,12 +112,14 @@ export const CurrentRun = ({
                 )}
           </time>
         </div>
+
         {active && run && (
           <small title={activity}>
             {activity.trim().startsWith("{") ? "Structured output streaming" : activity}
           </small>
         )}
       </button>
+
       {active && (
         <Button size="sm" variant="ghost" onClick={stop}>
           Stop

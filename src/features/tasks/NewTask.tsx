@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { X, ArrowUpRight } from "lucide-react";
+
 import { rpc, errorMessage } from "../../lib/api";
 import type { Repository, Task, Settings, Snapshot } from "../../lib/types";
 import { parseIssue, repositoryMatchesIssue } from "../../../backend/domain";
 import { useProviders } from "../../hooks/useWorkspace";
 import { StageSettings } from "../providers/StageSettings";
 import { Button } from "../../components/ui/button";
+
 interface Preview {
   reference: { owner: string; repo: string; number: number };
   issue: {
@@ -16,6 +18,7 @@ interface Preview {
   };
   repository: Repository;
 }
+
 export const NewTask = ({
   close,
   created,
@@ -43,6 +46,7 @@ export const NewTask = ({
   const [resolving, setResolving] = useState(false);
   const [busy, setBusy] = useState(false);
   const request = useRef({ payload: "", id: "" });
+
   useEffect(() => {
     void rpc<Snapshot>("snapshot")
       .then((s) => {
@@ -54,6 +58,7 @@ export const NewTask = ({
       })
       .catch((e) => setError(errorMessage(e)));
   }, []);
+
   const selected = repositories.find((r) => r.id === repositoryId);
   let reference: ReturnType<typeof parseIssue> | undefined;
   try {
@@ -61,10 +66,13 @@ export const NewTask = ({
   } catch {
     /* The URL field may still be incomplete. */
   }
+
   const mismatch = !!reference && !!selected && !repositoryMatchesIssue(selected, reference);
+
   const matching = reference
     ? repositories.filter((r) => repositoryMatchesIssue(r, reference!))
     : [];
+
   useEffect(() => {
     if (manualSelection) return;
     let issue: ReturnType<typeof parseIssue>;
@@ -74,12 +82,14 @@ export const NewTask = ({
       setMatched(false);
       return;
     }
+
     const matches = repositories.filter((r) => repositoryMatchesIssue(r, issue));
     if (matches.length === 1) {
       setRepositoryId(matches[0].id);
       setMatched(true);
     } else setMatched(false);
   }, [url, repositories, manualSelection]);
+
   useEffect(() => {
     let alive = true;
     setPreview(null);
@@ -88,6 +98,7 @@ export const NewTask = ({
     if (!selected || mismatch) return;
     if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+\/?$/.test(url.trim())) return;
     setResolving(true);
+
     const timer = setTimeout(
       () =>
         void rpc<Preview>("task.preview", {
@@ -107,11 +118,13 @@ export const NewTask = ({
           }),
       350,
     );
+
     return () => {
       alive = false;
       clearTimeout(timer);
     };
   }, [url, repositoryId, mismatch, selected]);
+
   return (
     <div
       className="modal-backdrop"
@@ -134,6 +147,7 @@ export const NewTask = ({
             <X size={16} />
           </Button>
         </div>
+
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -149,16 +163,19 @@ export const NewTask = ({
                 notes,
                 settings,
               };
+
               const identity = JSON.stringify(payload);
               if (request.current.payload !== identity)
                 request.current = {
                   payload: identity,
                   id: crypto.randomUUID(),
                 };
+
               const task = await rpc<Task>("task.create", {
                 ...payload,
                 request_id: request.current.id,
               });
+
               created(task.id);
               close();
             } catch (e) {
@@ -188,11 +205,13 @@ export const NewTask = ({
               ))}
             </select>
           </label>
+
           {!repositories.length && (
             <p className="empty-row">
               Connect a local repository on the Repositories page before starting a task.
             </p>
           )}
+
           {selected && (
             <p className="selected-repository-meta">
               <code>{selected.path}</code>
@@ -205,6 +224,7 @@ export const NewTask = ({
               </small>
             </p>
           )}
+
           <label>
             Issue URL
             <input
@@ -225,6 +245,7 @@ export const NewTask = ({
                 <br />
                 Selected repository: {selected.owner}/{selected.name}
               </p>
+
               {matching.length === 1 && (
                 <Button
                   onClick={() => {
@@ -238,6 +259,7 @@ export const NewTask = ({
               )}
             </div>
           )}
+
           {preview && (
             <>
               <div className="resolved-issue">
@@ -252,6 +274,7 @@ export const NewTask = ({
                   <div className="issue-body">{preview.issue.body}</div>
                 </details>
               </div>
+
               <fieldset className="scope-options">
                 <legend>Scope</legend>
                 <label>
@@ -263,6 +286,7 @@ export const NewTask = ({
                   />
                   Entire issue
                 </label>
+
                 <label>
                   <input
                     type="radio"
@@ -273,6 +297,7 @@ export const NewTask = ({
                   Specific part / claimed subtask
                 </label>
               </fieldset>
+
               {mode === "partial" && (
                 <label>
                   Claimed scope
@@ -287,6 +312,7 @@ export const NewTask = ({
               )}
             </>
           )}
+
           <label>
             Optional instructions
             <textarea
@@ -297,6 +323,7 @@ export const NewTask = ({
               onChange={(e) => setNotes(e.target.value)}
             />
           </label>
+
           <details className="task-configuration">
             <summary>Agent configuration</summary>
             <p className="subtle">
@@ -312,6 +339,7 @@ export const NewTask = ({
             >
               Refresh models
             </Button>
+
             {settings && (
               <StageSettings
                 settings={settings}
@@ -320,6 +348,7 @@ export const NewTask = ({
               />
             )}
           </details>
+
           {selected && (
             <details className="task-configuration" open>
               <summary>Repository source &amp; task workspace</summary>
@@ -349,15 +378,18 @@ export const NewTask = ({
               <p className="subtle">All agent changes remain in the task worktree.</p>
             </details>
           )}
+
           {error && (
             <p role="alert" className="error-box">
               {error}
             </p>
           )}
+
           <div className="modal-actions">
             <small>
               Review each plan → Implement → Review changes → Antigravity review & tests
             </small>
+
             <Button
               variant="default"
               type="submit"

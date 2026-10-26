@@ -1,9 +1,12 @@
 import { z } from "zod";
+
 import { AdeError } from "../domain";
 import { readLogTail } from "../storage/logs";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
+
 export const outputMethods = ["repair.events", "repair.logs", "task.events", "task.logs"] as const;
+
 /** Validates and dispatches output requests through their existing domain services. */
 export const callOutput = async (
   services: Pick<RpcServices, "engine" | "repairs">,
@@ -26,6 +29,7 @@ export const callOutput = async (
           paged: z.boolean().optional(),
         })
         .parse(input);
+
       const owner = method.startsWith("repair.") ? "repair_id" : "task_id";
       if (owner === "repair_id") services.repairs.store.get(p.id);
       else e.db.task(p.id);
@@ -46,9 +50,11 @@ export const callOutput = async (
           p.search || "",
           p.search || "",
         );
+
         const more = rows.length > 500;
         const events = rows.slice(0, 500);
         if (p.after === undefined) events.reverse();
+
         const calls = [
           ...new Set(
             events
@@ -63,6 +69,7 @@ export const callOutput = async (
               }),
           ),
         ];
+
         const context = calls.length
           ? e.db.all(
               `SELECT * FROM agent_events WHERE id IN (
@@ -79,8 +86,10 @@ export const callOutput = async (
               ...calls,
             )
           : [];
+
         return { events, context, more };
       }
+
       return readLogTail(
         e.root,
         p.id,
@@ -89,6 +98,7 @@ export const callOutput = async (
         p.paged ? { before: p.before, after: p.after, search: p.search } : undefined,
       );
     }
+
     default:
       throw new AdeError("invalid_method", `Unknown method: ${method}`);
   }

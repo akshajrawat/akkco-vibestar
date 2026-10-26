@@ -1,11 +1,14 @@
 import { expect, it, vi } from "vitest";
+
 import { BoundedWriter, OutputBudget } from "../../backend/execution/output/bounded-output";
 
 it("limits both bytes and entries queued behind a slow log sink", async () => {
   let release!: () => void;
+
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
+
   const sink = vi.fn(async () => gate);
   const writer = new BoundedWriter(vi.fn());
   writer.write("a".repeat(3 * 1024 * 1024), sink);
@@ -22,9 +25,11 @@ it("limits both bytes and entries queued behind a slow log sink", async () => {
 it("reports a failed sink once, rejects drain and does not continue writing", async () => {
   const failure = vi.fn();
   const writer = new BoundedWriter(failure);
+
   const sink = vi.fn(async () => {
     throw new Error("fixture disk full");
   });
+
   writer.write("first", sink);
   writer.write("second", sink);
   await expect(writer.drain()).rejects.toThrow("fixture disk full");

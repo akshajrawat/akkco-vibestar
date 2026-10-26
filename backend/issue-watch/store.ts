@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+
 import { AdeError, now } from "../domain";
 import type { Database } from "../storage/database";
 import {
@@ -19,6 +20,7 @@ import { isMatch } from "./eligibility";
 
 export class IssueWatchStore {
   constructor(private readonly db: Database) {}
+
   private decode = <T>(
     table: string,
     id: string,
@@ -26,6 +28,7 @@ export class IssueWatchStore {
     parse: (value: unknown) => T,
     identity?: string,
   ) => this.db.records.decode({ table, id, column: "data", source: data, identity }, parse);
+
   list = (archived = false, limit = 100, before?: string) =>
     this.db.records.list(
       "issue_watches",
@@ -38,30 +41,37 @@ export class IssueWatchStore {
       WatchSchema.parse,
       "id",
     );
+
   get = (id: string) => {
     const row = this.db.all<{ data: string }>("SELECT data FROM issue_watches WHERE id=?", id)[0];
     if (!row) throw new AdeError("not_found", "Issue Watch not found.");
     return this.decode("issue_watches", id, row.data, WatchSchema.parse, "id");
   };
+
   revision = (watchId: string, revision = this.get(watchId).current_revision) => {
     const row = this.db.all<{ data: string }>(
       "SELECT data FROM issue_watch_revisions WHERE watch_id=? AND revision=?",
       watchId,
       revision,
     )[0];
+
     if (!row) throw new AdeError("not_found", "Issue Watch revision not found.");
+
     const value = this.decode(
       "issue_watch_revisions",
       `${watchId}:${revision}`,
       row.data,
       WatchRevisionSchema.parse,
     );
+
     if (value.watch_id !== watchId || value.revision !== revision)
       throw new AdeError("corrupt_record", "Saved watch revision ownership is inconsistent.");
     return value;
   };
+
   private saveWatch = (watch: ReturnType<IssueWatchStore["get"]>) => {
     const value = WatchSchema.parse(watch);
+
     this.db.run(
       "INSERT INTO issue_watches VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,repository_full_name=excluded.repository_full_name,current_revision=excluded.current_revision,archived=excluded.archived,updated_at=excluded.updated_at,last_complete_scan_id=excluded.last_complete_scan_id,data=excluded.data",
       value.id,
@@ -76,6 +86,7 @@ export class IssueWatchStore {
       JSON.stringify(value),
     );
   };
+
   existingRequest = (requestId: string, requestDigest: string, kind: "revision" | "scan") => {
     const revision = this.db.all<{
       watch_id: string;
@@ -85,11 +96,13 @@ export class IssueWatchStore {
       "SELECT watch_id,revision,request_digest FROM issue_watch_revisions WHERE request_id=?",
       requestId,
     )[0];
+
     const scan = this.db.all<{
       id: string;
       watch_id: string;
       request_digest: string;
     }>("SELECT id,watch_id,request_digest FROM issue_watch_scans WHERE request_id=?", requestId)[0];
+
     const row = kind === "revision" ? revision : scan;
     if ((revision || scan) && (!row || row.request_digest !== requestDigest))
       throw new AdeError(
@@ -104,6 +117,7 @@ export class IssueWatchStore {
         }
       : null;
   };
+
   saveRevision = (input: {
     request_id: string;
     request_digest: string;
@@ -134,6 +148,7 @@ export class IssueWatchStore {
       if (previous && this.active(previous.id))
         throw new AdeError("busy", "Cancel the active scan before editing this watch.");
       const time = now();
+
       const watch = previous
         ? {
             ...previous,
@@ -152,6 +167,7 @@ export class IssueWatchStore {
             updated_at: time,
             last_complete_scan_id: null,
           };
+
       const revision = WatchRevisionSchema.parse({
         watch_id: watch.id,
         revision: watch.current_revision,
@@ -160,7 +176,9 @@ export class IssueWatchStore {
         configuration: input.configuration,
         explanation: input.preview.explanation,
       });
+
       this.saveWatch(watch);
+
       this.db.run(
         "INSERT INTO issue_watch_revisions VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         watch.id,
@@ -176,8 +194,10 @@ export class IssueWatchStore {
         revision.configuration.model.timeout_secs,
         JSON.stringify(revision),
       );
+
       return { watch, revision };
     });
+
   archive = (watchId: string, expectedRevision: number, archived: boolean) => {
     const watch = this.get(watchId);
     if (watch.current_revision !== expectedRevision)
@@ -187,6 +207,7 @@ export class IssueWatchStore {
     this.saveWatch({ ...watch, archived, updated_at: now() });
     return this.get(watchId);
   };
+
   scan = (watchId: string, id: string) => {
     const row = this.db.all<{
       data: string;
@@ -197,12 +218,14 @@ export class IssueWatchStore {
       watchId,
       id,
     )[0];
+
     if (!row) throw new AdeError("not_found", "Scan does not belong to this watch.");
     const scan = this.decode("issue_watch_scans", id, row.data, ScanSchema.parse, "id");
     if (scan.watch_id !== watchId)
       throw new AdeError("corrupt_record", "Saved scan ownership is inconsistent.");
     return { ...scan, status: row.status, ended_at: row.ended_at };
   };
+
   history = (watchId: string, limit = 50, before?: string) => {
     this.get(watchId);
     const cursor = before ? this.scan(watchId, before) : null;
@@ -218,13 +241,16 @@ export class IssueWatchStore {
       "id",
     );
   };
+
   active = (watchId: string) => {
     const row = this.db.all<{ id: string }>(
       "SELECT id FROM issue_watch_scans WHERE watch_id=? AND status IN('running','cancelling')",
       watchId,
     )[0];
+
     return row ? this.scan(watchId, row.id) : null;
   };
+
   reserve = (scan: WatchScan, requestId: string, requestDigest: string) =>
     this.db.transaction(() => {
       const existing = this.existingRequest(requestId, requestDigest, "scan");
@@ -241,6 +267,7 @@ export class IssueWatchStore {
       if (this.active(watch.id))
         throw new AdeError("busy", "This watch already has an active scan.");
       if (scan.parent_scan_id) this.scan(watch.id, scan.parent_scan_id);
+
       this.db.run(
         "INSERT INTO issue_watch_scans VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         scan.id,
@@ -258,12 +285,15 @@ export class IssueWatchStore {
         scan.utility_run_id,
         JSON.stringify(ScanSchema.parse(scan)),
       );
+
       return { scan, created: true };
     });
+
   saveScan = (scan: WatchScan) => {
     const previous = this.scan(scan.watch_id, scan.id);
     scan.utility_run_id ||= previous.utility_run_id;
     const value = ScanSchema.parse(scan);
+
     this.db.run(
       "UPDATE issue_watch_scans SET status=?,phase=?,ended_at=?,semantic_attempts=?,utility_run_id=?,data=? WHERE id=? AND watch_id=?",
       value.status,
@@ -276,6 +306,7 @@ export class IssueWatchStore {
       value.watch_id,
     );
   };
+
   reserveSemantic = (scan: WatchScan, contextHash: string) =>
     this.db.transaction(() => {
       const saved = this.scan(scan.watch_id, scan.id);
@@ -289,8 +320,10 @@ export class IssueWatchStore {
       scan.phase = "AI screening";
       this.saveScan(scan);
     });
+
   saveSource = (scan: WatchScan, source: WatchSource) => {
     const value = SourceSchema.parse(source);
+
     this.db.run(
       "INSERT INTO issue_watch_sources VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scan_id,source_key) DO UPDATE SET revision_digest=excluded.revision_digest,complete=excluded.complete,data=excluded.data",
       scan.id,
@@ -303,6 +336,7 @@ export class IssueWatchStore {
       JSON.stringify(value),
     );
   };
+
   sources = (watchId: string, scanId: string, strict = false) => {
     this.scan(watchId, scanId);
     if (strict)
@@ -323,8 +357,10 @@ export class IssueWatchStore {
       SourceSchema.parse,
     );
   };
+
   saveCandidate = (scan: WatchScan, candidate: WatchCandidate) => {
     const value = CandidateSchema.parse(candidate);
+
     this.db.run(
       "INSERT INTO issue_watch_candidates VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scan_id,issue_id) DO UPDATE SET claim_state=excluded.claim_state,semantic_state=excluded.semantic_state,checked_at=excluded.checked_at,data=excluded.data",
       scan.id,
@@ -337,6 +373,7 @@ export class IssueWatchStore {
       JSON.stringify(value),
     );
   };
+
   candidates = (watchId: string, scanId: string) => {
     this.scan(watchId, scanId);
     return this.db.records.list(
@@ -348,36 +385,46 @@ export class IssueWatchStore {
       CandidateSchema.parse,
     );
   };
+
   candidate = (watchId: string, scanId: string, issueId: string) => {
     this.scan(watchId, scanId);
+
     const row = this.db.all<{ data: string }>(
       "SELECT data FROM issue_watch_candidates WHERE scan_id=? AND issue_id=?",
       scanId,
       issueId,
     )[0];
+
     if (!row) throw new AdeError("not_found", "Candidate does not belong to this scan.");
+
     const value = this.decode(
       "issue_watch_candidates",
       `${scanId}:${issueId}`,
       row.data,
       CandidateSchema.parse,
     );
+
     if (value.issue.id !== issueId || value.issue.repository_id !== this.get(watchId).repository.id)
       throw new AdeError("corrupt_record", "Candidate identity is inconsistent.");
     return value;
   };
+
   private candidateLocation = (watchId: string, issueId: string) => {
     this.get(watchId);
+
     const row = this.db.all<{ scan_id: string }>(
       "SELECT c.scan_id FROM issue_watch_candidates c JOIN issue_watch_scans s ON s.id=c.scan_id WHERE s.watch_id=? AND c.issue_id=? ORDER BY s.started_at DESC,s.rowid DESC LIMIT 1",
       watchId,
       issueId,
     )[0];
+
     if (!row) throw new AdeError("not_found", "Candidate has no saved identity in this watch.");
     return row.scan_id;
   };
+
   savedCandidate = (watchId: string, issueId: string) =>
     this.candidate(watchId, this.candidateLocation(watchId, issueId), issueId);
+
   dispositions = (watchId: string) =>
     new Map(
       this.db
@@ -387,6 +434,7 @@ export class IssueWatchStore {
         )
         .map((row) => [row.issue_id, row.dismissed_at]),
     );
+
   summaries = (candidates: WatchCandidate[], watchId: string): CandidateSummary[] => {
     const dispositions = this.dispositions(watchId);
     return candidates.map((candidate) => {
@@ -402,6 +450,7 @@ export class IssueWatchStore {
       };
     });
   };
+
   results = (watchId: string, strict = false) => {
     this.get(watchId);
     return this.db
@@ -411,6 +460,7 @@ export class IssueWatchStore {
       )
       .flatMap((row) => {
         const decode = strict ? this.db.records.decode : this.db.records.tryDecode;
+
         const candidate = decode(
           {
             table: "issue_watch_results",
@@ -425,27 +475,34 @@ export class IssueWatchStore {
             return parsed;
           },
         );
+
         return candidate ? [candidate] : [];
       });
   };
+
   dismiss = (watchId: string, issueId: string, dismissed: boolean) => {
     const sourceScan = this.candidateLocation(watchId, issueId);
+
     const row = this.db.all<{ data: string }>(
       "SELECT data FROM issue_watch_results WHERE watch_id=? AND issue_id=?",
       watchId,
       issueId,
     )[0];
+
     const candidate = row
       ? this.decode("issue_watch_results", `${watchId}:${issueId}`, row.data, CandidateSchema.parse)
       : this.candidate(watchId, sourceScan, issueId);
+
     candidate.dismissed_at = dismissed ? now() : null;
     if (!row) {
       candidate.eligible = false;
       candidate.claim_state = "eligibility_uncertain";
       candidate.classification = "not_rechecked";
+
       candidate.uncertainty.push(
         "Local disposition for a provisional candidate; no complete baseline evaluation.",
       );
+
       this.db.run(
         "INSERT INTO issue_watch_results VALUES(?,?,?,?,?,?,?,?,?)",
         watchId,
@@ -458,8 +515,10 @@ export class IssueWatchStore {
         now(),
         JSON.stringify(candidate),
       );
+
       return candidate;
     }
+
     this.db.run(
       "UPDATE issue_watch_results SET dismissed_at=?,data=? WHERE watch_id=? AND issue_id=?",
       candidate.dismissed_at,
@@ -467,20 +526,27 @@ export class IssueWatchStore {
       watchId,
       issueId,
     );
+
     return candidate;
   };
+
   compare = (scan: WatchScan, candidates: WatchCandidate[]) => {
     const watch = this.get(scan.watch_id);
+
     const previous = new Map(
       this.results(watch.id, true).map((candidate) => [candidate.issue.id, candidate]),
     );
+
     const dispositions = this.dispositions(watch.id);
+
     const baseline = watch.last_complete_scan_id
       ? this.scan(watch.id, watch.last_complete_scan_id)
       : null;
+
     for (const candidate of candidates) {
       const old = previous.get(candidate.issue.id);
       if (candidate.classification === "not_rechecked") continue;
+
       const matchedBefore = this.db.all<{
         last_complete_match_scan_id: string | null;
       }>(
@@ -488,7 +554,9 @@ export class IssueWatchStore {
         watch.id,
         candidate.issue.id,
       )[0]?.last_complete_match_scan_id;
+
       candidate.dismissed_at = dispositions.get(candidate.issue.id) ?? null;
+
       candidate.classification = !candidate.eligible
         ? matchedBefore
           ? "no_longer_eligible"
@@ -506,6 +574,7 @@ export class IssueWatchStore {
                   : candidate.issue.created_at > (baseline.ended_at || baseline.started_at)
                     ? "new_issue"
                     : "newly_matching";
+
       if (candidate.classification === "newly_matching" && !old)
         candidate.reasons.push("Newly discovered match; prior eligibility is unknown.");
       if (candidate.classification === "newly_matching" && old) {
@@ -515,6 +584,7 @@ export class IssueWatchStore {
               (current) => current.toLowerCase() === label.toLowerCase(),
             ),
         );
+
         if (removed.length)
           candidate.reasons.push(`Previously observed labels removed: ${removed.join(", ")}.`);
         if (old.reasons.some((reason) => reason.includes("excluded tracker")))
@@ -523,8 +593,10 @@ export class IssueWatchStore {
           );
       }
     }
+
     return candidates;
   };
+
   finish = (scan: WatchScan, candidates: WatchCandidate[], expectedBaseline: string | null) =>
     this.db.transaction(() => {
       const watch = this.get(scan.watch_id);
@@ -551,6 +623,7 @@ export class IssueWatchStore {
           watch.id,
           candidate.issue.id,
         )[0];
+
         this.db.run(
           "INSERT INTO issue_watch_results VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(watch_id,issue_id) DO UPDATE SET last_evaluated_scan_id=excluded.last_evaluated_scan_id,last_complete_match_scan_id=excluded.last_complete_match_scan_id,classification=excluded.classification,dismissed_at=excluded.dismissed_at,last_seen=excluded.last_seen,data=excluded.data",
           watch.id,
@@ -564,18 +637,21 @@ export class IssueWatchStore {
           JSON.stringify(candidate),
         );
       }
+
       this.saveWatch({
         ...watch,
         updated_at: now(),
         last_complete_scan_id: scan.id,
       });
     });
+
   interrupt = () => {
     for (const row of this.db.all<{ id: string; watch_id: string }>(
       "SELECT id,watch_id FROM issue_watch_scans WHERE status IN('running','cancelling')",
     )) {
       try {
         const scan = this.scan(row.watch_id, row.id);
+
         this.saveScan({
           ...scan,
           status: "interrupted",
@@ -586,6 +662,7 @@ export class IssueWatchStore {
         });
       } catch (error) {
         if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
+
         this.db.run(
           "UPDATE issue_watch_scans SET status='interrupted',ended_at=? WHERE id=?",
           now(),

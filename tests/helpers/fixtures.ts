@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+
 import { checked } from "../../backend/execution/runtime/process";
 import { now, type Repository, type Task } from "../../backend/domain";
 import { Engine } from "../../backend/execution/engine";
@@ -9,16 +10,19 @@ import type {
   AgentRunRequest,
   ProviderDetection,
 } from "../../backend/execution/providers/contracts";
+
 const fixtureTransport = (url: string) => {
   if (!isAbsolute(url))
     throw new Error("Fixture Git network is disabled; supply a local constructor transport.");
   return url;
 };
+
 export const createFixtureEngine = (
   root: string,
   providers?: Parameters<typeof Engine.create>[1],
   transport = fixtureTransport,
 ) => Engine.create(root, providers, transport);
+
 export const fixtureRepository = async (engine: Engine, dir: string) => {
   const upstream = join(dir, "upstream");
   await mkdir(upstream);
@@ -34,6 +38,7 @@ export const fixtureRepository = async (engine: Engine, dir: string) => {
   const id = randomUUID();
   const path = join(engine.root, "repos", id);
   await engine.git.clone(upstream, path);
+
   const repo: Repository = {
     id,
     owner: "fixture",
@@ -45,9 +50,11 @@ export const fixtureRepository = async (engine: Engine, dir: string) => {
     last_fetched: null,
     created_at: now(),
   };
+
   engine.db.saveRepository(repo);
   return { repo, upstream };
 };
+
 export const plan1 = {
   summary: "Fixture plan",
   understanding: "One file only",
@@ -58,6 +65,7 @@ export const plan1 = {
   risks: [],
   openQuestions: [],
 };
+
 export const plan2 = {
   goal: "Change source",
   scope: "source.txt",
@@ -69,6 +77,7 @@ export const plan2 = {
   riskAnalysis: [],
   explicitNonGoals: ["remote writes"],
 };
+
 export class FixtureProvider extends CodexProvider {
   constructor(
     private readonly gate?: () => Promise<void>,
@@ -76,6 +85,7 @@ export class FixtureProvider extends CodexProvider {
   ) {
     super();
   }
+
   detect = async (): Promise<ProviderDetection> => {
     await this.gate?.();
     return {
@@ -90,6 +100,7 @@ export class FixtureProvider extends CodexProvider {
       error: null,
     };
   };
+
   invocation = (r: AgentRunRequest) => {
     const result = (r.schema.properties as Record<string, unknown>)?.manualActionRequired
       ? {
@@ -124,6 +135,7 @@ export class FixtureProvider extends CodexProvider {
                 testsSkipped: [],
                 remainingRisks: [],
               };
+
     let action = "";
     if (r.stage === 3)
       action = `await require('node:fs/promises').writeFile('source.txt',${JSON.stringify(r.prompt.includes("Task A") ? "A\n" : "B\n")});`;
@@ -135,6 +147,7 @@ export class FixtureProvider extends CodexProvider {
         args: ["-e", "console.error('fixture quota error');process.exit(29)"],
       };
     }
+
     return {
       program: process.execPath,
       input: "",
@@ -145,12 +158,14 @@ export class FixtureProvider extends CodexProvider {
     };
   };
 }
+
 export const waitForTask = (engine: Engine, id: string, predicate: (status: string) => boolean) =>
   new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       engine.off("event", check);
       reject(new Error("Task transition deadline exceeded"));
     }, 30000);
+
     const check = () => {
       if (predicate(engine.db.task(id).status)) {
         clearTimeout(timer);
@@ -158,6 +173,7 @@ export const waitForTask = (engine: Engine, id: string, predicate: (status: stri
         resolve();
       }
     };
+
     engine.on("event", check);
     check();
   });
@@ -171,6 +187,7 @@ export const finishFixtureTask = async (
 ) => {
   let approving = false;
   let failure: unknown;
+
   const approve = () => {
     const task = engine.db.task(id);
     if (
@@ -182,6 +199,7 @@ export const finishFixtureTask = async (
     )
       return;
     approving = true;
+
     void engine
       .approveStage(id)
       .catch((error) => {
@@ -191,6 +209,7 @@ export const finishFixtureTask = async (
         approving = false;
       });
   };
+
   engine.on("event", approve);
   const timer = setInterval(approve, 20);
   try {
@@ -226,7 +245,9 @@ export const prepareFixtureTask = async (
     created_at: now(),
     updated_at: now(),
   };
+
   engine.db.saveTask(task);
+
   await engine.git.prepare(
     repo,
     task,
@@ -241,6 +262,7 @@ export const prepareFixtureTask = async (
       );
     },
   );
+
   engine.db.saveTask(task);
   return task;
 };

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
+
 import { parseLabelInput } from "./labels";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
@@ -14,12 +15,15 @@ export const LabelExclusions = ({
   change: (labels: string[]) => void;
 }) => {
   const [input, setInput] = useState("");
+
   const [catalog, setCatalog] = useState<{
     repository: string;
     labels: string[];
   }>({ repository: "", labels: [] });
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
   const add = (value: string) => {
     try {
       const parsed = parseLabelInput(value, repository);
@@ -34,6 +38,7 @@ export const LabelExclusions = ({
       setError(errorMessage(failure));
     }
   };
+
   const load = async () => {
     setLoading(true);
     setError("");
@@ -48,6 +53,7 @@ export const LabelExclusions = ({
       setLoading(false);
     }
   };
+
   return (
     <section
       className="label-exclusions"
@@ -55,6 +61,7 @@ export const LabelExclusions = ({
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
+
         add(
           event.dataTransfer
             .getData("text/uri-list")
@@ -87,11 +94,13 @@ export const LabelExclusions = ({
           }}
         />
       </label>
+
       <datalist id="watch-label-catalog">
         {(catalog.repository === repository ? catalog.labels : []).map((label) => (
           <option key={label} value={label} />
         ))}
       </datalist>
+
       <div className="label-chips">
         {labels.map((label) => (
           <span className="context-chip" key={label}>
@@ -107,10 +116,12 @@ export const LabelExclusions = ({
           </span>
         ))}
       </div>
+
       <div className="actions">
         <Button size="sm" variant="ghost" onClick={() => add(input)} disabled={!input.trim()}>
           Add label
         </Button>
+
         <Button
           size="sm"
           variant="ghost"
@@ -120,10 +131,12 @@ export const LabelExclusions = ({
           {loading ? "Loading labels…" : "Find GitHub labels"}
         </Button>
       </div>
+
       <small>
         Paste or drop a GitHub label link, or type a name and press Enter or Add label. Exclusions
         match exact labels, case insensitive.
       </small>
+
       {error && (
         <p className="error-box" role="alert">
           {error}

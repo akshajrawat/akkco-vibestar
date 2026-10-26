@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import type { RepairSession } from "../../../../backend/review/repair/contracts";
 import { rpc, errorMessage } from "../../../lib/api";
 import { containDialogFocus } from "../../../lib/keyboard";
@@ -18,6 +19,7 @@ export const LocalCommitDialog = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const dialog = useDialogFocus();
+
   const commit = async () => {
     setBusy(true);
     setError("");
@@ -29,12 +31,14 @@ export const LocalCommitDialog = ({
           expected_hash: hash,
           confirmed: true,
         });
+
       await rpc("repair.commit", {
         id: session.id,
         expected_hash: hash,
         message,
         confirmed: true,
       });
+
       await rpc("repair.keepLocal", { id: session.id });
       await refresh();
       close();
@@ -44,6 +48,7 @@ export const LocalCommitDialog = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -69,6 +74,7 @@ export const LocalCommitDialog = ({
             <code>{session.workspace.branch_name}</code>
           </dd>
         </dl>
+
         <label>
           Commit message
           <textarea
@@ -79,15 +85,18 @@ export const LocalCommitDialog = ({
             onChange={(e) => setMessage(e.target.value)}
           />
         </label>
+
         {error && (
           <p className="error-box" role="alert">
             {error}
           </p>
         )}
+
         <div className="actions">
           <Button variant="secondary" disabled={busy} onClick={close}>
             Cancel
           </Button>
+
           <Button busy={busy} disabled={!message.length} onClick={() => void commit()}>
             {busy ? "Committing…" : "Confirm Local Commit"}
           </Button>

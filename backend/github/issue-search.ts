@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { AdeError, now, parseIssue } from "../domain";
 import type { GitHubClient } from "./client";
 import {
@@ -15,9 +16,12 @@ export class CollectionLimit extends AdeError {
     super("coverage_limit", message);
   }
 }
+
 export class GitHubReadPool {
   private active = 0;
+
   private waiting: (() => void)[] = [];
+
   run = async <T>(operation: () => Promise<T>, signal: AbortSignal) => {
     signal.throwIfAborted();
     if (this.active >= 4)
@@ -26,10 +30,12 @@ export class GitHubReadPool {
           signal.removeEventListener("abort", aborted);
           resolve();
         };
+
         const aborted = () => {
           this.waiting = this.waiting.filter((item) => item !== ready);
           reject(signal.reason);
         };
+
         this.waiting.push(ready);
         signal.addEventListener("abort", aborted, { once: true });
       });
@@ -44,11 +50,13 @@ export class GitHubReadPool {
     }
   };
 }
+
 const rawRepository = z.object({
   node_id: z.string().min(1),
   full_name: z.string(),
   html_url: z.string(),
 });
+
 const rawIssue = z.object({
   node_id: z.string().min(1),
   number: z.number().int().positive().safe(),
@@ -66,13 +74,16 @@ const rawIssue = z.object({
 
 export class IssueSearch {
   requests = 0;
+
   bytes = 0;
+
   constructor(
     private readonly client: GitHubClient,
     readonly signal: AbortSignal,
     readonly limits: WatchLimits,
     private readonly pool: GitHubReadPool,
   ) {}
+
   read = async (endpoint: string): Promise<unknown> => {
     this.signal.throwIfAborted();
     if (
@@ -87,16 +98,19 @@ export class IssueSearch {
     if (this.requests >= this.limits.max_requests)
       throw new CollectionLimit("GitHub request budget exhausted.");
     this.requests++;
+
     const value = await this.pool.run(
       () => this.client.api<unknown>(endpoint, this.signal),
       this.signal,
     );
+
     this.signal.throwIfAborted();
     this.bytes += Buffer.byteLength(JSON.stringify(value));
     if (this.bytes > 20 * 1024 * 1024)
       throw new CollectionLimit("Collected GitHub data exceeded 20 MiB.");
     return value;
   };
+
   repository = async (name: string, expectedId?: string) => {
     const value = rawRepository.parse(await this.read(`repos/${repositoryName(name)}`));
     const fullName = repositoryName(value.html_url);
@@ -114,6 +128,7 @@ export class IssueSearch {
       url: `https://github.com/${fullName}`,
     });
   };
+
   issue = async (repository: RepositoryIdentity, number: number) => {
     const value = rawIssue.parse(await this.read(`repos/${repository.full_name}/issues/${number}`));
     const ref = value.pull_request ? null : parseIssue(value.html_url);
@@ -146,6 +161,7 @@ export class IssueSearch {
       comment_count: value.comments,
     });
   };
+
   pages = async (endpoint: string, maxRows = 2000) => {
     const rows: unknown[] = [];
     const seen = new Set<string>();
@@ -153,6 +169,7 @@ export class IssueSearch {
       const value = await this.read(
         `${endpoint}${endpoint.includes("?") ? "&" : "?"}per_page=100&page=${page}`,
       );
+
       if (!Array.isArray(value))
         throw new AdeError("github", "Unexpected Issue Watch pagination response.");
       if (value.length > 100) throw new AdeError("github", "Oversized GitHub page.");
@@ -165,8 +182,10 @@ export class IssueSearch {
         throw new CollectionLimit("Discussion or tracker exceeded its declared entry limit.");
       if (value.length < 100) return rows;
     }
+
     throw new CollectionLimit("GitHub discussion pagination limit reached.");
   };
+
   discover = async (repository: RepositoryIdentity, query: string) => {
     const identities: { id: string; number: number }[] = [];
     const seen = new Map<string, number>();
@@ -195,27 +214,33 @@ export class IssueSearch {
             `search/issues?q=${encodeURIComponent(query)}&sort=updated&order=desc&per_page=100&page=${page}`,
           ),
         );
+
       if (page > 1 && total !== value.total_count) {
         complete = false;
         warnings.push("Search total changed during collection.");
       }
+
       total = value.total_count;
       if (value.incomplete_results) {
         complete = false;
         warnings.push("GitHub reported incomplete search results.");
       }
+
       if (total > this.limits.max_candidates || total > 1000) {
         complete = false;
+
         warnings.push(
           `Search has ${total} results; at most ${this.limits.max_candidates} identities are checked.`,
         );
       }
+
       const hash = digest(value.items);
       if (value.items.length && pages.has(hash)) {
         complete = false;
         warnings.push("Search pages repeated.");
         break;
       }
+
       pages.add(hash);
       for (const item of value.items) {
         if (item.pull_request) {
@@ -223,6 +248,7 @@ export class IssueSearch {
           warnings.push("Search returned a PR-shaped result; it was excluded.");
           continue;
         }
+
         const ref = parseIssue(item.html_url);
         if (
           `${ref.owner}/${ref.repo}`.toLowerCase() !== repository.full_name ||
@@ -234,19 +260,24 @@ export class IssueSearch {
           warnings.push("Search identities overlapped between pages.");
           continue;
         }
+
         seen.set(item.node_id, item.number);
         if (identities.length < this.limits.max_candidates)
           identities.push({ id: item.node_id, number: item.number });
       }
+
       if (value.items.length < 100 || page * 100 >= total) break;
     }
+
     if (seen.size < Math.min(total, this.limits.max_candidates)) {
       complete = false;
       warnings.push("Search coverage did not reach the declared result count.");
     }
+
     return { identities, total, complete, warnings, fetched_at: now() };
   };
 }
+
 export const issueQuery = (
   repository: RepositoryIdentity,
   rules: import("../issue-watch/contracts").WatchRules,
@@ -258,6 +289,7 @@ export const issueQuery = (
     ...(rules.unassigned_only ? ["no:assignee"] : []),
     ...rules.excluded_labels.map((label) => `-label:${JSON.stringify(label)}`),
   ].join(" ");
+
 export const verifyIssueIdentity = (
   actual: IssueSnapshot,
   expected: { id: string; number: number },

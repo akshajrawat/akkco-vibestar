@@ -1,30 +1,37 @@
 import { useEffect, useState } from "react";
+
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { CleanupError } from "../../components/shared/CleanupError";
 import type { StorageService } from "../../../backend/storage/service";
 import { StorageReset } from "./StorageReset";
+
 const bytes = (value: number) =>
   value >= 1024 ** 3
     ? `${(value / 1024 ** 3).toFixed(2)} GB`
     : value >= 1024 ** 2
       ? `${(value / 1024 ** 2).toFixed(1)} MB`
       : `${(value / 1024).toFixed(1)} KB`;
+
 export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
   const [info, setInfo] = useState<Awaited<ReturnType<StorageService["info"]>>>();
   const [error, setError] = useState("");
   const [cleanupError, setCleanupError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
+
   const [confirmation, setConfirmation] = useState<{
     method: string;
     params: Record<string, unknown>;
     description: string;
   } | null>(null);
+
   const [reset, setReset] = useState(false);
   const [notice, setNotice] = useState("");
+
   useEffect(() => {
     let alive = true;
+
     void rpc<typeof info>("storage.info")
       .then((r) => {
         if (alive) setInfo(r);
@@ -32,10 +39,12 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
       .catch((e) => {
         if (alive) setError(errorMessage(e));
       });
+
     return () => {
       alive = false;
     };
   }, [revision]);
+
   const execute = async () => {
     if (!confirmation) return;
     setBusy(true);
@@ -46,6 +55,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
         ...confirmation.params,
         confirmed: true,
       });
+
       setNotice("Cleanup completed.");
       setConfirmation(null);
       setRevision((v) => v + 1);
@@ -56,6 +66,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
       setBusy(false);
     }
   };
+
   return (
     <section className="storage-page">
       <div className="page-title">
@@ -69,6 +80,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
       <label>
         Data root<code>{info?.root || "Measuring…"}</code>
       </label>
+
       {info && (
         <dl className="storage-sizes">
           {[
@@ -90,10 +102,12 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
           ))}
         </dl>
       )}
+
       <p className="subtle">
         Logical file sizes, measured locally. Imported checkouts stay at their original locations
         and are excluded.
       </p>
+
       <div className="storage-actions">
         <Button
           disabled={busy}
@@ -101,6 +115,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
         >
           Open data directory
         </Button>
+
         {[
           [
             "Clear logs",
@@ -133,6 +148,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
             variant="secondary"
             onClick={() => {
               setCleanupError(undefined);
+
               setConfirmation({
                 method: String(method),
                 params: params as Record<string, unknown>,
@@ -143,10 +159,12 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
             {String(label)}
           </Button>
         ))}
+
         <Button variant="destructive" disabled={busy} onClick={() => setReset(true)}>
           Reset Local Test Workspace…
         </Button>
       </div>
+
       {reset && (
         <StorageReset
           close={() => setReset(false)}
@@ -156,6 +174,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
           }}
         />
       )}
+
       {confirmation && (
         <div className="modal-backdrop">
           <section
@@ -174,10 +193,12 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
                 busy={busy}
               />
             )}
+
             <div className="actions">
               <Button disabled={busy} onClick={() => setConfirmation(null)}>
                 Cancel
               </Button>
+
               <Button disabled={busy} variant="destructive" onClick={() => void execute()}>
                 {busy ? "Cleaning…" : "Confirm"}
               </Button>

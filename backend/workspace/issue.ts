@@ -4,12 +4,14 @@ import { object } from "../execution/providers/contracts";
 
 export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: AbortSignal) => {
   const client = new GitHubClient(cwd);
+
   // Authenticated CLI GETs first; public REST is a credential-free fallback.
   const get = async (endpoint: string): Promise<unknown> => {
     try {
       return await client.api(endpoint, signal);
     } catch {
       signal?.throwIfAborted();
+
       const response = await fetch(`https://api.github.com/${endpoint}`, {
         headers: {
           "User-Agent": "akkco-vibestar/0.1",
@@ -17,6 +19,7 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
         },
         signal: signal || AbortSignal.timeout(30000),
       });
+
       if (!response.ok)
         throw new AdeError(
           "github",
@@ -25,6 +28,7 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
       return response.json();
     }
   };
+
   const pages = async (endpoint: string) => {
     const rows: Record<string, unknown>[] = [];
     for (let page = 1; page <= 100; page++) {
@@ -34,11 +38,13 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
       rows.push(...part.map(object));
       if (part.length < 100) return rows;
     }
+
     throw new AdeError(
       "github",
       "Issue context exceeds the 10,000-entry pagination limit; no incomplete issue context was accepted.",
     );
   };
+
   const base = `repos/${reference.owner}/${reference.repo}/issues/${reference.number}`;
   const issue = object(await get(base));
   if (issue.pull_request)
@@ -50,10 +56,12 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
     timeline = await pages(`${base}/timeline`);
   } catch (error) {
     signal?.throwIfAborted();
+
     warnings.push(
       `Linked PR timeline unavailable: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+
   const links = new Set<string>();
   for (const text of [
     issue.body,
@@ -65,12 +73,14 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
     ))
       links.add(`${match[1]}/${match[2]}/${match[3]}`);
   }
+
   const linkedPullRequests: Record<string, unknown>[] = [];
   for (const link of [...links].slice(0, 20)) {
     const [owner, repo, number] = link.split("/");
     const endpoint = `repos/${owner}/${repo}`;
     try {
       const pr = object(await get(`${endpoint}/pulls/${number}`));
+
       linkedPullRequests.push({
         url: pr.html_url,
         title: pr.title,
@@ -92,11 +102,13 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
       });
     } catch (error) {
       signal?.throwIfAborted();
+
       warnings.push(
         `Linked PR ${owner}/${repo}#${number} could not be fully retrieved: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
+
   if (links.size > 20)
     warnings.push(`${links.size - 20} linked PRs omitted by the 20-PR context limit.`);
   return {

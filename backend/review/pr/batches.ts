@@ -1,5 +1,7 @@
 import { z } from "zod";
+
 import { createHash, randomUUID } from "node:crypto";
+
 import { AdeError, FollowupConfigSchema, now } from "../../domain";
 import type { Engine } from "../../execution/engine";
 import type { Scheduler } from "../../scheduled/scheduler";
@@ -10,12 +12,14 @@ export const BatchSelectionSchema = z
     scope: z.enum(["open", "attention", "stale", "selected"]),
   })
   .strict();
+
 export const StartPRBatchSchema = BatchSelectionSchema.extend({
   request_id: z.string().uuid(),
   max_analyses: z.number().int().min(0).max(20).default(5),
   configuration: FollowupConfigSchema,
   confirmed: z.literal(true),
 }).strict();
+
 const BatchSchema = z
   .object({
     id: z.string().uuid(),
@@ -49,14 +53,17 @@ const BatchSchema = z
       .max(20),
   })
   .strict();
+
 export type PRBatch = z.infer<typeof BatchSchema>;
 
 export class PRAnalysisBatches {
   private previews = new Map<AbortController, Promise<unknown>>();
+
   private active = new Map<
     string,
     { promise: Promise<void>; cancelled: boolean; jobId?: string }
   >();
+
   constructor(
     private readonly engine: Engine,
     private readonly scheduler: Scheduler,
@@ -69,6 +76,7 @@ export class PRAnalysisBatches {
       this.save(batch);
     }
   }
+
   list = () =>
     this.engine.db.records.list(
       "pr_analysis_batches",
@@ -78,6 +86,7 @@ export class PRAnalysisBatches {
       BatchSchema.parse,
       "id",
     );
+
   private save = (batch: PRBatch) => {
     this.engine.db.run(
       "INSERT INTO pr_analysis_batches VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,data=excluded.data",
@@ -86,8 +95,10 @@ export class PRAnalysisBatches {
       JSON.stringify(batch),
       batch.created_at,
     );
+
     this.engine.changed();
   };
+
   private validateSelection = (ids: string[]) => {
     if (new Set(ids).size !== ids.length)
       throw new AdeError("invalid_input", "Select each PR once.");
@@ -95,6 +106,7 @@ export class PRAnalysisBatches {
     if (ids.some((id) => !jobs.some((job) => job.id === id)))
       throw new AdeError("not_found", "A selected PR is no longer available.");
   };
+
   /** Inspects report reuse with bounded GitHub reads and no inference authorization. */
   preview = (input: z.input<typeof BatchSelectionSchema>) => {
     this.engine.assertAvailable();
@@ -102,12 +114,14 @@ export class PRAnalysisBatches {
     this.validateSelection(p.job_ids);
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]);
+
     const promise = Promise.resolve().then(async () => {
       let reusable = 0;
       for (const id of p.job_ids) if (await this.scheduler.inspectForBatch(id, signal)) reusable++;
       signal.throwIfAborted();
       return { selected: p.job_ids.length, reusable, checked_at: now() };
     });
+
     const release = this.engine.trackActivity(
       {
         id: `pr-batch-preview:${randomUUID()}`,
@@ -120,23 +134,28 @@ export class PRAnalysisBatches {
         await promise.catch(() => {});
       },
     );
+
     const settled = promise.finally(() => {
       this.previews.delete(controller);
       release();
     });
+
     this.previews.set(controller, settled);
     return settled;
   };
+
   /** Journals a manual batch and charges its durable cap immediately before semantic analysis. */
   start = (input: z.input<typeof StartPRBatchSchema>) => {
     this.engine.assertAvailable();
     const p = StartPRBatchSchema.parse(input);
     this.validateSelection(p.job_ids);
     const digest = createHash("sha256").update(JSON.stringify(p)).digest("hex");
+
     const existing = this.engine.db.all<{ data: string }>(
       "SELECT data FROM pr_analysis_batches WHERE id=?",
       p.request_id,
     )[0];
+
     if (existing) {
       const batch = BatchSchema.parse(JSON.parse(existing.data));
       if (batch.digest !== digest)
@@ -146,8 +165,10 @@ export class PRAnalysisBatches {
         );
       return batch;
     }
+
     if (this.active.size)
       throw new AdeError("busy", "Another PR batch is already running. Cancel or finish it first.");
+
     const batch: PRBatch = {
       id: p.request_id,
       digest,
@@ -165,12 +186,15 @@ export class PRAnalysisBatches {
         error: null,
       })),
     };
+
     this.save(batch);
+
     const operation = {
       promise: Promise.resolve(),
       cancelled: false,
       jobId: undefined as string | undefined,
     };
+
     const release = this.engine.trackActivity(
       {
         id: `pr-batch:${batch.id}`,
@@ -180,6 +204,7 @@ export class PRAnalysisBatches {
       },
       () => this.cancel(batch.id),
     );
+
     operation.promise = Promise.resolve().then(async () => {
       try {
         for (const item of batch.items) {
@@ -205,14 +230,17 @@ export class PRAnalysisBatches {
                 this.save(batch);
               },
             });
+
             item.status = session?.status === "running" || !session ? "failed" : session.status;
             item.error = session?.error || null;
           } catch (error) {
             item.status = "failed";
             item.error = error instanceof Error ? error.message : String(error);
           }
+
           this.save(batch);
         }
+
         batch.status = operation.cancelled ? "cancelled" : "completed";
         for (const item of batch.items) if (item.status === "pending") item.status = "cancelled";
       } finally {
@@ -222,9 +250,11 @@ export class PRAnalysisBatches {
         release();
       }
     });
+
     this.active.set(batch.id, operation);
     return batch;
   };
+
   cancel = async (id: string) => {
     const operation = this.active.get(id);
     if (!operation) return;
@@ -232,6 +262,7 @@ export class PRAnalysisBatches {
     if (operation.jobId) await this.scheduler.cancel(operation.jobId);
     await operation.promise;
   };
+
   close = async () => {
     for (const controller of this.previews.keys()) controller.abort();
     await Promise.allSettled(this.previews.values());

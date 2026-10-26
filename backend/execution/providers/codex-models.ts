@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
+
 import { cleanEnvironment, terminateGroup } from "../runtime/process";
 import { OutputBudget } from "../output/bounded-output";
 import { object, type ProviderDetection } from "./contracts";
@@ -14,6 +15,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
       shell: false,
       detached: process.platform !== "win32",
     });
+
     const models: ProviderDetection["models"] = [];
     let subscriptionLimits: ProviderDetection["subscriptionLimits"];
     const decoder = new StringDecoder("utf8");
@@ -23,11 +25,13 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
     let finishing = false;
     let error: Error | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+
     const stop = (signal: NodeJS.Signals) => {
       if (!child.pid) return;
       if (process.platform === "win32") child.kill(signal);
       else terminateGroup(child.pid, signal);
     };
+
     const finish = (failure?: Error) => {
       if (finishing) return;
       finishing = true;
@@ -38,19 +42,23 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
       killTimer = setTimeout(() => stop("SIGKILL"), 500);
       killTimer.unref();
     };
+
     const abort = () => {
       error = new Error("Model discovery cancelled");
       finish(error);
       stop("SIGKILL");
     };
+
     const timer = setTimeout(
       () => finish(models.length ? undefined : new Error("Codex model discovery timed out")),
       15000,
     );
+
     timer.unref();
     signal?.addEventListener("abort", abort, { once: true });
     const send = (value: unknown) => child.stdin.write(JSON.stringify(value) + "\n");
     child.stdin.on("error", () => {});
+
     child.stderr.on("data", (chunk: Buffer) => {
       if (finishing) return;
       try {
@@ -59,7 +67,9 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
         finish(failure as Error);
       }
     });
+
     child.on("error", finish);
+
     child.on("close", () => {
       if (!finishing)
         error = models.length ? undefined : new Error("Codex model discovery stopped");
@@ -72,6 +82,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
       if (error) reject(error);
       else resolve({ models, subscriptionLimits });
     });
+
     const line = (line: string) => {
       if (finishing) return;
       try {
@@ -79,6 +90,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
         if (response.id === 2) {
           if (!response.error) {
             const limits = object(object(response.result).rateLimits);
+
             const windows = [limits.primary, limits.secondary]
               .map(object)
               .filter(
@@ -92,6 +104,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
                 windowDurationMins: w.windowDurationMins as number,
                 resetsAt: w.resetsAt as number,
               }));
+
             if (windows.length)
               subscriptionLimits = {
                 reportedAt: new Date().toISOString(),
@@ -99,15 +112,18 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
                 windows,
               };
           }
+
           finish();
           return;
         }
+
         if (response.error)
           return finish(
             new Error(String(object(response.error).message || "Model discovery failed")),
           );
         if (response.id === 0) {
           send({ method: "initialized", params: {} });
+
           send({
             id: 1,
             method: "model/list",
@@ -117,6 +133,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
           const result = object(response.result);
           for (const value of Array.isArray(result.data) ? result.data : []) {
             const m = object(value);
+
             models.push({
               id: String(m.model || m.id),
               label: String(m.displayName || m.id),
@@ -127,6 +144,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
               ).map((e) => String(object(e).reasoningEffort)),
             });
           }
+
           if (models.length > 1000)
             return finish(new Error("Codex model discovery exceeded its model limit"));
           if (result.nextCursor) {
@@ -134,6 +152,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
             if (cursors.has(cursor) || models.length >= 1000)
               return finish(new Error("Codex model discovery pagination exceeded its limit"));
             cursors.add(cursor);
+
             send({
               id: 1,
               method: "model/list",
@@ -150,6 +169,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
         finish(new Error("Invalid Codex model discovery response"));
       }
     };
+
     child.stdout.on("data", (chunk: Buffer) => {
       if (finishing) return;
       try {
@@ -162,12 +182,14 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
           line(buffered.slice(0, index));
           buffered = buffered.slice(index + 1);
         }
+
         if (buffered.length > 256 * 1024)
           throw new Error("Codex discovery response exceeded its line limit");
       } catch (failure) {
         finish(failure as Error);
       }
     });
+
     send({
       id: 0,
       method: "initialize",
@@ -175,5 +197,6 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
         clientInfo: { name: "vibestar", title: "Vibestar", version: "0.1.0" },
       },
     });
+
     if (signal?.aborted) abort();
   });

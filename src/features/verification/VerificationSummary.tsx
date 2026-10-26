@@ -15,20 +15,25 @@ export const VerificationSummary = ({
 }) => {
   const verification = detailVerification(detail);
   const roots = verificationRoots(detail);
+
   const observed = verification.checks.filter(
     (check) =>
       check.kind === "check" && check.outcome === "passed" && check.source !== "provider_reported",
   ).length;
+
   const reported = verification.checks.filter(
     (check) =>
       check.kind === "check" && check.outcome === "passed" && check.source === "provider_reported",
   ).length;
+
   const failures = verification.checks.filter(
     (check) => check.required && check.outcome === "failed",
   ).length;
+
   const gaps = verification.checks.filter(
     (check) => check.required && !["passed", "failed"].includes(check.outcome),
   ).length;
+
   const groups = [
     ["Failed", verification.checks.filter((check) => check.required && check.outcome === "failed")],
     [
@@ -41,6 +46,7 @@ export const VerificationSummary = ({
     ],
     ["Passed", verification.checks.filter((check) => check.required && check.outcome === "passed")],
   ] as const;
+
   return (
     <section className="verification-summary" aria-label="Verification evidence">
       <h2>
@@ -50,6 +56,7 @@ export const VerificationSummary = ({
             ? "Checks failed"
             : "Verification incomplete"}
       </h2>
+
       <p>
         {observed} passed · {failures} failed · {gaps} need verification
       </p>
@@ -75,9 +82,11 @@ export const VerificationSummary = ({
                   : "Provider reports checks passed; no observed check evidence."
                 : "Verification outcome unknown. No successful check evidence is available."}
         </p>
+
         <p className="subtle">
           {observed} observed passes · {reported} provider-reported passes
         </p>
+
         <small className="subtle">
           Required blocked, interrupted, not-run and unknown checks remain unverified.{" "}
           {verification.canReview
@@ -86,11 +95,13 @@ export const VerificationSummary = ({
               ? "Independent review can start after explicit approval and acknowledgment of environmental gaps."
               : "Resolve failures and ambiguous evidence before independent review."}
         </small>
+
         <details>
           <summary>Evaluation details</summary>
           <p>{verification.summary}</p>
         </details>
       </details>
+
       {roots.length > 0 && (
         <div className="verification-blockers" aria-label="Root blockers">
           {roots.map((root, index) => (
@@ -101,6 +112,7 @@ export const VerificationSummary = ({
                 {root.source.replaceAll("_", " ")} · {root.checks.length} unresolved item
                 {root.checks.length === 1 ? "" : "s"}
               </small>
+
               <details>
                 <summary>Affected checks and recovery</summary>
                 <ul>
@@ -108,6 +120,7 @@ export const VerificationSummary = ({
                     <li key={index}>{check.name}</li>
                   ))}
                 </ul>
+
                 <p>
                   Inspect the original command. Use an already installed toolchain when available,
                   then explicitly rerun the missing checks in a supported environment.
@@ -117,6 +130,7 @@ export const VerificationSummary = ({
           ))}
         </div>
       )}
+
       {groups
         .filter(([, checks]) => checks.length)
         .map(([label, checks]) => (
@@ -124,6 +138,7 @@ export const VerificationSummary = ({
             <summary>
               {label} <span>{checks.length}</span>
             </summary>
+
             <ul>
               {checks.map((check, index) => (
                 <li key={index}>
@@ -141,11 +156,13 @@ export const VerificationSummary = ({
                       ? "skipped (optional)"
                       : check.outcome.replaceAll("_", " ")}
                   </strong>
+
                   <small>
                     {check.source.replaceAll("_", " ")}
                     {check.legacy ? " · legacy classification" : ""} ·{" "}
                     {check.required ? "required" : "additional evidence"}
                   </small>
+
                   {check.reportedOutcome && check.reportedOutcome !== check.outcome && (
                     <p className="warning">
                       Provider reported {check.reportedOutcome.replaceAll("_", " ")}; recorded
@@ -170,6 +187,7 @@ export const VerificationSummary = ({
             </ul>
           </details>
         ))}
+
       {verification.checks.some((check) => !check.required) && (
         <details>
           <summary>Optional evidence</summary>
@@ -191,18 +209,21 @@ export const VerificationSummary = ({
           </ul>
         </details>
       )}
+
       <div className="actions">
         {retry && (
           <Button size="sm" onClick={retry}>
             Recheck saved evidence
           </Button>
         )}
+
         {terminal && (
           <Button size="sm" variant="ghost" onClick={terminal}>
             Diagnose in terminal
           </Button>
         )}
       </div>
+
       {retry && (
         <small className="subtle">
           Run missing checks using the manual command form, then retry. This rechecks saved evidence

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { RefreshCw, ExternalLink, GitPullRequest, Search } from "lucide-react";
+
 import type { ScheduleJob } from "../../../backend/scheduled/contracts";
 import type { Snapshot } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
@@ -26,6 +27,7 @@ export const ScheduledAttention = ({
       <h2>
         Needs attention <small>{snapshot.attention?.length || 0}</small>
       </h2>
+
       {snapshot.attention?.map((item) => {
         const job = snapshot.scheduled?.find((j) => j.id === item.job_id);
         return (
@@ -35,17 +37,20 @@ export const ScheduledAttention = ({
               <p className="pr-one-line">{item.summary}</p>
               {item.error && <p className="warning">{item.error}</p>}
             </div>
+
             <div className="row-actions">
               {job && (
                 <Button size="sm" onClick={() => setSelected(job.id)}>
                   Review report
                 </Button>
               )}
+
               {item.task_id && (
                 <Button size="sm" variant="ghost" onClick={() => open(item.task_id!)}>
                   Original issue task
                 </Button>
               )}
+
               <Button
                 size="sm"
                 variant="ghost"
@@ -61,6 +66,7 @@ export const ScheduledAttention = ({
           </article>
         );
       })}
+
       {!snapshot.attention?.length && (
         <p className="empty-row">No saved review observations need attention.</p>
       )}
@@ -107,6 +113,7 @@ export const ScheduledPage = ({
   const github = snapshot.github;
   const configuration = snapshot.settings.utility_ai;
   const discovered = github?.pull_requests || [];
+
   const rows = [
     ...discovered.map((pr) => ({
       pr,
@@ -147,6 +154,7 @@ export const ScheduledPage = ({
       };
     })
     .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+
   const filtered = rows.filter(
     (row) =>
       (!query ||
@@ -157,7 +165,9 @@ export const ScheduledPage = ({
       (!status || row.state === status) &&
       (!review || (review === "attention" ? row.attention : row.decision === review)),
   );
+
   const updating = busy === "refresh" || !!github?.phase;
+
   const action = async (method: string, params: unknown, key: string) => {
     setBusy(key);
     setError("");
@@ -171,6 +181,7 @@ export const ScheduledPage = ({
       setBusy("");
     }
   };
+
   const openDiscovered = async (row: (typeof rows)[number], analyze = false) => {
     setBusy(row.url);
     setError("");
@@ -183,6 +194,7 @@ export const ScheduledPage = ({
           interval_minutes: 60,
           verify_codex: false,
         }));
+
       setSelected(job.id);
       await refresh();
       if (analyze) {
@@ -190,6 +202,7 @@ export const ScheduledPage = ({
           id: job.id,
           request_id: crypto.randomUUID(),
         });
+
         await refresh();
       }
     } catch (e) {
@@ -199,12 +212,14 @@ export const ScheduledPage = ({
       setBusy("");
     }
   };
+
   const resetFilters = () => {
     setQuery("");
     setRepository("");
     setStatus("");
     setReview("");
   };
+
   const refreshButton = (
     <Button
       busy={updating}
@@ -215,6 +230,7 @@ export const ScheduledPage = ({
       {updating ? "Refreshing…" : "Refresh PR List"}
     </Button>
   );
+
   return (
     <div className="page pr-inbox">
       <PageHeader
@@ -237,6 +253,7 @@ export const ScheduledPage = ({
           </>
         }
       />
+
       {batchOpen && (
         <PRBatchDialog
           rows={rows.map((row) => ({
@@ -252,6 +269,7 @@ export const ScheduledPage = ({
           refresh={refresh}
         />
       )}
+
       {snapshot.pr_batches?.slice(0, 3).map((batch) => (
         <section className="pr-batch-progress" key={batch.id} aria-label="PR batch progress">
           <strong>Analyze All · {batch.status}</strong>
@@ -259,6 +277,7 @@ export const ScheduledPage = ({
             {batch.items.filter((item) => item.status === "completed").length} completed of{" "}
             {batch.items.length} · {batch.analyses_used} of {batch.max_analyses} AI attempts used
           </p>
+
           {batch.status === "running" && (
             <Button
               size="sm"
@@ -267,6 +286,7 @@ export const ScheduledPage = ({
               Cancel batch
             </Button>
           )}
+
           <details>
             <summary>Per-PR progress</summary>
             {batch.items.map((item) => (
@@ -281,6 +301,7 @@ export const ScheduledPage = ({
           </details>
         </section>
       ))}
+
       {(error || github?.error) && (
         <div className="error-box page-error" role="alert">
           <div>
@@ -294,6 +315,7 @@ export const ScheduledPage = ({
             <p>{error || github?.error}</p>
             <small>Saved pull requests are preserved.</small>
           </div>
+
           {(!error || errorOperation === "refresh") && (
             <Button
               variant="outline"
@@ -306,11 +328,13 @@ export const ScheduledPage = ({
           )}
         </div>
       )}
+
       {updating && (
         <p className="operation-status" role="status">
           {github?.phase || "Retrieving GitHub metadata…"}
         </p>
       )}
+
       {!!rows.length && (
         <>
           <div className="metric-grid pr-overview" aria-label="Pull request overview">
@@ -331,6 +355,7 @@ export const ScheduledPage = ({
               </div>
             ))}
           </div>
+
           <div className="list-filters" aria-label="Pull request filters">
             <label className="search-field">
               <Search size={15} />
@@ -341,6 +366,7 @@ export const ScheduledPage = ({
                 onChange={(e) => setQuery(e.target.value)}
               />
             </label>
+
             <select
               aria-label="Filter by repository"
               value={repository}
@@ -351,6 +377,7 @@ export const ScheduledPage = ({
                 <option key={name}>{name}</option>
               ))}
             </select>
+
             <select
               aria-label="Filter by status"
               value={status}
@@ -363,6 +390,7 @@ export const ScheduledPage = ({
               <option value="ARCHIVED">Archived</option>
               <option value="UNKNOWN">Unknown</option>
             </select>
+
             <select
               aria-label="Filter by review"
               value={review}
@@ -376,10 +404,12 @@ export const ScheduledPage = ({
               <option value="UNKNOWN">Not inspected</option>
             </select>
           </div>
+
           <div className="list-caption">
             <span>
               {filtered.length} pull request{filtered.length === 1 ? "" : "s"}
             </span>
+
             <span>
               {github?.last_sync
                 ? `Last refreshed ${new Date(github.last_sync).toLocaleString()}`
@@ -388,6 +418,7 @@ export const ScheduledPage = ({
           </div>
         </>
       )}
+
       {updating && !rows.length ? (
         <ListSkeleton label="Loading pull requests" />
       ) : !rows.length ? (
@@ -443,17 +474,20 @@ export const ScheduledPage = ({
                 >
                   <GitPullRequest size={19} />
                 </div>
+
                 <div className="pr-row-content">
                   <div className="pr-row-top">
                     <span className="pr-reference">
                       {row.repository} <span className="muted">#{row.number}</span>
                     </span>
+
                     <span className="pr-state">
                       {row.pr?.draft ? "Draft · " : ""}
                       {row.state === "UNKNOWN" ? "Status not retrieved" : row.state.toLowerCase()}
                     </span>
                     {job && <PrState job={job} />}
                   </div>
+
                   <button
                     className="pr-title pr-details-link"
                     disabled={!!busy}
@@ -461,6 +495,7 @@ export const ScheduledPage = ({
                   >
                     {row.title}
                   </button>
+
                   <p className="pr-one-line">
                     {running
                       ? job.status === "analyzing"
@@ -469,6 +504,7 @@ export const ScheduledPage = ({
                       : job?.action?.summary ||
                         "Open the review workspace to inspect or analyze this contribution."}
                   </p>
+
                   <div className="pr-metadata">
                     {row.pr?.head_branch && <span className="mono">{row.pr.head_branch}</span>}
                     <span>{row.actionState}</span>
@@ -481,6 +517,7 @@ export const ScheduledPage = ({
                     </span>
                     {row.updated && <span>Updated {new Date(row.updated).toLocaleString()}</span>}
                   </div>
+
                   {job && (
                     <div className="pr-metadata">
                       <span>{row.outstanding} observations to consider</span>
@@ -490,23 +527,27 @@ export const ScheduledPage = ({
                           Analyzed head <code>{row.analyzedHead.slice(0, 12)}</code>
                         </span>
                       )}
+
                       <span>
                         Last analyzed{" "}
                         {job.last_analyzed_at
                           ? new Date(job.last_analyzed_at).toLocaleString()
                           : "never"}
                       </span>
+
                       <span>
                         {snapshot.repairs?.filter((repair) => repair.job_id === job.id).length || 0}{" "}
                         repair sessions
                       </span>
                     </div>
                   )}
+
                   {job?.error && (
                     <p className="warning">
                       {errorMessage(job.error)} · Request analysis explicitly to retry.
                     </p>
                   )}
+
                   {row.pr?.access_error && (
                     <p className="warning">
                       GitHub state unavailable: {row.pr.access_error}
@@ -515,6 +556,7 @@ export const ScheduledPage = ({
                         : ""}
                     </p>
                   )}
+
                   {job?.action?.reason && (
                     <details className="pr-row-details">
                       <summary>{running ? "Previous saved decision" : "Why this state"}</summary>
@@ -522,6 +564,7 @@ export const ScheduledPage = ({
                     </details>
                   )}
                 </div>
+
                 <div className="row-actions">
                   <Button
                     size="sm"
@@ -537,6 +580,7 @@ export const ScheduledPage = ({
                   >
                     {job?.last_analyzed_at ? "Analyze Again" : "Analyze PR"}
                   </Button>
+
                   {running && (
                     <Button
                       size="sm"
@@ -547,6 +591,7 @@ export const ScheduledPage = ({
                       Cancel analysis
                     </Button>
                   )}
+
                   <Button
                     size="sm"
                     variant="ghost"
@@ -555,6 +600,7 @@ export const ScheduledPage = ({
                   >
                     Review report
                   </Button>
+
                   {(job?.task_id || row.pr?.task_id) && (
                     <Button
                       size="sm"
@@ -564,6 +610,7 @@ export const ScheduledPage = ({
                       Original issue task
                     </Button>
                   )}
+
                   <Button
                     size="icon"
                     variant="ghost"
@@ -578,11 +625,13 @@ export const ScheduledPage = ({
           })}
         </section>
       )}
+
       <p className="page-footnote">
         Analyze PR uses {configuration.provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
         {configuration.model || "official CLI default"} · {configuration.effort}. Analysis is
         explicit and may consume subscription allowance.
       </p>
+
       {selected && jobs.find((job) => job.id === selected) && (
         <PrDetails
           job={jobs.find((job) => job.id === selected)!}

@@ -2,9 +2,11 @@ import { spawn } from "node:child_process";
 import { realpath, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { StringDecoder } from "node:string_decoder";
+
 import { AdeError } from "../../domain";
 import { StreamRedactor } from "../output/stream-redactor";
 import { OutputBudget } from "../output/bounded-output";
+
 export interface ProcessRequest {
   rawStdoutForIntegrity?: boolean;
   gitEnvironment?: boolean;
@@ -19,6 +21,7 @@ export interface ProcessRequest {
   onLine?: (stream: "stdout" | "stderr", line: string) => void;
   onSpawn?: (pid: number, identity: string) => void;
 }
+
 export interface ProcessOutput {
   code: number;
   stdout: string;
@@ -27,16 +30,19 @@ export interface ProcessOutput {
   stdout_truncated?: boolean;
   stderr_truncated?: boolean;
 }
+
 export const redact = (text: string) => {
   if (text.includes("\x1b") || /\\u[\da-f]{4}/i.test(text)) {
     const redactor = new StreamRedactor();
     return redactor.push(text) + redactor.finish(true);
   }
+
   return text.replace(
     /(\b(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|cookie|set-cookie)[\\\s"':=]+(?:bearer[\\\s]+)?)[^\s"',;}]+|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{12,}|ya29\.[A-Za-z0-9_.-]+)/gi,
     "$1[REDACTED]",
   );
 };
+
 export const cleanEnvironment = () => {
   const env: NodeJS.ProcessEnv = {};
   for (const k of [
@@ -59,6 +65,7 @@ export const cleanEnvironment = () => {
   env.GIT_TERMINAL_PROMPT = "0";
   return env;
 };
+
 export const processIdentity = async (pid: number) => {
   try {
     const stat = await readFile(`/proc/${pid}/stat`, "utf8");
@@ -67,6 +74,7 @@ export const processIdentity = async (pid: number) => {
     return "";
   }
 };
+
 export const terminateGroup = (pid: number, signal: NodeJS.Signals = "SIGINT") => {
   try {
     process.kill(-pid, signal);
@@ -74,6 +82,7 @@ export const terminateGroup = (pid: number, signal: NodeJS.Signals = "SIGINT") =
     if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e;
   }
 };
+
 export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
   if (
     !r.program ||
@@ -86,6 +95,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
   const cwd = await realpath(r.cwd);
   return new Promise((resolve, reject) => {
     const start = Date.now();
+
     const child = spawn(r.program, r.args, {
       cwd,
       env: {
@@ -108,6 +118,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
+
     let settled = false;
     let aborted: Error | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
@@ -115,16 +126,20 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     let stderr = "";
     const truncated = { stdout: false, stderr: false };
     const buffers = { stdout: "", stderr: "" };
+
     const decoders = {
       stdout: new StringDecoder("utf8"),
       stderr: new StringDecoder("utf8"),
     };
+
     const integrityDecoder = r.rawStdoutForIntegrity
       ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
       : null;
+
     let integrityBytes = 0;
     const cap = 32 * 1024 * 1024;
     const outputBudget = new OutputBudget();
+
     const line = (stream: "stdout" | "stderr", value: string) => {
       if (aborted) return;
       try {
@@ -134,6 +149,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         if (child.pid) terminateGroup(child.pid, "SIGKILL");
       }
     };
+
     const consume = (stream: "stdout" | "stderr", chunk: Buffer) => {
       if (aborted) return;
       try {
@@ -143,6 +159,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         if (child.pid) terminateGroup(child.pid, "SIGKILL");
         return;
       }
+
       let text: string;
       try {
         text =
@@ -154,9 +171,11 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
           "integrity_encoding",
           "Integrity identifiers contain unsupported non-UTF-8 bytes",
         );
+
         if (child.pid) terminateGroup(child.pid, "SIGKILL");
         return;
       }
+
       if (stream === "stdout" && integrityDecoder) integrityBytes += chunk.length;
       if (stream === "stdout") {
         truncated.stdout ||= stdout.length + text.length > cap;
@@ -165,11 +184,13 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         truncated.stderr ||= stderr.length + text.length > cap;
         stderr += text.slice(0, Math.max(0, cap - stderr.length));
       }
+
       if (r.rawStdoutForIntegrity && (truncated.stdout || integrityBytes > cap)) {
         aborted = new AdeError("output_limit", "Integrity output exceeded the capture limit");
         if (child.pid) terminateGroup(child.pid, "SIGKILL");
         return;
       }
+
       if (r.rawStdoutForIntegrity && stream === "stdout" && !r.onLine) return;
       buffers[stream] += text;
       if (buffers[stream].length > 2 * 1024 * 1024) {
@@ -177,6 +198,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         if (child.pid) terminateGroup(child.pid, "SIGKILL");
         return;
       }
+
       let i;
       while (
         !aborted &&
@@ -187,19 +209,24 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         buffers[stream] = buffers[stream].slice(i + 1);
       }
     };
+
     const interrupt = (error: Error) => {
       if (settled || aborted) return;
       aborted = error;
       if (child.pid) {
         terminateGroup(child.pid);
+
         killTimer = setTimeout(() => {
           if (child.pid) terminateGroup(child.pid, "SIGKILL");
         }, 3000);
+
         killTimer.unref();
       }
     };
+
     const abort = () => interrupt(new AdeError("cancelled", "Run cancelled"));
     r.signal?.addEventListener("abort", abort, { once: true });
+
     const timer = setTimeout(
       () =>
         interrupt(
@@ -207,13 +234,16 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         ),
       r.timeoutMs ?? 120000,
     );
+
     timer.unref();
+
     const cleanup = () => {
       settled = true;
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
       r.signal?.removeEventListener("abort", abort);
     };
+
     child.on("spawn", () => {
       if (child.pid)
         void processIdentity(child.pid)
@@ -225,14 +255,17 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
           );
       if (r.signal?.aborted) abort();
     });
+
     child.on("error", (e) => {
       cleanup();
       reject(new AdeError("process_start", `Cannot start ${r.program}: ${e.message}`));
     });
+
     child.stdout.on("data", (c: Buffer) => consume("stdout", c));
     child.stderr.on("data", (c: Buffer) => consume("stderr", c));
     child.stdin.on("error", () => {});
     child.stdin.end(r.input);
+
     child.on("close", (code) => {
       for (const stream of ["stdout", "stderr"] as const) {
         let remaining = "";
@@ -247,11 +280,13 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
             "Integrity identifiers contain unsupported non-UTF-8 bytes",
           );
         }
+
         buffers[stream] += remaining;
         if (stream === "stdout") stdout += remaining;
         else stderr += remaining;
         if (buffers[stream]) line(stream, buffers[stream]);
       }
+
       cleanup();
       if (child.pid) terminateGroup(child.pid, "SIGKILL");
       if (aborted) reject(aborted);
@@ -267,8 +302,10 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     });
   });
 };
+
 export const capture = (program: string, args: string[], cwd: string, signal?: AbortSignal) =>
   execute({ program, args, cwd, signal });
+
 export const checked = async (
   program: string,
   args: string[],

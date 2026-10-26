@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, LoaderCircle, Plus, X } from "lucide-react";
+
 import { useTaskView, updateTaskView } from "../../lib/taskView";
 import { containDialogFocus } from "../../lib/keyboard";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
@@ -11,6 +12,7 @@ export interface ContextOption {
   input?: string;
   load: (input: string) => Promise<{ label: string; text: string }>;
 }
+
 export const composerContent = (view: ReturnType<typeof useTaskView>) =>
   [
     view.draft.trim(),
@@ -62,22 +64,26 @@ export const Composer = ({
   const picker = useDialogFocus(open);
   const content = composerContent(view);
   const tooLong = content.length > maxLength;
+
   useLayoutEffect(() => {
     const field = textarea.current;
     if (!field) return;
     field.style.height = "auto";
     field.style.height = `${Math.max(64, Math.min(field.scrollHeight, 240))}px`;
   }, [view.draft, view.expandedTool]);
+
   const attach = async (source: ContextOption, value = "") => {
     if (attaching) return;
     setAttaching(true);
     setError("");
     try {
       const loaded = await source.load(value);
+
       const text =
         loaded.text.length > 4000
           ? `${loaded.text.slice(0, 4000)}\n[Snapshot truncated at 4,000 characters]`
           : loaded.text;
+
       if (!text.trim()) throw new Error("This source has no text to attach.");
       if (
         view.draftContext.length >= 6 ||
@@ -86,12 +92,14 @@ export const Composer = ({
         throw new Error(
           "Keep up to six context items and 16,000 context characters. Remove an item before adding more.",
         );
+
       updateTaskView(id, {
         draftContext: [
           ...view.draftContext,
           { id: crypto.randomUUID(), label: loaded.label.slice(0, 180), text },
         ],
       });
+
       onEdit?.();
       setOpen(false);
       setOption(undefined);
@@ -102,6 +110,7 @@ export const Composer = ({
       setAttaching(false);
     }
   };
+
   return (
     <form
       className="chat-input"
@@ -118,6 +127,7 @@ export const Composer = ({
                 <summary>{entry.label}</summary>
                 <pre>{entry.text}</pre>
               </details>
+
               <Button
                 size="icon"
                 variant="ghost"
@@ -134,6 +144,7 @@ export const Composer = ({
           ))}
         </div>
       )}
+
       <textarea
         ref={textarea}
         aria-label={label}
@@ -156,6 +167,7 @@ export const Composer = ({
           }
         }}
       />
+
       <div className="composer-toolbar">
         <div className="context-picker-anchor">
           <Button
@@ -170,6 +182,7 @@ export const Composer = ({
           >
             <Plus size={14} /> Context
           </Button>
+
           {open && (
             <section
               ref={picker}
@@ -183,6 +196,7 @@ export const Composer = ({
                   event.stopPropagation();
                   setOpen(false);
                 }
+
                 containDialogFocus(event);
               }}
             >
@@ -197,10 +211,12 @@ export const Composer = ({
                   <X size={14} />
                 </Button>
               </div>
+
               <small>
                 Snapshots are attached only when you send or save. Expand a chip to inspect its
                 exact contents.
               </small>
+
               {option ? (
                 <>
                   <label>
@@ -218,6 +234,7 @@ export const Composer = ({
                       }}
                     />
                   </label>
+
                   <Button
                     size="sm"
                     disabled={attaching || !input.trim()}
@@ -225,6 +242,7 @@ export const Composer = ({
                   >
                     Attach context
                   </Button>
+
                   <Button size="sm" variant="ghost" onClick={() => setOption(undefined)}>
                     Back
                   </Button>
@@ -246,6 +264,7 @@ export const Composer = ({
                   </Button>
                 ))
               )}
+
               {error && (
                 <p role="alert" className="failure">
                   {error}
@@ -254,6 +273,7 @@ export const Composer = ({
             </section>
           )}
         </div>
+
         {save && (
           <Button
             size="sm"
@@ -284,6 +304,7 @@ export const Composer = ({
           sending.
         </small>
       )}
+
       {view.persistenceError ? (
         <small role="alert" className="failure">
           {view.persistenceError}

@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+
 import type { UsageRecord } from "../../backend/execution/output/usage";
 import { OpenInEditor } from "../../src/components/shared/OpenInEditor";
 import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
 import { CurrentRun } from "../../src/features/chat/CurrentRun";
 import { UsageView } from "../../src/features/usage/UsageView";
 import type { Detail, Run } from "../../src/lib/types";
+
 vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({
     providers: [
@@ -26,10 +28,12 @@ vi.mock("../../src/hooks/useWorkspace", () => ({
     loading: false,
   }),
 }));
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+
 const task = {
   id: "task-id",
   repo_id: "repo",
@@ -48,6 +52,7 @@ const task = {
   stage: 1,
   error: null,
 };
+
 const run: Run = {
   id: "run-1",
   provider: "antigravity",
@@ -65,6 +70,7 @@ const run: Run = {
   output: null,
   error: null,
 };
+
 const record = (id: string, provider: string, status = "completed"): UsageRecord => ({
   id,
   task_id: "task-id",
@@ -88,9 +94,11 @@ const record = (id: string, provider: string, status = "completed"): UsageRecord
   provider_session_id: null,
   error: null,
 });
+
 it("shows real provider/model/stage/activity and elapsed time, changes stages and clears cancelled execution", () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-07T10:01:42Z"));
+
   const detail: Detail = {
     task,
     runs: [run],
@@ -110,13 +118,16 @@ it("shows real provider/model/stage/activity and elapsed time, changes stages an
     artifacts: [],
     tests: [],
   };
+
   const stop = vi.fn(),
     output = vi.fn();
+
   const ui = render(<CurrentRun detail={detail} stop={stop} output={output} />);
   expect(screen.getByText("Antigravity")).toBeTruthy();
   expect(screen.getByText(/Planning · gemini-3.8-flash-high · high/)).toBeTruthy();
   expect(screen.getByText(/1m 42s/)).toBeTruthy();
   expect(screen.getByText("Reading: patterns.ts")).toBeTruthy();
+
   ui.rerender(
     <CurrentRun
       detail={{
@@ -148,12 +159,14 @@ it("shows real provider/model/stage/activity and elapsed time, changes stages an
       output={output}
     />,
   );
+
   expect(screen.getByText("Checking selected code…")).toBeTruthy();
   expect(screen.queryByText("Input: 42 · Output: 7")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Stop" }));
   expect(stop).toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Inspect current run" }));
   expect(output).toHaveBeenCalled();
+
   ui.rerender(
     <CurrentRun
       detail={{
@@ -175,10 +188,12 @@ it("shows real provider/model/stage/activity and elapsed time, changes stages an
       output={output}
     />,
   );
+
   expect(screen.getByText("Codex")).toBeTruthy();
   expect(screen.getByText(/Reviewing plan · gpt-test/)).toBeTruthy();
   expect(screen.getByText(/42s/)).toBeTruthy();
   expect(screen.queryByText("Reading: patterns.ts")).toBeNull();
+
   ui.rerender(
     <CurrentRun
       detail={{
@@ -190,15 +205,18 @@ it("shows real provider/model/stage/activity and elapsed time, changes stages an
       output={output}
     />,
   );
+
   expect(screen.getByLabelText("Current agent run").textContent).toContain("cancelled");
   expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
 });
+
 it("keeps failed/cancelled runs visible, sums reported fields only and exposes official matching-window deltas", async () => {
   const before = {
     reportedAt: run.started_at,
     planType: "plus",
     windows: [{ usedPercent: 31, windowDurationMins: 300, resetsAt: 2000000000 }],
   };
+
   const rows = [
     {
       ...record("one", "codex", "failed"),
@@ -212,6 +230,7 @@ it("keeps failed/cancelled runs visible, sums reported fields only and exposes o
     },
     record("two", "antigravity", "cancelled"),
   ];
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: {
@@ -219,23 +238,29 @@ it("keeps failed/cancelled runs visible, sums reported fields only and exposes o
       subscribe: () => () => {},
     },
   });
+
   const ui = render(<UsageView taskId={task.id} records={rows} />);
   expect(screen.getByText("Task usage")).toBeTruthy();
   expect(screen.getByText("failed")).toBeTruthy();
   expect(screen.getByText("cancelled")).toBeTruthy();
+
   expect(ui.container.querySelector(".usage-tokens")?.textContent).toContain(
     "Input1001/2 runs reported",
   );
+
   expect(ui.container.querySelector(".usage-tokens")?.textContent).toContain(
     "TotalUnavailable0/2 runs reported",
   );
+
   expect(screen.getByText(/Subscription window usage delta.*\+6 percentage points/)).toBeTruthy();
   fireEvent.click(await screen.findByText("Storage information"));
   expect(await screen.findByText("/data/state/vibestar.sqlite")).toBeTruthy();
 });
+
 it("refreshes global usage on local events and filters provider/model/purpose/repository/task", async () => {
   let rows: UsageRecord[] = [];
   let listener: (event: { event: string }) => void = () => {};
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: {
@@ -248,14 +273,17 @@ it("refreshes global usage on local events and filters provider/model/purpose/re
       },
     },
   });
+
   const ui = render(<UsageView />);
   expect(await screen.findByText("No AI usage recorded in this data root yet.")).toBeTruthy();
   rows = [record("one", "codex"), record("two", "antigravity", "cancelled")];
   listener({ event: "usage.changed" });
   expect(await screen.findByRole("cell", { name: "cancelled" })).toBeTruthy();
+
   fireEvent.change(screen.getByLabelText("Usage provider filter"), {
     target: { value: "codex" },
   });
+
   expect(screen.queryByRole("cell", { name: "cancelled" })).toBeNull();
   expect(ui.container.querySelectorAll(".usage-table tbody tr")).toHaveLength(1);
   expect(screen.getByLabelText("Usage model filter")).toBeTruthy();
@@ -263,32 +291,41 @@ it("refreshes global usage on local events and filters provider/model/purpose/re
   expect(screen.getByLabelText("Usage repository filter")).toBeTruthy();
   expect(screen.getByLabelText("Usage task_id filter")).toBeTruthy();
 });
+
 it("offers useful editor fallback and passes the task target instead of a source checkout", async () => {
   const rpc = vi.fn(async () => ({ editors: [], default: "" }));
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   render(<OpenInEditor id={task.id} kind="task" path={task.worktree_path} />);
   fireEvent.click(screen.getByRole("button", { name: "Open in VS Code" }));
   expect(await screen.findByText(/No supported editor CLI detected/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Open folder" }));
+
   expect(rpc).toHaveBeenCalledWith("open.directory", {
     id: task.id,
     kind: "task",
   });
+
   expect(screen.getByRole("button", { name: "Copy path" })).toBeTruthy();
 });
+
 it("opens VS Code directly on the task target and keeps an editor chooser", async () => {
   const rpc = vi.fn(async (method: string) =>
     method === "editors.list" ? { editors: [{ id: "code", label: "VS Code" }], default: "" } : null,
   );
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   render(<OpenInEditor id={task.id} kind="task" path={task.worktree_path} />);
   fireEvent.click(screen.getByRole("button", { name: "Open in VS Code" }));
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("editors.open", {
       id: task.id,
@@ -296,9 +333,11 @@ it("opens VS Code directly on the task target and keeps an editor chooser", asyn
       editor: "code",
     }),
   );
+
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByRole("button", { name: "Choose task editor" })).toBeTruthy();
 });
+
 it("does not mark skipped provider tests as passed and explains sandbox command failures", () => {
   const ui = render(
     <AgentTimeline
@@ -331,6 +370,7 @@ it("does not mark skipped provider tests as passed and explains sandbox command 
       ]}
     />,
   );
+
   expect(ui.container.querySelector(".tool-skipped .success")).toBeNull();
   expect(ui.container.querySelector(".tool-skipped .warning")).toBeTruthy();
   expect(screen.getByText(/command sandbox connection dropped/)).toBeTruthy();

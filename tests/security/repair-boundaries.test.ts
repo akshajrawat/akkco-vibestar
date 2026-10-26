@@ -44,16 +44,20 @@ it("refuses a managed repository parent redirected to an external source before 
       imported: false,
       conflict: false,
     });
+
     const relocated = join(dir, "relocated-source");
     await rename(fixture.source, relocated);
     await symlink(relocated, fixture.source);
     const before = await readFile(join(relocated, ".git", "config"));
+
     const workspaces = new RepairWorkspaces(root, engine.git, (_, side) =>
       side === "head" ? fixture.fork : fixture.upstream,
     );
+
     await expect(
       workspaces.validateRepository(fixture.repo, fixture.session.identity),
     ).rejects.toThrow("symlink");
+
     await expect(
       workspaces.prepare(
         fixture.session,
@@ -62,7 +66,9 @@ it("refuses a managed repository parent redirected to an external source before 
         new AbortController().signal,
       ),
     ).rejects.toThrow("symlink");
+
     expect(await readFile(join(relocated, ".git", "config"))).toEqual(before);
+
     expect(await readFile(join(relocated, "README.md"), "utf8")).toBe(
       "Personal dirty source checkout\n",
     );
@@ -77,6 +83,7 @@ it("requires current final-review authority for completion and retains legacy co
   const rpc = new Rpc(engine);
   try {
     const { repo } = await repairFixture(engine, dir);
+
     const task: Task = {
       ...workspace,
       repo_id: repo.id,
@@ -93,22 +100,28 @@ it("requires current final-review authority for completion and retains legacy co
       created_at: now(),
       updated_at: now(),
     };
+
     for (const hash of [undefined, "a".repeat(64)]) {
       engine.db.saveTask({ ...task, final_review_hash: hash });
+
       await expect(rpc.call("task.complete", { id: task.id })).rejects.toThrow(
         "older integrity method",
       );
+
       expect(engine.db.task(task.id).status).toBe("ready_for_review");
     }
+
     engine.db.saveTask({
       ...task,
       status: "completed",
       final_review_hash: "a".repeat(64),
     });
+
     expect(engine.db.task(task.id)).toMatchObject({
       status: "completed",
       final_review_hash: "a".repeat(64),
     });
+
     expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
   } finally {
     await rpc.close();
@@ -119,16 +132,20 @@ it("requires current final-review authority for completion and retains legacy co
 it("refuses repair context writes through a redirected artifacts parent before starting an agent", async () => {
   const { dir, root } = await securityWorkspace();
   let agents = 0;
+
   const engine = await createFixtureEngine(root, () => {
     agents++;
     return new FixtureProvider();
   });
+
   let service: RepairService | undefined;
   try {
     const fixture = await repairFixture(engine, dir);
+
     const workspaces = new RepairWorkspaces(root, engine.git, (_, side) =>
       side === "head" ? fixture.fork : fixture.upstream,
     );
+
     service = new RepairService(engine, async () => fixture.session.identity, workspaces);
     const external = join(dir, "external");
     await mkdir(external);
@@ -136,9 +153,11 @@ it("refuses repair context writes through a redirected artifacts parent before s
     await rename(join(root, "artifacts"), join(root, "artifacts-original"));
     await symlink(external, join(root, "artifacts"));
     await service.start(fixture.session.id);
+
     await vi.waitFor(() => expect(service!.store.get(fixture.session.id).status).toBe("failed"), {
       timeout: 10000,
     });
+
     expect(service.store.get(fixture.session.id).error).toContain("symlink");
     expect(agents).toBe(0);
     expect(await readFile(join(external, "canary"), "utf8")).toBe("preserve external artifacts");

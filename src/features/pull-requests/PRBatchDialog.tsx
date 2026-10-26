@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+
 import type { Settings } from "../../../backend/domain";
 import { rpc, errorMessage } from "../../lib/api";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
@@ -26,29 +27,35 @@ export const PRBatchDialog = ({
   refresh: () => Promise<void>;
 }) => {
   const [scope, setScope] = useState<"open" | "attention" | "stale" | "selected">("open");
+
   const [selected, setSelected] = useState(
     rows
       .filter((row) => row.state === "OPEN")
       .slice(0, 5)
       .map((row) => row.url),
   );
+
   const [model, setModel] = useState(configuration);
   const [cap, setCap] = useState(5);
+
   const [preview, setPreview] = useState<{
     job_ids: string[];
     reusable: number;
     checked_at: string;
   }>();
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const request = useRef({ signature: "", id: "" });
   const dialog = useDialogFocus();
   const { providers } = useProviders();
+
   const visible = rows.filter(
     (row) =>
       scope === "selected" ||
       (scope === "open" ? row.state === "OPEN" : scope === "attention" ? row.attention : row.stale),
   );
+
   const inspect = async () => {
     setBusy(true);
     setError("");
@@ -56,6 +63,7 @@ export const PRBatchDialog = ({
       const ids = [];
       for (const url of selected) {
         const row = rows.find((row) => row.url === url)!;
+
         const job = row.jobId
           ? { id: row.jobId }
           : await rpc<{ id: string }>("scheduled.add", {
@@ -64,12 +72,15 @@ export const PRBatchDialog = ({
               interval_minutes: 60,
               verify_codex: false,
             });
+
         ids.push(job.id);
       }
+
       const result = await rpc<{ reusable: number; checked_at: string }>(
         "scheduled.batch.preview",
         { job_ids: ids, scope },
       );
+
       setPreview({ ...result, job_ids: ids });
     } catch (failure) {
       setError(errorMessage(failure));
@@ -77,6 +88,7 @@ export const PRBatchDialog = ({
       setBusy(false);
     }
   };
+
   const start = async () => {
     if (!preview) return;
     setBusy(true);
@@ -96,13 +108,16 @@ export const PRBatchDialog = ({
         },
         confirmed: true,
       };
+
       const signature = JSON.stringify(params);
       if (signature !== request.current.signature)
         request.current = { signature, id: crypto.randomUUID() };
+
       await rpc("scheduled.batch.start", {
         ...params,
         request_id: request.current.id,
       });
+
       await refresh();
       close();
     } catch (failure) {
@@ -111,6 +126,7 @@ export const PRBatchDialog = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -135,6 +151,7 @@ export const PRBatchDialog = ({
                 const value = event.target.value as typeof scope;
                 setScope(value);
                 setPreview(undefined);
+
                 setSelected(
                   rows
                     .filter(
@@ -157,6 +174,7 @@ export const PRBatchDialog = ({
               <option value="selected">Selected</option>
             </select>
           </label>
+
           <div className="batch-selection">
             {visible.map((row) => (
               <label className="checkbox-label" key={row.url}>
@@ -170,9 +188,11 @@ export const PRBatchDialog = ({
                         ? [...selected, row.url]
                         : selected.filter((url) => url !== row.url),
                     );
+
                     setPreview(undefined);
                   }}
                 />
+
                 <span>
                   {row.title}
                   <small>{row.url.replace("https://github.com/", "")}</small>
@@ -180,12 +200,14 @@ export const PRBatchDialog = ({
               </label>
             ))}
           </div>
+
           <p>
             {selected.length} PRs selected ·{" "}
             {preview
               ? `${preview.reusable} unchanged reports reusable at ${new Date(preview.checked_at).toLocaleTimeString()}`
               : "Inspect to count reusable unchanged reports."}
           </p>
+
           <label>
             Maximum AI analyses authorized
             <input
@@ -196,6 +218,7 @@ export const PRBatchDialog = ({
               onChange={(event) => setCap(Number(event.target.value))}
             />
           </label>
+
           <label>
             Utility provider
             <select
@@ -212,6 +235,7 @@ export const PRBatchDialog = ({
               <option value="antigravity">Antigravity</option>
             </select>
           </label>
+
           <AgentConfiguration
             id="pr-batch-model"
             label="Utility model and effort"
@@ -221,6 +245,7 @@ export const PRBatchDialog = ({
             onChange={(config) => setModel({ ...config, provider: model.provider })}
           />
         </fieldset>
+
         <p className="subtle">
           Each PR is refreshed before analysis. Reuse is checked again; changed evidence can require
           AI within your cap. Cancellation keeps completed reports.
@@ -231,13 +256,16 @@ export const PRBatchDialog = ({
             {error}
           </p>
         )}
+
         <div className="modal-actions">
           <Button variant="ghost" disabled={busy} onClick={close}>
             Cancel
           </Button>
+
           <Button disabled={busy || !selected.length} onClick={() => void inspect()}>
             Inspect selection · no AI
           </Button>
+
           <Button
             variant="default"
             disabled={busy || !preview || cap < 0 || cap > 20 || !Number.isInteger(cap)}

@@ -1,7 +1,9 @@
 import { it, expect } from "vitest";
+
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { CoreBridge } from "../../electron/bridge";
 
 const helper = (manual = true, watch = false, instructions = true, finalReview = true) => `
@@ -24,17 +26,22 @@ it.skipIf(process.platform === "win32")(
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-final-review-"));
     await writeFile(join(dir, "core.cjs"), helper(true, true, true, false));
+
     const bridge = new CoreBridge(dir, {
       distro: "",
       data_home: dir,
       helper_path: "",
     });
+
     try {
       bridge.start();
+
       await expect(bridge.request("task.verification.policy", {})).rejects.toThrow(
         "verification policy",
       );
+
       await expect(bridge.request("git.preview", {})).rejects.toThrow("Git Finalization");
+
       const settings = {
         antigravity_review: {
           model: "review",
@@ -42,12 +49,15 @@ it.skipIf(process.platform === "win32")(
           timeout_secs: 30,
         },
       };
+
       await expect(bridge.request("settings.save", settings)).rejects.toThrow(
         "independent final review",
       );
+
       await expect(bridge.request("task.create", { settings })).rejects.toThrow(
         "independent final review",
       );
+
       await expect(bridge.request("settings.save", {})).resolves.toEqual({
         accepted: "settings.save",
       });
@@ -63,22 +73,28 @@ it.skipIf(process.platform === "win32")(
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-policy-"));
     await writeFile(join(dir, "core.cjs"), helper(false));
+
     const bridge = new CoreBridge(dir, {
       distro: "",
       data_home: dir,
       helper_path: "",
     });
+
     try {
       bridge.start();
       await expect(bridge.request("scheduled.analyze")).rejects.toThrow("manual-only PR analysis");
       await expect(bridge.request("github.sync")).rejects.toThrow("manual-only PR analysis");
+
       await expect(bridge.request("task.create")).resolves.toEqual({
         accepted: "task.create",
       });
+
       await expect(bridge.request("issueWatch.scan")).rejects.toThrow("manual Issue Watch");
+
       await expect(bridge.request("task.browser.inspect")).rejects.toThrow(
         "browser verification environments",
       );
+
       await expect(bridge.request("repair.commit")).rejects.toThrow("exact multiline messages");
     } finally {
       await bridge.stop();
@@ -93,6 +109,7 @@ it.skipIf(process.platform === "win32")(
     const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-wsl-"));
     const bin = join(dir, "bin");
     await mkdir(bin);
+
     await writeFile(
       join(bin, "wsl.exe"),
       `#!/usr/bin/env node
@@ -104,6 +121,7 @@ child.on('exit',code=>process.exit(code||0));
 `,
       { mode: 0o755 },
     );
+
     const bundled = helper();
     await writeFile(join(dir, "core.cjs"), bundled);
     const installed = join(dir, "installed.cjs");
@@ -120,22 +138,26 @@ child.on('exit',code=>process.exit(code||0));
             ? `require('node:fs/promises').writeFile(${JSON.stringify(marker)},'loaded');${bundled}`
             : bundled,
         );
+
         const bridge = new CoreBridge(dir, {
           distro: "Fixture",
           data_home: dir,
           helper_path: installed,
         });
+
         const events: { event: string; text?: string }[] = [];
         bridge.on("event", (event) => events.push(event));
         try {
           bridge.start();
           if (stale) {
             await expect(bridge.request("scheduled.analyze")).rejects.toThrow("helper");
+
             expect(
               events.some((event) =>
                 event.text?.includes("legacy automatic PR monitoring is blocked"),
               ),
             ).toBe(true);
+
             await expect(readFile(marker)).rejects.toMatchObject({
               code: "ENOENT",
             });
@@ -166,16 +188,20 @@ it.skipIf(process.platform === "win32")(
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-issue-watch-"));
     await writeFile(join(dir, "core.cjs"), helper(true, true));
+
     const bridge = new CoreBridge(dir, {
       distro: "",
       data_home: dir,
       helper_path: "",
     });
+
     try {
       bridge.start();
+
       await expect(bridge.request("snapshot")).resolves.toMatchObject({
         capabilities: { manual_issue_watch: true, issue_watch_contract: 1 },
       });
+
       await expect(bridge.request("issueWatch.create")).resolves.toEqual({
         accepted: "issueWatch.create",
       });
@@ -191,11 +217,13 @@ it.skipIf(process.platform === "win32")(
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-instructions-"));
     await writeFile(join(dir, "core.cjs"), helper(true, true, false));
+
     const bridge = new CoreBridge(dir, {
       distro: "",
       data_home: dir,
       helper_path: "",
     });
+
     try {
       bridge.start();
       for (const method of [
@@ -206,6 +234,7 @@ it.skipIf(process.platform === "win32")(
         "task.configureStage",
       ])
         await expect(bridge.request(method)).rejects.toThrow("saved instruction choices");
+
       await expect(bridge.request("task.detail")).resolves.toEqual({
         accepted: "task.detail",
       });

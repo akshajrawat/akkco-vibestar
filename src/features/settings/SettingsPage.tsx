@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import type { Settings, Snapshot } from "../../lib/types";
 import type { DesktopInfo } from "../../../electron/contracts";
 import { useProviders } from "../../hooks/useWorkspace";
@@ -10,6 +11,7 @@ import { DiscoverySettings } from "./DiscoverySettings";
 import { UsageView } from "../usage/UsageView";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { SettingsSchema } from "../../../backend/domain";
+
 export const SettingsPage = ({
   settings,
   root,
@@ -32,6 +34,7 @@ export const SettingsPage = ({
   const [editors, setEditors] = useState<{ id: string; label: string }[]>([]);
   const [section, setSection] = useState("Agents");
   const { providers } = useProviders();
+
   useEffect(() => {
     void window.vibestar
       .desktopSettings()
@@ -40,32 +43,41 @@ export const SettingsPage = ({
         setSavedDesktop(info.config);
       })
       .catch((e) => setError(errorMessage(e)));
+
     const subscription = subscribe((e) => {
       if (e.event === "install.output") setLog((s) => (s + e.text).slice(-16000));
     });
+
     return () => {
       void subscription.then((fn) => fn());
     };
   }, []);
+
   useEffect(() => {
     void rpc<{ editors: typeof editors }>("editors.list")
       .then((r) => setEditors(r.editors))
       .catch((e) => setError(errorMessage(e)));
   }, []);
+
   useEffect(() => {
     const previous = settingsBaseline.current;
     settingsBaseline.current = settings;
+
     setValue((current) =>
       JSON.stringify(current) === JSON.stringify(previous) ? settings : current,
     );
   }, [settings]);
+
   useEffect(() => {
     setNotice("");
   }, [value, desktop?.config]);
+
   const dirty =
     JSON.stringify(value) !== JSON.stringify(settings) ||
     JSON.stringify(desktop?.config) !== JSON.stringify(savedDesktop);
+
   const validation = value && SettingsSchema.safeParse(value);
+
   const save = async () => {
     setBusy(true);
     setError("");
@@ -81,6 +93,7 @@ export const SettingsPage = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="page">
       {!!diagnostics?.length && (
@@ -90,6 +103,7 @@ export const SettingsPage = ({
             Original record data remains in SQLite. Affected workspace actions are blocked. Preserve
             the data root and its pre-migration backups before repairing these records.
           </p>
+
           <ul>
             {diagnostics.map((record) => (
               <li key={`${record.table_name}:${record.record_id}:${record.column_name}`}>
@@ -102,6 +116,7 @@ export const SettingsPage = ({
           </ul>
         </details>
       )}
+
       <PageHeader
         title="Settings"
         description="Configure your workspace, agent stages and execution environment."
@@ -110,6 +125,7 @@ export const SettingsPage = ({
             <span className="settings-save-state" role="status">
               {dirty ? "Unsaved changes" : "All changes saved"}
             </span>
+
             <Button
               variant="default"
               busy={busy}
@@ -121,6 +137,7 @@ export const SettingsPage = ({
           </>
         }
       />
+
       {validation && !validation.success && (
         <p className="error-box" role="alert">
           {validation.error.issues
@@ -156,6 +173,7 @@ export const SettingsPage = ({
             </button>
           ))}
         </nav>
+
         <div className="settings-content">
           {section === "Execution" && (
             <section className="settings-section">
@@ -182,6 +200,7 @@ export const SettingsPage = ({
                     ))}
                   </select>
                 </label>
+
                 <label>
                   Linux data directory <span className="subtle">optional</span>
                   <input
@@ -199,6 +218,7 @@ export const SettingsPage = ({
                     }
                   />
                 </label>
+
                 {desktop?.native_windows && (
                   <label>
                     Existing helper path <span className="subtle">optional</span>
@@ -217,11 +237,13 @@ export const SettingsPage = ({
                     />
                   </label>
                 )}
+
                 <label>
                   Current local data root
                   <code>{root || "Execution core not connected"}</code>
                 </label>
               </div>
+
               {desktop?.native_windows && (
                 <>
                   <Button
@@ -243,6 +265,7 @@ export const SettingsPage = ({
                   >
                     Install / update WSL helper
                   </Button>
+
                   <p className="subtle">
                     Installs the bundled core and native SQLite/PTY dependencies inside the selected
                     distro. Requires Node 22+, npm, and build tools there.
@@ -250,12 +273,14 @@ export const SettingsPage = ({
                   {installLog && <pre className="install-log">{installLog}</pre>}
                 </>
               )}
+
               <p className="subtle">
                 Linux builds execute directly inside the current distro. Windows builds invoke the
                 chosen distro with structured argv and stdin.
               </p>
             </section>
           )}
+
           {value && (
             <>
               {section === "General" && (
@@ -279,6 +304,7 @@ export const SettingsPage = ({
                           {editor.label}
                         </option>
                       ))}
+
                       {!!value.default_editor &&
                         !editors.some((e) => e.id === value.default_editor) && (
                           <option value={value.default_editor}>
@@ -287,6 +313,7 @@ export const SettingsPage = ({
                         )}
                     </select>
                   </label>
+
                   <p className="subtle">
                     Task actions open the isolated worktree. Repository actions open the source
                     checkout.
@@ -310,12 +337,14 @@ export const SettingsPage = ({
                   </label>
                 </section>
               )}
+
               {section === "Agents" && (
                 <section className="settings-section">
                   <h2>Agent pipeline</h2>
                   <p className="pipeline-sequence">
                     Antigravity Plan → Codex Refinement → Codex Implementation → Antigravity Review
                   </p>
+
                   <p className="subtle">
                     Models and reasoning settings are independent. Empty model uses that CLI’s
                     default; requested models and effort are never silently substituted.
@@ -323,6 +352,7 @@ export const SettingsPage = ({
                   <StageSettings settings={value} onChange={setValue} providers={providers} />
                 </section>
               )}
+
               {section === "Models" && (
                 <section className="settings-section">
                   <h2>Review / explain AI</h2>
@@ -330,6 +360,7 @@ export const SettingsPage = ({
                     Read-only questions about selected code. Each query appears in task and global
                     Usage.
                   </p>
+
                   <label className="checkbox-row">
                     <input
                       type="checkbox"
@@ -343,6 +374,7 @@ export const SettingsPage = ({
                     />
                     Use a separate review model
                   </label>
+
                   {value.review_ai ? (
                     <>
                       <label>
@@ -364,6 +396,7 @@ export const SettingsPage = ({
                           <option value="codex">Codex</option>
                         </select>
                       </label>
+
                       <AgentConfiguration
                         id="review-ai"
                         label="REVIEW / EXPLAIN AI"
@@ -392,6 +425,7 @@ export const SettingsPage = ({
                     PR discussion reasoning and miscellaneous Vibestar intelligence. Deterministic
                     inspections never use this model. Each run appears in Usage.
                   </p>
+
                   <label>
                     Utility provider
                     <select
@@ -411,6 +445,7 @@ export const SettingsPage = ({
                       <option value="codex">Codex</option>
                     </select>
                   </label>
+
                   <AgentConfiguration
                     id="utility"
                     label="UTILITY / MISCELLANEOUS AI"
@@ -429,6 +464,7 @@ export const SettingsPage = ({
                   />
                 </section>
               )}
+
               {section === "Repositories" && (
                 <DiscoverySettings
                   value={value.repository_discovery}
@@ -447,6 +483,7 @@ export const SettingsPage = ({
                 discovered PR saves its workspace. Only Analyze PR can request semantic review
                 analysis.
               </p>
+
               <p className="subtle">
                 Automatic watches, recurring inspections and legacy optional second-model
                 verification are disabled. Existing PR history and usage are preserved. Configure

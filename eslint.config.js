@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import hooks from "eslint-plugin-react-hooks";
 import globals from "globals";
+import stylistic from "@stylistic/eslint-plugin";
 
 export default tseslint.config(
   {
@@ -26,6 +27,28 @@ export default tseslint.config(
     rules: {
       "no-control-regex": "off",
       "@typescript-eslint/consistent-type-imports": ["error", { disallowTypeAnnotations: false }],
+    },
+  },
+  {
+    plugins: { "@stylistic": stylistic },
+    rules: {
+      "@stylistic/lines-between-class-members": ["error", "always"],
+      "@stylistic/padding-line-between-statements": [
+        "error",
+        { blankLine: "always", prev: "import", next: "*" },
+        { blankLine: "any", prev: "import", next: "import" },
+        { blankLine: "always", prev: ["class", "function"], next: "*" },
+        { blankLine: "always", prev: "*", next: ["class", "function"] },
+        { blankLine: "always", prev: ["interface", "type"], next: "*" },
+        { blankLine: "always", prev: "*", next: ["interface", "type"] },
+        { blankLine: "always", prev: "multiline-export", next: "*" },
+        { blankLine: "always", prev: "*", next: "multiline-export" },
+        { blankLine: "always", prev: "multiline-const", next: "*" },
+        { blankLine: "always", prev: "*", next: "multiline-const" },
+        { blankLine: "always", prev: "multiline-expression", next: "*" },
+        { blankLine: "always", prev: "*", next: "multiline-expression" },
+        { blankLine: "always", prev: "block-like", next: "*" },
+      ],
     },
   },
   {

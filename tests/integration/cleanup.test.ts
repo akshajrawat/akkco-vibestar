@@ -21,15 +21,18 @@ it("history deletion removes the owned branch and worktree even when worktree cl
     const before = await checked("git", ["rev-parse", "main", "akkco/personal"], repo.path);
     await writeFile(join(task.worktree_path, "source.txt"), "task change\n");
     const storage = new StorageService(engine);
+
     const options = {
       worktree: false,
       logs: false,
       artifacts: false,
       history: true,
     };
+
     await expect(storage.cleanupTask(task.id, options)).rejects.toThrow("local changes");
     expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("task change\n");
     expect(engine.db.task(task.id).archived).not.toBe(true);
+
     await checked(
       "git",
       [
@@ -43,10 +46,12 @@ it("history deletion removes the owned branch and worktree even when worktree cl
       ],
       task.worktree_path,
     );
+
     await expect(storage.cleanupTask(task.id, options)).rejects.toThrow("Unpushed");
     const preview = await storage.previewTaskDisposal(task.id);
     await storage.discardTask(task.id, preview.fingerprint, true);
     expect(await exists(task.worktree_path)).toBe(false);
+
     expect(
       (
         await capture(
@@ -56,6 +61,7 @@ it("history deletion removes the owned branch and worktree even when worktree cl
         )
       ).code,
     ).toBe(1);
+
     expect(await checked("git", ["rev-parse", "main", "akkco/personal"], repo.path)).toBe(before);
     expect(engine.db.tasks()).toEqual([]);
   } finally {
@@ -83,15 +89,19 @@ it.each(["unregistered", "missing", "detached"])(
           ["-c", "core.hooksPath=/dev/null", "checkout", "--detach"],
           task.worktree_path,
         );
+
         await checked("git", ["branch", "-D", "--", task.branch_name], repo.path);
       }
+
       await new StorageService(engine).cleanupTask(task.id, {
         worktree: false,
         logs: false,
         artifacts: true,
         history: true,
       });
+
       expect(engine.db.tasks()).toEqual([]);
+
       expect(
         (
           await capture(
@@ -101,6 +111,7 @@ it.each(["unregistered", "missing", "detached"])(
           )
         ).code,
       ).toBe(1);
+
       expect(await exists(task.worktree_path)).toBe(false);
     } finally {
       await engine.close();
@@ -117,6 +128,7 @@ it("does not delete an unowned namespaced branch, a recreated personal branch, o
     const task = await prepareFixtureTask(engine, repo, "owned");
     const storage = new StorageService(engine);
     await checked("git", ["branch", "akkco/personal"], repo.path);
+
     const foreign = {
       ...task,
       id: "foreign",
@@ -124,32 +136,41 @@ it("does not delete an unowned namespaced branch, a recreated personal branch, o
       branch_owned: false,
       worktree_path: "",
     };
+
     engine.db.saveTask(foreign);
+
     const options = {
       worktree: false,
       logs: false,
       artifacts: true,
       history: true,
     };
+
     await expect(storage.cleanupTask(foreign.id, options)).rejects.toThrow("ownership");
     expect(engine.db.task(foreign.id).branch_name).toBe("akkco/personal");
+
     expect(await checked("git", ["rev-parse", "akkco/personal"], repo.path)).toBe(
       task.base_commit_sha,
     );
+
     await checked("git", ["worktree", "remove", "--", task.worktree_path], repo.path);
     const external = join(dir, "external");
     await checked("git", ["worktree", "add", "--", external, task.branch_name], repo.path);
+
     await expect(storage.cleanupTask(task.id, options)).rejects.toThrow(
       "outside its assigned worktree",
     );
+
     expect(await exists(join(external, "source.txt"))).toBe(true);
     await checked("git", ["worktree", "remove", "--", external], repo.path);
     await checked("git", ["branch", "-D", "--", task.branch_name], repo.path);
     await checked("git", ["branch", task.branch_name], repo.path);
     await expect(storage.cleanupTask(task.id, options)).rejects.toThrow("ownership");
+
     expect(await checked("git", ["rev-parse", task.branch_name], repo.path)).toBe(
       task.base_commit_sha,
     );
+
     expect(engine.db.task(task.id).branch_name).toBe(task.branch_name);
   } finally {
     await engine.close();
@@ -168,12 +189,14 @@ it("deletes history after preparation left only a checkpoint and no Git resource
     engine.db.run("DELETE FROM task_activity WHERE task_id=?", task.id);
     engine.db.saveTask({ ...task, branch_owned: false });
     const refs = await checked("git", ["show-ref"], repo.path);
+
     await new StorageService(engine).cleanupTask(task.id, {
       worktree: false,
       logs: false,
       artifacts: true,
       history: true,
     });
+
     expect(engine.db.tasks()).toEqual([]);
     expect(await checked("git", ["show-ref"], repo.path)).toBe(refs);
   } finally {
@@ -188,18 +211,22 @@ it("accepts a successful legacy creation record but never treats the branch pref
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, "legacy");
+
     await checked(
       "git",
       ["config", "--unset", `branch.${task.branch_name}.vibestarTask`],
       repo.path,
     );
+
     engine.db.saveTask({ ...task, branch_owned: undefined });
+
     await new StorageService(engine).cleanupTask(task.id, {
       worktree: false,
       logs: false,
       artifacts: true,
       history: true,
     });
+
     expect(engine.db.tasks()).toEqual([]);
   } finally {
     await engine.close();
@@ -217,6 +244,7 @@ it("preserves a personal branch recreated under a legacy task's branch name", as
     await checked("git", ["worktree", "remove", "--", task.worktree_path], repo.path);
     await checked("git", ["branch", "-D", "--", task.branch_name], repo.path);
     await checked("git", ["branch", task.branch_name, "main"], repo.path);
+
     await expect(
       new StorageService(engine).cleanupTask(task.id, {
         worktree: false,
@@ -225,9 +253,11 @@ it("preserves a personal branch recreated under a legacy task's branch name", as
         history: true,
       }),
     ).rejects.toThrow("ownership");
+
     expect(await checked("git", ["rev-parse", task.branch_name], repo.path)).toBe(
       task.base_commit_sha,
     );
+
     expect(engine.db.task(task.id).branch_name).toBe(task.branch_name);
   } finally {
     await engine.close();
@@ -240,6 +270,7 @@ it("task deletion ignores unrelated scans but reports its own terminal and linke
   const engine = await createFixtureEngine(join(dir, "data"));
   try {
     const { repo } = await fixtureRepository(engine, dir);
+
     const task: Task = {
       id: "cleanup-task",
       repo_id: repo.id,
@@ -258,7 +289,9 @@ it("task deletion ignores unrelated scans but reports its own terminal and linke
       created_at: now(),
       updated_at: now(),
     };
+
     engine.db.saveTask(task);
+
     const releaseScan = engine.trackActivity(
       {
         id: "github-sync",
@@ -268,17 +301,22 @@ it("task deletion ignores unrelated scans but reports its own terminal and linke
       },
       async () => releaseScan(),
     );
+
     const storage = new StorageService(engine);
+
     await expect(storage.clear("logs")).rejects.toMatchObject({
       kind: "busy",
       context: {
         blockers: [{ id: "github-sync", label: "GitHub PR watch sync is running" }],
       },
     });
+
     const releaseTerminal = engine.acquireTerminal(task.id);
+
     expect(engine.cleanupBlockers(task.id)).toMatchObject([
       { kind: "terminal", label: "Task #26829 terminal session is open" },
     ]);
+
     await expect(
       storage.cleanupTask(task.id, {
         worktree: false,
@@ -287,7 +325,9 @@ it("task deletion ignores unrelated scans but reports its own terminal and linke
         history: false,
       }),
     ).rejects.toMatchObject({ kind: "busy" });
+
     releaseTerminal();
+
     const releaseReview = engine.trackActivity(
       {
         id: "pr-watch:linked",
@@ -298,6 +338,7 @@ it("task deletion ignores unrelated scans but reports its own terminal and linke
       },
       async () => releaseReview(),
     );
+
     await expect(
       storage.cleanupTask(task.id, {
         worktree: false,
@@ -308,14 +349,17 @@ it("task deletion ignores unrelated scans but reports its own terminal and linke
     ).rejects.toMatchObject({
       context: { blockers: [{ id: "pr-watch:linked" }] },
     });
+
     await engine.stopActivity("pr-watch:linked");
     expect(engine.cleanupBlockers(task.id)).toEqual([]);
+
     await storage.cleanupTask(task.id, {
       worktree: false,
       logs: true,
       artifacts: false,
       history: false,
     });
+
     expect(engine.db.task(task.id).archived).toBe(true);
     expect(engine.cleanupBlockers()).toMatchObject([{ id: "github-sync" }]);
     await engine.stopActivity("github-sync");
@@ -335,6 +379,7 @@ it("maintenance reserves only its task and always releases its lease on failure"
       engine.withTaskMaintenance("one", async () => {
         expect(engine.cleanupBlockers("one")).toMatchObject([{ kind: "maintenance" }]);
         expect(engine.cleanupBlockers("two")).toEqual([]);
+
         expect(() =>
           engine.trackActivity(
             {
@@ -347,12 +392,15 @@ it("maintenance reserves only its task and always releases its lease on failure"
             async () => {},
           ),
         ).toThrow("cleanup is running");
+
         await expect(engine.withStorageMaintenance(async () => {})).rejects.toMatchObject({
           kind: "busy",
         });
+
         throw new Error("fixture failure");
       }),
     ).rejects.toThrow("fixture failure");
+
     expect(engine.cleanupBlockers()).toEqual([]);
   } finally {
     await engine.close();
@@ -366,16 +414,20 @@ it("cancelled repository discovery releases activity and preserves the previous 
   try {
     const source = join(dir, "source");
     await mkdir(source);
+
     engine.db.saveSettings({
       ...defaultSettings,
       repository_discovery: { roots: [source], max_depth: 4, scan_home: false },
     });
+
     await engine.repositoryIndex.scan();
     const previous = engine.repositoryIndex.snapshot();
     const scan = engine.repositoryIndex.scan();
+
     expect(engine.cleanupBlockers()).toMatchObject([
       { id: "repository-scan", label: "Repository scan is active" },
     ]);
+
     const rejected = expect(scan).rejects.toThrow();
     await engine.stopActivity("repository-scan");
     await rejected;
@@ -394,6 +446,7 @@ it("stopping a PR inspection aborts and pauses it, releasing its live blocker", 
   const dir = await mkdtemp(join(tmpdir(), "vibestar-watch-stop-"));
   const engine = await createFixtureEngine(join(dir, "data"));
   const monitor = new GitHubMonitor(dir);
+
   vi.spyOn(monitor, "inspect").mockImplementation(
     async (_url, signal) =>
       new Promise((_resolve, reject) =>
@@ -402,6 +455,7 @@ it("stopping a PR inspection aborts and pauses it, releasing its live blocker", 
         }),
       ),
   );
+
   const scheduler = new Scheduler(engine, monitor);
   try {
     const job = scheduler.add({
@@ -409,6 +463,7 @@ it("stopping a PR inspection aborts and pauses it, releasing its live blocker", 
       task_id: null,
       interval_minutes: 60,
     });
+
     scheduler.runNow(job.id);
     expect(engine.cleanupBlockers()).toMatchObject([{ id: `pr-watch:${job.id}` }]);
     await engine.stopActivity(`pr-watch:${job.id}`);
@@ -433,6 +488,7 @@ it("cancels the current semantic PR analysis without starting a second provider"
       task_id: null,
       interval_minutes: 60,
     });
+
     const utility = vi.spyOn(engine.utility, "run").mockImplementation(
       async (request) =>
         new Promise((_resolve, reject) => {
@@ -443,6 +499,7 @@ it("cancels the current semantic PR analysis without starting a second provider"
           );
         }),
     );
+
     scheduler.analyze(job.id);
     await vi.waitFor(() => expect(utility).toHaveBeenCalledOnce());
     await scheduler.cancel(job.id);

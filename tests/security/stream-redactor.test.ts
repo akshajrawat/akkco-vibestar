@@ -1,4 +1,5 @@
 import { expect, it } from "vitest";
+
 import { StreamRedactor } from "../../backend/execution/output/stream-redactor";
 
 it.each([
@@ -18,14 +19,18 @@ it.each([
 ])("redacts every split boundary of %s", (value) => {
   for (let split = 0; split <= value.length; split++) {
     const redactor = new StreamRedactor();
+
     const result =
       redactor.push(`before ${value.slice(0, split)}`) +
       redactor.push(`${value.slice(split)}\r\nafter\r\n`) +
       redactor.finish();
+
     expect(result).toContain("[REDACTED]");
+
     expect(result).not.toMatch(
       /privatecredentialvalue|alsoprivate|abcdefghijklmnopqrstuvwxyz|abcdefghijk|ghp_|github_pat_|sk-proj|ya29\./,
     );
+
     expect(result).toContain("before ");
     expect(result).toContain("after\r\n");
   }
@@ -56,6 +61,7 @@ it("bounds retained state across unbounded credentials and long lines and never 
 it("keeps session state independent and drops OSC payloads across split terminators", () => {
   const a = new StreamRedactor(),
     b = new StreamRedactor();
+
   expect(a.push("sk-")).toBe("[REDACTED]");
   expect(b.push("ordinary prompt: ")).toBe("ordinary prompt: ");
   expect(a.push("credentialvalue\n")).toBe("\n");

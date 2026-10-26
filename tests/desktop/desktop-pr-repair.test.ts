@@ -17,10 +17,12 @@ import { defaultSettings } from "../../backend/domain";
 import { Database } from "../../backend/storage/database";
 
 const require = createRequire(import.meta.url);
+
 it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
   "completes an Oppia-shaped manual PR analysis, isolated repair, independent review and confirmed fast-forward publication through built Electron IPC",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-repair-desktop-"));
+
     const engine = await createFixtureEngine(join(dir, "fixture"), (stage, provider) =>
       stage === 1
         ? new PRFixtureProvider()
@@ -28,6 +30,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
             readonlyProbe: provider === "antigravity",
           }),
     );
+
     engine.db.saveSettings({
       ...defaultSettings,
       utility_ai: {
@@ -43,6 +46,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       },
       antigravity: { model: "repair-model", effort: "high", timeout_secs: 60 },
     });
+
     const fixture = await repairFixture(engine, dir);
     for (const table of ["pr_repairs", "pr_analyses", "scheduled_jobs"])
       engine.db.run(`DELETE FROM ${table}`);
@@ -50,16 +54,20 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
     const beforeStatus = await checked("git", ["status", "--porcelain"], fixture.source);
     const monitor = new GitHubMonitor(dir);
     vi.spyOn(monitor, "inspect").mockResolvedValue(fixture.session.context.snapshot!);
+
     const workspaces = new RepairWorkspaces(engine.root, engine.git, (_, side) =>
       side === "head" ? fixture.fork : fixture.upstream,
     );
+
     const repairs = new RepairService(
       engine,
       async () => fixture.session.identity,
       workspaces,
       () => fixture.fork,
     );
+
     const rpc = new Rpc(engine, monitor, repairs);
+
     engine.db.run(
       "INSERT INTO github_pull_requests VALUES(?,?,?)",
       fixture.session.identity.url,
@@ -76,12 +84,15 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       }),
       "2026-10-23T12:00:00Z",
     );
+
     const emptyRoot = join(dir, "empty-core");
     const empty = await createFixtureEngine(emptyRoot);
     await empty.close();
+
     const isolatedHome = join(dir, "isolated-home"),
       blockedCli = join(dir, "blocked-cli"),
       screenshots = join(dir, "screenshots");
+
     for (const path of [isolatedHome, blockedCli, screenshots]) await mkdir(path);
     for (const name of ["codex", "agy", "gh"])
       await writeFile(
@@ -89,6 +100,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
         "#!/bin/sh\necho 'Real CLI disabled in fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+
     const app = await _electron.launch({
       executablePath: require("electron") as string,
       args: [resolve(".")],
@@ -101,6 +113,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       },
       timeout: 30000,
     });
+
     let forward: ((event: unknown) => void) | undefined;
     try {
       const page = await app.firstWindow();
@@ -108,6 +121,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
+
       await page.exposeFunction("fixtureRpc", async (method: string, params: unknown) => {
         if (method === "providers.detect")
           return [
@@ -124,10 +138,13 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
           expect(request.kind).toBe("repair");
           return { path: await repairs.openPath(request.id), editor: "code" };
         }
+
         return rpc.call(method, params);
       });
+
       await app.evaluate(({ ipcMain, BrowserWindow }) => {
         ipcMain.removeHandler("core:rpc");
+
         ipcMain.handle("core:rpc", async (_event, request) => {
           try {
             return {
@@ -141,6 +158,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
           }
         });
       });
+
       forward = (event) => {
         void app
           .evaluate(
@@ -150,6 +168,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
           )
           .catch(() => {});
       };
+
       engine.on("event", forward);
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await page.getByRole("button", { name: "Pull Requests", exact: true }).click();
@@ -159,42 +178,53 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Close PR details" }).click();
       expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
       await page.getByRole("button", { name: "Analyze PR", exact: true }).click();
+
       await page
         .getByRole("heading", {
           name: "Three observations require consideration, plus positive feedback.",
           exact: true,
         })
         .waitFor();
+
       await page.getByRole("tab", { name: "Full Conversation", exact: true }).click();
+
       await page
         .getByText("Apart from that, everything seems to be fine to me.", {
           exact: true,
         })
         .waitFor();
+
       await page.screenshot({ path: join(screenshots, "full-review.png") });
       await page.getByRole("button", { name: "Solve Review", exact: true }).click();
       expect(await page.getByRole("checkbox", { name: /Solve review item/ }).count()).toBe(3);
+
       await page
         .getByLabel("Additional repair instructions")
         .fill("Move utilities, preserve original exploration and reject an empty draft assertion.");
+
       await page.screenshot({
         path: join(screenshots, "selected-review-items.png"),
       });
+
       await page.getByRole("button", { name: "Solve selected items", exact: true }).click();
+
       await page
         .getByRole("button", {
           name: "Review repair and publication options",
           exact: true,
         })
         .click();
+
       await page
         .getByRole("heading", {
           name: "PR Review Repair Complete — Manual Review Required",
           exact: true,
         })
         .waitFor();
+
       const repair = repairs.store.list()[0];
       await expect.poll(() => repairs.isActive(repair.id)).toBe(false);
+
       expect(
         engine.db
           .all<{ provider: string }>(
@@ -203,82 +233,107 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
           )
           .map((run) => run.provider),
       ).toEqual(["codex", "antigravity"]);
+
       expect(
         await checked("git", ["rev-parse", "refs/heads/fix-translation-tests"], fixture.fork),
       ).toBe(fixture.head);
+
       await page.getByRole("tab", { name: "Changes", exact: true }).click();
       await page.getByRole("button", { name: "Upstream integration", exact: true }).click();
       await page.getByRole("button", { name: "Open full diff review", exact: true }).click();
       await page.getByText("Latest upstream development", { exact: false }).first().waitFor();
+
       await page.screenshot({
         path: join(screenshots, "upstream-integration.png"),
       });
+
       await page.getByRole("button", { name: "Review repair changes", exact: true }).click();
       await page.getByLabel("Return to chat").click();
       await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.getByRole("button", { name: "Raw", exact: true }).click();
+
       await page
         .getByText(/Independent read-only review/)
         .first()
         .waitFor();
+
       await page.screenshot({
         path: join(screenshots, "repair-raw-output.png"),
       });
+
       await page.getByRole("button", { name: "Readable", exact: true }).click();
       await page.getByRole("tab", { name: "Checks", exact: true }).click();
       await page.getByRole("heading", { name: /Command executions/ }).waitFor();
+
       await page.screenshot({
         path: join(screenshots, "real-command-evidence.png"),
       });
+
       await page.getByRole("tab", { name: "Final review", exact: true }).click();
       await page.getByRole("button", { name: "Approve and Prepare Push", exact: true }).click();
       await page.getByRole("dialog", { name: "Confirm PR publication", exact: true }).waitFor();
+
       expect(
         await page.getByRole("button", { name: "Confirm Push", exact: true }).isDisabled(),
       ).toBe(true);
+
       await page.screenshot({
         path: join(screenshots, "manual-publication-before-commit.png"),
       });
+
       await page
         .getByLabel("Local commit message", { exact: true })
         .fill("Keep my exact repair title\n\nReviewed contribution.\n");
+
       await page
         .getByRole("dialog", { name: "Confirm PR publication" })
         .getByRole("button", { name: "Commit Locally", exact: true })
         .click();
+
       await expect
         .poll(() => page.getByRole("button", { name: "Confirm Push", exact: true }).isEnabled())
         .toBe(true);
+
       const approved = repairs.store.get(repair.id);
+
       const localHead = await checked(
         "git",
         ["rev-parse", "HEAD"],
         approved.workspace.worktree_path,
       );
+
       expect(
         await checked("git", ["rev-parse", "refs/heads/fix-translation-tests"], fixture.fork),
       ).toBe(fixture.head);
+
       await page.screenshot({
         path: join(screenshots, "explicit-push-confirmation.png"),
       });
+
       await page.getByRole("button", { name: "Confirm Push", exact: true }).click();
+
       await page
         .getByRole("heading", {
           name: "Review repair pushed successfully",
           exact: true,
         })
         .waitFor();
+
       await page.screenshot({
         path: join(screenshots, "published-repair.png"),
       });
+
       expect(
         await checked("git", ["rev-parse", "refs/heads/fix-translation-tests"], fixture.fork),
       ).toBe(localHead);
+
       expect(await checked("git", ["status", "--porcelain"], fixture.source)).toBe(beforeStatus);
       expect(await readFile(join(fixture.source, ".git", "index"))).toEqual(beforeIndex);
+
       expect(await checked("git", ["rev-parse", "refs/heads/develop"], fixture.upstream)).toBe(
         fixture.base,
       );
+
       const usage = engine.db.all("SELECT * FROM ai_usage");
       expect(usage).toHaveLength(3);
       expect(vi.mocked(monitor.inspect)).toHaveBeenCalledTimes(1);
@@ -289,6 +344,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       } finally {
         emptyDb.close();
       }
+
       await writeFile(
         join(screenshots, "results.json"),
         JSON.stringify(
@@ -305,6 +361,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
           2,
         ),
       );
+
       process.stdout.write(`Repair Electron evidence: ${screenshots}\n`);
     } finally {
       if (forward) engine.off("event", forward);

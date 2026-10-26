@@ -29,6 +29,7 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
       const packageRoot = process.env.VIBESTAR_PACKAGE_DIR || "release";
       const linuxCore = resolve(packageRoot, "linux-unpacked/resources/core");
       const windowsCore = resolve(packageRoot, "win-unpacked/resources/core");
+
       expect(
         createHash("sha256")
           .update(await readFile(join(linuxCore, "core.cjs")))
@@ -38,6 +39,7 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
           .update(await readFile(join(windowsCore, "core.cjs")))
           .digest("hex"),
       );
+
       for (const [name, core] of [
         ["linux", linuxCore],
         ["windows-wsl-helper", windowsCore],
@@ -45,14 +47,17 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
         expect(await readFile(join(core, "LICENSE"), "utf8")).toBe(
           await readFile("LICENSE", "utf8"),
         );
+
         const bridge = new CoreBridge(core, {
           distro: "",
           data_home: join(dir, name),
           helper_path: "",
         });
+
         try {
           bridge.start();
           const info = (await bridge.request("core.info")) as Record<string, unknown>;
+
           expect(info).toMatchObject({
             protocol: 3,
             pipeline_approvals: true,
@@ -61,14 +66,17 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
             manual_issue_watch: true,
             issue_watch_contract: 1,
           });
+
           const snapshot = (await bridge.request("snapshot")) as Snapshot;
           expect(snapshot.tasks).toEqual([]);
           expect(snapshot.repairs).toEqual([]);
           expect(await bridge.request("issueWatch.list", {})).toEqual([]);
+
           const usage = (await bridge.request("usage.info")) as {
             runs: { count: number };
             schema: { version: number };
           };
+
           expect(usage.runs.count).toBe(0);
           expect(usage.schema.version).toBe(migrations.at(-1)!.version);
           reports.push({ name, info, usage, tasks: 0, repairs: 0, watches: 0 });
@@ -76,6 +84,7 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
           await bridge.stop();
         }
       }
+
       const app = await _electron.launch({
         executablePath: resolve(packageRoot, "linux-unpacked/akkco-vibestar"),
         args: [],
@@ -86,6 +95,7 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
         },
         timeout: 30000,
       });
+
       try {
         const page = await app.firstWindow();
         page.setDefaultTimeout(15000);
@@ -96,15 +106,18 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
         await page.getByRole("button", { name: "New watch", exact: true }).click();
         await page.getByRole("dialog", { name: "New Issue Watch", exact: true }).waitFor();
         await page.screenshot({ path: join(dir, "packaged-watch-editor.png") });
+
         const usage = await page.evaluate(() =>
           window.vibestar.rpc<{ runs: { count: number } }>("usage.info"),
         );
+
         expect(usage.runs.count).toBe(0);
         expect(errors).toEqual([]);
         reports.push({ name: "linux-desktop", usage, rendererErrors: errors });
       } finally {
         await app.close();
       }
+
       await writeFile(
         join(dir, "results.json"),
         JSON.stringify(
@@ -118,6 +131,7 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
           2,
         ),
       );
+
       process.stdout.write(`Packaged Issue Watch evidence: ${dir}\n`);
     } finally {
       vi.unstubAllEnvs();

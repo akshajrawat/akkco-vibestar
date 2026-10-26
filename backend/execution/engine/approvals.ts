@@ -8,6 +8,7 @@ import { redact } from "../runtime/process";
 import { object, validatePlan } from "../providers/contracts";
 import { StreamedPlan } from "../agents/streamed-plan";
 import { taskVerification } from "../verification/task-verification";
+
 /** Preserves durable approval gates and explicit continuation decisions without starting implicit work. */
 export class ApprovalTransitions {
   constructor(
@@ -24,6 +25,7 @@ export class ApprovalTransitions {
     >,
     private readonly state: ExecutionState,
   ) {}
+
   retry = async (id: string, stage?: number, restart = false) => {
     this.host.assertAvailable();
     if (this.state.taskMaintenance.has(id))
@@ -52,15 +54,18 @@ export class ApprovalTransitions {
       )
         t.stage = 1;
     }
+
     const pending = this.host.db.all<{ id: string; configuration: string | null }>(
       "SELECT id,configuration FROM task_messages WHERE task_id=? AND status='queued' ORDER BY created_at,rowid",
       id,
     );
+
     const target = restart
       ? t.worktree_path
         ? 1
         : 0
       : (stage ?? (pending.length ? continuationStage(this.host.db, t) : Math.min(t.stage, 5)));
+
     if (t.approval_gate && !restart) {
       const completedStage =
         t.approval_gate === "antigravity_plan"
@@ -70,12 +75,14 @@ export class ApprovalTransitions {
             : t.approval_gate === "implementation"
               ? 4
               : 5;
+
       if (target > completedStage)
         throw new AdeError(
           "approval_required",
           "Approve the saved stage before starting a later stage.",
         );
     }
+
     retryTarget(t, target, this.host.isActive(id));
     if (target >= 2) this.host.db.artifact(id, 1);
     if (target >= 3) this.host.db.artifact(id, 2);
@@ -89,6 +96,7 @@ export class ApprovalTransitions {
       t.followup_config = undefined;
       t.continuation = "planning";
     }
+
     if (target === 3 && pending.length) {
       t.continuation = "implementation";
       const message = pending.at(-1)!;
@@ -103,6 +111,7 @@ export class ApprovalTransitions {
           FollowupConfigSchema.parse,
         );
     }
+
     if (target <= 3)
       this.host.db.run(
         "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status='queued'",
@@ -115,6 +124,7 @@ export class ApprovalTransitions {
       t.final_review_hash = undefined;
       t.final_review_verdict = undefined;
     }
+
     const updated: Task = {
       ...t,
       archived: false,
@@ -124,11 +134,13 @@ export class ApprovalTransitions {
       error: null,
       updated_at: now(),
     };
+
     this.host.db.saveTask(updated);
     this.host.changed(id);
     void this.host.drain();
     return updated;
   };
+
   approveStage = async (
     id: string,
     instructions?: {
@@ -140,6 +152,7 @@ export class ApprovalTransitions {
   ) => {
     this.host.assertAvailable();
     const original = this.host.db.task(id);
+
     const task =
       gapAcknowledgment && original.status === "verification_blocked" && original.stage === 4
         ? ({
@@ -148,6 +161,7 @@ export class ApprovalTransitions {
             approval_gate: "implementation",
           } as Task)
         : original;
+
     if (this.host.isActive(id) || this.state.taskMaintenance.has(id))
       throw new AdeError("busy", "Wait for task activity to finish before approving.");
     if (this.host.db.repository(task.repo_id).connected === false)
@@ -157,6 +171,7 @@ export class ApprovalTransitions {
       );
     if (task.status !== "awaiting_approval" || !task.approval_gate)
       throw new AdeError("invalid_state", "This task is not waiting for a pipeline approval.");
+
     const target =
       task.approval_gate === "antigravity_plan"
         ? 2
@@ -165,6 +180,7 @@ export class ApprovalTransitions {
           : task.approval_gate === "implementation"
             ? 5
             : 6;
+
     const completedStage =
       task.approval_gate === "antigravity_plan"
         ? 1
@@ -173,6 +189,7 @@ export class ApprovalTransitions {
           : task.approval_gate === "implementation"
             ? 3
             : 5;
+
     const result = validatePlan(completedStage, this.host.db.artifact(id, completedStage));
     if (
       artifactId &&
@@ -203,6 +220,7 @@ export class ApprovalTransitions {
           );
       }
     }
+
     if (
       completedStage === 5 &&
       (object(result).approval !== "approved" ||
@@ -218,6 +236,7 @@ export class ApprovalTransitions {
         "stale_review",
         "The worktree changed after Antigravity reviewed it. Run the final review again.",
       );
+
     const pendingIds = () =>
       this.host.db
         .all<{ id: string }>(
@@ -225,6 +244,7 @@ export class ApprovalTransitions {
           id,
         )
         .map((message) => message.id);
+
     const pending = pendingIds();
     if (
       (pending.length && !instructions) ||
@@ -253,6 +273,7 @@ export class ApprovalTransitions {
         "invalid_state",
         "The task changed while approving. Refresh and review its current state.",
       );
+
     this.host.db.transaction(() => {
       if (instructions?.disposition === "include_next_stage")
         for (const message of pending)
@@ -266,6 +287,7 @@ export class ApprovalTransitions {
           "UPDATE task_messages SET status='draft' WHERE task_id=? AND status='queued'",
           id,
         );
+
       this.host.db.saveTask({
         ...current,
         approval_gate: undefined,
@@ -293,13 +315,16 @@ export class ApprovalTransitions {
         updated_at: now(),
       });
     });
+
     this.host.changed(id);
     if (target < 6) void this.host.drain();
     return this.host.db.task(id);
   };
+
   acceptDraft = async (id: string, runId: string) => {
     this.host.assertAvailable();
     const task = this.host.db.task(id);
+
     const runs = this.host.db.all<{
       id: string;
       stage: number;
@@ -309,6 +334,7 @@ export class ApprovalTransitions {
       "SELECT id,stage,status,purpose FROM agent_runs WHERE task_id=? ORDER BY started_at,rowid",
       id,
     );
+
     const run = runs.find((r) => r.id === runId);
     if (
       !run ||
@@ -324,11 +350,13 @@ export class ApprovalTransitions {
       );
     if (this.state.interactive.has(id) || this.state.taskMaintenance.has(id))
       throw new AdeError("busy", "Close task activity before using a planning draft.");
+
     const stored = this.host.db.all<{ id: string; content: string }>(
       "SELECT id,content FROM task_artifacts WHERE task_id=? AND kind=? ORDER BY created_at DESC LIMIT 1",
       id,
       `draft:${runId}`,
     )[0];
+
     const draft = stored
       ? this.host.db.records.decode({
           table: "task_artifacts",
@@ -337,6 +365,7 @@ export class ApprovalTransitions {
           source: stored.content,
         })
       : null;
+
     let plan: unknown = draft?.plan;
     if (!plan) {
       const stream = new StreamedPlan(run.stage);
@@ -355,6 +384,7 @@ export class ApprovalTransitions {
             }),
           ) || plan;
     }
+
     if (!plan)
       throw new AdeError(
         "missing_draft",
@@ -366,6 +396,7 @@ export class ApprovalTransitions {
       active.controller.abort();
       await active.promise;
     }
+
     if (!["failed", "cancelled", "interrupted"].includes(this.host.db.task(id).status))
       throw new AdeError(
         "invalid_state",
@@ -384,11 +415,13 @@ export class ApprovalTransitions {
         "This historical draft has no comparable current integrity fingerprint. Retry planning against the current files; its saved output is preserved.",
       );
     }
+
     this.host.db.run(
       "DELETE FROM task_artifacts WHERE task_id=? AND stage>=? AND kind='plan'",
       id,
       run.stage,
     );
+
     this.host.db.run(
       "INSERT INTO task_artifacts VALUES(?,?,?,'plan',?,?)",
       randomUUID(),
@@ -397,6 +430,7 @@ export class ApprovalTransitions {
       JSON.stringify(result),
       now(),
     );
+
     this.host.db.saveTask({
       ...task,
       stage: run.stage + 1,
@@ -405,9 +439,11 @@ export class ApprovalTransitions {
       error: null,
       updated_at: now(),
     });
+
     this.host.changed(id);
     return this.host.db.task(id);
   };
+
   followUp = (
     id: string,
     content: string,
@@ -424,6 +460,7 @@ export class ApprovalTransitions {
       );
     if (!content.trim() || content.length > 32000)
       throw new AdeError("invalid_state", "Provide an instruction of 1–32000 characters.");
+
     const existing = this.host.db.all<{
       id: string;
       task_id: string;
@@ -432,6 +469,7 @@ export class ApprovalTransitions {
       status: string;
       created_at: string;
     }>("SELECT * FROM task_messages WHERE id=?", requestId)[0];
+
     if (existing) {
       if (
         existing.task_id !== id ||
@@ -446,6 +484,7 @@ export class ApprovalTransitions {
       if (!sendSaved || existing.status !== "draft")
         return { message: existing, disposition: existing.status };
     }
+
     const message = {
       id: requestId,
       role: "user",
@@ -462,6 +501,7 @@ export class ApprovalTransitions {
             ? "queued"
             : "delivered",
     };
+
     const disposition = this.host.db.transaction(() => {
       if (existing)
         this.host.db.run(
@@ -485,6 +525,7 @@ export class ApprovalTransitions {
       if (message.status !== "delivered") return message.status;
       const target = continuationStage(this.host.db, t);
       this.host.db.run("DELETE FROM task_artifacts WHERE task_id=? AND stage>=?", id, target);
+
       this.host.db.saveTask({
         ...t,
         followup_config: configuration,
@@ -499,12 +540,15 @@ export class ApprovalTransitions {
         error: null,
         updated_at: now(),
       });
+
       return target >= 3 ? "implementation" : "resume_planning";
     });
+
     this.host.changed(id);
     if (message.status === "delivered") void this.host.drain();
     return { message, disposition };
   };
+
   sendSavedMessage = (id: string, messageId: string, configuration?: Task["followup_config"]) => {
     const message = this.host.db.all<{
       content: string;
@@ -515,6 +559,7 @@ export class ApprovalTransitions {
       id,
       messageId,
     )[0];
+
     if (!message) throw new AdeError("not_found", "Message not found");
     if (message.status !== "draft") return { disposition: message.status };
     if (configuration) message.configuration = JSON.stringify(configuration);

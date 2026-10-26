@@ -1,20 +1,25 @@
 import { resolveDevHost } from "./dev-host.mjs";
+
 import { cp, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+
 const exec = promisify(execFile);
 const host = await resolveDevHost();
 if (!host.executable.endsWith(".exe"))
   throw new Error("This check requires native Windows Electron launched from WSL.");
 const cache = resolve(dirname(host.executable), "..", "window-check");
+
 await cp("node_modules/playwright-core", join(cache, "node_modules/playwright-core"), {
   recursive: true,
 });
+
 await cp("tests/desktop/windows-window.mjs", join(cache, "check.mjs"));
 const home = await mkdtemp(join(tmpdir(), "vibestar-windows-"));
 const winpath = async (path) => (await exec("wslpath", ["-w", path])).stdout.trim();
+
 const child = spawn(
   host.executable,
   [
@@ -33,9 +38,11 @@ const child = spawn(
     },
   },
 );
+
 child.on("error", (error) => {
   throw error;
 });
+
 child.on("exit", (code) => {
   process.exitCode = code ?? 1;
 });

@@ -10,12 +10,15 @@ export const workspaceSections = {
   "run-details": "Run details",
   logs: "Raw logs",
 } as const;
+
 export type SecondarySection = keyof typeof workspaceSections;
+
 export interface ContextAttachment {
   id: string;
   label: string;
   text: string;
 }
+
 interface TaskView {
   draft: string;
   gitMessageDraft: string;
@@ -57,8 +60,10 @@ interface TaskView {
   followupEffort: string | null;
   persistenceError: string | null;
 }
+
 const views = new Map<string, TaskView>();
 const listeners = new Set<() => void>();
+
 const read = (key: string) => {
   try {
     return localStorage.getItem(key);
@@ -66,14 +71,17 @@ const read = (key: string) => {
     return null;
   }
 };
+
 const bounded = (value: unknown, fallback: number, min: number, max: number) =>
   typeof value === "number" && Number.isFinite(value)
     ? Math.max(min, Math.min(max, value))
     : fallback;
+
 const section = (value: unknown): SecondarySection | null =>
   typeof value === "string" && Object.hasOwn(workspaceSections, value)
     ? (value as SecondarySection)
     : null;
+
 const legacySections: Record<string, SecondarySection> = {
   Plan: "plans",
   Usage: "usage",
@@ -83,18 +91,23 @@ const legacySections: Record<string, SecondarySection> = {
   Logs: "logs",
   "Agent Output": "logs",
 };
+
 const legacySection = (value: unknown) =>
   typeof value === "string" && Object.hasOwn(legacySections, value) ? legacySections[value] : null;
+
 const savedLayout = (id: string): Partial<TaskView> => {
   try {
     const raw = read(`vibestar.layout.${id}`);
     const value: unknown = JSON.parse(raw || "{}");
+
     const saved =
       value && typeof value === "object" && !Array.isArray(value)
         ? (value as Record<string, unknown>)
         : {};
+
     const migrated =
       legacySection(saved.tab) || (saved.terminalDock ? legacySection(saved.dockTab) : null);
+
     return {
       gitMessageDraft: typeof saved.gitMessageDraft === "string" ? saved.gitMessageDraft : "",
       savedInstruction:
@@ -139,10 +152,12 @@ const savedLayout = (id: string): Partial<TaskView> => {
       secondaryScroll: Object.fromEntries(
         Object.keys(workspaceSections).flatMap((key) => {
           const positions = saved.secondaryScroll;
+
           const position =
             positions && typeof positions === "object"
               ? (positions as Record<string, unknown>)[key]
               : null;
+
           return typeof position === "number" && Number.isFinite(position) && position >= 0
             ? [[key, Math.min(position, Number.MAX_SAFE_INTEGER)]]
             : [];
@@ -181,10 +196,12 @@ const savedLayout = (id: string): Partial<TaskView> => {
       diffLayerPaths: Object.fromEntries(
         ["original", "upstream", "repair"].flatMap((key) => {
           const paths = saved.diffLayerPaths;
+
           const value =
             paths && typeof paths === "object"
               ? (paths as Record<string, unknown>)[key]
               : undefined;
+
           return typeof value === "string" && value.length < 4000 ? [[key, value]] : [];
         }),
       ),
@@ -211,6 +228,7 @@ const savedLayout = (id: string): Partial<TaskView> => {
     return {};
   }
 };
+
 const state = (id: string) => {
   let value = views.get(id);
   if (!value) {
@@ -256,37 +274,46 @@ const state = (id: string) => {
       persistenceError: null,
       ...savedLayout(id),
     };
+
     views.set(id, value);
   }
+
   return value;
 };
+
 export const updateTaskView = (id: string, update: Partial<TaskView>) => {
   const value = {
     ...state(id),
     ...update,
     persistenceError: null as string | null,
   };
+
   try {
     if (update.draft !== undefined || state(id).persistenceError) {
       if (value.draft) localStorage.setItem(`vibestar.draft.${id}`, value.draft);
       else localStorage.removeItem(`vibestar.draft.${id}`);
     }
+
     const layout = {
       ...value,
       draft: undefined,
       persistenceError: undefined,
       diffSelections: undefined,
     };
+
     localStorage.setItem(`vibestar.layout.${id}`, JSON.stringify({ version: 2, ...layout }));
   } catch {
     value.persistenceError =
       "Local storage is unavailable. Keep this conversation open and copy your draft before closing.";
   }
+
   views.set(id, value);
   for (const listener of listeners) listener();
 };
+
 export const openWorkspaceTool = (id: string, selected: SecondarySection) => {
   const current = state(id);
+
   updateTaskView(id, {
     ...(selected === "logs" &&
     current.secondarySection !== "logs" &&
@@ -300,6 +327,7 @@ export const openWorkspaceTool = (id: string, selected: SecondarySection) => {
       : {}),
   });
 };
+
 export const useTaskView = (id: string) =>
   useSyncExternalStore(
     (listener) => {

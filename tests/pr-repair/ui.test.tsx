@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+
 import { defaultSettings } from "../../backend/domain";
 import { SolveReview } from "../../src/features/pull-requests/repair/SolveReview";
 import { RepairWorkspace } from "../../src/features/pull-requests/repair/RepairWorkspace";
@@ -12,6 +13,7 @@ import type {
 } from "../../src/features/pull-requests/repair/types";
 import type { RepairSession } from "../../backend/review/repair/contracts";
 import { observations, prSnapshot } from "../helpers/pr-fixtures";
+
 vi.mock("../../src/components/shared/TaskTerminal", () => ({
   TaskTerminal: () => <p>Terminal fixture view</p>,
 }));
@@ -23,6 +25,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
 });
+
 const session: RepairSession = {
   id: "repair-ui",
   job_id: "job",
@@ -112,7 +115,9 @@ const session: RepairSession = {
   implementation: null,
   verification: null,
 };
+
 session.context.report!.actions = session.actions;
+
 session.implementation = {
   summary: "Targeted implementation report",
   items: session.actions.map((item) => ({
@@ -125,6 +130,7 @@ session.implementation = {
   tests: [],
   risks: [],
 };
+
 session.verification = {
   overall: "approved",
   summary: "Independent verification report",
@@ -143,6 +149,7 @@ session.verification = {
   ],
   risks: [],
 };
+
 const plan: RepairPublication = {
   id: "publication",
   repair_id: session.id,
@@ -173,21 +180,25 @@ const plan: RepairPublication = {
   updated_at: "2026-10-14T10:00:00Z",
   published_at: null,
 };
+
 const install = (handler: (method: string, params: Record<string, unknown>) => unknown) => {
   const rpc = vi.fn(async (method: string, params: Record<string, unknown>) =>
     handler(method, params),
   );
+
   window.vibestar = {
     rpc,
     subscribe: vi.fn(() => () => {}),
     openExternal: vi.fn(async () => {}),
   } as unknown as typeof window.vibestar;
+
   return rpc;
 };
 
 it("preserves reviewer text, item deselection and instructions while requiring an explicit selected repository", async () => {
   const rpc = install((method) => (method === "repair.create" ? session : {}));
   const open = vi.fn();
+
   render(
     <SolveReview
       analysis={session.context}
@@ -212,14 +223,18 @@ it("preserves reviewer text, item deselection and instructions while requiring a
       open={open}
     />,
   );
+
   expect(screen.getByText(session.actions[1].originalText)).toBeTruthy();
   fireEvent.click(screen.getByLabelText("Solve review item 2"));
+
   fireEvent.change(screen.getByLabelText("Additional repair instructions"), {
     target: { value: "Keep changes focused" },
   });
+
   expect(rpc).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Solve selected items" }));
   await waitFor(() => expect(open).toHaveBeenCalledWith(session.id));
+
   expect(rpc).toHaveBeenCalledWith(
     "repair.create",
     expect.objectContaining({
@@ -242,6 +257,7 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
     activity: [],
     publications: [],
   };
+
   const rpc = install((method) =>
     method === "repair.detail"
       ? detail
@@ -251,6 +267,7 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
           ? []
           : {},
   );
+
   render(
     <RepairWorkspace
       id={session.id}
@@ -260,16 +277,20 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
       analyze={vi.fn()}
     />,
   );
+
   fireEvent.click(
     await screen.findByRole("button", {
       name: "Review repair and publication options",
     }),
   );
+
   await screen.findByRole("heading", {
     name: "PR Review Repair Complete — Manual Review Required",
   });
+
   expect(screen.getByText("Targeted implementation report")).toBeTruthy();
   expect(screen.getByText("Independent verification report")).toBeTruthy();
+
   expect(
     rpc.mock.calls.some(([method]) =>
       [
@@ -281,34 +302,44 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
       ].includes(method),
     ),
   ).toBe(false);
+
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   fireEvent.click(screen.getByRole("button", { name: "Original PR changes" }));
+
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("repair.diff", {
       id: session.id,
       layer: "original",
     }),
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Upstream integration" }));
+
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("repair.diff", {
       id: session.id,
       layer: "upstream",
     }),
   );
+
   fireEvent.click(screen.getByRole("tab", { name: "Raw logs" }));
   expect(screen.getByRole("button", { name: "Readable" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy();
   const tabs = screen.getByRole("tablist", { name: "Workspace tools" });
+
   const first = within(tabs).getByRole("tab", {
     name: "Workflow",
   });
+
   first.focus();
   fireEvent.keyDown(first, { key: "End" });
+
   expect(within(tabs).getByRole("tab", { name: "Raw logs" }).getAttribute("aria-selected")).toBe(
     "true",
   );
+
   fireEvent.click(screen.getByLabelText("Toggle utility dock"));
+
   expect(
     within(screen.getByRole("tablist", { name: "Utilities" }))
       .getAllByRole("tab")
@@ -326,6 +357,7 @@ it.each([
   "retains a local draft and rejects Enter-to-run in a %s repair",
   async (label, active, status) => {
     const id = `repair-draft-${label}`;
+
     const detail: RepairDetail = {
       session: { ...session, id, status },
       active,
@@ -337,6 +369,7 @@ it.each([
       activity: [],
       publications: [],
     };
+
     const rpc = install((method) =>
       method === "repair.detail"
         ? detail
@@ -346,6 +379,7 @@ it.each([
             ? { files: [], insertions: 0, deletions: 0, base: "base" }
             : {},
     );
+
     render(
       <RepairWorkspace
         id={id}
@@ -355,12 +389,16 @@ it.each([
         analyze={vi.fn()}
       />,
     );
+
     const input = (await screen.findByLabelText("PR repair follow-up")) as HTMLTextAreaElement;
+
     fireEvent.change(input, {
       target: { value: "Keep this instruction for later" },
     });
+
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("Keep this instruction for later");
+
     expect(
       (
         screen.getByRole("button", {
@@ -368,12 +406,14 @@ it.each([
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+
     expect(rpc.mock.calls.some(([method]) => method === "repair.start")).toBe(false);
   },
 );
 
 it("shows exact publication values and requires separate commit and explicit push confirmation", async () => {
   const clean = { ...plan, dirty: false };
+
   const rpc = install((method) =>
     method === "repair.preparePublication"
       ? clean
@@ -381,19 +421,25 @@ it("shows exact publication values and requires separate commit and explicit pus
         ? { ...clean, outcome: "published" }
         : {},
   );
+
   const close = vi.fn();
   render(<PublicationDialog publication={plan} close={close} refresh={async () => {}} />);
   expect(screen.getByText("akshajrawat/oppia")).toBeTruthy();
   expect(screen.getByText("fix-translation-tests")).toBeTruthy();
+
   expect((screen.getByRole("button", { name: "Confirm Push" }) as HTMLButtonElement).disabled).toBe(
     true,
   );
+
   expect(rpc).not.toHaveBeenCalled();
   expect((screen.getByLabelText("Local commit message") as HTMLTextAreaElement).value).toBe("");
+
   fireEvent.change(screen.getByLabelText("Local commit message"), {
     target: { value: "  Exact title  \n\nDetails\n" },
   });
+
   fireEvent.click(screen.getByRole("button", { name: "Commit Locally" }));
+
   await waitFor(() =>
     expect(
       (
@@ -403,9 +449,11 @@ it("shows exact publication values and requires separate commit and explicit pus
       ).disabled,
     ).toBe(false),
   );
+
   expect(rpc.mock.calls.some(([method]) => method === "repair.publish")).toBe(false);
   fireEvent.click(screen.getByRole("button", { name: "Confirm Push" }));
   await waitFor(() => expect(close).toHaveBeenCalled());
+
   expect(rpc).toHaveBeenCalledWith("repair.publish", {
     id: session.id,
     publication_id: plan.id,
@@ -416,6 +464,7 @@ it("shows exact publication values and requires separate commit and explicit pus
 it("makes local-only approval and commit explicit without preparing or confirming a remote push", async () => {
   const rpc = install(() => ({}));
   const close = vi.fn();
+
   render(
     <LocalCommitDialog
       session={{
@@ -426,20 +475,26 @@ it("makes local-only approval and commit explicit without preparing or confirmin
       refresh={async () => {}}
     />,
   );
+
   expect(rpc).not.toHaveBeenCalled();
+
   expect((screen.getByLabelText("Local-only commit message") as HTMLTextAreaElement).value).toBe(
     "",
   );
+
   fireEvent.change(screen.getByLabelText("Local-only commit message"), {
     target: { value: "  Local title  \n\nDetails\n" },
   });
+
   fireEvent.click(screen.getByRole("button", { name: "Confirm Local Commit" }));
   await waitFor(() => expect(close).toHaveBeenCalled());
+
   expect(rpc.mock.calls.map(([method]) => method)).toEqual([
     "repair.approveLocal",
     "repair.commit",
     "repair.keepLocal",
   ]);
+
   expect(rpc).toHaveBeenCalledWith(
     "repair.commit",
     expect.objectContaining({

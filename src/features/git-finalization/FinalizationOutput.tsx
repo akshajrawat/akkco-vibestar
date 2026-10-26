@@ -2,6 +2,7 @@ import { Button } from "../../components/ui/button";
 import { errorMessage, rpc } from "../../lib/api";
 import { duration } from "../../lib/format";
 import type { FinalizationController, GitFinalizationProps } from "./useGitFinalization";
+
 /** Renders the output portion without owning operation authority or duplicating wizard state. */
 export const FinalizationOutput = ({
   controller,
@@ -59,6 +60,7 @@ export const FinalizationOutput = ({
     load,
     setNotice,
   } = controller;
+
   return (
     <section className="git-operation-panel" aria-label="Git operation output">
       <header>
@@ -69,6 +71,7 @@ export const FinalizationOutput = ({
             {executing && operationStarted ? ` · ${duration(operationStarted)}` : ""}
           </span>
         )}
+
         {(executing || (!busy && snapshot.active)) && (
           <Button
             size="sm"
@@ -83,6 +86,7 @@ export const FinalizationOutput = ({
           </Button>
         )}
       </header>
+
       <details className="git-operation-log">
         <summary>Saved operation log and recovery</summary>
         {detail?.events.length ? (
@@ -100,6 +104,7 @@ export const FinalizationOutput = ({
                   </li>
                 ))}
             </ol>
+
             <details>
               <summary>Exact redacted stdout / stderr</summary>
               <div className="actions">
@@ -110,14 +115,17 @@ export const FinalizationOutput = ({
                 >
                   Earlier output
                 </Button>
+
                 <Button size="sm" disabled={!beforeEvent} onClick={() => setBeforeEvent(undefined)}>
                   Latest output
                 </Button>
+
                 <small>
                   Up to 200 saved events per page. Oversized events show an explicit truncation
                   marker.
                 </small>
               </div>
+
               <pre>
                 {detail.events
                   .map(
@@ -133,6 +141,7 @@ export const FinalizationOutput = ({
             Real Git output and exit codes appear here when an operation runs.
           </p>
         )}
+
         {!!snapshot.history.length && (
           <label>
             Saved operation history
@@ -148,6 +157,7 @@ export const FinalizationOutput = ({
                   setMessage(item.message || "");
                   setPreset(item.preset);
                 }
+
                 setConfirmPush(false);
                 setConfirmMessage(false);
               }}
@@ -163,6 +173,7 @@ export const FinalizationOutput = ({
             </select>
           </label>
         )}
+
         {record && (
           <details className="git-remove-preview">
             <summary>Remove this review preview</summary>
@@ -170,6 +181,7 @@ export const FinalizationOutput = ({
               This removes the isolated review worktree and its saved operation history. Your task
               branch and local commit are retained.
             </p>
+
             <label className="inline-check">
               <input
                 type="checkbox"
@@ -179,6 +191,7 @@ export const FinalizationOutput = ({
               />
               Remove this owned preview and its saved history.
             </label>
+
             <Button
               variant="destructive"
               size="sm"
@@ -192,10 +205,12 @@ export const FinalizationOutput = ({
                     operation_id: record.id,
                     confirmed: true,
                   });
+
                   setRecord(undefined);
                   setDetail(undefined);
                   setConfirmRemoval(false);
                   await load();
+
                   setNotice(
                     "Review preview removed. The task branch and local commit are retained.",
                   );

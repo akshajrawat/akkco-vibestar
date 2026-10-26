@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
+
 import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
 import { TestsView } from "../../src/features/verification/TestsView";
 import { LogView } from "../../src/features/chat/LogView";
 import { TaskCleanup } from "../../src/features/tasks/TaskCleanup";
 import type { Detail } from "../../src/lib/types";
+
 const terminal = vi.hoisted(() => ({ mounts: 0 }));
+
 vi.mock("../../src/components/shared/TaskTerminal", async () => {
   const { useEffect } = await import("react");
   return {
@@ -14,14 +17,18 @@ vi.mock("../../src/components/shared/TaskTerminal", async () => {
       useEffect(() => {
         terminal.mounts++;
       }, []);
+
       return <div>Attached terminal session</div>;
     },
   };
 });
+
 vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [], refresh: vi.fn() }),
 }));
+
 afterEach(cleanup);
+
 const detail: Detail = {
   task: {
     id: "workspace-output",
@@ -65,11 +72,13 @@ const detail: Detail = {
   artifacts: [],
   tests: [],
 };
+
 const bridge = () => {
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     value: () => {},
     configurable: true,
   });
+
   const rpc = vi.fn(async (method: string) =>
     method === "task.diff"
       ? {
@@ -100,10 +109,12 @@ const bridge = () => {
           ? { editors: [] }
           : null,
   );
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   return rpc;
 };
 
@@ -117,6 +128,7 @@ it("removes task history while preserving work through a distinct explicit choic
   fireEvent.click(screen.getByRole("radio", { name: /^Remove task history, preserve work/ }));
   fireEvent.click(screen.getByRole("button", { name: "Remove history and preserve work" }));
   await vi.waitFor(() => expect(done).toHaveBeenCalledOnce());
+
   expect(rpc).toHaveBeenCalledWith("task.disposal.preserve", {
     id: "owned-task",
     confirmed: true,
@@ -126,9 +138,11 @@ it("removes task history while preserving work through a distinct explicit choic
 it("keeps active execution visible with the right sidebar closed and restores the dock without restarting its terminal", async () => {
   bridge();
   terminal.mounts = 0;
+
   const ui = render(
     <TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />,
   );
+
   expect(screen.getByLabelText("Current agent run")).toBeTruthy();
   expect(screen.queryByText("View sent prompts")).toBeNull();
   expect(screen.getAllByLabelText("Stop agent").length).toBeGreaterThan(0);
@@ -145,9 +159,11 @@ it("keeps active execution visible with the right sidebar closed and restores th
   expect(ui.container.querySelector(".workspace.dock-maximized")).toBeTruthy();
   expect(ui.container.querySelector<HTMLElement>(".utility-dock")!.style.height).toBe("");
   expect(terminal.mounts).toBe(1);
+
   fireEvent.keyDown(screen.getByLabelText("Restore utility dock"), {
     key: "Escape",
   });
+
   expect(ui.container.querySelector(".workspace.dock-maximized")).toBeNull();
   expect(ui.container.querySelector<HTMLElement>(".utility-dock")!.style.height).toBe(height);
   expect(terminal.mounts).toBe(1);
@@ -155,12 +171,15 @@ it("keeps active execution visible with the right sidebar closed and restores th
   fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
   fireEvent.click(screen.getByRole("button", { name: "Open full diff review" }));
   await screen.findByText("new");
+
   expect(
     ui.container.querySelector('.diff-code[data-side="working"][data-line="1"]')?.textContent,
   ).toBe("new");
+
   expect(
     ui.container.querySelector('.diff-code[data-side="base"][data-line="1"]')?.textContent,
   ).toBe("old");
+
   expect(ui.container.querySelector(".secondary-expanded")).toBeTruthy();
   fireEvent.click(screen.getByLabelText("Return to chat"));
   expect(terminal.mounts).toBe(1);
@@ -168,6 +187,7 @@ it("keeps active execution visible with the right sidebar closed and restores th
 
 it("separates command transcripts by attempt and stage, highlights failures, keeps both streams and updates live output", () => {
   bridge();
+
   const tests = [
     {
       id: "first",
@@ -203,6 +223,7 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
       stderr: "",
     },
   ];
+
   const props = {
     ...detail,
     tests,
@@ -218,28 +239,37 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
       },
     ],
   };
+
   const ui = render(<TestsView detail={props} onError={vi.fn()} />);
   expect(screen.getByLabelText("Selected command output").textContent).toContain("linting");
+
   fireEvent.change(screen.getByLabelText("Command stage"), {
     target: { value: "5" },
   });
+
   expect(screen.getByLabelText("Selected command output").textContent).toContain(
     "mobile assertion failed",
   );
+
   expect(screen.getByLabelText("Selected command output").textContent).toContain("mobile started");
   expect(within(screen.getByLabelText("Recorded commands")).getAllByRole("button")).toHaveLength(1);
   expect(ui.container.querySelector(".command-failed[aria-current='true']")).toBeTruthy();
+
   fireEvent.change(screen.getByLabelText("Command stage"), {
     target: { value: "all" },
   });
+
   fireEvent.click(within(screen.getByLabelText("Recorded commands")).getAllByRole("button")[0]);
   expect(screen.getByLabelText("Selected command output").textContent).toContain("desktop passed");
+
   expect(screen.getByLabelText("Selected command output").textContent).toContain(
     "warning from desktop",
   );
+
   fireEvent.change(screen.getByLabelText("Search commands"), {
     target: { value: "lint" },
   });
+
   ui.rerender(
     <TestsView
       detail={{
@@ -249,11 +279,13 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
       onError={vi.fn()}
     />,
   );
+
   expect(screen.getByLabelText("Selected command output").textContent).toContain("checked 4 files");
 });
 
 it("opens readable agent output with expanded results and both command streams, while retaining raw inspection", async () => {
   bridge();
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: {
@@ -263,6 +295,7 @@ it("opens readable agent output with expanded results and both command streams, 
       })),
     },
   });
+
   render(
     <LogView
       taskId={detail.task.id}
@@ -298,6 +331,7 @@ it("opens readable agent output with expanded results and both command streams, 
       ]}
     />,
   );
+
   expect(screen.getByText("Implemented the migration")).toBeTruthy();
   expect(screen.getByText("remote stress run")).toBeTruthy();
   expect(screen.getByText("actual stdout")).toBeTruthy();

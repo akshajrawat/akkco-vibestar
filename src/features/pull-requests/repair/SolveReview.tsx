@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import type { PRAnalysisSession } from "../../../../backend/review/pr/contracts";
 import type { Repository, Settings } from "../../../../backend/domain";
 import type { RepairSession } from "../../../../backend/review/repair/contracts";
@@ -30,13 +31,16 @@ export const SolveReview = ({
         ["required_change", "suggested_change", "question"].includes(a.classification) &&
         a.responseState !== "answered",
     ) || [];
+
   const upstream = analysis.snapshot?.identity?.baseRepository || "";
+
   const candidates = repositories.filter(
     (r) =>
       r.connected !== false &&
       r.clone_status !== "cloning" &&
       `${r.owner}/${r.name}`.toLowerCase() === upstream.toLowerCase(),
   );
+
   const [repository, setRepository] = useState(candidates.length === 1 ? candidates[0].id : "");
   const [selected, setSelected] = useState(actions.map((a) => a.id));
   const [instructions, setInstructions] = useState("");
@@ -45,6 +49,7 @@ export const SolveReview = ({
   const [requestId] = useState(() => crypto.randomUUID());
   const [error, setError] = useState("");
   const dialog = useDialogFocus();
+
   const solve = async () => {
     setBusy(true);
     setError("");
@@ -57,6 +62,7 @@ export const SolveReview = ({
         action_ids: selected,
         instructions,
       });
+
       await refresh();
       close();
       open(session.id);
@@ -66,6 +72,7 @@ export const SolveReview = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -79,6 +86,7 @@ export const SolveReview = ({
             e.stopPropagation();
             close();
           }
+
           containDialogFocus(e);
         }}
       >
@@ -93,10 +101,12 @@ export const SolveReview = ({
             ×
           </Button>
         </div>
+
         <p className="subtle">
           A dedicated repair worktree starts from the verified PR head and integrates its latest
           upstream base. Codex implements your selection, then Antigravity independently reviews it.
         </p>
+
         <label>
           Local repository
           <select
@@ -112,11 +122,13 @@ export const SolveReview = ({
             ))}
           </select>
         </label>
+
         {!candidates.length && (
           <div className="actions">
             <Button disabled={busy} onClick={() => setConnect(true)}>
               Connect local repository
             </Button>
+
             <Button
               disabled={busy || !upstream}
               onClick={async () => {
@@ -135,6 +147,7 @@ export const SolveReview = ({
             </Button>
           </div>
         )}
+
         <div className="repair-item-selection">
           {actions.map((item, index) => (
             <article key={item.id}>
@@ -162,6 +175,7 @@ export const SolveReview = ({
             </article>
           ))}
         </div>
+
         <label>
           Additional instructions
           <textarea
@@ -171,6 +185,7 @@ export const SolveReview = ({
             onChange={(e) => setInstructions(e.target.value)}
           />
         </label>
+
         <p className="subtle">
           Codex · {settings.codex_implementation.model || "CLI default"} ·{" "}
           {settings.codex_implementation.effort}
@@ -179,15 +194,18 @@ export const SolveReview = ({
           {(settings.antigravity_review || settings.antigravity).model || "CLI default"} ·{" "}
           {(settings.antigravity_review || settings.antigravity).effort}
         </p>
+
         {error && (
           <p className="error-box" role="alert">
             {error}
           </p>
         )}
+
         <div className="actions">
           <Button variant="secondary" disabled={busy} onClick={close}>
             Cancel
           </Button>
+
           <Button
             disabled={
               busy ||
@@ -201,6 +219,7 @@ export const SolveReview = ({
           </Button>
         </div>
       </section>
+
       {connect && (
         <ConnectLocalRepository
           distro={candidates[0]?.distro || "Linux"}

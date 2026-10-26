@@ -1,14 +1,17 @@
 import { afterEach, expect, it, vi } from "vitest";
+
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
+
 import { discoverCodexModels } from "../../backend/execution/providers/codex-models";
 
 const fixture = vi.hoisted(() => ({
   script: "",
   children: [] as ChildProcess[],
 }));
+
 vi.mock("node:child_process", async (original) => {
   const module = await original<typeof import("node:child_process")>();
   return {
@@ -21,6 +24,7 @@ vi.mock("node:child_process", async (original) => {
     },
   };
 });
+
 afterEach(() => {
   for (const child of fixture.children.splice(0)) {
     try {
@@ -30,6 +34,7 @@ afterEach(() => {
     }
   }
 });
+
 const protocol = (extra: string, cursor = "null") => `
 ${extra}
 require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
@@ -56,6 +61,7 @@ it.each([
 ])("bounds %s protocol data and waits for process close", async (_kind, script) => {
   fixture.script = `${script}setInterval(()=>{},1000);`;
   await expect(discoverCodexModels(tmpdir())).rejects.toThrow(/limit|Invalid/);
+
   expect(fixture.children[0].exitCode !== null || fixture.children[0].signalCode !== null).toBe(
     true,
   );

@@ -3,11 +3,13 @@ export interface DesktopSettings {
   data_home: string;
   helper_path: string;
 }
+
 export interface DesktopInfo {
   config: DesktopSettings;
   distros: string[];
   native_windows: boolean;
 }
+
 export interface DesktopApi {
   rpc: <T>(method: string, params?: unknown) => Promise<T>;
   subscribe: (callback: (event: import("../backend/domain").CoreEvent) => void) => () => void;
@@ -21,6 +23,7 @@ export interface WindowState {
   maximized: boolean;
   fullscreen: boolean;
 }
+
 export interface ElectronWindowApi {
   manualDragging: boolean;
   beginDrag: (point: { x: number; y: number }) => Promise<void>;

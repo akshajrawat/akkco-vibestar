@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import type { Task } from "../../lib/types";
 import type {
   BrowserEnvironmentReport,
@@ -21,12 +22,15 @@ export const BrowserEnvironment = ({
   const [busy, setBusy] = useState("");
   const [report, setReport] = useState(task.browser_environment_report);
   const [notice, setNotice] = useState("");
+
   useEffect(() => {
     setEnvironment(current);
   }, [current, task.id]);
+
   useEffect(() => {
     setReport(task.browser_environment_report);
   }, [task.id, task.browser_environment_report]);
+
   const act = async (configure: boolean) => {
     setBusy(configure ? "configure" : "inspect");
     setNotice("");
@@ -37,6 +41,7 @@ export const BrowserEnvironment = ({
           environment,
           confirmed: true,
         });
+
         setReport(undefined);
         setNotice("Verification environment saved. Run missing checks explicitly.");
       } else
@@ -51,6 +56,7 @@ export const BrowserEnvironment = ({
       setBusy("");
     }
   };
+
   return (
     <details className="browser-environment">
       <summary>Browser verification environment</summary>
@@ -58,6 +64,7 @@ export const BrowserEnvironment = ({
         Inspect packages, browser launch, registry DNS and loopback sockets in the manual task
         sandbox. This probe does not run your application tests.
       </p>
+
       <label>
         Verification environment
         <select
@@ -70,6 +77,7 @@ export const BrowserEnvironment = ({
           <option value="installed_browsers">Task sandbox with installed browsers</option>
         </select>
       </label>
+
       {environment === "installed_browsers" && (
         <p className="subtle">
           Apply to authorize read-only access to the installed Chrome directory and Playwright
@@ -77,6 +85,7 @@ export const BrowserEnvironment = ({
           keep their current mounts.
         </p>
       )}
+
       <div className="actions">
         <Button
           size="sm"
@@ -86,6 +95,7 @@ export const BrowserEnvironment = ({
         >
           Use environment
         </Button>
+
         <Button
           size="sm"
           variant="outline"
@@ -96,11 +106,13 @@ export const BrowserEnvironment = ({
           {busy === "inspect" ? "Inspecting environment…" : "Inspect browser environment"}
         </Button>
       </div>
+
       {notice && (
         <p role="status" className="subtle">
           {notice}
         </p>
       )}
+
       {report && (
         <div className="browser-capabilities" aria-label="Observed browser capabilities">
           <p>{report.note}</p>
@@ -116,6 +128,7 @@ export const BrowserEnvironment = ({
                 : "Reuse an installed toolchain or run project setup explicitly when needed."}
             </p>
           )}
+
           <dl>
             {(
               [
@@ -136,6 +149,7 @@ export const BrowserEnvironment = ({
               </div>
             ))}
           </dl>
+
           <details>
             <summary>Detected toolchain and timestamp</summary>
             <p>
@@ -145,6 +159,7 @@ export const BrowserEnvironment = ({
             <p>{report.browsers.join("\n") || "No exposed browser detected"}</p>
             <time>{new Date(report.checked_at).toLocaleString()}</time>
           </details>
+
           <p className="subtle">
             Successful capability probes do not mark blocked, optional or required application
             checks as passed. Rerun the exact missing checks using the manual command form.

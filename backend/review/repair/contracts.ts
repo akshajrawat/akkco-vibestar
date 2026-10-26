@@ -6,6 +6,7 @@ import { ReviewActionSchema } from "../pr/contracts";
 import { ReviewAnalysisSchema } from "../pr/contracts";
 
 const sha = z.string().regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/);
+
 const repository = z
   .object({
     name: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
@@ -28,6 +29,7 @@ export const PRIdentitySchema = z
     checked_at: z.string().datetime(),
   })
   .strict();
+
 export type PRIdentity = z.infer<typeof PRIdentitySchema>;
 
 export const RepairWorkspaceSchema = z
@@ -69,6 +71,7 @@ export const RepairWorkspaceSchema = z
     remote_checked_at: z.string().datetime(),
   })
   .strict();
+
 export type RepairWorkspace = z.infer<typeof RepairWorkspaceSchema>;
 
 export const repairStatuses = [
@@ -97,6 +100,7 @@ const tests = z.array(
     })
     .strict(),
 );
+
 export const RepairImplementationSchema = z
   .object({
     summary: z.string().min(1),
@@ -115,6 +119,7 @@ export const RepairImplementationSchema = z
     risks: z.array(z.string()),
   })
   .strict();
+
 export const RepairVerificationSchema = z
   .object({
     overall: z.enum(["approved", "changes_requested", "blocked"]),
@@ -157,6 +162,7 @@ export interface RepairSession {
   implementation: z.infer<typeof RepairImplementationSchema> | null;
   verification: z.infer<typeof RepairVerificationSchema> | null;
 }
+
 const contextSchema = z
   .object({
     id: z.string().uuid(),
@@ -184,6 +190,7 @@ const contextSchema = z
       .optional(),
   })
   .strict();
+
 export const RepairSessionSchema = z
   .object({
     id: z.string().uuid(),

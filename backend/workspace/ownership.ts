@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
+
 import { AdeError } from "../domain";
 
 type OwnerFile = "vibestar-task-owner" | "vibestar-repair-owner" | "vibestar-finalization-owner";
@@ -12,6 +13,7 @@ export const readWorktreeOwner = async (directory: string, name: OwnerFile) => {
       throw new AdeError("ownership", "Worktree ownership marker could not be read safely.");
     },
   );
+
   if (!handle) return "";
   try {
     if (!(await handle.stat()).isFile())
@@ -36,12 +38,14 @@ export const writeWorktreeOwner = async (directory: string, name: OwnerFile, own
       );
     return;
   }
+
   // Exclusive creation never follows or truncates a replaced marker.
   const handle = await open(
     join(directory, name),
     constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
     0o600,
   );
+
   try {
     await handle.writeFile(owner);
   } finally {

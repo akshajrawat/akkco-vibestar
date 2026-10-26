@@ -2,36 +2,44 @@
   padding: 16px 0;
   border-bottom: 1px solid var(--border-default);
 }
+
 .settings-section > h2 {
   margin-bottom: 8px;
 }
+
 .settings-section > p {
   color: var(--text-muted);
   font-size: 12px;
   margin: 8px 0;
 }
+
 .settings-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 20px;
   max-width: 900px;
 }
+
 .stage-settings {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 18px;
 }
+
 .config-block {
   padding: 8px 0;
 }
+
 .config-block h3 {
   font-size: 11px;
   color: var(--text-secondary);
   margin-bottom: 9px;
 }
+
 .config-block label {
   font-size: 12px;
 }
+
 .install-log {
   padding: 12px;
   max-height: 200px;
@@ -39,6 +47,7 @@
   background: var(--background-app);
   font-size: 11px;
 }
+
 .palette-backdrop {
   position: fixed;
   inset: 34px 0 0;
@@ -49,6 +58,7 @@
   padding-top: 55px;
   align-items: flex-start;
 }
+
 .command-palette {
   width: 580px;
   max-width: 90vw;
@@ -58,6 +68,7 @@
   box-shadow: 0 12px 40px var(--overlay);
   overflow: hidden;
 }
+
 .palette-search {
   display: flex;
   gap: 9px;
@@ -65,20 +76,24 @@
   padding: 10px 13px;
   border-bottom: 1px solid var(--border);
 }
+
 .palette-search input {
   border: 0;
   background: transparent;
   padding: 4px 0;
 }
+
 .palette-search kbd {
   color: var(--text-muted);
   font-size: 10px;
 }
+
 .command-palette [role="listbox"] {
   max-height: 370px;
   overflow: auto;
   padding: 5px;
 }
+
 .command-palette [role="option"] {
   display: flex;
   width: 100%;
@@ -89,9 +104,11 @@
   background: transparent;
   border-radius: 3px;
 }
+
 .command-palette [role="option"].selected {
   background: var(--border-default);
 }
+
 .command-palette small {
   margin-left: auto;
   max-width: 220px;
@@ -100,29 +117,36 @@
   white-space: nowrap;
   font-size: 10px;
 }
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--border-default);
   border-radius: 3px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .spinning {
   animation: spin 1.5s linear infinite;
 }
+
 .chat-changes {
   margin: 16px 0;
 }
+
 .pr-title {
   display: block;
   color: var(--muted);
   font-size: 12px;
   margin-top: 3px;
 }
+
 .chat-changes summary {
   color: var(--muted);
   font-size: 12px;

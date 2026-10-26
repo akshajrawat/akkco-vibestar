@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { planSchemas } from "../execution/providers/contracts";
 
 export const GitPresetSchema = z
@@ -10,6 +11,7 @@ export const GitPresetSchema = z
     branch: z.string().min(1).max(240),
   })
   .strict();
+
 export type GitPreset = z.infer<typeof GitPresetSchema>;
 
 export const FinalizationSchema = z
@@ -74,7 +76,9 @@ export const FinalizationSchema = z
     updated_at: z.string(),
   })
   .strict();
+
 export type Finalization = z.infer<typeof FinalizationSchema>;
+
 export const FinalizationViewSchema = FinalizationSchema.omit({
   source_index: true,
   projected_index: true,
@@ -83,6 +87,7 @@ export const FinalizationViewSchema = FinalizationSchema.omit({
   pid: true,
   process_identity: true,
 }).strip();
+
 export type FinalizationView = z.infer<typeof FinalizationViewSchema>;
 
 export const SelectedFilesInput = z

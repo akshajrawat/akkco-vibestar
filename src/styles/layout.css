@@ -4,6 +4,7 @@
   height: 100vh;
   overflow: hidden;
 }
+
 .titlebar {
   height: 34px;
   flex: 0 0 34px;
@@ -15,6 +16,7 @@
   -webkit-app-region: drag;
   app-region: drag;
 }
+
 .titlebar-name {
   color: var(--text-secondary);
   font-size: 12px;
@@ -23,15 +25,18 @@
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
 .titlebar.titlebar-manual {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
 .titlebar button,
 .window-controls {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
 .sidebar-toggle {
   height: 25px;
   width: 30px;
@@ -40,6 +45,7 @@
   margin-left: 6px;
   color: var(--muted);
 }
+
 .titlebar-palette {
   height: 23px;
   width: 440px;
@@ -55,21 +61,25 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
 .titlebar-palette kbd {
   float: right;
   font-size: 10px;
   margin-left: 20px;
   color: var(--text-disabled);
 }
+
 .titlebar-error {
   font-size: 11px;
   color: var(--accent-red);
 }
+
 .window-controls {
   height: 100%;
   display: flex;
   margin-left: auto;
 }
+
 .window-controls button {
   width: 46px;
   display: grid;
@@ -78,19 +88,23 @@
   border: 0;
   border-radius: 0;
 }
+
 .window-controls button:hover {
   background: var(--border-default);
 }
+
 .window-controls .window-close:hover {
   background: var(--accent-red);
   color: var(--text-on-accent);
 }
+
 .app-shell {
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
+
 .sidebar {
   flex-shrink: 0;
   display: flex;
@@ -98,6 +112,7 @@
   padding: 12px 8px 0;
   background: var(--background-sidebar);
 }
+
 .brand {
   display: flex;
   align-items: center;
@@ -107,11 +122,13 @@
   letter-spacing: 1.5px;
   color: var(--text-secondary);
 }
+
 .brand small {
   margin-left: auto;
   font-size: 9px;
   color: var(--text-disabled);
 }
+
 .new-task-button {
   margin: 13px 3px 20px;
   text-align: left;
@@ -120,10 +137,12 @@
   justify-content: flex-start;
   height: 31px;
 }
+
 .new-task-button kbd {
   font-size: 11px;
   color: var(--text-muted);
 }
+
 .sidebar-label {
   display: flex;
   align-items: center;
@@ -131,6 +150,7 @@
   color: var(--text-muted);
   font-size: 10px;
 }
+
 .sidebar-label button {
   border: 0;
   background: transparent;
@@ -138,13 +158,16 @@
   font-size: 10px;
   color: var(--text-muted);
 }
+
 .sidebar-label small {
   margin-left: auto;
 }
+
 .sidebar-tasks {
   flex: 1;
   overflow: auto;
 }
+
 .sidebar-tasks button {
   display: flex;
   align-items: center;
@@ -154,16 +177,19 @@
   background: transparent;
   text-align: left;
 }
+
 .sidebar-tasks .tree-group-toggle {
   padding: 6px 4px;
   color: var(--text-secondary);
   font-size: 12px;
 }
+
 .tree-group-toggle > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .sidebar-tasks .tree-task {
   height: 28px;
   padding: 0 8px 0 18px;
@@ -171,24 +197,29 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
+
 .tree-task > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .tree-task small {
   font-size: 11px;
   color: var(--text-muted);
 }
+
 .sidebar-tasks button:hover,
 .sidebar-tools button:hover {
   background: var(--background-elevated);
 }
+
 .sidebar-tasks button.selected {
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   color: var(--text-primary);
   box-shadow: none;
 }
+
 .tree-task.selected::before {
   content: "";
   position: absolute;
@@ -198,28 +229,34 @@
   border-radius: 50%;
   background: var(--text-secondary);
 }
+
 .tree-task:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
+
 .task-status-icon {
   display: grid;
   place-items: center;
   flex: 0 0 14px;
   color: var(--text-muted);
 }
+
 .task-status-icon.completed,
 .task-status-icon.ready_for_review {
   color: var(--accent-green);
 }
+
 .task-status-icon.failed {
   color: var(--accent-red);
 }
+
 .task-status-icon.awaiting_approval,
 .task-status-icon.verification_blocked,
 .task-status-icon.reviewed_with_gaps {
   color: var(--accent-amber);
 }
+
 .task-status-icon.implementing,
 .task-status-icon.planning_antigravity,
 .task-status-icon.planning_codex,
@@ -228,11 +265,13 @@
 .task-status-icon.preparing {
   color: var(--accent-blue);
 }
+
 .sidebar-empty {
   padding: 6px 9px;
   font-size: 12px;
   color: var(--text-disabled);
 }
+
 .task-dot {
   display: inline-block;
   width: 5px;
@@ -241,6 +280,7 @@
   background: var(--text-muted);
   flex-shrink: 0;
 }
+
 .task-dot.preparing,
 .task-dot.implementing,
 .task-dot.planning_antigravity,
@@ -249,18 +289,22 @@
 .task-dot.validating {
   background: var(--accent-blue);
 }
+
 .task-dot.ready_for_review,
 .task-dot.completed {
   background: var(--accent-green);
 }
+
 .task-dot.failed {
   background: var(--accent-red);
 }
+
 .task-dot.interrupted,
 .task-dot.awaiting_approval,
 .task-dot.cancelled {
   background: var(--accent-amber);
 }
+
 .sidebar-tools {
   display: flex;
   flex-direction: column;
@@ -269,6 +313,7 @@
   padding: 8px 0;
   margin-top: 8px;
 }
+
 .sidebar-tools button {
   position: relative;
   display: flex;
@@ -284,10 +329,12 @@
     background-color var(--motion-fast),
     color var(--motion-fast);
 }
+
 .sidebar-tools button.selected {
   background: var(--background-selected);
   color: var(--text-primary);
 }
+
 .nav-selection {
   position: absolute;
   left: 0;
@@ -297,10 +344,12 @@
   border-radius: 2px;
   background: var(--accent-blue);
 }
+
 .sidebar-tools small {
   margin-left: auto;
   font-size: 10px;
 }
+
 .sidebar-footer {
   display: flex;
   align-items: center;
@@ -310,10 +359,12 @@
   color: var(--text-muted);
   font-size: 10px;
 }
+
 .sidebar-footer small {
   margin-left: auto;
   font-size: 10px;
 }
+
 .local-dot {
   display: inline-block;
   width: 4px;
@@ -322,6 +373,7 @@
   background: var(--accent-green);
   margin-right: 6px;
 }
+
 .resize-handle {
   width: 3px;
   flex: 0 0 3px;
@@ -330,16 +382,19 @@
   touch-action: none;
   outline: none;
 }
+
 .resize-handle:hover,
 .resize-handle:focus {
   background: var(--text-muted);
 }
+
 .resize-handle.vertical {
   width: auto;
   height: 3px;
   flex: 0 0 3px;
   cursor: row-resize;
 }
+
 .main-area {
   display: flex;
   flex-direction: column;

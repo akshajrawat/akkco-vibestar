@@ -1,23 +1,29 @@
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
+
 import { z } from "zod";
+
 import { Engine } from "./execution/engine";
 import { Rpc } from "./rpc";
 import { AdeError, defaultSettings } from "./domain";
 import { dataRootChoice, chooseDataRoot } from "./storage/bootstrap";
 import { redact } from "./execution/runtime/process";
+
 const main = async () => {
   const build = createHash("sha256")
     .update(await readFile(__filename))
     .digest("hex");
+
   const bootstrap = await dataRootChoice();
   let engine: Engine | undefined;
   let rpc: Rpc | undefined;
   let initializing: Promise<void> | undefined;
   let choosing = false;
+
   const start = (root: string) => {
     if (initializing) return initializing;
+
     initializing = (async () => {
       engine = await Engine.create(root);
       rpc = new Rpc(engine);
@@ -27,10 +33,13 @@ const main = async () => {
     })().finally(() => {
       initializing = undefined;
     });
+
     return initializing;
   };
+
   if (!bootstrap.migration) await start(bootstrap.root);
   let stopping = false;
+
   const stop = async () => {
     if (stopping) return;
     stopping = true;
@@ -39,16 +48,20 @@ const main = async () => {
     await engine?.close();
     process.exit(0);
   };
+
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
     process.on(signal, () => void stop());
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+
   const requestSchema = z.object({
     id: z.string().uuid(),
     method: z.string().max(100),
     params: z.unknown(),
   });
+
   lines.on("line", (line) => {
     if (line.length > 1024 * 1024) return;
+
     void (async () => {
       let request: z.infer<typeof requestSchema> | undefined;
       try {
@@ -83,9 +96,11 @@ const main = async () => {
         else if (!rpc && request.method === "storage.chooseRoot" && bootstrap.migration) {
           if (initializing || choosing)
             throw new AdeError("busy", "Data initialization is already in progress");
+
           const choice = z
             .object({ choice: z.enum(["migrate", "old", "fresh"]) })
             .parse(request.params).choice;
+
           choosing = true;
           try {
             const root = await chooseDataRoot(bootstrap.migration, choice);
@@ -99,6 +114,7 @@ const main = async () => {
             throw new AdeError("migration", "Choose how to use the existing Vibestar data first");
           result = await rpc.call(request.method, request.params);
         }
+
         process.stdout.write(`${JSON.stringify({ id: request.id, result })}\n`);
       } catch (e) {
         process.stdout.write(
@@ -107,8 +123,10 @@ const main = async () => {
       }
     })();
   });
+
   lines.on("close", () => void stop());
 };
+
 void main().catch((e) => {
   process.stderr.write(`${redact(String(e))}\n`);
   process.exit(1);

@@ -15,6 +15,7 @@ import {
   type ScheduleAttention,
   PullRequestStateSchema,
 } from "./contracts";
+
 const savedJob = z
   .object({
     id: z.string(),
@@ -43,14 +44,18 @@ export class Scheduler {
     string,
     { controller: AbortController; promise: Promise<void> }
   >();
+
   private stopped = false;
+
   readonly analysis: PRAnalysis;
+
   constructor(
     private readonly engine: Engine,
     private readonly monitor = new GitHubMonitor(engine.root),
   ) {
     this.analysis = new PRAnalysis(engine);
   }
+
   jobs = () =>
     this.engine.db.records.list(
       "scheduled_jobs",
@@ -60,25 +65,31 @@ export class Scheduler {
       savedJob.parse,
       "id",
     );
+
   attention = () =>
     this.engine.db.all<ScheduleAttention>(
       "SELECT * FROM scheduled_attention WHERE dismissed=0 ORDER BY created_at DESC",
     );
+
   private save = (job: ScheduleJob) => {
     if (job.task_id && !this.engine.db.all("SELECT id FROM tasks WHERE id=?", job.task_id).length)
       job.task_id = null;
+
     this.engine.db.run(
       "INSERT INTO scheduled_jobs VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
       job.id,
       JSON.stringify({ ...job, enabled: false, check_once: false }),
     );
+
     this.engine.changed();
   };
+
   private job = (id: string) => {
     const row = this.engine.db.all<{ data: string }>(
       "SELECT data FROM scheduled_jobs WHERE id=?",
       id,
     )[0];
+
     if (!row) throw new AdeError("not_found", "Tracked PR not found");
     return this.engine.db.records.decode(
       {
@@ -91,6 +102,7 @@ export class Scheduler {
       savedJob.parse,
     );
   };
+
   add = (input: unknown) => {
     this.engine.assertAvailable();
     const p = ScheduleInput.parse(input);
@@ -105,6 +117,7 @@ export class Scheduler {
           "PR and linked task must belong to the same upstream repository",
         );
     }
+
     const job: ScheduleJob = {
       ...p,
       verify_codex: false,
@@ -119,9 +132,11 @@ export class Scheduler {
       changes: [],
       error: null,
     };
+
     this.save(job);
     return job;
   };
+
   discovered = (pr: GitHubPullRequest) => {
     const job =
       this.jobs().find((j) => j.url.toLowerCase() === pr.url.toLowerCase()) ||
@@ -131,12 +146,14 @@ export class Scheduler {
         interval_minutes: 60,
         verify_codex: false,
       });
+
     if (this.active.has(job.id)) return;
     job.title = pr.title;
     if (["OPEN", "CLOSED", "MERGED"].includes(pr.state)) job.archived = pr.state !== "OPEN";
     if (!job.task_id && pr.task_id) job.task_id = pr.task_id;
     this.save(job);
   };
+
   setEnabled = (id: string, enabled: boolean) => {
     if (enabled)
       throw new AdeError(
@@ -145,28 +162,35 @@ export class Scheduler {
       );
     this.save(this.job(id));
   };
+
   dismiss = (id: string) => {
     this.engine.db.run("UPDATE scheduled_attention SET dismissed=1 WHERE id=?", id);
     this.engine.changed();
   };
+
   fix = () => {
     throw new AdeError(
       "repair_unavailable",
       "Legacy scheduled.fix is unsupported. Use Solve Review with an explicitly selected analysis, observations and repository.",
     );
   };
+
   start = () => {
     for (const job of this.jobs()) {
       if (["polling", "pending", "analyzing"].includes(job.status)) {
         job.status = "interrupted";
         job.error = "PR inspection was interrupted. Request analysis explicitly to continue.";
       }
+
       this.save(job);
     }
   };
+
   // Older callers cannot restore timers or execute imported enabled records.
   tick = async () => {};
+
   runNow = (id: string) => this.launch(id, randomUUID(), false);
+
   analyze = (
     id: string,
     requestId: string = randomUUID(),
@@ -175,10 +199,12 @@ export class Scheduler {
       authorizeInference: () => void;
     },
   ) => this.launch(id, requestId, true, options);
+
   inspectForBatch = async (id: string, signal: AbortSignal) => {
     const snapshot = await this.monitor.inspect(this.job(id).url, signal);
     return this.analysis.canReuse(id, snapshot);
   };
+
   analyzeBatchItem = async (
     id: string,
     requestId: string,
@@ -191,11 +217,13 @@ export class Scheduler {
     await this.active.get(id)?.promise;
     return this.analysis.history(id).find((session) => session.id === requestId);
   };
+
   cancel = async (id: string) => {
     const active = this.active.get(id);
     active?.controller.abort();
     await active?.promise;
   };
+
   private launch = (
     id: string,
     requestId: string,
@@ -206,19 +234,23 @@ export class Scheduler {
     },
   ) => {
     this.engine.assertAvailable();
+
     const duplicate = this.engine.db.all<{ job_id: string }>(
       "SELECT job_id FROM pr_analyses WHERE id=?",
       requestId,
     )[0];
+
     if (duplicate) {
       if (duplicate.job_id !== id)
         throw new AdeError("isolation", "Analysis request belongs to a different PR");
       return { analysis_id: requestId };
     }
+
     if (this.stopped || this.active.has(id))
       throw new AdeError("busy", "PR inspection already running or the core is stopping");
     const job = this.job(id);
     const controller = new AbortController();
+
     const session: PRAnalysisSession = {
       id: requestId,
       job_id: id,
@@ -230,7 +262,9 @@ export class Scheduler {
         options?.configuration || this.engine.db.settings().utility_ai,
       ),
     };
+
     let release = () => {};
+
     release = this.engine.trackActivity(
       {
         id: `pr-watch:${id}`,
@@ -241,6 +275,7 @@ export class Scheduler {
       },
       () => this.cancel(id),
     );
+
     const promise = Promise.resolve()
       .then(async () => {
         try {
@@ -258,6 +293,7 @@ export class Scheduler {
           if (semantic) {
             job.status = "analyzing";
             this.save(job);
+
             await this.analysis.analyze(
               session,
               snapshot,
@@ -265,6 +301,7 @@ export class Scheduler {
               controller.signal,
               options?.authorizeInference,
             );
+
             job.last_analyzed_at = session.ended_at || now();
           } else {
             session.method = "deterministic";
@@ -273,6 +310,7 @@ export class Scheduler {
             session.ended_at = now();
             this.analysis.save(session);
           }
+
           controller.signal.throwIfAborted();
           job.last_snapshot = snapshot;
           job.pending_snapshot = null;
@@ -286,6 +324,7 @@ export class Scheduler {
                 a.responseState !== "answered" &&
                 !a.reviewerAcknowledgmentIds.length,
             );
+
             job.action = ActionSchema.parse({
               manualActionRequired:
                 !session.report.complete ||
@@ -320,6 +359,7 @@ export class Scheduler {
               affectedFiles: [...new Set(outstanding.flatMap((a) => a.affectedFiles))],
               newActivity: session.changes || [],
             });
+
             job.changes = session.changes || [];
             this.engine.db.run("UPDATE scheduled_attention SET dismissed=1 WHERE job_id=?", id);
             if (job.action.manualActionRequired)
@@ -343,12 +383,15 @@ export class Scheduler {
                   ? "interrupted"
                   : "cancelled"
                 : "failed";
+
           session.error = redact(error instanceof Error ? error.message : String(error));
+
           session.phase = controller.signal.aborted
             ? this.stopped
               ? "Analysis interrupted — explicit retry required"
               : "Analysis cancelled — no automatic retry"
             : "Analysis failed — explicit retry required";
+
           session.ended_at = now();
           this.analysis.save(session);
           job.status = controller.signal.aborted ? "interrupted" : "error";
@@ -368,10 +411,12 @@ export class Scheduler {
           text: redact(error instanceof Error ? error.message : String(error)),
         }),
       );
+
     this.active.set(id, { controller, promise });
     this.analysis.save(session);
     return { analysis_id: requestId };
   };
+
   close = async () => {
     this.stopped = true;
     for (const operation of this.active.values()) operation.controller.abort();

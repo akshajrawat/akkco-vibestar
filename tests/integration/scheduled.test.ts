@@ -13,6 +13,7 @@ import { changedPullRequest, parsePullRequest } from "../../backend/scheduled/co
 import { PRFixtureProvider, prSnapshot, analysisResult, reviewBody } from "../helpers/pr-fixtures";
 
 const resources: { dir: string; engine: Engine; scheduler: Scheduler }[] = [];
+
 const setup = async (realRunner = false) => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-manual-pr-"));
   const engine = await createFixtureEngine(join(dir, "data"), () => new PRFixtureProvider());
@@ -20,23 +21,29 @@ const setup = async (realRunner = false) => {
   const inspect = vi.spyOn(monitor, "inspect").mockResolvedValue(structuredClone(prSnapshot));
   const scheduler = new Scheduler(engine, monitor);
   resources.push({ dir, engine, scheduler });
+
   const infer = realRunner
     ? undefined
     : vi.spyOn(engine.utility, "run").mockResolvedValue(analysisResult());
+
   const job = scheduler.add({
     url: "https://github.com/upstream/project/pull/1",
     task_id: null,
     interval_minutes: 60,
     verify_codex: true,
   });
+
   return { dir, engine, monitor, inspect, scheduler, infer, job };
 };
+
 const finished = async (scheduler: Scheduler, jobId: string) => {
   await vi.waitFor(() => expect(scheduler.analysis.history(jobId)[0]?.status).not.toBe("running"), {
     timeout: 10000,
   });
+
   return scheduler.analysis.history(jobId)[0];
 };
+
 afterEach(async () => {
   vi.useRealTimers();
   for (const resource of resources.splice(0)) {
@@ -44,6 +51,7 @@ afterEach(async () => {
     await resource.engine.close();
     await rm(resource.dir, { recursive: true, force: true });
   }
+
   vi.restoreAllMocks();
 });
 
@@ -57,6 +65,7 @@ it("defaults to manual PR policy; startup, tracking, imports and timers do not i
   engine.start();
   await scheduler.tick();
   expect(job).toMatchObject({ enabled: false, verify_codex: false });
+
   scheduler.discovered({
     url: "https://github.com/upstream/project/pull/2",
     repository: "upstream/project",
@@ -68,8 +77,10 @@ it("defaults to manual PR policy; startup, tracking, imports and timers do not i
     task_id: null,
     updated_at: "now",
   });
+
   expect(scheduler.jobs()).toHaveLength(2);
   expect(() => scheduler.setEnabled(job.id, true)).toThrow("Automatic PR inspection");
+
   expect(() =>
     github.configure({
       auto_watch: true,
@@ -77,6 +88,7 @@ it("defaults to manual PR policy; startup, tracking, imports and timers do not i
       verify_codex: false,
     }),
   ).toThrow("explicit user action");
+
   expect(() => scheduler.fix()).toThrow("Use Solve Review");
   expect(sync).not.toHaveBeenCalled();
   expect(inspect).not.toHaveBeenCalled();
@@ -92,21 +104,26 @@ it("legacy Check now only reads GitHub; Analyze explicitly extracts separate obs
   const requestId = randomUUID();
   scheduler.analyze(job.id, requestId);
   const session = await finished(scheduler, job.id);
+
   expect(session).toMatchObject({
     id: requestId,
     status: "completed",
     method: "utility_ai",
   });
+
   expect(infer).toHaveBeenCalledOnce();
   expect(session.report?.actions).toHaveLength(4);
   expect(scheduler.jobs()[0].action?.outstandingRequests).toHaveLength(3);
+
   expect(
     session.report?.actions.filter((a) => a.classification === "positive_feedback"),
   ).toHaveLength(1);
+
   expect(session.report?.actions.every((a) => a.codeStatus === "unverified")).toBe(true);
   expect(session.snapshot?.discussion?.[0].body).toBe(reviewBody);
   expect(engine.db.tasks()).toEqual([]);
   expect(engine.db.repositories()).toEqual([]);
+
   expect(
     await readFile(
       join(engine.root, "cache", "utility", job.id, `analysis-${requestId}`, "source-0-0.json"),
@@ -119,9 +136,11 @@ it("makes explicit requests idempotent and reuses unchanged complete reports wit
   const { scheduler, infer, job } = await setup();
   const requestId = randomUUID();
   scheduler.analyze(job.id, requestId);
+
   expect(scheduler.analyze(job.id, requestId)).toEqual({
     analysis_id: requestId,
   });
+
   const first = await finished(scheduler, job.id);
   scheduler.analyze(job.id);
   const second = await finished(scheduler, job.id);
@@ -138,6 +157,7 @@ it("distinguishes the PR author from the viewer and preserves unverified code af
   const snapshot = structuredClone(prSnapshot);
   snapshot.authenticatedUser = "maintainer-viewer";
   snapshot.headRefOid = "c".repeat(40);
+
   snapshot.commits = [
     {
       sha: snapshot.headRefOid,
@@ -147,6 +167,7 @@ it("distinguishes the PR author from the viewer and preserves unverified code af
       url: "https://github.com/contributor/project/commit/abc",
     },
   ];
+
   snapshot.discussion!.push({
     id: "author-reply",
     type: "issue_comment",
@@ -155,6 +176,7 @@ it("distinguishes the PR author from the viewer and preserves unverified code af
     createdAt: "2026-10-02T11:00:00Z",
     updatedAt: "2026-10-02T11:00:00Z",
   });
+
   const output = analysisResult(snapshot);
   output.observations[0].authorReplyIds = ["author-reply"];
   output.observations[0].responseState = "author_replied";
@@ -163,18 +185,21 @@ it("distinguishes the PR author from the viewer and preserves unverified code af
   infer!.mockResolvedValue(output);
   scheduler.analyze(job.id);
   const second = await finished(scheduler, job.id);
+
   expect(second.report?.actions[0]).toMatchObject({
     id: first.report!.actions[0].id,
     responseState: "author_replied",
     codeStatus: "unverified",
     commitShas: [snapshot.headRefOid],
   });
+
   expect(scheduler.jobs()[0].action?.outstandingRequests).toHaveLength(3);
 });
 
 it("keeps answered questions distinct, and retains a new reviewer request after the reply", async () => {
   const { scheduler, infer, inspect, job } = await setup();
   const snapshot = structuredClone(prSnapshot);
+
   snapshot.discussion!.push({
     id: "answer",
     type: "issue_comment",
@@ -183,6 +208,7 @@ it("keeps answered questions distinct, and retains a new reviewer request after 
     createdAt: "2026-10-02T10:00:00Z",
     updatedAt: "2026-10-02T10:00:00Z",
   });
+
   snapshot.discussion!.push({
     id: "followup",
     type: "issue_comment",
@@ -191,24 +217,29 @@ it("keeps answered questions distinct, and retains a new reviewer request after 
     createdAt: "2026-10-03T10:00:00Z",
     updatedAt: "2026-10-03T10:00:00Z",
   });
+
   const output = analysisResult(snapshot);
   output.observations[1].authorReplyIds = ["answer"];
   output.observations[1].responseState = "answered";
+
   output.observations.push({
     ...output.observations[0],
     sourceId: "followup",
     originalText: snapshot.discussion![2].body,
     classification: "required_change",
   });
+
   inspect.mockResolvedValue(snapshot);
   infer!.mockResolvedValue(output);
   scheduler.analyze(job.id);
   const session = await finished(scheduler, job.id);
   expect(session.report?.actions[1].responseState).toBe("answered");
+
   expect(session.report?.actions.at(-1)).toMatchObject({
     sourceId: "followup",
     responseState: "no_author_reply",
   });
+
   expect(scheduler.jobs()[0].action?.outstandingRequests).toHaveLength(3);
 });
 
@@ -217,26 +248,32 @@ it("reassesses edited quotations using their existing identity without erasing p
   scheduler.analyze(job.id);
   const first = await finished(scheduler, job.id);
   const snapshot = structuredClone(prSnapshot);
+
   snapshot.discussion![0].body = snapshot.discussion![0].body.replace(
     "spec file directly.",
     "spec file itself.",
   );
+
   snapshot.discussion![0].updatedAt = "2026-10-03T10:00:00Z";
   const output = analysisResult(snapshot);
   output.observations[0].existingActionId = first.report!.actions[0].id;
+
   output.observations[0].originalText = output.observations[0].originalText.replace(
     "spec file directly.",
     "spec file itself.",
   );
+
   inspect.mockResolvedValue(snapshot);
   infer!.mockResolvedValue(output);
   scheduler.analyze(job.id);
   const second = await finished(scheduler, job.id);
   expect(second.status).toBe("completed");
   expect(second.report?.actions[0].id).toBe(first.report!.actions[0].id);
+
   expect(scheduler.analysis.history(job.id)[1].report?.actions[0].originalText).toContain(
     "directly",
   );
+
   expect(engine.db.all("SELECT * FROM pr_action_assessments")).toHaveLength(8);
 });
 
@@ -252,11 +289,13 @@ it("does not exclude resolved/outdated review concerns or stop discussion analys
   scheduler.analyze(job.id);
   const session = await finished(scheduler, job.id);
   expect(infer).toHaveBeenCalledOnce();
+
   expect(session.report?.actions[0]).toMatchObject({
     threadResolved: true,
     outdated: true,
     codeStatus: "unverified",
   });
+
   expect(session.snapshot?.checks[0].state).toBe("FAILURE");
 });
 
@@ -270,6 +309,7 @@ it.each(["quote", "reply", "commit", "coverage"])(
       output.observations[1].authorReplyIds = ["review-1"];
       output.observations[1].responseState = "answered";
     }
+
     if (invalid === "commit") output.observations[1].commitShas = ["invented"];
     if (invalid === "coverage") output.coverage[0].segmentIds = ["unknown"];
     infer!.mockResolvedValue(output);
@@ -285,11 +325,13 @@ it("preserves full long comments in bounded packets and exposes missing segment/
   const { scheduler, infer, inspect, job, engine } = await setup();
   const snapshot = structuredClone(prSnapshot);
   snapshot.discussion![0].body += "\nLong context 🧪".repeat(3000);
+
   snapshot.coverage = {
     complete: false,
     missing: ["checks"],
     warnings: ["Check pagination incomplete."],
   };
+
   const output = analysisResult(snapshot);
   output.coverage[0].segmentIds = ["review-1:0"];
   inspect.mockResolvedValue(snapshot);
@@ -300,12 +342,14 @@ it("preserves full long comments in bounded packets and exposes missing segment/
   expect(session.report?.warnings).toContain("Check pagination incomplete.");
   const dir = join(engine.root, "cache", "utility", job.id, `analysis-${analysis_id}`);
   const manifest = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
+
   const bodies = await Promise.all(
     manifest.sources[0].segments.map(
       async (segment: { path: string }) =>
         JSON.parse(await readFile(join(dir, segment.path), "utf8")).body,
     ),
   );
+
   expect(bodies.join("")).toBe(snapshot.discussion![0].body);
   expect(Buffer.byteLength(infer!.mock.calls[0][0].prompt)).toBeLessThan(64000);
 });
@@ -318,6 +362,7 @@ it("cancels an explicit semantic operation without retry and preserves the last 
   const next = structuredClone(prSnapshot);
   next.headRefOid = "d".repeat(40);
   inspect.mockResolvedValue(next);
+
   infer!.mockImplementation(
     async (request) =>
       new Promise((_resolve, reject) =>
@@ -326,6 +371,7 @@ it("cancels an explicit semantic operation without retry and preserves the last 
         }),
       ),
   );
+
   scheduler.analyze(job.id);
   await vi.waitFor(() => expect(infer).toHaveBeenCalledTimes(2));
   await scheduler.cancel(job.id);
@@ -342,15 +388,18 @@ it("uses the existing real runner, read-only sandbox, saved prompts/logs and act
   const { analysis_id } = scheduler.analyze(job.id);
   const session = await finished(scheduler, job.id);
   expect(session.status, session.error).toBe("completed");
+
   const runs = engine.db.all<{
     id: string;
     prompt: string;
     analysis_id: string;
     status: string;
   }>("SELECT * FROM scheduled_agent_runs WHERE job_id=?", job.id);
+
   expect(runs).toHaveLength(1);
   expect(runs[0]).toMatchObject({ analysis_id, status: "completed" });
   expect(runs[0].prompt).toContain("read-only workspace");
+
   expect(
     engine.db.all(
       "SELECT analysis_id,input_tokens,output_tokens,reasoning_tokens FROM ai_usage WHERE job_id=?",
@@ -364,9 +413,11 @@ it("uses the existing real runner, read-only sandbox, saved prompts/logs and act
       reasoning_tokens: null,
     },
   ]);
+
   expect(
     await readFile(join(engine.root, "logs", `pr-watch-${job.id}`, `${runs[0].id}.jsonl`), "utf8"),
   ).toContain("pr-fixture-session");
+
   expect(engine.db.tasks()).toEqual([]);
 });
 
@@ -378,10 +429,12 @@ it("classifies exact reviewer acknowledgments without invoking a model", async (
   inspect.mockResolvedValue(snapshot);
   scheduler.analyze(job.id);
   const session = await finished(scheduler, job.id);
+
   expect(session).toMatchObject({
     status: "completed",
     method: "deterministic",
   });
+
   expect(session.report?.actions).toHaveLength(1);
   expect(session.report?.actions[0].classification).toBe("positive_feedback");
   expect(scheduler.jobs()[0].action?.outstandingRequests).toEqual([]);
@@ -393,10 +446,12 @@ it("blocks removal as soon as an explicit analysis is registered and permits can
   const rpc = new Rpc(engine, monitor);
   try {
     rpc.scheduler.analyze(job.id);
+
     const removal = rpc.call("scheduled.remove", {
       id: job.id,
       confirmed: true,
     });
+
     const cancellation = rpc.scheduler.cancel(job.id);
     await expect(removal).rejects.toThrow("Wait for inspection to finish");
     await cancellation;
@@ -415,10 +470,12 @@ it("retains the complete report when a fresh GitHub inspection fails", async () 
   inspect.mockRejectedValue(new Error("Review pagination unavailable"));
   scheduler.analyze(job.id);
   const failed = await finished(scheduler, job.id);
+
   expect(failed).toMatchObject({
     status: "failed",
     error: "Review pagination unavailable",
   });
+
   expect(scheduler.analysis.history(job.id)[1].report).toEqual(complete.report);
   expect(scheduler.jobs()[0].last_snapshot).toEqual(prSnapshot);
   expect(infer).toHaveBeenCalledOnce();
@@ -429,6 +486,7 @@ it("interrupts an in-flight analysis on shutdown and does not replay it after re
   scheduler.analyze(job.id);
   const complete = await finished(scheduler, job.id);
   inspect.mockResolvedValue({ ...prSnapshot, headRefOid: "e".repeat(40) });
+
   infer!.mockImplementation(
     async (request) =>
       new Promise((_resolve, reject) =>
@@ -437,16 +495,19 @@ it("interrupts an in-flight analysis on shutdown and does not replay it after re
         }),
       ),
   );
+
   scheduler.analyze(job.id);
   await vi.waitFor(() => expect(infer).toHaveBeenCalledTimes(2));
   await scheduler.close();
   expect(scheduler.analysis.history(job.id)[0].status).toBe("interrupted");
   expect(engine.cleanupBlockers()).toEqual([]);
   await engine.close();
+
   resources.splice(
     resources.findIndex((resource) => resource.engine === engine),
     1,
   );
+
   const reopened = await createFixtureEngine(join(dir, "data"), () => new PRFixtureProvider());
   const freshMonitor = new GitHubMonitor(dir);
   const freshInspect = vi.spyOn(freshMonitor, "inspect");
@@ -477,6 +538,7 @@ it("validates PR URLs and retains legacy change detection", () => {
   ])
     expect(() => parsePullRequest(url)).toThrow();
   expect(changedPullRequest(prSnapshot, structuredClone(prSnapshot)).actionable).toBe(false);
+
   expect(changedPullRequest(prSnapshot, { ...prSnapshot, state: "MERGED" })).toMatchObject({
     actionable: false,
     changes: ["PR state: MERGED"],

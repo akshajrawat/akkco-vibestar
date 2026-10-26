@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within, act } from "@testing-library/react";
+
 import { Composer } from "../../src/features/chat/Composer";
 import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
 import { updateTaskView } from "../../src/lib/taskView";
@@ -36,6 +37,7 @@ vi.mock("../../src/hooks/useWorkspace", () => ({
     refresh: vi.fn(),
   }),
 }));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -52,6 +54,7 @@ it("attaches current worktree files independently of the historical repair diff 
       binary: false,
     };
   });
+
   const options = workspaceContext({
     id: "repair-context",
     owner: "repair",
@@ -70,36 +73,44 @@ it("attaches current worktree files independently of the historical repair diff 
       },
     ],
   });
+
   expect(
     await options.find((option) => option.label === "Reference a worktree file")!.load("spec.ts"),
   ).toEqual({
     label: "Worktree file: spec.ts",
     text: "current worktree content",
   });
+
   expect(
     await options.find((option) => option.label === "Include selected file diff")!.load(""),
   ).toEqual({ label: "Diff: spec.ts · original", text: "historical PR diff" });
+
   expect(rpc).toHaveBeenCalledWith(
     "repair.file",
     expect.objectContaining({ path: "spec.ts", layer: "repair" }),
   );
+
   expect(rpc).toHaveBeenCalledWith(
     "repair.file",
     expect.objectContaining({ path: "spec.ts", layer: "original" }),
   );
 });
+
 const setup = (handler?: (method: string, params?: unknown) => Promise<unknown>) => {
   const rpc = vi.fn(handler || (async () => null));
   window.innerWidth = 1600;
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   return rpc;
 };
 
 it("grows long pasted drafts and preserves Enter, Shift+Enter, IME and disabled submission semantics", () => {
   const send = vi.fn();
+
   const props = {
     id: "composer-keys",
     label: "Message",
@@ -111,12 +122,15 @@ it("grows long pasted drafts and preserves Enter, Shift+Enter, IME and disabled 
     busy: false,
     hint: "Send explicitly.",
   };
+
   const ui = render(<Composer {...props} />);
   const input = screen.getByLabelText("Message");
+
   Object.defineProperty(input, "scrollHeight", {
     value: 600,
     configurable: true,
   });
+
   fireEvent.change(input, { target: { value: "long paste\n".repeat(50) } });
   expect((input as HTMLTextAreaElement).style.height).toBe("240px");
   fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
@@ -140,6 +154,7 @@ it("previews bounded context as inert text, persists chips per conversation and 
       text: '<img src=x onerror="alert(1)">'.repeat(300),
     }),
   };
+
   const props = {
     id: "composer-context",
     label: "Message",
@@ -151,12 +166,15 @@ it("previews bounded context as inert text, persists chips per conversation and 
     busy: false,
     hint: "Send explicitly.",
   };
+
   const ui = render(<Composer {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "Add context" }));
   fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+
   fireEvent.change(screen.getByLabelText("Note"), {
     target: { value: "note" },
   });
+
   fireEvent.click(screen.getByRole("button", { name: "Attach context" }));
   await screen.findByText("Unsafe-looking note");
   expect(ui.container.querySelector("img")).toBeNull();
@@ -172,6 +190,7 @@ it("previews bounded context as inert text, persists chips per conversation and 
 
 it("reuses an idempotent save request after transport failure, keeps its draft and requires an exact approval instruction choice", async () => {
   const detail = workspaceDetail("composer-approval");
+
   detail.task = {
     ...detail.task,
     worktree_path: "",
@@ -179,6 +198,7 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
     stage: 3,
     approval_gate: "codex_plan",
   };
+
   detail.artifacts = [
     {
       id: "artifact-2",
@@ -188,8 +208,10 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
       created_at: detail.task.created_at,
     },
   ];
+
   const content = "Use the existing helper";
   let attempts = 0;
+
   const rpc = setup(
     vi.fn(async (method: string, params?: unknown) => {
       if (method === "task.followup") {
@@ -206,26 +228,33 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
           disposition: "draft",
         };
       }
+
       return params;
     }),
   );
+
   const ui = render(
     <TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />,
   );
+
   const input = screen.getByLabelText("Task conversation") as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: content } });
   fireEvent.click(screen.getByRole("button", { name: "Save for later" }));
   await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+
   await vi.waitFor(() =>
     expect(screen.getByRole("button", { name: "Save for later" }).hasAttribute("disabled")).toBe(
       false,
     ),
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Save for later" }));
   await screen.findByRole("button", { name: "Instruction saved" });
+
   const saves = rpc.mock.calls
     .filter(([method]) => method === "task.followup")
     .map(([, params]) => params as { request_id: string; save_only: boolean });
+
   expect(saves).toHaveLength(2);
   expect(saves[0].request_id).toBe(saves[1].request_id);
   expect(saves.every((save) => save.save_only)).toBe(true);
@@ -233,14 +262,18 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
   fireEvent.change(input, { target: { value: "Independent unsent draft" } });
   const approve = screen.getByRole("button", { name: "Approve → Implement" });
   expect(approve.hasAttribute("disabled")).toBe(true);
+
   fireEvent.change(screen.getByLabelText("Saved instructions on approval"), {
     target: { value: "include_next_stage" },
   });
+
   fireEvent.click(approve);
   fireEvent.click(approve);
+
   await vi.waitFor(() =>
     expect(rpc.mock.calls.filter(([method]) => method === "task.approve")).toHaveLength(1),
   );
+
   expect(rpc).toHaveBeenCalledWith("task.approve", {
     id: detail.task.id,
     artifact_id: "artifact-2",
@@ -249,7 +282,9 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
       message_ids: ["saved-instruction"],
     },
   });
+
   expect(input.value).toBe("Independent unsent draft");
+
   ui.rerender(
     <TaskWorkspace
       detail={{
@@ -261,9 +296,11 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
       back={vi.fn()}
     />,
   );
+
   expect((screen.getByLabelText("Saved instructions on approval") as HTMLSelectElement).value).toBe(
     "",
   );
+
   expect(screen.queryByText("Approved · next pipeline stage authorized")).toBeNull();
 });
 
@@ -271,6 +308,7 @@ it("keeps chat models independent and shows unavailable accounts without changin
   setup();
   const detail = workspaceDetail("composer-models");
   detail.task.worktree_path = "";
+
   detail.task.execution_settings = {
     ...defaultSettings,
     codex_implementation: {
@@ -279,21 +317,27 @@ it("keeps chat models independent and shows unavailable accounts without changin
       timeout_secs: 30,
     },
   };
+
   render(<TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />);
   screen.getByRole("button", { name: "Choose chat model" }).focus();
   fireEvent.click(screen.getByRole("button", { name: "Choose chat model" }));
+
   const picker = screen.getByRole("dialog", {
     name: "Chat model configuration",
   });
+
   expect(within(picker).getByText(/not available from the official CLI/)).toBeTruthy();
   fireEvent.click(within(picker).getByRole("button", { name: "Antigravity" }));
   expect(within(picker).getByText(/Account is disconnected/)).toBeTruthy();
+
   expect(screen.getByRole("button", { name: "Choose chat model" }).textContent).toContain(
     "Antigravity",
   );
+
   fireEvent.keyDown(picker, { key: "Escape" });
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Choose chat model" }));
   expect(detail.task.execution_settings.codex_implementation.model).toBe("unavailable-model");
+
   expect(
     JSON.parse(localStorage.getItem(`vibestar.layout.${detail.task.id}`)!).followupProvider,
   ).toBe("antigravity");
@@ -302,6 +346,7 @@ it("keeps chat models independent and shows unavailable accounts without changin
 it("edits an unstarted future stage independently of chat and completed runs", async () => {
   const rpc = setup(vi.fn(async (_method: string, input?: unknown) => input));
   const detail = workspaceDetail("composer-future");
+
   detail.task = {
     ...detail.task,
     worktree_path: "",
@@ -317,6 +362,7 @@ it("edits an unstarted future stage independently of chat and completed runs", a
       },
     },
   };
+
   act(() =>
     updateTaskView(detail.task.id, {
       secondaryOpen: true,
@@ -324,13 +370,17 @@ it("edits an unstarted future stage independently of chat and completed runs", a
       followupModel: "chat-choice",
     }),
   );
+
   render(<TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />);
   fireEvent.click(screen.getAllByRole("button", { name: "Edit future model" })[0]);
   const editor = screen.getByLabelText("Future stage 3 settings");
+
   fireEvent.change(within(editor).getByLabelText("Reasoning / effort"), {
     target: { value: "high" },
   });
+
   fireEvent.click(within(editor).getByRole("button", { name: "Save future stage" }));
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.configureStage", {
       id: detail.task.id,
@@ -338,6 +388,7 @@ it("edits an unstarted future stage independently of chat and completed runs", a
       config: { model: "fixture-model", effort: "high", timeout_secs: 30 },
     }),
   );
+
   expect(JSON.parse(localStorage.getItem(`vibestar.layout.${detail.task.id}`)!).followupModel).toBe(
     "chat-choice",
   );

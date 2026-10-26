@@ -15,4 +15,5 @@ export interface RepairDetail {
   activity: { id: number; kind: string; data: string; timestamp: string }[];
   publications: { id: string; status: string; data: string }[];
 }
+
 export type { RepairPublication };

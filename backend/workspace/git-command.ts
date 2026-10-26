@@ -1,4 +1,5 @@
 import { isAbsolute } from "node:path";
+
 import { AdeError, remoteIdentity } from "../domain";
 import { execute, type ProcessRequest } from "../execution/runtime/process";
 
@@ -37,6 +38,7 @@ const commands = new Set([
   "update-ref",
   "worktree",
 ]);
+
 const overrides = {
   "core.hooksPath": "/dev/null",
   "core.fsmonitor": "false",
@@ -66,7 +68,9 @@ const overrides = {
   "push.followTags": "false",
   "submodule.recurse": "false",
 };
+
 const overridden = new Set(Object.keys(overrides).map((key) => key.toLowerCase()));
+
 const safeKey = (key: string) =>
   overridden.has(key) ||
   /^(?:core\.(?:repositoryformatversion|bare|worktree|logallrefupdates|filemode|ignorecase|symlinks|precomposeunicode|protecthfs|protectntfs|quotepath|autocrlf|eol|safecrlf|checkstat|trustctime|untrackedcache|ignorestat|abbrev|bigfilethreshold|compression|loosecompression|packedgitlimit|packedgitwindowsize|deltabasecachelimit)|extensions\.(?:objectformat|worktreeconfig|refstorage|partialclone)|user\.(?:name|email)|init\.defaultbranch)$/.test(
@@ -80,6 +84,7 @@ const safeKey = (key: string) =>
     key,
   ) ||
   /^(?:color|advice)\.[a-z.]+$/.test(key);
+
 const refusal = (key: string) =>
   new AdeError(
     "git_policy",
@@ -102,6 +107,7 @@ const inspectConfiguration = async (request: GitRequest) => {
   let partialClone = false;
   for (const scope of ["--local", "--worktree"]) {
     if (scope === "--worktree" && !worktreeConfig) break;
+
     const result = await execute({
       program: "git",
       args: ["config", scope, "--no-includes", "--null", "--list"],
@@ -110,16 +116,20 @@ const inspectConfiguration = async (request: GitRequest) => {
       rawStdoutForIntegrity: true,
       gitEnvironment: true,
     });
+
     if (result.code !== 0) {
       if (result.code === 128 && /only be used inside a git repository/.test(result.stderr)) return;
       throw new AdeError("git_policy", "Cannot safely inspect local Git configuration.");
     }
+
     for (const entry of result.stdout.split("\0").filter(Boolean)) {
       const key = entry.split("\n", 1)[0].toLowerCase();
       if (!safeKey(key)) throw refusal(key);
+
       partialClone ||=
         key === "extensions.partialclone" ||
         /^remote\..+\.(?:promisor|partialclonefilter)$/.test(key);
+
       if (scope === "--local" && key === "extensions.worktreeconfig") {
         // Git accepts nonzero integers as true, in addition to named booleans.
         // Use Git's own syntax before deciding which configuration files it reads.
@@ -137,11 +147,13 @@ const inspectConfiguration = async (request: GitRequest) => {
           signal: request.signal,
           gitEnvironment: true,
         });
+
         if (enabled.code !== 0) throw refusal(key);
         worktreeConfig = enabled.stdout.trim() === "true";
       }
     }
   }
+
   if (partialClone) {
     const version = await execute({
       program: "git",
@@ -150,6 +162,7 @@ const inspectConfiguration = async (request: GitRequest) => {
       signal: request.signal,
       gitEnvironment: true,
     });
+
     const parsed = /^git version (\d+)\.(\d+)\./.exec(version.stdout);
     if (
       version.code !== 0 ||
@@ -173,6 +186,7 @@ export const gitExecute = async (request: GitRequest, executor = execute) => {
       index++;
       continue;
     }
+
     if (args[index] !== "-c" || !args[index + 1])
       throw new AdeError("git_policy", "Unsupported Git global option");
     const setting = args[index + 1];
@@ -189,6 +203,7 @@ export const gitExecute = async (request: GitRequest, executor = execute) => {
       throw refusal(key);
     index += 2;
   }
+
   const command = args[index];
   if (!commands.has(command)) throw new AdeError("git_policy", "Unsupported host Git command");
   await inspectConfiguration(request);
@@ -207,6 +222,7 @@ export const gitExecute = async (request: GitRequest, executor = execute) => {
     )
       throw new AdeError("git_policy", "Unsupported Git transport option");
   }
+
   const policy = Object.entries(overrides).flatMap(([key, value]) => ["-c", `${key}=${value}`]);
   if (request.allowLocalTransport) policy.push("-c", "protocol.file.allow=always");
   if (request.hooksPath) {
@@ -214,6 +230,7 @@ export const gitExecute = async (request: GitRequest, executor = execute) => {
       throw new AdeError("git_policy", "Invalid publication hook capability");
     policy.push("-c", `core.hooksPath=${request.hooksPath}`);
   }
+
   return executor({
     ...request,
     args: [...args.slice(0, index), ...policy, ...args.slice(index)],
@@ -223,6 +240,7 @@ export const gitExecute = async (request: GitRequest, executor = execute) => {
 
 export const gitCapture = (args: string[], cwd: string, signal?: AbortSignal) =>
   gitExecute({ program: "git", args, cwd, signal });
+
 export const gitChecked = async (args: string[], cwd: string, signal?: AbortSignal) => {
   // Checked metadata is used for paths, refs and ownership decisions. Display
   // redaction must never reinterpret or merge those identifiers.
@@ -233,6 +251,7 @@ export const gitChecked = async (args: string[], cwd: string, signal?: AbortSign
     signal,
     rawStdoutForIntegrity: true,
   });
+
   if (output.code !== 0)
     throw new AdeError(
       "command_failed",

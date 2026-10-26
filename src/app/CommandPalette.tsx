@@ -1,12 +1,15 @@
 import { useRef, useState } from "react";
 import { Search } from "lucide-react";
+
 import { useDialogFocus } from "../hooks/useDialogFocus";
+
 export interface PaletteAction {
   id: string;
   label: string;
   detail?: string;
   run: () => void;
 }
+
 export const CommandPalette = ({
   actions,
   close,
@@ -18,13 +21,16 @@ export const CommandPalette = ({
   const [selected, setSelected] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const dialog = useDialogFocus();
+
   const filtered = actions.filter((a) =>
     `${a.label} ${a.detail || ""}`.toLowerCase().includes(query.toLowerCase()),
   );
+
   const execute = (action: PaletteAction) => {
     close();
     action.run();
   };
+
   return (
     <div
       className="palette-backdrop"
@@ -43,18 +49,22 @@ export const CommandPalette = ({
             e.preventDefault();
             close();
           }
+
           if (e.key === "ArrowDown") {
             e.preventDefault();
             setSelected((i) => (filtered.length ? (i + 1) % filtered.length : 0));
           }
+
           if (e.key === "ArrowUp") {
             e.preventDefault();
             setSelected((i) => (filtered.length ? (i - 1 + filtered.length) % filtered.length : 0));
           }
+
           if (e.key === "Enter" && filtered[selected]) {
             e.preventDefault();
             execute(filtered[selected]);
           }
+
           if (e.key === "Tab") {
             e.preventDefault();
             input.current?.focus();
@@ -75,6 +85,7 @@ export const CommandPalette = ({
           />
           <kbd>Esc</kbd>
         </div>
+
         <div role="listbox" aria-label="Available commands">
           {filtered.map((action, index) => (
             <button

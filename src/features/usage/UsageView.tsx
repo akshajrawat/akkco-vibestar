@@ -36,11 +36,13 @@ export const UsageView = ({
   const [revision, setRevision] = useState(0);
   const [info, setInfo] = useState<{ database: string; warning?: string }>();
   const [, tick] = useState(0);
+
   useEffect(() => {
     void rpc<NonNullable<typeof info>>("usage.info")
       .then(setInfo)
       .catch((e) => setError(errorMessage(e)));
   }, []);
+
   useEffect(() => {
     if (records) {
       setRows(records);
@@ -48,8 +50,10 @@ export const UsageView = ({
       setRefreshing(false);
       return;
     }
+
     let alive = true;
     let fetching = false;
+
     const fetch = () => {
       if (fetching) return;
       fetching = true;
@@ -73,9 +77,11 @@ export const UsageView = ({
           if (alive) setRefreshing(false);
         });
     };
+
     void fetch();
     const timer = setInterval(() => void fetch(), 5000);
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
     const subscription = subscribe((e) => {
       if (
         ["usage.changed", "changed"].includes(e.event) &&
@@ -87,6 +93,7 @@ export const UsageView = ({
           void fetch();
         }, 350);
     });
+
     return () => {
       alive = false;
       clearInterval(timer);
@@ -94,17 +101,21 @@ export const UsageView = ({
       void subscription.then((fn) => fn());
     };
   }, [taskId, revision, records]);
+
   const running = rows.some((r) => r.status === "running");
+
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(timer);
   }, [running]);
+
   const cutoff = days
     ? days === 1
       ? new Date().setHours(0, 0, 0, 0)
       : Date.now() - days * 86400000
     : 0;
+
   const visible = rows.filter(
     (r) =>
       Date.parse(r.started_at) >= cutoff &&
@@ -118,11 +129,13 @@ export const UsageView = ({
         ([key, value]) => !value || String(r[key as keyof UsageRecord]) === value,
       ),
   );
+
   const runtime = visible.reduce((n, r) => n + usageRuntime(r), 0);
   const filterKey = JSON.stringify({ days, selectedRun, query, filters });
   const pageSize = 50;
   const pages = Math.max(1, Math.ceil(visible.length / pageSize));
   const page = Math.min(historyPage.key === filterKey ? historyPage.index : 0, pages - 1);
+
   const tokenColumns = (
     [
       "input_tokens",
@@ -139,21 +152,25 @@ export const UsageView = ({
       total: reported.length ? reported.reduce((sum, row) => sum + row[field]!, 0) : null,
     };
   });
+
   const tokenScale = Math.max(
     1,
     ...tokenColumns
       .filter((column) => column.field !== "total_tokens")
       .map((column) => column.total ?? 0),
   );
+
   const groups = new Map<string, { count: number; runtime: number }>();
   for (const row of visible) {
     const key = String(row[group as keyof UsageRecord] || "Unlinked");
     const value = groups.get(key) || { count: 0, runtime: 0 };
+
     groups.set(key, {
       count: value.count + 1,
       runtime: value.runtime + usageRuntime(row),
     });
   }
+
   const latest = [
     providers.find((p) => p.provider === "codex")?.subscriptionLimits,
     ...rows
@@ -162,6 +179,7 @@ export const UsageView = ({
   ]
     .filter((v) => v !== undefined)
     .sort((a, b) => Date.parse(b.reportedAt) - Date.parse(a.reportedAt))[0];
+
   const time = (ms: number) => duration(new Date(0).toISOString(), new Date(ms).toISOString());
   return (
     <div className={`usage-panel ${!scoped ? "page usage-dashboard" : ""}`}>
@@ -181,6 +199,7 @@ export const UsageView = ({
           </Button>
         }
       />
+
       {error && (
         <p className="error-box" role="alert">
           {error}
@@ -207,6 +226,7 @@ export const UsageView = ({
               </select>
             </label>
           )}
+
           {!scoped && (
             <>
               <div className="library-tabs">
@@ -226,6 +246,7 @@ export const UsageView = ({
                   </button>
                 ))}
               </div>
+
               <div className="usage-filters">
                 {(["provider", "model", "purpose", "repository", "task_id", "status"] as const).map(
                   (key) => (
@@ -252,6 +273,7 @@ export const UsageView = ({
               </div>
             </>
           )}
+
           <div className="usage-stats">
             <div>
               <small>Reported total tokens</small>
@@ -260,25 +282,30 @@ export const UsageView = ({
                   ? visible.reduce((sum, row) => sum + (row.total_tokens ?? 0), 0).toLocaleString()
                   : "Unavailable"}
               </strong>
+
               <small>
                 {visible.filter((row) => row.total_tokens !== null).length}/{visible.length} runs
                 reported totals
               </small>
             </div>
+
             <div>
               <small>AI runs</small>
               <strong>{visible.length}</strong>
             </div>
+
             <div>
               <small>Total model runtime</small>
               <strong>{time(runtime)}</strong>
             </div>
+
             <div>
               <small>Failures</small>
               <strong className={visible.some((r) => r.status === "failed") ? "failure" : ""}>
                 {visible.filter((r) => r.status === "failed").length}
               </strong>
             </div>
+
             <div>
               <small>Cancelled / interrupted</small>
               <strong>
@@ -286,6 +313,7 @@ export const UsageView = ({
               </strong>
             </div>
           </div>
+
           <div className="usage-tokens" aria-label="Reported token channels">
             {tokenColumns.map(({ field, total, coverage }) => {
               const label = {
@@ -295,6 +323,7 @@ export const UsageView = ({
                 reasoning_tokens: "Reasoning",
                 total_tokens: "Total",
               }[field];
+
               return (
                 <div key={field}>
                   <small>{label}</small>
@@ -312,6 +341,7 @@ export const UsageView = ({
                       />
                     </div>
                   )}
+
                   <small>
                     {coverage}/{visible.length} runs reported
                   </small>
@@ -319,6 +349,7 @@ export const UsageView = ({
               );
             })}
           </div>
+
           {visible.length > 0 && (
             <small className="subtle">
               Each token column sums only reported values. Coverage can differ between columns;
@@ -335,6 +366,7 @@ export const UsageView = ({
                   {latest?.planType ? ` · ${latest.planType}` : ""}
                 </strong>
               </div>
+
               {latest ? (
                 <>
                   {latest.windows.map((w) => (
@@ -352,6 +384,7 @@ export const UsageView = ({
                       <small>Resets {new Date(w.resetsAt * 1000).toLocaleString()}</small>
                     </div>
                   ))}
+
                   <small className="subtle">
                     Reported {new Date(latest.reportedAt).toLocaleString()}
                   </small>
@@ -364,6 +397,7 @@ export const UsageView = ({
               <p className="subtle">Antigravity · Subscription allowance not exposed by CLI</p>
             </section>
           )}
+
           {!scoped && (
             <details className="usage-additional">
               <summary>Additional breakdowns</summary>
@@ -379,6 +413,7 @@ export const UsageView = ({
                   </button>
                 ))}
               </div>
+
               <div className="usage-breakdown">
                 {[...groups].map(([key, value]) => (
                   <div key={key}>
@@ -391,6 +426,7 @@ export const UsageView = ({
               </div>
             </details>
           )}
+
           {!scoped && (
             <section className="usage-history">
               <div className="section-heading">
@@ -405,6 +441,7 @@ export const UsageView = ({
                   />
                 </label>
               </div>
+
               <div className="data-table-scroll">
                 <table className="usage-table">
                   <thead>
@@ -425,6 +462,7 @@ export const UsageView = ({
                       ))}
                     </tr>
                   </thead>
+
                   <tbody>
                     {visible.slice(page * pageSize, (page + 1) * pageSize).map((row) => (
                       <tr key={row.id}>
@@ -445,6 +483,7 @@ export const UsageView = ({
                         <td title={tokenUsage(row)}>
                           {row.total_tokens?.toLocaleString() ?? "Unavailable"}
                         </td>
+
                         <td>
                           <span
                             className={`status-chip ${row.status === "completed" ? "success" : row.status === "failed" ? "failure" : "warning"}`}
@@ -458,6 +497,7 @@ export const UsageView = ({
                   </tbody>
                 </table>
               </div>
+
               <nav className="usage-pagination" aria-label="Usage history pages">
                 <small>
                   {visible.length
@@ -465,6 +505,7 @@ export const UsageView = ({
                     : "No matching runs"}{" "}
                   · Page {page + 1} of {pages}
                 </small>
+
                 <div className="actions">
                   <Button
                     size="sm"
@@ -473,6 +514,7 @@ export const UsageView = ({
                   >
                     Previous runs
                   </Button>
+
                   <Button
                     size="sm"
                     disabled={page + 1 >= pages}
@@ -484,6 +526,7 @@ export const UsageView = ({
               </nav>
             </section>
           )}
+
           <div className="usage-runs">
             {visible
               .filter((row) => scoped || row.id === expandedRun)
@@ -503,11 +546,13 @@ export const UsageView = ({
                       {row.status}
                     </span>
                   </summary>
+
                   {openRun && (row.task_id || row.repair_id) && (
                     <Button size="sm" onClick={() => openRun(row)}>
                       Open saved run
                     </Button>
                   )}
+
                   <dl className="repository-facts">
                     <dt>Started</dt>
                     <dd>{new Date(row.started_at).toLocaleString()}</dd>
@@ -534,12 +579,14 @@ export const UsageView = ({
                     <dt>Tokens</dt>
                     <dd>{tokenUsage(row)}</dd>
                   </dl>
+
                   {row.error && (
                     <details>
                       <summary className="failure">Run error · details</summary>
                       <pre>{errorMessage(row.error)}</pre>
                     </details>
                   )}
+
                   {(["subscription_limits", "subscription_limits_after"] as const).map((key) => {
                     const limits = readLimits(row[key]);
                     return (
@@ -551,6 +598,7 @@ export const UsageView = ({
                               : "Allowance after run"}
                             {limits.planType ? ` · ${limits.planType}` : ""}
                           </strong>
+
                           {limits.windows.map((w) => (
                             <p key={w.windowDurationMins}>
                               {windowLabel(w.windowDurationMins)} · {w.usedPercent}% used · resets{" "}
@@ -561,6 +609,7 @@ export const UsageView = ({
                       )
                     );
                   })}
+
                   {limitDeltas(row).map((w) => (
                     <p key={w.minutes}>
                       Subscription window usage delta ({windowLabel(w.minutes)}
@@ -569,12 +618,14 @@ export const UsageView = ({
                       activity can also affect this window.
                     </p>
                   ))}
+
                   {row.provider === "codex" && !limitDeltas(row).length && (
                     <small className="subtle">
                       Window delta unavailable · both snapshots must describe the same subscription
                       window.
                     </small>
                   )}
+
                   {row.provider === "antigravity" && (
                     <small className="subtle">Subscription allowance not exposed by CLI</small>
                   )}
@@ -583,6 +634,7 @@ export const UsageView = ({
           </div>
         </>
       )}
+
       {!visible.length && loaded && (
         <EmptyState
           icon={<Activity size={26} />}

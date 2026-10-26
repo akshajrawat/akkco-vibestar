@@ -1,8 +1,10 @@
 import type { Task as CoreTask } from "../../backend/domain";
 import type { DiffFile as CoreDiffFile } from "../../backend/workspace/git";
 import type { Repository, Settings } from "../../backend/domain";
+
 export type { Repository, Settings, StageConfig } from "../../backend/domain";
 export type Detection = import("../../backend/execution/providers/contracts").ProviderDetection;
+
 /** Renderer projection retains sparse historical records and uses canonical task field contracts. */
 export interface Task
   extends
@@ -81,6 +83,7 @@ export interface Snapshot {
   scheduled?: import("../../backend/scheduled/contracts").ScheduleJob[];
   attention?: import("../../backend/scheduled/contracts").ScheduleAttention[];
 }
+
 export interface Run {
   id: string;
   purpose?: string;
@@ -98,6 +101,7 @@ export interface Run {
   output: string | null;
   error: string | null;
 }
+
 export interface AgentEvent {
   id: number;
   run_id: string;
@@ -109,6 +113,7 @@ export interface AgentEvent {
   raw: string;
   stream: string;
 }
+
 export interface Message {
   purpose?: "instruction" | "chat";
   status?: string;
@@ -118,6 +123,7 @@ export interface Message {
   content: string;
   created_at: string;
 }
+
 export interface Artifact {
   id: string;
   stage: number;
@@ -125,6 +131,7 @@ export interface Artifact {
   content: string;
   created_at: string;
 }
+
 export interface TestRun {
   run_id?: string | null;
   call_id?: string | null;
@@ -138,6 +145,7 @@ export interface TestRun {
   stdout: string;
   stderr: string;
 }
+
 export interface Detail {
   validation?: ReturnType<
     typeof import("../../backend/execution/verification/verification").verificationSummary
@@ -153,6 +161,7 @@ export interface Detail {
   usage?: import("../../backend/execution/output/usage").UsageRecord[];
   activity?: { id: number; kind: string; data: string; timestamp: string }[];
 }
+
 export type DiffFile = Omit<CoreDiffFile, "untracked"> & Partial<Pick<CoreDiffFile, "untracked">>;
 
 export interface Diff {
@@ -161,16 +170,19 @@ export interface Diff {
   deletions: number;
   base: string;
 }
+
 export interface FileDiff {
   original: string;
   modified: string;
   binary: boolean;
   unified: string;
 }
+
 export type { CoreEvent } from "../../backend/domain";
 
 export type Page =
   "Scheduled" | "Tasks" | "Issue Watch" | "Repositories" | "Providers" | "Usage" | "Settings";
+
 export const stages = [
   "Prepare workspace",
   "Antigravity plan",
@@ -180,6 +192,7 @@ export const stages = [
   "Antigravity review & tests",
   "Ready for review",
 ];
+
 export const activeStatuses = [
   "preparing",
   "planning_antigravity",

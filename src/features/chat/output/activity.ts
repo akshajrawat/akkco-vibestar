@@ -10,19 +10,23 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
     matches: boolean;
     data: Record<string, unknown>;
   }[] = [];
+
   const calls = new Map<string, number>();
   for (const event of events) {
     if (event.kind.startsWith("run.") && !["run.failed", "run.cancelled"].includes(event.kind))
       continue;
     const data = eventData(event.data);
+
     const matches =
       !search || `${event.data}\n${event.raw}`.toLowerCase().includes(search.toLowerCase());
+
     const call = data.call_id != null ? `${event.run_id}/${data.call_id}` : null;
     const index = call ? calls.get(call) : undefined;
     if (index !== undefined) {
       const row = entries[index];
       row.matches ||= matches;
       const clean = Object.fromEntries(Object.entries(data).filter(([, value]) => value != null));
+
       row.data = {
         ...row.data,
         ...clean,
@@ -30,10 +34,12 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
           ? { text: `${row.data.text || ""}${data.text_delta}` }
           : {}),
       };
+
       if (row.event.kind !== "command.finished" || event.kind !== "command.output")
         row.event = event;
     } else {
       if (call) calls.set(call, entries.length);
+
       entries.push({
         key: event.id,
         event,
@@ -43,6 +49,7 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
       });
     }
   }
+
   return entries;
 };
 
@@ -64,9 +71,11 @@ export const toolState = (event: AgentEvent, data: Record<string, unknown>, run?
       stdout: typeof data.stdout === "string" ? data.stdout : "",
       stderr: typeof data.stderr === "string" ? data.stderr : "",
     });
+
     if (["blocked", "interrupted"].includes(verification.outcome))
       return verification.outcome === "blocked" ? "blocked" : "interrupted";
   }
+
   if (
     ["failed", "error"].includes(status) ||
     (typeof data.exit_code === "number" && data.exit_code !== 0)
@@ -85,6 +94,7 @@ export const toolState = (event: AgentEvent, data: Record<string, unknown>, run?
 
 export const runActivity = (events: AgentEvent[], run?: Run) => {
   const entries = agentEntries(events.filter((e) => e.run_id === run?.id && e.stream !== "stderr"));
+
   const runningTool = [...entries]
     .reverse()
     .find(
@@ -93,6 +103,7 @@ export const runActivity = (events: AgentEvent[], run?: Run) => {
         (e.data.status != null || e.event.kind === "command.started") &&
         toolState(e.event, e.data, run) === "running",
     );
+
   const entry =
     runningTool ||
     [...entries]
@@ -102,9 +113,11 @@ export const runActivity = (events: AgentEvent[], run?: Run) => {
           (value) => typeof value === "string" && value.trim(),
         ),
       );
+
   const event = entry?.event;
   const data = entry?.data || {};
   const path = data.path || (Array.isArray(data.files) ? data.files.join(", ") : "");
+
   const observedActivity =
     typeof data.query === "string"
       ? `Searching: ${data.query}${path ? " · " + path : ""}`
@@ -119,6 +132,7 @@ export const runActivity = (events: AgentEvent[], run?: Run) => {
               : typeof data.text_delta === "string"
                 ? data.text_delta
                 : "Waiting for provider activity…";
+
   return entry && event?.kind !== "message" && toolState(entry.event, data, run) !== "running"
     ? `${toolState(entry.event, data, run)} · ${observedActivity}`
     : observedActivity;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Copy, Play, X } from "lucide-react";
+
 import { rpc, errorMessage } from "../../lib/api";
 import type { CandidateDetail } from "./types";
 import { Button } from "../../components/ui/button";
@@ -31,11 +32,13 @@ export const IssueCandidateDetails = ({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+
   useEffect(() => {
     let alive = true;
     setDetail(null);
     setError("");
     setCopied(false);
+
     void rpc<CandidateDetail>("issueWatch.candidateDetail", {
       watch_id: watchId,
       scan_id: scanId,
@@ -47,10 +50,12 @@ export const IssueCandidateDetails = ({
       .catch((e) => {
         if (alive) setError(errorMessage(e));
       });
+
     return () => {
       alive = false;
     };
   }, [watchId, scanId, issueId, revision]);
+
   if (!detail)
     return (
       <aside className="watch-candidate-details">
@@ -59,6 +64,7 @@ export const IssueCandidateDetails = ({
     );
   const { candidate, sources } = detail;
   const issue = candidate.issue;
+
   const changeDismissal = async () => {
     setBusy(true);
     setError("");
@@ -68,6 +74,7 @@ export const IssueCandidateDetails = ({
         issue_id: issue.id,
         dismissed: !candidate.dismissed_at,
       });
+
       dismissed();
     } catch (e) {
       setError(errorMessage(e));
@@ -75,6 +82,7 @@ export const IssueCandidateDetails = ({
       setBusy(false);
     }
   };
+
   return (
     <aside className="watch-candidate-details" aria-label="Selected issue details">
       <div className="watch-details-heading">
@@ -84,23 +92,28 @@ export const IssueCandidateDetails = ({
           </small>
           <h2>{issue.title}</h2>
         </div>
+
         <Button variant="ghost" size="icon" aria-label="Collapse issue details" onClick={close}>
           <X size={14} />
         </Button>
       </div>
+
       <div className="watch-details-scroll">
         <span className={`watch-claim ${candidate.claim_state}`}>
           {claimLabel(candidate.claim_state)}
         </span>
+
         {provisional && (
           <p className="warning">
             Provisional coverage. This scan did not replace the last complete baseline.
           </p>
         )}
+
         <p className="subtle">
           Checked {new Date(candidate.checked_at).toLocaleString()}. GitHub can change before you
           request assignment; unassigned does not guarantee availability.
         </p>
+
         <div className="watch-detail-actions">
           <Button
             size="sm"
@@ -111,6 +124,7 @@ export const IssueCandidateDetails = ({
             <ArrowUpRight size={13} />
             Open on GitHub
           </Button>
+
           <Button
             size="sm"
             onClick={() =>
@@ -124,24 +138,29 @@ export const IssueCandidateDetails = ({
             {copied ? "Copied" : "Copy URL"}
           </Button>
         </div>
+
         <dl className="watch-facts">
           <div>
             <dt>Labels</dt>
             <dd>{issue.labels.join(", ") || "None"}</dd>
           </div>
+
           <div>
             <dt>Assignees</dt>
             <dd>{issue.assignees.map((actor) => `@${actor}`).join(", ") || "Unassigned"}</dd>
           </div>
+
           <div>
             <dt>Created</dt>
             <dd>{new Date(issue.created_at).toLocaleString()}</dd>
           </div>
+
           <div>
             <dt>Updated</dt>
             <dd>{new Date(issue.updated_at).toLocaleString()}</dd>
           </div>
         </dl>
+
         <section>
           <h3>Why it matches</h3>
           {candidate.semantic && candidate.semantic_state === "completed" ? (
@@ -156,6 +175,7 @@ export const IssueCandidateDetails = ({
             <p>No complete AI assessment. The status above comes from saved GitHub evidence.</p>
           )}
         </section>
+
         <details open>
           <summary>Eligibility and exclusion analysis</summary>
           <ul>
@@ -169,6 +189,7 @@ export const IssueCandidateDetails = ({
             unless marked as GitHub facts.
           </p>
         </details>
+
         {candidate.uncertainty.length > 0 && (
           <section className="watch-unknowns">
             <h3>Unknowns and limitations</h3>
@@ -179,15 +200,18 @@ export const IssueCandidateDetails = ({
             </ul>
           </section>
         )}
+
         <details open>
           <summary>Original issue description</summary>
           <IssueMarkdown text={issue.body} onError={setError} />
         </details>
+
         <details open>
           <summary>
             Claims and competing work ·{" "}
             {candidate.evidence.filter((item) => item.kind !== "contribution_policy").length}
           </summary>
+
           {candidate.evidence
             .filter((item) => item.kind !== "contribution_policy")
             .map((item, index) => {
@@ -217,15 +241,18 @@ export const IssueCandidateDetails = ({
                 </article>
               );
             })}
+
           {!candidate.evidence.length && (
             <p>No claim evidence was available; inspect coverage and unknowns above.</p>
           )}
         </details>
+
         <details>
           <summary>
             Relevant original discussion ·{" "}
             {sources.filter((source) => source.kind === "comment").length} comments retained
           </summary>
+
           {sources
             .filter((source) => source.kind === "comment")
             .map((source) => (
@@ -239,6 +266,7 @@ export const IssueCandidateDetails = ({
               </article>
             ))}
         </details>
+
         <details>
           <summary>Contribution policy and source evidence</summary>
           {sources.map((source) => (
@@ -264,12 +292,14 @@ export const IssueCandidateDetails = ({
             </article>
           ))}
         </details>
+
         {error && (
           <p className="error-box" role="alert">
             {error}
           </p>
         )}
       </div>
+
       <footer className="watch-details-footer">
         <Button
           variant="default"
@@ -288,6 +318,7 @@ export const IssueCandidateDetails = ({
           <Button size="sm" disabled={busy} onClick={() => recheck(issue.id)}>
             Recheck eligibility
           </Button>
+
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => void changeDismissal()}>
             {candidate.dismissed_at ? "Restore locally" : "Dismiss locally"}
           </Button>

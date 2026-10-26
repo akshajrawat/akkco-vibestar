@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
+
 import { rpc, subscribe, errorMessage } from "../lib/api";
 import type { Snapshot, Detail, Detection } from "../lib/types";
+
 export const useWorkspace = () => {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+
   const refresh = useCallback(async () => {
     try {
       setSnapshot(await rpc<Snapshot>("snapshot"));
@@ -13,10 +16,12 @@ export const useWorkspace = () => {
       setError(errorMessage(e));
     }
   }, []);
+
   useEffect(() => {
     void refresh();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let disposed = false;
+
     const subscription = subscribe((e) => {
       if (e.event === "core.error" || e.event === "core.closed") {
         setError(e.text || "Execution core stopped. Restart the app to recover tasks.");
@@ -29,11 +34,14 @@ export const useWorkspace = () => {
           }, 350);
       }
     });
+
     const focus = () => void refresh();
     window.addEventListener("focus", focus);
+
     void subscription.then((unlisten) => {
       if (disposed) unlisten();
     });
+
     return () => {
       disposed = true;
       void subscription.then((fn) => fn());
@@ -41,15 +49,19 @@ export const useWorkspace = () => {
       window.removeEventListener("focus", focus);
     };
   }, [refresh]);
+
   return { snapshot, error, setError, refresh, revision };
 };
+
 export const useDetail = (id: string | null, revision: number) => {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
+
   useEffect(() => {
     setDetail(null);
     setError("");
   }, [id]);
+
   useEffect(() => {
     let alive = true;
     if (id)
@@ -64,15 +76,19 @@ export const useDetail = (id: string | null, revision: number) => {
       alive = false;
     };
   }, [id, revision]);
+
   return { detail, error };
 };
+
 let detectedProviders: Detection[] = [];
 let detectedAt = 0;
 let detecting: Promise<Detection[]> | undefined;
+
 export const useProviders = () => {
   const [providers, setProviders] = useState<Detection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
   const refresh = useCallback(async (force = true) => {
     setLoading(true);
     try {
@@ -87,8 +103,10 @@ export const useProviders = () => {
           .finally(() => {
             detecting = undefined;
           });
+
         setProviders(await detecting);
       }
+
       setError("");
     } catch (e) {
       setError(errorMessage(e));
@@ -96,8 +114,10 @@ export const useProviders = () => {
       setLoading(false);
     }
   }, []);
+
   useEffect(() => {
     void refresh(false);
   }, [refresh]);
+
   return { providers, loading, error, refresh };
 };

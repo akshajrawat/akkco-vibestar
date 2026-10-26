@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+
 import { rpc, subscribe, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { terminalTheme } from "../../lib/theme";
+
 export const AuthDialog = ({
   provider,
   done,
@@ -18,16 +20,19 @@ export const AuthDialog = ({
   const [error, setError] = useState("");
   const [ended, setEnded] = useState(false);
   const [connected, setConnected] = useState(false);
+
   useEffect(() => {
     let alive = true;
     let session = "";
     const pending = new Map<string, string[]>();
     const closed = new Set<string>();
     let checking = false;
+
     const checkSuccess = (finished = false) => {
       if (finished) setEnded(true);
       if (checking) return;
       checking = true;
+
       void rpc<import("../../lib/types").Detection[]>("providers.detect")
         .then((providers) => {
           if (
@@ -44,24 +49,28 @@ export const AuthDialog = ({
           checking = false;
         });
     };
+
     const term = new Terminal({
       fontSize: 12,
       fontFamily: terminalTheme().fontFamily,
       convertEol: true,
       theme: terminalTheme(),
     });
+
     const fit = new FitAddon();
     term.loadAddon(fit);
     if (container.current) {
       term.open(container.current);
       fit.fit();
     }
+
     const sub = subscribe((e) => {
       if (!alive || !e.session_id) return;
       if (e.event === "auth.output") {
         if (e.session_id === session) term.write(e.text || "");
         else pending.set(e.session_id, [...(pending.get(e.session_id) || []), e.text || ""]);
       }
+
       if (e.event === "auth.closed") {
         closed.add(e.session_id);
         if (e.session_id === session) {
@@ -69,6 +78,7 @@ export const AuthDialog = ({
         }
       }
     });
+
     void sub
       .then(() => rpc<{ session_id: string }>("auth.connect", { provider }))
       .then((value) => {
@@ -77,6 +87,7 @@ export const AuthDialog = ({
           void rpc("auth.close", { session_id: session });
           return;
         }
+
         for (const text of pending.get(session) || []) term.write(text);
         pending.clear();
         setEnded(closed.has(session));
@@ -86,18 +97,22 @@ export const AuthDialog = ({
       .catch((e) => {
         if (alive) setError(errorMessage(e));
       });
+
     const input = term.onData((text) => {
       if (session && !closed.has(session))
         void rpc("auth.input", { session_id: session, text }).catch((e) => {
           if (alive) setError(errorMessage(e));
         });
     });
+
     const observer = new ResizeObserver(() => {
       if (container.current?.clientHeight) fit.fit();
     });
+
     const poll = setInterval(() => {
       if (session && !closed.has(session) && !initiallyConnected) checkSuccess();
     }, 8000);
+
     if (container.current) observer.observe(container.current);
     return () => {
       alive = false;
@@ -109,6 +124,7 @@ export const AuthDialog = ({
       term.dispose();
     };
   }, [provider, initiallyConnected]);
+
   return (
     <div className="modal-backdrop">
       <section
@@ -122,10 +138,12 @@ export const AuthDialog = ({
             Connect{" "}
             {provider === "github" ? "GitHub" : provider === "codex" ? "Codex" : "Antigravity"}
           </h2>
+
           <Button variant="ghost" onClick={done}>
             Done
           </Button>
         </div>
+
         <p className="subtle">
           Complete the official CLI login. Credentials stay with the provider.
         </p>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
 import { rpc, subscribe, errorMessage } from "../../lib/api";
 import type { WatchScan } from "../../../backend/issue-watch/contracts";
 import type { SavedWatch, WatchDetail, ScanDetail } from "./types";
@@ -6,9 +7,11 @@ import type { SavedWatch, WatchDetail, ScanDetail } from "./types";
 export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) => {
   const [watches, setWatches] = useState<SavedWatch[]>([]);
   const [loaded, setLoaded] = useState(false);
+
   const [watchId, setWatchId] = useState(
     initialWatchId || localStorage.getItem("vibestar.issueWatch.selected") || "",
   );
+
   const [archived, setArchived] = useState(false);
   const [watchPages, setWatchPages] = useState(1);
   const [historyPages, setHistoryPages] = useState(1);
@@ -20,9 +23,11 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
   const [scan, setScan] = useState<ScanDetail | null>(null);
   const [error, setError] = useState("");
   const sequence = useRef(0);
+
   const invalidate = useCallback(() => {
     sequence.current++;
   }, []);
+
   const refresh = useCallback(async () => {
     if (!enabled) return;
     const request = ++sequence.current;
@@ -35,10 +40,12 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           limit: 100,
           ...(list.length ? { before: list[list.length - 1].id } : {}),
         });
+
         if (request !== sequence.current) return;
         list.push(...watchPage);
         if (watchPage.length < 100) break;
       }
+
       if (request !== sequence.current) return;
       setWatches(list);
       setLoaded(true);
@@ -51,12 +58,14 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
         setScan(null);
         return;
       }
+
       if (selected.error) {
         setError(selected.error);
         setDetail(null);
         setScan(null);
         return;
       }
+
       const [nextDetail, firstHistory] = await Promise.all([
         rpc<WatchDetail>("issueWatch.detail", { watch_id: selected.id }),
         rpc<WatchScan[]>("issueWatch.scanHistory", {
@@ -64,6 +73,7 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           limit: 50,
         }),
       ]);
+
       if (request !== sequence.current) return;
       const nextHistory = [...firstHistory];
       let historyPage = firstHistory;
@@ -73,9 +83,11 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           limit: 50,
           before: nextHistory[nextHistory.length - 1].id,
         });
+
         if (request !== sequence.current) return;
         nextHistory.push(...historyPage);
       }
+
       if (request !== sequence.current) return;
       setDetail(nextDetail);
       setHistory(nextHistory);
@@ -86,6 +98,7 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           watch_id: selected.id,
           scan_id: selectedScan.id,
         });
+
         if (request !== sequence.current) return;
         setScan(nextScan);
       } else setScan(null);
@@ -97,22 +110,27 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
       }
     }
   }, [enabled, archived, watchId, scanId, watchPages, historyPages]);
+
   useEffect(() => setWatchPages(1), [archived]);
   useEffect(() => setHistoryPages(1), [watchId]);
+
   useEffect(() => {
     if (initialWatchId) {
       setWatchId(initialWatchId);
       setScanId("");
     }
   }, [initialWatchId]);
+
   useEffect(() => {
     if (watchId) localStorage.setItem("vibestar.issueWatch.selected", watchId);
   }, [watchId]);
+
   useEffect(() => {
     if (!enabled) return;
     void refresh();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let disposed = false;
+
     const subscription = subscribe((event) => {
       if (
         (event.event.startsWith("issue-watch.") ||
@@ -125,6 +143,7 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           if (!disposed) void refresh();
         }, 200);
     });
+
     const focus = () => void refresh();
     window.addEventListener("focus", focus);
     return () => {
@@ -135,6 +154,7 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
       void subscription.then((unsubscribe) => unsubscribe());
     };
   }, [enabled, refresh, invalidate]);
+
   const select = (id: string) => {
     invalidate();
     setWatchId(id);
@@ -142,6 +162,7 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
     setDetail(null);
     setScan(null);
   };
+
   return {
     loading: !loaded,
     watches,

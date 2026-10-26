@@ -58,18 +58,22 @@ export const RepairWorkspace = ({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const noticeContext = `${id}:${detail?.session.status}:${detail?.runs.at(-1)?.id}`;
+
   const [statusNotice, setStatusNotice] = useState<{
     message: string;
     context: string;
   }>();
+
   const notice = statusNotice?.context === noticeContext ? statusNotice.message : "";
   const setNotice = (message: string) => setStatusNotice({ message, context: noticeContext });
   const [publication, setPublication] = useState<RepairPublication>();
   const [localCommit, setLocalCommit] = useState(false);
+
   const [diffSnapshot, setDiffSnapshot] = useState<{
     layer: keyof typeof layers;
     value: Diff;
   }>();
+
   const [argv, setArgv] = useState('["git", "diff", "--check"]');
   const [reviews, setReviews] = useState<{ path: string; hash: string; reviewed: boolean }[]>([]);
   const [cleanup, setCleanup] = useState(false);
@@ -78,17 +82,22 @@ export const RepairWorkspace = ({
   const layer = view.diffLayer;
   const diff = diffSnapshot?.layer === layer ? diffSnapshot.value : null;
   const currentDraft = useRef(view);
+
   useEffect(() => {
     currentDraft.current = view;
   }, [view]);
+
   useWorkspaceKeys(id);
   const acting = useRef(false);
   const onError = useCallback((text: string) => setError(text), []);
+
   const reload = useCallback(async () => {
     setDetail(await rpc<RepairDetail>("repair.detail", { id }));
   }, [id]);
+
   useEffect(() => {
     let alive = true;
+
     void rpc<RepairDetail>("repair.detail", { id })
       .then((value) => {
         if (alive) setDetail(value);
@@ -96,11 +105,14 @@ export const RepairWorkspace = ({
       .catch((e) => {
         if (alive) setError(errorMessage(e));
       });
+
     return () => {
       alive = false;
     };
   }, [id, revision]);
+
   const prepared = detail?.session.workspace.preparation === "ready";
+
   useEffect(() => {
     let alive = true;
     if (prepared)
@@ -115,6 +127,7 @@ export const RepairWorkspace = ({
       alive = false;
     };
   }, [id, revision, prepared]);
+
   useEffect(() => {
     let alive = true;
     setDiffSnapshot(undefined);
@@ -130,6 +143,7 @@ export const RepairWorkspace = ({
       alive = false;
     };
   }, [id, revision, prepared, layer]);
+
   const act = async <T,>(method: string, params: Record<string, unknown> = {}) => {
     if (acting.current) return undefined;
     acting.current = true;
@@ -157,12 +171,15 @@ export const RepairWorkspace = ({
       Logs: "logs",
       Usage: "usage",
     };
+
     openWorkspaceTool(id, sections[name] || "pipeline");
   };
+
   if (!detail) return <p className="empty-row">{error || "Opening PR repair workspace…"}</p>;
   const session = detail.session;
   const workspace = session.workspace;
   const awaiting = ["awaiting_manual_review", "verification_blocked"].includes(session.status);
+
   const canApprove =
     awaiting &&
     session.implementation?.items.every((item) =>
@@ -170,10 +187,12 @@ export const RepairWorkspace = ({
     ) &&
     session.verification?.overall === "approved" &&
     session.verification.items.every((item) => item.status === "accepted");
+
   const reportedTests = [
     ...(session.implementation?.tests || []),
     ...(session.verification?.tests || []),
   ];
+
   const canFollowUp =
     !detail.active &&
     !["published", "merge_conflict", "stale_remote_head", "ready_to_publish"].includes(
@@ -210,12 +229,14 @@ export const RepairWorkspace = ({
               Stop
             </Button>
           )}
+
           <OpenInEditor
             id={id}
             kind="repair"
             path={workspace.worktree_path}
             disabled={!workspace.branch_owned}
           />
+
           <Button
             className="secondary-toggle"
             variant="ghost"
@@ -233,6 +254,7 @@ export const RepairWorkspace = ({
           </Button>
         </div>
       </header>
+
       <div className="workspace-content">
         <ChatSurface
           id={id}
@@ -253,6 +275,7 @@ export const RepairWorkspace = ({
                     detail.runs.at(-1)?.id ||
                     "",
                 });
+
                 openWorkspaceTool(id, "run-details");
               }}
               stop={() => void act("repair.cancel")}
@@ -268,6 +291,7 @@ export const RepairWorkspace = ({
                   </Button>
                 </div>
               )}
+
               <article className="repair-intro">
                 <span className="eyebrow">EXISTING PULL REQUEST</span>
                 <h2>{session.context.snapshot?.title}</h2>
@@ -280,6 +304,7 @@ export const RepairWorkspace = ({
                       text={`${String(issue.title || "Linked issue")}\n\n${String(issue.body || "")}`}
                     />
                   ))}
+
                   {session.context.snapshot?.discussion?.map((entry) => (
                     <article className="discussion-entry" key={entry.id}>
                       <header>
@@ -295,6 +320,7 @@ export const RepairWorkspace = ({
                   ))}
                 </details>
               </article>
+
               {session.status === "merge_conflict" && (
                 <article className="repair-gate warning">
                   <h2>Upstream merge needs your resolution</h2>
@@ -304,6 +330,7 @@ export const RepairWorkspace = ({
                       <code>{path}</code>
                     </p>
                   ))}
+
                   <Button
                     disabled={busy || detail.active}
                     onClick={() => void act("repair.recoverConflict", { confirmed: true })}
@@ -323,6 +350,7 @@ export const RepairWorkspace = ({
                   <Button onClick={() => analyze(session.job_id)}>Analyze PR Again</Button>
                 </article>
               )}
+
               {session.status === "ready_to_publish" && (
                 <article className="repair-gate">
                   <h2>Manually approved · publication pending</h2>
@@ -333,6 +361,7 @@ export const RepairWorkspace = ({
                   >
                     Commit Locally
                   </Button>
+
                   <Button
                     disabled={busy || detail.active}
                     onClick={async () => {
@@ -344,12 +373,14 @@ export const RepairWorkspace = ({
                   </Button>
                 </article>
               )}
+
               {session.status === "published" && (
                 <article className="repair-gate success">
                   <h2>Review repair pushed successfully</h2>
                   <p>
                     {session.identity.head.name}:{session.identity.head.branch}
                   </p>
+
                   <p>
                     Updated commit{" "}
                     <code>
@@ -360,16 +391,19 @@ export const RepairWorkspace = ({
                       }
                     </code>
                   </p>
+
                   <div className="actions">
                     <Button onClick={() => void window.vibestar.openExternal(session.identity.url)}>
                       Open PR on GitHub
                     </Button>
+
                     <Button variant="secondary" onClick={() => analyze(session.job_id)}>
                       Analyze PR Again
                     </Button>
                   </div>
                 </article>
               )}
+
               {!!detail.publications.length && (
                 <details className="repair-history">
                   <summary>Publication and repair history</summary>
@@ -398,6 +432,7 @@ export const RepairWorkspace = ({
                       </article>
                     );
                   })}
+
                   {detail.activity.map((activity) => (
                     <p key={activity.id}>
                       {new Date(activity.timestamp).toLocaleString()} ·{" "}
@@ -408,6 +443,7 @@ export const RepairWorkspace = ({
                   ))}
                 </details>
               )}
+
               {!detail.active &&
                 ["created", "ready_to_repair", "failed", "cancelled", "interrupted"].includes(
                   session.status,
@@ -463,18 +499,22 @@ export const RepairWorkspace = ({
                 const instructions = composerContent(view);
                 if (!instructions || instructions.length > 16000 || busy || !canFollowUp) return;
                 const signature = JSON.stringify({ instructions });
+
                 const request_id =
                   view.messageRequest?.signature === signature
                     ? view.messageRequest.id
                     : crypto.randomUUID();
+
                 updateTaskView(id, {
                   messageRequest: { id: request_id, signature },
                 });
+
                 void act("repair.start", { instructions, request_id }).then((value) => {
                   if (value) {
                     setNotice(
                       "Further fix requested · approved Codex → Antigravity sequence retained",
                     );
+
                     if (composerContent(currentDraft.current) === instructions)
                       updateTaskView(id, {
                         draft: "",
@@ -510,6 +550,7 @@ export const RepairWorkspace = ({
             />
           }
         />
+
         <SecondaryWorkspace id={id}>
           {view.secondarySection === "changes" ? (
             <>
@@ -521,6 +562,7 @@ export const RepairWorkspace = ({
                     variant={layer === key ? "secondary" : "ghost"}
                     onClick={() => {
                       const nextLayer = key as keyof typeof layers;
+
                       updateTaskView(id, {
                         diffLayer: nextLayer,
                         diffPath: view.diffLayerPaths[nextLayer] || "",
@@ -531,6 +573,7 @@ export const RepairWorkspace = ({
                   </Button>
                 ))}
               </div>
+
               <ChangesView
                 task={{
                   id,
@@ -576,6 +619,7 @@ export const RepairWorkspace = ({
                   </p>
                 ))}
               </details>
+
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -594,6 +638,7 @@ export const RepairWorkspace = ({
                     onChange={(e) => setArgv(e.target.value)}
                   />
                 </label>
+
                 <Button disabled={busy || detail.active || !prepared} type="submit">
                   Run command
                 </Button>
@@ -619,21 +664,26 @@ export const RepairWorkspace = ({
                   <AgentResponse
                     text={session.implementation?.summary || "Implementation unavailable"}
                   />
+
                   <h3>
                     Antigravity independent review ·{" "}
                     {session.verification?.overall.replaceAll("_", " ")}
                   </h3>
+
                   <AgentResponse
                     text={session.verification?.summary || "Verification unavailable"}
                   />
+
                   <ol className="repair-checklist">
                     {session.actions.map((action) => {
                       const implementation = session.implementation?.items.find(
                         (item) => item.actionId === action.id,
                       );
+
                       const verification = session.verification?.items.find(
                         (item) => item.actionId === action.id,
                       );
+
                       return (
                         <li key={action.id}>
                           <AgentResponse text={action.originalText} />
@@ -650,17 +700,20 @@ export const RepairWorkspace = ({
                       );
                     })}
                   </ol>
+
                   <p>
                     {diff
                       ? `${layers[layer]}: ${diff.files.length} files · +${diff.insertions} / −${diff.deletions}`
                       : "Open Changes to inspect file counts."}
                   </p>
+
                   <p className="subtle">
                     Upstream {session.identity.base.branch} · <code>{workspace.fetched_base}</code>
                     <br />
                     Local integration commit ·{" "}
                     <code>{workspace.merge_commit || "Already integrated"}</code>
                   </p>
+
                   {[
                     ...(session.implementation?.risks || []),
                     ...(session.verification?.risks || []),
@@ -669,6 +722,7 @@ export const RepairWorkspace = ({
                       {risk}
                     </p>
                   ))}
+
                   <p>
                     {detail.tests.filter((test) => test.status === "passed").length} observed
                     commands passed ·{" "}
@@ -679,6 +733,7 @@ export const RepairWorkspace = ({
                     }{" "}
                     checks reported blocked/not run
                   </p>
+
                   <div className="actions">
                     <Button
                       disabled={busy || detail.active || !canApprove}
@@ -687,11 +742,13 @@ export const RepairWorkspace = ({
                           expected_hash: session.review_hash,
                           confirmed: true,
                         });
+
                         if (plan) setPublication(plan);
                       }}
                     >
                       Approve and Prepare Push
                     </Button>
+
                     <Button
                       variant="secondary"
                       disabled={busy || detail.active || !canApprove}
@@ -699,6 +756,7 @@ export const RepairWorkspace = ({
                     >
                       Commit Locally
                     </Button>
+
                     <Button
                       variant="secondary"
                       disabled={busy || detail.active}
@@ -706,6 +764,7 @@ export const RepairWorkspace = ({
                     >
                       Keep Local
                     </Button>
+
                     <Button variant="ghost" onClick={() => inspect("Tests")}>
                       Review test evidence
                     </Button>
@@ -773,6 +832,7 @@ export const RepairWorkspace = ({
                 Isolated branch preparation → Codex repair → Antigravity verification → manual
                 review → separate publication confirmation.
               </p>
+
               {Object.entries(session.configuration).map(([provider, configuration]) => (
                 <div key={provider}>
                   <strong>{provider}</strong>
@@ -781,6 +841,7 @@ export const RepairWorkspace = ({
                   </p>
                 </div>
               ))}
+
               <p className="subtle">
                 Repair execution uses this approved configuration. The chat model cannot override
                 repair orchestration.
@@ -793,6 +854,7 @@ export const RepairWorkspace = ({
               <Button size="sm" variant="ghost" onClick={() => openWorkspaceTool(id, "plans")}>
                 Review action checklist
               </Button>
+
               <Button
                 size="sm"
                 variant="ghost"
@@ -805,6 +867,7 @@ export const RepairWorkspace = ({
           )}
         </SecondaryWorkspace>
       </div>
+
       <BottomDock
         id={id}
         terminal={
@@ -825,6 +888,7 @@ export const RepairWorkspace = ({
           </div>
         }
       />
+
       <footer className="workspace-status">
         <code>{workspace.branch_name}</code>
         <span className="spacer" />
@@ -837,6 +901,7 @@ export const RepairWorkspace = ({
           <PanelBottom size={13} />
           Terminal
         </Button>
+
         <Button
           size="sm"
           variant="ghost"
@@ -845,6 +910,7 @@ export const RepairWorkspace = ({
           Problems
         </Button>
       </footer>
+
       {publication && (
         <PublicationDialog
           publication={publication}
@@ -855,6 +921,7 @@ export const RepairWorkspace = ({
           }}
         />
       )}
+
       {localCommit && (
         <LocalCommitDialog
           session={session}
@@ -865,6 +932,7 @@ export const RepairWorkspace = ({
           }}
         />
       )}
+
       {cleanup && (
         <div className="modal-backdrop">
           <section
@@ -884,10 +952,12 @@ export const RepairWorkspace = ({
               Only a clean, owned worktree and its local repair branch can be removed. Local
               modifications and pending merges are preserved.
             </p>
+
             <div className="actions">
               <Button variant="secondary" onClick={() => setCleanup(false)}>
                 Cancel
               </Button>
+
               <Button
                 disabled={busy}
                 onClick={() =>
@@ -901,6 +971,7 @@ export const RepairWorkspace = ({
               >
                 Remove workspace, keep history
               </Button>
+
               <Button
                 disabled={busy}
                 onClick={() =>

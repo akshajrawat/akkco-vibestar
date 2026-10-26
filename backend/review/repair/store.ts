@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+
 import { AdeError, now } from "../../domain";
 import type { Database } from "../../storage/database";
 import { RepairSessionSchema, type RepairSession } from "./contracts";
 
 export class RepairStore {
   constructor(private readonly db: Database) {}
+
   list = (jobId?: string) =>
     this.db.records.list(
       "pr_repairs",
@@ -15,6 +17,7 @@ export class RepairStore {
       RepairSessionSchema.parse,
       "id",
     );
+
   get = (id: string) => {
     const row = this.db.all<{ data: string }>("SELECT data FROM pr_repairs WHERE id=?", id)[0];
     if (!row) throw new AdeError("not_found", "PR repair session not found.");
@@ -29,9 +32,11 @@ export class RepairStore {
       RepairSessionSchema.parse,
     );
   };
+
   save = (session: RepairSession) => {
     session.updated_at = now();
     const value = RepairSessionSchema.parse(session);
+
     this.db.run(
       "INSERT INTO pr_repairs VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,data=excluded.data,updated_at=excluded.updated_at",
       value.id,
@@ -44,6 +49,7 @@ export class RepairStore {
       value.updated_at,
     );
   };
+
   activity = (session: RepairSession, kind: string, data: unknown) =>
     this.db.run(
       "INSERT INTO repair_activity(repair_id,kind,data,timestamp) VALUES(?,?,?,?)",
@@ -52,6 +58,7 @@ export class RepairStore {
       JSON.stringify(data),
       now(),
     );
+
   message = (id: string, content: string, requestId: string = randomUUID()) =>
     this.db.run(
       "INSERT INTO repair_messages VALUES(?,?,'user',?,?)",
@@ -60,6 +67,7 @@ export class RepairStore {
       content,
       now(),
     );
+
   transition = (
     session: RepairSession,
     status: RepairSession["status"],
@@ -68,8 +76,10 @@ export class RepairStore {
     const previous = session.status;
     session.status = status;
     session.error = error;
+
     this.db.transaction(() => {
       this.save(session);
+
       this.activity(session, "transition", {
         from: previous,
         to: status,

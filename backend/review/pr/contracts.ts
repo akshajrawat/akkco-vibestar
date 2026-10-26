@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { StageConfigSchema, type Settings } from "../../domain";
 import { PullRequestStateSchema, type PullRequestState } from "../../scheduled/contracts";
 
@@ -64,6 +65,7 @@ export const ReviewActionSchema = ReviewAnalysisSchema.shape.observations.elemen
     codeStatus: z.literal("unverified"),
   })
   .strict();
+
 export type ReviewAction = z.infer<typeof ReviewActionSchema>;
 
 export interface PRAnalysisSession {

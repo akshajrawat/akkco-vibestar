@@ -20,6 +20,7 @@ export const workspaceContext = ({
   layer?: "original" | "upstream" | "repair";
 }): ContextOption[] => {
   const file = files.find((file) => file.path === selected) || files[0];
+
   const loadFile = (path: string, old_path?: string | null, fileLayer = layer) =>
     rpc<FileDiff>(`${owner}.file`, {
       id,
@@ -27,6 +28,7 @@ export const workspaceContext = ({
       old_path,
       ...(fileLayer ? { layer: fileLayer } : {}),
     });
+
   return [
     {
       label: "Reference a worktree file",

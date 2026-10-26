@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+
 import { TaskNavigation } from "../../src/features/tasks/TaskNavigation";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
 const repo = {
   id: "repo",
   owner: "fixture",
@@ -18,6 +20,7 @@ const repo = {
   last_fetched: null,
   created_at: "2026-10-22T00:00:00Z",
 };
+
 const task = {
   id: "task",
   repo_id: repo.id,
@@ -36,17 +39,21 @@ const task = {
   stage: 2,
   error: null,
 };
+
 const bridge = () => {
   const rpc = vi.fn(async () => null);
   const copy = vi.fn(async () => {});
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText: copy },
   });
+
   return { rpc, copy };
 };
 
@@ -54,9 +61,11 @@ it("announces backend review status and opens a keyboard menu without navigating
   bridge();
   const open = vi.fn();
   render(<TaskNavigation repositories={[repo]} tasks={[task]} selected={task.id} open={open} />);
+
   const row = screen.getByRole("button", {
     name: /Issue #1 · Work.*Review needed/,
   });
+
   row.focus();
   fireEvent.keyDown(row, { key: "F10", shiftKey: true });
   const menu = screen.getByRole("menu", { name: "Task #1 actions" });
@@ -72,14 +81,17 @@ it("announces backend review status and opens a keyboard menu without navigating
 it("uses existing owner-checked editor RPCs and copies exact task references", async () => {
   const { rpc, copy } = bridge();
   render(<TaskNavigation repositories={[repo]} tasks={[task]} selected={null} open={vi.fn()} />);
+
   fireEvent.contextMenu(screen.getByRole("button", { name: /Issue #1 · Work/ }), {
     clientX: 20,
     clientY: 50,
   });
+
   fireEvent.click(screen.getByRole("menuitem", { name: "Copy task branch" }));
   await vi.waitFor(() => expect(copy).toHaveBeenCalledWith(task.branch_name));
   fireEvent.click(screen.getByLabelText("Actions for task #1"));
   fireEvent.click(screen.getByRole("menuitem", { name: "Open in VS Code" }));
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("editors.open", {
       id: task.id,
@@ -104,6 +116,7 @@ it("retains cleanup confirmation and makes no cleanup call when the task menu op
 
 it("disables lifecycle actions while execution is active and exposes archived tasks for explicit restoration", async () => {
   const { rpc } = bridge();
+
   const ui = render(
     <TaskNavigation
       repositories={[repo]}
@@ -112,10 +125,13 @@ it("disables lifecycle actions while execution is active and exposes archived ta
       open={vi.fn()}
     />,
   );
+
   fireEvent.click(screen.getByLabelText("Actions for task #1"));
+
   expect((screen.getByRole("menuitem", { name: "Archive" }) as HTMLButtonElement).disabled).toBe(
     true,
   );
+
   expect(
     (
       screen.getByRole("menuitem", {
@@ -123,7 +139,9 @@ it("disables lifecycle actions while execution is active and exposes archived ta
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
+
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+
   ui.rerender(
     <TaskNavigation
       repositories={[repo]}
@@ -132,9 +150,11 @@ it("disables lifecycle actions while execution is active and exposes archived ta
       open={vi.fn()}
     />,
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Show archived tasks" }));
   fireEvent.click(screen.getByLabelText("Actions for task #1"));
   fireEvent.click(screen.getByRole("menuitem", { name: "Unarchive" }));
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.archive", {
       id: task.id,

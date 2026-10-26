@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+
 import { z } from "zod";
+
 import { AdeError, now } from "../domain";
 import type { Engine } from "../execution/engine";
 import { GitHubClient } from "../github/client";
@@ -15,10 +17,12 @@ import { confirmConfiguration, digest, previewRules, repositoryName } from "./ru
 const watchInput = z.object({ watch_id: z.string().uuid() }).strict();
 const scanOwner = watchInput.extend({ scan_id: z.string().uuid() }).strict();
 const candidateOwner = scanOwner.extend({ issue_id: z.string().min(1).max(256) }).strict();
+
 const page = z.object({
   limit: z.number().int().min(1).max(100).default(50),
   before: z.string().max(100).optional(),
 });
+
 export const watchProviderSupport = {
   codex: {
     supported: true,
@@ -35,23 +39,30 @@ export const watchProviderSupport = {
 
 export class IssueWatchService {
   readonly store: IssueWatchStore;
+
   private readonly pool = new GitHubReadPool();
+
   private readonly scanner: IssueWatchScanner;
+
   private readonly active = new Map<
     string,
     { controller: AbortController; promise: Promise<void>; scan: WatchScan }
   >();
+
   private readonly saving = new Map<
     string,
     { digest: string; controller: AbortController; promise: Promise<unknown> }
   >();
+
   private stopped = false;
+
   constructor(
     private readonly engine: Engine,
     private readonly client = new GitHubClient(engine.root),
   ) {
     this.store = new IssueWatchStore(engine.db);
     this.store.interrupt();
+
     this.scanner = new IssueWatchScanner(
       this.store,
       client,
@@ -60,6 +71,7 @@ export class IssueWatchService {
       new IssueWatchSemantic(engine, this.store).screen,
     );
   }
+
   private changed = (scan?: WatchScan) =>
     this.engine.publish({
       event: !scan
@@ -81,10 +93,12 @@ export class IssueWatchService {
           }
         : undefined,
     });
+
   private assertAvailable = () => {
     this.engine.assertAvailable();
     if (this.stopped) throw new AdeError("closed", "Issue Watch is shutting down.");
   };
+
   save = (input: unknown, update = false) => {
     this.assertAvailable();
     const editing = update ? WatchUpdateInput.parse(input) : null;
@@ -104,7 +118,9 @@ export class IssueWatchService {
         throw new AdeError("idempotency", "Pending request identity has different content.");
       return pending.promise;
     }
+
     const controller = new AbortController();
+
     const release = this.engine.trackActivity(
       {
         id: `issue-watch-save:${p.request_id}`,
@@ -117,16 +133,20 @@ export class IssueWatchService {
         await this.saving.get(p.request_id)?.promise.catch(() => {});
       },
     );
+
     const promise = Promise.resolve()
       .then(async () => {
         const prior = editing ? this.store.get(editing.watch_id) : null;
+
         const resolved = await new IssueSearch(
           this.client,
           controller.signal,
           p.configuration.limits,
           this.pool,
         ).repository(repository, prior?.repository.id);
+
         controller.signal.throwIfAborted();
+
         const result = this.store.saveRevision({
           request_id: p.request_id,
           request_digest: requestDigest,
@@ -141,6 +161,7 @@ export class IssueWatchService {
               }
             : {}),
         });
+
         this.changed();
         return result;
       })
@@ -148,13 +169,16 @@ export class IssueWatchService {
         this.saving.delete(p.request_id);
         release();
       });
+
     this.saving.set(p.request_id, {
       digest: requestDigest,
       controller,
       promise,
     });
+
     return promise;
   };
+
   launch = (
     input: unknown,
     intent: WatchScan["intent"] = "scan",
@@ -162,12 +186,14 @@ export class IssueWatchService {
   ) => {
     this.assertAvailable();
     const p = ScanInput.parse(input);
+
     const requestDigest = digest({
       ...p,
       request_id: undefined,
       intent,
       parentId,
     });
+
     const existing = this.store.existingRequest(p.request_id, requestDigest, "scan");
     if (existing) return { operation_id: existing.scan_id!, scan_id: existing.scan_id! };
     const watch = this.store.get(p.watch_id);
@@ -177,6 +203,7 @@ export class IssueWatchService {
         repository: watch.repository.full_name,
         prompt: p.instruction_override,
       });
+
       if (
         preview.explanation.length ||
         preview.ambiguities.length ||
@@ -190,6 +217,7 @@ export class IssueWatchService {
           "This override changes or ambiguously describes hard rules. Preview and save a new watch revision before scanning.",
         );
     }
+
     if (parentId) {
       const parent = this.store.scan(watch.id, parentId);
       if (parent.revision !== p.expected_revision)
@@ -208,6 +236,7 @@ export class IssueWatchService {
       if (intent === "continue" && parent.status !== "partial")
         throw new AdeError("invalid_state", "Continue requires a partial attempt.");
     }
+
     if (p.candidate_ids) {
       if (new Set(p.candidate_ids).size !== p.candidate_ids.length)
         throw new AdeError(
@@ -216,11 +245,13 @@ export class IssueWatchService {
         );
       for (const id of p.candidate_ids) this.store.savedCandidate(watch.id, id);
     }
+
     if (this.active.size >= 4)
       throw new AdeError(
         "busy",
         "Four Issue Watch scans are already active; retry explicitly when capacity is available.",
       );
+
     const scan: WatchScan = {
       id: randomUUID(),
       watch_id: watch.id,
@@ -255,6 +286,7 @@ export class IssueWatchService {
       context_hash: null,
       summary: {},
     };
+
     const reservation = this.store.reserve(scan, p.request_id, requestDigest);
     if (!reservation.created)
       return {
@@ -270,7 +302,9 @@ export class IssueWatchService {
       this.changed(scan);
       return { operation_id: scan.id, scan_id: scan.id };
     }
+
     const controller = new AbortController();
+
     const release = this.engine.trackActivity(
       {
         id: `issue-watch:${scan.id}`,
@@ -280,6 +314,7 @@ export class IssueWatchService {
       },
       () => this.cancel(watch.id, scan.id).then(() => {}),
     );
+
     const promise = Promise.resolve()
       .then(() => this.scanner.run(scan, controller.signal))
       .catch((error: unknown) => {
@@ -298,10 +333,12 @@ export class IssueWatchService {
         this.active.delete(scan.id);
         release();
       });
+
     this.active.set(scan.id, { controller, promise, scan });
     this.changed(scan);
     return { operation_id: scan.id, scan_id: scan.id };
   };
+
   cancel = async (watchId: string, scanId: string) => {
     const scan = this.store.scan(watchId, scanId);
     const active = this.active.get(scanId);
@@ -314,38 +351,48 @@ export class IssueWatchService {
     await active.promise;
     return this.store.scan(watchId, scanId);
   };
+
   call = async (method: string, input: unknown) => {
     switch (method) {
       case "previewRules":
         return previewRules(input);
+
       case "labels": {
         const p = z
           .object({ repository: z.string().min(1).max(500) })
           .strict()
           .parse(input);
+
         const repository = repositoryName(p.repository);
+
         const labels = await this.client.pages<unknown>(
           `repos/${repository}/labels`,
           AbortSignal.timeout(30000),
           10,
         );
+
         return z
           .array(z.object({ name: z.string().min(1).max(100) }))
           .max(1000)
           .parse(labels)
           .map((label) => label.name);
       }
+
       case "providerSupport":
         return watchProviderSupport;
+
       case "create":
         return this.save(input);
+
       case "update":
         return this.save(input, true);
+
       case "list": {
         const p = page
           .extend({ archived: z.boolean().default(false) })
           .strict()
           .parse(input);
+
         return this.store.list(p.archived, p.limit, p.before).map((watch) => {
           try {
             return {
@@ -367,6 +414,7 @@ export class IssueWatchService {
           }
         });
       }
+
       case "detail": {
         const p = watchInput.parse(input);
         const watch = this.store.get(p.watch_id);
@@ -381,6 +429,7 @@ export class IssueWatchService {
           provider_support: watchProviderSupport,
         };
       }
+
       case "archive": {
         const p = watchInput
           .extend({
@@ -389,13 +438,16 @@ export class IssueWatchService {
           })
           .strict()
           .parse(input);
+
         this.assertAvailable();
         const result = this.store.archive(p.watch_id, p.expected_revision, p.archived);
         this.changed();
         return result;
       }
+
       case "scan":
         return this.launch(input);
+
       case "retry":
       case "continue": {
         const p = scanOwner
@@ -405,6 +457,7 @@ export class IssueWatchService {
           })
           .strict()
           .parse(input);
+
         const parent = this.store.scan(p.watch_id, p.scan_id);
         if (method === "continue" && !p.candidate_ids)
           throw new AdeError(
@@ -426,14 +479,17 @@ export class IssueWatchService {
           parent.id,
         );
       }
+
       case "cancel": {
         const p = scanOwner.parse(input);
         return this.cancel(p.watch_id, p.scan_id);
       }
+
       case "scanHistory": {
         const p = watchInput.extend(page.shape).strict().parse(input);
         return this.store.history(p.watch_id, p.limit, p.before);
       }
+
       case "scanDetail": {
         const p = scanOwner.parse(input);
         return {
@@ -461,6 +517,7 @@ export class IssueWatchService {
             .filter((row) => row.watch_id === p.watch_id && row.scan_id === p.scan_id),
         };
       }
+
       case "events":
       case "logs": {
         const p = scanOwner
@@ -473,6 +530,7 @@ export class IssueWatchService {
           })
           .strict()
           .parse(input);
+
         this.store.scan(p.watch_id, p.scan_id);
         if (
           !this.engine.db.all(
@@ -489,6 +547,7 @@ export class IssueWatchService {
             after: p.after,
             search: p.search,
           });
+
         const rows = this.engine.db.all<{
           id: number;
           run_id: string;
@@ -505,6 +564,7 @@ export class IssueWatchService {
           p.search || "",
           (p.search || "").toLowerCase(),
         );
+
         const events = rows.slice(0, 500);
         if (p.after === undefined) events.reverse();
         return {
@@ -513,6 +573,7 @@ export class IssueWatchService {
           more: rows.length > 500,
         };
       }
+
       case "candidateDetail": {
         const p = candidateOwner.parse(input);
         const candidate = this.store.candidate(p.watch_id, p.scan_id, p.issue_id);
@@ -526,17 +587,21 @@ export class IssueWatchService {
             .filter((source) => candidate.source_keys.includes(source.key)),
         };
       }
+
       case "sourceDetail": {
         const p = scanOwner
           .extend({ source_key: z.string().min(1).max(256) })
           .strict()
           .parse(input);
+
         const source = this.store
           .sources(p.watch_id, p.scan_id)
           .find((item) => item.key === p.source_key);
+
         if (!source) throw new AdeError("not_found", "Source does not belong to this scan.");
         return source;
       }
+
       case "dismissCandidate": {
         const p = watchInput
           .extend({
@@ -545,19 +610,23 @@ export class IssueWatchService {
           })
           .strict()
           .parse(input);
+
         this.assertAvailable();
         const result = this.store.dismiss(p.watch_id, p.issue_id, p.dismissed);
         this.changed();
         return result;
       }
+
       default:
         throw new AdeError("invalid_method", "Unknown Issue Watch operation.");
     }
   };
+
   close = async () => {
     this.stopped = true;
     for (const active of this.active.values()) active.controller.abort();
     for (const saving of this.saving.values()) saving.controller.abort();
+
     await Promise.allSettled(
       [...this.active.values()]
         .map((active) => active.promise)

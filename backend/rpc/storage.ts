@@ -1,9 +1,11 @@
 import { z } from "zod";
+
 import { AdeError } from "../domain";
 import { capture, checked } from "../execution/runtime/process";
 import { TaskDisposalSchema } from "../storage/disposal";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
+
 export const storageMethods = [
   "storage.info",
   "storage.blockers",
@@ -20,6 +22,7 @@ export const storageMethods = [
   "task.disposal.discard",
   "task.disposal.preserve",
 ] as const;
+
 /** Validates and dispatches storage requests through their existing domain services. */
 export const callStorage = async (
   services: Pick<RpcServices, "engine" | "storage" | "terminals">,
@@ -30,10 +33,12 @@ export const callStorage = async (
   switch (method) {
     case "storage.info":
       return services.storage.info();
+
     case "storage.blockers": {
       const p = z.object({ task_id: z.string().uuid().optional() }).parse(input);
       return e.cleanupBlockers(p.task_id);
     }
+
     case "storage.stopBlockers": {
       const p = z
         .object({
@@ -41,9 +46,11 @@ export const callStorage = async (
           ids: z.array(z.string()).max(100),
         })
         .parse(input);
+
       const blockers = e
         .cleanupBlockers(p.task_id)
         .filter((b) => b.stoppable && p.ids.includes(b.id));
+
       await Promise.all(
         blockers.map((b) =>
           b.kind === "terminal" && b.task_id
@@ -51,14 +58,17 @@ export const callStorage = async (
             : e.stopActivity(b.id),
         ),
       );
+
       return e.cleanupBlockers(p.task_id);
     }
+
     case "storage.open": {
       if (process.env.WSL_DISTRO_NAME)
         await capture("explorer.exe", [await checked("wslpath", ["-w", e.root], e.root)], e.root);
       else await capture("xdg-open", [e.root], e.root);
       return null;
     }
+
     case "storage.clear": {
       const p = z
         .object({
@@ -66,20 +76,25 @@ export const callStorage = async (
           confirmed: z.literal(true),
         })
         .parse(input);
+
       await services.storage.clear(p.kind);
       return null;
     }
+
     case "storage.cleanCompleted": {
       z.object({ confirmed: z.literal(true) }).parse(input);
       return services.storage.cleanCompleted();
     }
+
     case "storage.removeUnused": {
       z.object({ confirmed: z.literal(true) }).parse(input);
       return services.storage.removeUnused();
     }
+
     case "storage.resetPreview":
       z.object({}).strict().parse(input);
       return services.storage.previewReset();
+
     case "storage.reset": {
       const p = z
         .object({
@@ -89,6 +104,7 @@ export const callStorage = async (
         })
         .strict()
         .parse(input);
+
       const blockers = e.cleanupBlockers();
       if (blockers.length)
         throw new AdeError("busy", "Data reset is waiting for active operations to finish.", {
@@ -96,6 +112,7 @@ export const callStorage = async (
         });
       return services.storage.reset(p.preview_token);
     }
+
     case "task.cleanup": {
       const p = idInput
         .extend({
@@ -106,8 +123,10 @@ export const callStorage = async (
           history: z.boolean(),
         })
         .parse(input);
+
       return services.storage.cleanupTask(p.id, p);
     }
+
     case "task.archive": {
       const p = idInput.extend({ archived: z.boolean() }).parse(input);
       if (!p.archived && e.db.task(p.id).status === "preserved")
@@ -121,19 +140,24 @@ export const callStorage = async (
       e.changed(p.id);
       return null;
     }
+
     case "task.disposal.preview":
       return services.storage.previewTaskDisposal(idInput.strict().parse(input).id);
+
     case "task.disposal.discard": {
       const p = TaskDisposalSchema.parse(input);
       return services.storage.discardTask(p.id, p.fingerprint, p.acknowledge_unpublished);
     }
+
     case "task.disposal.preserve": {
       const p = idInput
         .extend({ confirmed: z.literal(true) })
         .strict()
         .parse(input);
+
       return services.storage.preserveTaskWork(p.id);
     }
+
     default:
       throw new AdeError("invalid_method", `Unknown method: ${method}`);
   }

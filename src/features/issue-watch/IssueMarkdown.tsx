@@ -1,5 +1,6 @@
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
 import { errorMessage } from "../../lib/api";
 
 export const IssueMarkdown = ({
@@ -19,6 +20,7 @@ export const IssueMarkdown = ({
           let allowed = false;
           try {
             const url = new URL(href || "");
+
             allowed =
               url.protocol === "https:" &&
               url.hostname === "github.com" &&
@@ -28,12 +30,14 @@ export const IssueMarkdown = ({
           } catch {
             /* Relative and external links remain visible as unverified text. */
           }
+
           return allowed ? (
             <a
               href={href}
               rel="noopener noreferrer"
               onClick={(event) => {
                 event.preventDefault();
+
                 void window.vibestar
                   .openExternal(href!)
                   .catch((error) => onError(errorMessage(error)));

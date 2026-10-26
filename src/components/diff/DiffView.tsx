@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+
 import type { FileDiff } from "../../lib/types";
 import { highlightCode } from "../../lib/diff/highlight";
 import { parseUnifiedDiff, sourceLines, splitDiffRows, type DiffLine } from "../../lib/diff/parse";
@@ -13,6 +14,7 @@ const Code = ({ text, path }: { text: string; path: string }) => (
     ))}
   </code>
 );
+
 const LineRows = ({ lines, split, path }: { lines: DiffLine[]; split: boolean; path: string }) =>
   split
     ? splitDiffRows(lines).map((row, index) =>
@@ -30,9 +32,11 @@ const LineRows = ({ lines, split, path }: { lines: DiffLine[]; split: boolean; p
             >
               {row.base && <Code text={row.base.text} path={path} />}
             </td>
+
             <td className={`diff-number ${row.working?.kind || "empty"}`}>
               {row.working?.newLine}
             </td>
+
             <td
               className={`diff-code ${row.working?.kind || "empty"}`}
               data-side="working"
@@ -55,6 +59,7 @@ const LineRows = ({ lines, split, path }: { lines: DiffLine[]; split: boolean; p
             <td className="diff-sign" aria-hidden="true">
               {line.kind === "add" ? "+" : line.kind === "delete" ? "−" : " "}
             </td>
+
             <td
               className="diff-code"
               data-side={line.kind === "delete" ? "base" : "working"}
@@ -84,6 +89,7 @@ const ContextFold = ({
   path: string;
 }) => {
   const [shown, setShown] = useState(0);
+
   const valid = useMemo(
     () =>
       count > 0 &&
@@ -96,13 +102,16 @@ const ContextFold = ({
         .every((line, index) => line === modified[newStart - 1 + index]),
     [original, modified, oldStart, newStart, count],
   );
+
   if (!valid) return null;
+
   const lines = Array.from({ length: Math.min(shown, count) }, (_, index) => ({
     kind: "context" as const,
     text: original[oldStart - 1 + index],
     oldLine: oldStart + index,
     newLine: newStart + index,
   }));
+
   return (
     <>
       <LineRows lines={lines} split={split} path={path} />
@@ -122,6 +131,7 @@ const ContextFold = ({
               Fold {count} unchanged lines
             </Button>
           )}
+
           {shown >= 2000 && shown < count && (
             <small>Context display is bounded. Open the complete file in your editor.</small>
           )}
@@ -153,6 +163,7 @@ export const DiffView = ({
             ? "This diff exceeds the interactive view limit (750,000 characters or 12,000 lines). Open it in your editor."
             : "This patch has no reliable hunk mappings. Its original text remains available below."}
         </p>
+
         <details>
           <summary>View raw patch</summary>
           <pre className="change-patch">{file.unified}</pre>
@@ -192,6 +203,7 @@ export const DiffView = ({
             </>
           )}
         </colgroup>
+
         <thead>
           <tr>
             {split ? (
@@ -208,6 +220,7 @@ export const DiffView = ({
             )}
           </tr>
         </thead>
+
         <tbody>
           {parsed.hunks.map((hunk, index) => {
             const previous = parsed.hunks[index - 1];
@@ -227,6 +240,7 @@ export const DiffView = ({
                     path={path}
                   />
                 )}
+
                 <tr className="diff-hunk">
                   <td colSpan={4}>{hunk.header}</td>
                 </tr>
@@ -234,6 +248,7 @@ export const DiffView = ({
               </Fragment>
             );
           })}
+
           {original.length - (last.oldStart + last.oldCount - 1) ===
             modified.length - (last.newStart + last.newCount - 1) && (
             <ContextFold

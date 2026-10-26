@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+
 import { useTaskView, updateTaskView } from "../../lib/taskView";
 
 export const ChatSurface = ({
@@ -19,12 +20,14 @@ export const ChatSurface = ({
   const view = useTaskView(id);
   const scroll = useRef<HTMLDivElement>(null);
   const position = useRef({ top: view.chatScroll, follow: view.chatFollow });
+
   useEffect(() => {
     if (scroll.current && !view.expandedTool)
       scroll.current.scrollTop = position.current.follow
         ? scroll.current.scrollHeight
         : position.current.top;
   }, [revision, view.expandedTool]);
+
   return (
     <div className="chat-main" hidden={view.expandedTool}>
       {activity}
@@ -35,10 +38,12 @@ export const ChatSurface = ({
         onScroll={(e) => {
           if (view.expandedTool) return;
           const el = e.currentTarget;
+
           position.current = {
             top: el.scrollTop,
             follow: el.scrollHeight - el.scrollTop - el.clientHeight < 80,
           };
+
           updateTaskView(id, {
             chatScroll: position.current.top,
             chatFollow: position.current.follow,

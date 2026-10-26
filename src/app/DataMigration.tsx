@@ -1,6 +1,8 @@
 import { useState } from "react";
+
 import { rpc, errorMessage } from "../lib/api";
 import { Button } from "../components/ui/button";
+
 export const DataMigration = ({
   migration,
   refresh,
@@ -10,6 +12,7 @@ export const DataMigration = ({
 }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
   const choose = async (choice: "migrate" | "old" | "fresh") => {
     setBusy(true);
     setError("");
@@ -22,6 +25,7 @@ export const DataMigration = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -41,9 +45,11 @@ export const DataMigration = ({
           <Button disabled={busy} variant="default" onClick={() => void choose("migrate")}>
             {busy ? "Preparing data…" : "Migrate"}
           </Button>
+
           <Button disabled={busy} onClick={() => void choose("old")}>
             Use old location
           </Button>
+
           <Button disabled={busy} onClick={() => void choose("fresh")}>
             Start fresh
           </Button>

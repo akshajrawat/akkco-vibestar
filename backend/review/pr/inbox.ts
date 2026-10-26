@@ -14,12 +14,14 @@ export const reviewActionState = (
       Date.parse(current.updated_at) > Date.parse(analysis.ended_at || analysis.started_at))
   )
     return "Analysis stale";
+
   const outstanding = analysis.report.actions.filter(
     (action) =>
       !action.threadResolved &&
       action.responseState !== "answered" &&
       !["positive_feedback", "informational"].includes(action.classification),
   );
+
   if (
     outstanding.some(
       (action) => action.responseState === "needs_manual_judgment" || action.confidence === "low",

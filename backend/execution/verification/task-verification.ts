@@ -6,10 +6,12 @@ export const taskVerification = (db: Database, id: string) => {
     "SELECT id,started_at FROM agent_runs WHERE task_id=? AND stage=3 ORDER BY started_at DESC,rowid DESC LIMIT 1",
     id,
   )[0];
+
   const artifact = db.all<{ id: string; content: string }>(
     "SELECT id,content FROM task_artifacts WHERE task_id=? AND stage=3 AND kind='plan' ORDER BY created_at DESC,rowid DESC LIMIT 1",
     id,
   )[0];
+
   const report = artifact
     ? db.records.decode({
         table: "task_artifacts",
@@ -18,10 +20,12 @@ export const taskVerification = (db: Database, id: string) => {
         source: artifact.content,
       })
     : { verification: "missing implementation report" };
+
   const reviewer = db.all<{ id: string; content: string }>(
     "SELECT id,content FROM task_artifacts WHERE task_id=? AND stage=5 AND kind='plan' ORDER BY created_at DESC,rowid DESC LIMIT 1",
     id,
   )[0];
+
   const review = reviewer
     ? db.records.decode({
         table: "task_artifacts",
@@ -30,6 +34,7 @@ export const taskVerification = (db: Database, id: string) => {
         source: reviewer.content,
       })
     : null;
+
   const implementationChecks = Array.isArray(report?.verification) ? report.verification : [];
   const reviewChecks = Array.isArray(review?.verification) ? review.verification : [];
   // Reviewer statements cannot replace implementation requirements. Matching
@@ -46,6 +51,7 @@ export const taskVerification = (db: Database, id: string) => {
             check.command === original.command &&
             (check.scope === "repository" || check.scope === "issue"),
         );
+
         return {
           ...original,
           ...(!(original.scope === "repository" || original.scope === "issue") && protectedReview
@@ -69,6 +75,7 @@ export const taskVerification = (db: Database, id: string) => {
           ),
       ),
     ];
+
   const commands = db.all<VerificationCommand>(
     `SELECT id,run_id,command,status,exit_code,stdout,stderr FROM test_runs WHERE task_id=? AND (run_id=? OR (run_id IS NULL AND started_at>=?) OR run_id IN (SELECT id FROM agent_runs WHERE task_id=? AND stage=5 AND purpose='Antigravity Final Review' AND started_at>=?)) ORDER BY started_at,rowid`,
     id,
@@ -77,7 +84,9 @@ export const taskVerification = (db: Database, id: string) => {
     id,
     implementation?.started_at || "9999",
   );
+
   const task = db.task(id);
+
   const history = db
     .all<{ id: string; output: string | null; status: string }>(
       "SELECT id,output,status FROM agent_runs WHERE task_id=? AND (stage=3 OR (stage=5 AND purpose='Antigravity Final Review')) AND id!=? ORDER BY started_at,rowid",
@@ -100,6 +109,7 @@ export const taskVerification = (db: Database, id: string) => {
         run.id,
       ),
     }));
+
   return verificationSummary(
     report,
     commands,

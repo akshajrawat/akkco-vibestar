@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import {
   AdeError,
   FollowupConfigSchema,
@@ -17,6 +18,7 @@ import { StartWorkflowSchema, TaskChatSchema } from "../execution/workflow";
 import { fetchIssue } from "../workspace/issue";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
+
 export const tasksMethods = [
   "task.message.retry",
   "task.message.send",
@@ -46,6 +48,7 @@ export const tasksMethods = [
   "task.discard",
   "task.command",
 ] as const;
+
 /** Validates and dispatches tasks requests through their existing domain services. */
 export const callTasks = async (
   services: Pick<RpcServices, "engine" | "terminals">,
@@ -62,6 +65,7 @@ export const callTasks = async (
           request_id: z.string().uuid().optional(),
         })
         .parse(input);
+
       const message = e.db.all<{
         content: string;
         configuration: string | null;
@@ -71,6 +75,7 @@ export const callTasks = async (
         p.message_id,
         p.id,
       )[0];
+
       if (!message) throw new AdeError("not_found", "Message not found");
       if (message.status !== "delivered" && (!p.content || p.content === message.content))
         return e.sendSavedMessage(p.id, p.message_id);
@@ -92,6 +97,7 @@ export const callTasks = async (
         p.request_id,
       );
     }
+
     case "task.message.send": {
       const p = idInput
         .extend({
@@ -100,8 +106,10 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       return e.sendSavedMessage(p.id, p.message_id, p.configuration);
     }
+
     case "task.configure": {
       const p = idInput.extend({ settings: SettingsSchema }).parse(input);
       if (e.isActive(p.id))
@@ -110,14 +118,17 @@ export const callTasks = async (
           "Stop this task's active run or terminal before changing its models",
         );
       const task = e.db.task(p.id);
+
       e.db.saveTask({
         ...task,
         execution_settings: p.settings,
         updated_at: now(),
       });
+
       e.changed(p.id);
       return p.settings;
     }
+
     case "task.configureStage": {
       const p = idInput
         .extend({
@@ -126,6 +137,7 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       const task = e.db.task(p.id);
       if (e.cleanupBlockers(p.id).length || task.status === "queued")
         throw new AdeError(
@@ -144,14 +156,17 @@ export const callTasks = async (
           "invalid_state",
           "Only stages that have never started can change their saved model configuration.",
         );
+
       e.db.saveTask({
         ...task,
         stage_settings: { ...task.stage_settings, [p.stage]: p.config },
         updated_at: now(),
       });
+
       e.changed(p.id);
       return p.config;
     }
+
     case "task.browser.configure": {
       const p = idInput
         .extend({
@@ -160,6 +175,7 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       e.assertAvailable();
       const task = e.db.task(p.id);
       if (e.isActive(p.id) || task.status === "queued")
@@ -174,19 +190,23 @@ export const callTasks = async (
           "busy",
           "This task became active while its verification environment was being checked.",
         );
+
       e.db.saveTask({
         ...latest,
         verification_environment: p.environment,
         browser_environment_report: undefined,
         updated_at: now(),
       });
+
       e.changed(p.id);
       return { environment: p.environment };
     }
+
     case "task.browser.inspect": {
       const p = idInput.strict().parse(input);
       const task = e.db.task(p.id);
       await e.git.assertTask(task);
+
       const result = await e.runCommand(
         p.id,
         [
@@ -197,6 +217,7 @@ export const callTasks = async (
         ],
         true,
       );
+
       if (result.code !== 0)
         throw new AdeError(
           "browser_environment",
@@ -209,14 +230,17 @@ export const callTasks = async (
           "stale_environment",
           "The verification environment changed. Inspect it again explicitly.",
         );
+
       e.db.saveTask({
         ...latest,
         browser_environment_report: report,
         updated_at: now(),
       });
+
       e.changed(p.id);
       return report;
     }
+
     case "task.detail": {
       const id = idInput.parse(input).id;
       const detail = e.db.detail(id);
@@ -231,6 +255,7 @@ export const callTasks = async (
         executing: e.isExecuting(id),
       };
     }
+
     case "task.preview": {
       const p = z
         .object({
@@ -239,6 +264,7 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       const reference = parseIssue(p.issue_url);
       const repository = e.taskRepository(p.repository_id, reference);
       const issue = await fetchIssue(reference, e.root);
@@ -248,6 +274,7 @@ export const callTasks = async (
         repository,
       };
     }
+
     case "task.create": {
       const p = z
         .object({
@@ -261,6 +288,7 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       if (p.scope_mode === "partial" && !p.claimed_scope.trim())
         throw new AdeError("invalid_input", "Claimed scope is required for a partial task");
       return e.createTask(
@@ -273,16 +301,20 @@ export const callTasks = async (
         p.request_id,
       );
     }
+
     case "task.cancel": {
       const id = idInput.parse(input).id;
       await services.terminals.close(id);
       e.cancel(id);
       return null;
     }
+
     case "task.startWorkflow":
       return e.startWorkflow(StartWorkflowSchema.parse(input));
+
     case "task.chat":
       return e.chat(TaskChatSchema.parse(input));
+
     case "task.retry": {
       const p = idInput
         .extend({
@@ -290,10 +322,13 @@ export const callTasks = async (
           restart: z.boolean().optional(),
         })
         .parse(input);
+
       return e.retry(p.id, p.stage, p.restart);
     }
+
     case "task.verification.recheck":
       return e.recheckEvidence(idInput.strict().parse(input).id);
+
     case "task.verification.policy": {
       const p = idInput
         .extend({
@@ -302,21 +337,27 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       return e.setVerificationPolicy(p.id, p.policy);
     }
+
     case "task.verification.run": {
       const p = idInput
         .extend({ command: z.string().min(1).max(16000) })
         .strict()
         .parse(input);
+
       return e.runMissingCheck(p.id, p.command);
     }
+
     case "task.verification.fix": {
       const p = idInput.extend({ request_id: z.string().uuid() }).strict().parse(input);
       return e.fixWithCodex(p.id, p.request_id);
     }
+
     case "task.verification.reviewPreview":
       return e.reviewGapsPreview(idInput.strict().parse(input).id);
+
     case "task.verification.continueReview": {
       const p = idInput
         .extend({
@@ -334,11 +375,13 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       return e.approveStage(p.id, p.instructions, p.artifact_id, {
         fingerprint: p.fingerprint,
         evidence_hash: p.evidence_hash,
       });
     }
+
     case "task.approve": {
       const p = idInput
         .extend({
@@ -353,12 +396,15 @@ export const callTasks = async (
         })
         .strict()
         .parse(input);
+
       return e.approveStage(p.id, p.instructions, p.artifact_id);
     }
+
     case "task.acceptDraft": {
       const p = idInput.extend({ run_id: z.string().uuid() }).strict().parse(input);
       return e.acceptDraft(p.id, p.run_id);
     }
+
     case "task.followup": {
       const p = idInput
         .extend({
@@ -368,8 +414,10 @@ export const callTasks = async (
           request_id: z.string().uuid().optional(),
         })
         .parse(input);
+
       return e.followUp(p.id, p.content, p.configuration, p.save_only, p.request_id);
     }
+
     case "task.complete": {
       const t = e.db.task(idInput.parse(input).id);
       if (e.isActive(t.id) || t.status !== "ready_for_review")
@@ -388,8 +436,10 @@ export const callTasks = async (
       e.changed(t.id);
       return null;
     }
+
     case "task.diff":
       return e.git.diff(e.db.task(idInput.parse(input).id));
+
     case "task.file": {
       const p = idInput
         .extend({
@@ -397,22 +447,27 @@ export const callTasks = async (
           old_path: z.string().nullable().optional(),
         })
         .parse(input);
+
       return e.git.file(e.db.task(p.id), p.path, p.old_path);
     }
+
     case "task.discard": {
       const p = idInput
         .extend({ path: z.string().optional(), confirmed: z.literal(true) })
         .parse(input);
+
       if (e.isActive(p.id))
         throw new AdeError("invalid_state", "Stop the task before discarding changes");
       await e.git.discard(e.db.task(p.id), p.path);
       e.changed(p.id);
       return null;
     }
+
     case "task.command": {
       const p = idInput.extend({ argv: z.array(z.string()).min(1).max(100) }).parse(input);
       return e.runCommand(p.id, p.argv);
     }
+
     default:
       throw new AdeError("invalid_method", `Unknown method: ${method}`);
   }

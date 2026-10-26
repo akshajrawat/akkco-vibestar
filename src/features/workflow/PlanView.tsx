@@ -39,11 +39,14 @@ export const PlanView = ({
         ))}
       </div>
     )}
+
     {(compact ? [selectedStage] : [1, 2]).map((stage) => {
       const saved = [...artifacts].reverse().find((a) => a.stage === stage && a.kind === "plan");
+
       const run = [...runs]
         .reverse()
         .find((r) => r.stage === stage && r.purpose !== "Code Review Ask AI");
+
       const stored = artifacts.find((a) => a.kind === `draft:${run?.id}`);
       let draft: unknown = stored ? JSON.parse(stored.content).plan : null;
       if (!draft && run) {
@@ -51,6 +54,7 @@ export const PlanView = ({
         for (const event of events.filter((e) => e.run_id === run.id && e.kind === "message"))
           draft = stream.observe(eventData(event.data)) || draft;
       }
+
       const result = saved ? JSON.parse(saved.content) : draft;
       return (
         <section key={stage}>
@@ -73,6 +77,7 @@ export const PlanView = ({
                 This draft was emitted by the provider. The CLI has not confirmed successful
                 completion.
               </p>
+
               {acceptDraft && run && runs.at(-1)?.id === run.id && run.status !== "completed" && (
                 <Button size="sm" disabled={busy} onClick={() => acceptDraft(run)}>
                   {run.status === "running" ? "Stop run & use this draft…" : "Use this draft…"}
@@ -80,6 +85,7 @@ export const PlanView = ({
               )}
             </div>
           )}
+
           {result ? (
             Object.entries(result as Record<string, unknown>).map(([key, value]) => (
               <div className="plan-section" key={key}>

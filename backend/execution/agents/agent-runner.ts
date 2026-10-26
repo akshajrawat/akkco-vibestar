@@ -33,6 +33,7 @@ import {
   type AgentProvider,
   configurationError,
 } from "../providers/contracts";
+
 const stageConfiguration = (stage: number, settings: Settings, task: Task | null) =>
   task?.stage_settings?.[stage as 1 | 2 | 3 | 5] ??
   (stage === 5
@@ -54,6 +55,7 @@ export class AgentRunner {
       provider?: "codex" | "antigravity",
     ) => AgentProvider,
   ) {}
+
   /** Checks the saved pipeline's provider capabilities without consuming inference or starting a stage. */
   validateWorkflow = async (task: Task, signal: AbortSignal) => {
     const settings = task.execution_settings || this.db.settings();
@@ -70,6 +72,7 @@ export class AgentRunner {
       if (invalid) throw new AdeError("model", invalid);
     }
   };
+
   run = async (
     t: Task | { id: string; stage: 1 | 2 | 3 | 5 },
     settings: Settings,
@@ -99,19 +102,24 @@ export class AgentRunner {
     const fingerprint = repair ? this.git.repairFingerprint : this.git.fingerprint;
     if (!assignment && !options?.workspace)
       throw new AdeError("invalid_state", "Detached analysis requires a managed PR workspace");
+
     const table = assignment
       ? "agent_runs"
       : options?.jobId || options?.purpose === "scheduled"
         ? "scheduled_agent_runs"
         : "utility_runs";
+
     const followup =
       t.stage === 3 && task?.continuation === "implementation" ? task.followup_config : undefined;
+
     const provider = this.providers(
       t.stage,
       options?.provider || followup?.provider || (t.stage === 5 ? "antigravity" : undefined),
     );
+
     const config =
       options?.config ?? followup?.config ?? stageConfiguration(t.stage, settings, task);
+
     const id = randomUUID();
     if (options?.scanId || options?.watchId) {
       if (
@@ -129,20 +137,24 @@ export class AgentRunner {
           "Issue Watch utility execution needs its one reserved, unconsumed scan invocation slot.",
         );
     }
+
     const started = Date.now();
     const prompt = options?.prompt ?? buildPrompt(this.db, task!);
     const usage = new Usage(this.db);
+
     const repo = assignment
       ? this.db.repository(assignment.repo_id)
       : options?.telemetryTaskId
         ? this.db.repository(this.db.task(options.telemetryTaskId).repo_id)
         : null;
+
     const purpose =
       options?.purpose ||
       (t.stage === 3 && task?.continuation === "implementation"
         ? "Chat Follow-up"
         : ["", "Antigravity Plan", "Codex Plan Refinement", "Codex Implementation"][t.stage] ||
           (t.stage === 5 ? "Antigravity Final Review" : "Pipeline"));
+
     usage.start(id, {
       task_id: task?.id || options?.telemetryTaskId || null,
       job_id: options?.jobId || (!task && options?.purpose === "scheduled" ? t.id : null),
@@ -152,12 +164,15 @@ export class AgentRunner {
       model: config.model,
       effort: config.effort,
     });
+
     if (repair) this.db.run("UPDATE ai_usage SET repair_id=? WHERE id=?", repair.id, id);
+
     this.emit({
       event: "usage.changed",
       task_id: task?.id || options?.telemetryTaskId,
       repair_id: repair?.id,
     });
+
     const parent = repair
       ? "repair_id"
       : task
@@ -165,6 +180,7 @@ export class AgentRunner {
         : table === "scheduled_agent_runs"
           ? "job_id"
           : null;
+
     this.db.run(
       `INSERT INTO ${table}(id,${parent ? `${parent},` : ""}stage,provider,model,effort,prompt,status,started_at,purpose) VALUES(?${parent ? ",?" : ""},?,?,?,?,?,'running',?,?)`,
       id,
@@ -177,6 +193,7 @@ export class AgentRunner {
       now(),
       purpose,
     );
+
     if (options?.scanId)
       this.db.transaction(() => {
         this.db.run(
@@ -185,12 +202,14 @@ export class AgentRunner {
           options.scanId!,
           id,
         );
+
         this.db.run(
           "UPDATE ai_usage SET watch_id=?,scan_id=? WHERE id=?",
           options.watchId!,
           options.scanId!,
           id,
         );
+
         this.db.run(
           "UPDATE issue_watch_scans SET utility_run_id=?,data=json_set(data,'$.utility_run_id',?) WHERE id=? AND watch_id=?",
           id,
@@ -199,8 +218,10 @@ export class AgentRunner {
           options.watchId!,
         );
       });
+
     const utilityEvent = (event: NormalizedEvent, raw = "", stream = "stdout") => {
       if (!options?.scanId) return;
+
       this.db.run(
         "INSERT INTO utility_events(run_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,?,?,?)",
         id,
@@ -210,6 +231,7 @@ export class AgentRunner {
         raw,
         stream,
       );
+
       this.emit({
         event: "utility.event",
         watch_id: options.watchId,
@@ -218,14 +240,17 @@ export class AgentRunner {
         ...event,
       });
     };
+
     if (options?.analysisId && table === "scheduled_agent_runs") {
       this.db.run(
         "UPDATE scheduled_agent_runs SET analysis_id=? WHERE id=?",
         options.analysisId,
         id,
       );
+
       this.db.run("UPDATE ai_usage SET analysis_id=? WHERE id=?", options.analysisId, id);
     }
+
     if (task && options?.questionId) {
       this.db.run(
         "UPDATE code_questions SET run_id=? WHERE id=? AND task_id=?",
@@ -233,6 +258,7 @@ export class AgentRunner {
         options.questionId,
         task.id,
       );
+
       this.db.run(
         "UPDATE task_messages SET run_id=? WHERE id=? AND task_id=?",
         id,
@@ -240,6 +266,7 @@ export class AgentRunner {
         task.id,
       );
     }
+
     if (task && options?.messageId)
       this.db.run(
         "UPDATE task_messages SET run_id=? WHERE id=? AND task_id=? AND purpose='chat'",
@@ -253,21 +280,25 @@ export class AgentRunner {
         id,
         task.id,
       );
+
     const dir = join(
       this.root,
       "logs",
       assignment ? t.id : options?.scanId ? `issue-watch-${options.scanId}` : `pr-watch-${t.id}`,
     );
+
     let cwd = "";
     let stdout: Awaited<ReturnType<typeof open>> | undefined;
     let stderr: Awaited<ReturnType<typeof open>> | undefined;
     const outputAbort = new AbortController();
     const runSignal = AbortSignal.any([signal, outputAbort.signal]);
     let outputFailure: Error | undefined;
+
     const writes = new BoundedWriter((error) => {
       outputFailure = error;
       outputAbort.abort();
     });
+
     const draft = new StreamedPlan(t.stage);
     const commands = new CommandExecutions(this.db);
     let savedDraft = "";
@@ -296,24 +327,31 @@ export class AgentRunner {
         );
       const invalid = configurationError(detection, config);
       if (invalid) throw new AdeError("model", invalid);
+
       const selectedConfig = {
         ...config,
         model: config.model || detection.models.find((m) => m.isDefault)?.id || "",
       };
+
       if (selectedConfig.model && !config.model) {
         this.db.run(`UPDATE ${table} SET model=? WHERE id=?`, selectedConfig.model, id);
         this.db.run("UPDATE ai_usage SET model=? WHERE id=?", selectedConfig.model, id);
       }
+
       await mkdir(dir, { recursive: true });
+
       const schema = options?.schema
         ? z.toJSONSchema(options.schema)
         : options?.purpose === "scheduled"
           ? z.toJSONSchema(ActionSchema)
           : schemaFor(t.stage);
+
       const outputSchema = provider.outputSchema?.(schema) || schema;
+
       await writeFile(schemaPath, JSON.stringify(outputSchema), {
         mode: 0o600,
       });
+
       let sentPrompt = prompt;
       const contextPaths = [...(options?.contextPaths || [])];
       if (task && t.stage === 5 && !options) {
@@ -321,11 +359,14 @@ export class AgentRunner {
           join(this.root, "artifacts"),
           join(t.id, id, "review-evidence.json"),
         );
+
         await mkdir(dirname(evidencePath), {
           recursive: true,
           mode: 0o700,
         });
+
         await managedPath(join(this.root, "artifacts"), evidencePath);
+
         await writeFile(
           evidencePath,
           redact(
@@ -353,10 +394,12 @@ export class AgentRunner {
           ),
           { mode: 0o600 },
         );
+
         contextPaths.push(evidencePath);
         sentPrompt += `\nCOMPLETE REVIEW EVIDENCE: ${evidencePath}`;
         this.db.run(`UPDATE ${table} SET prompt=? WHERE id=?`, redact(sentPrompt), id);
       }
+
       const directInvocation = provider.invocation({
         runId: id,
         cwd,
@@ -367,6 +410,7 @@ export class AgentRunner {
         schema: outputSchema,
         workspaceType: repair ? "task" : options ? "utility" : "task",
       });
+
       const invocation = await sandboxInvocation(
         this.root,
         this.db,
@@ -381,6 +425,7 @@ export class AgentRunner {
         options?.workspace,
         contextPaths,
       );
+
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
       const before = assignment ? await fingerprint(assignment) : null;
@@ -398,6 +443,7 @@ export class AgentRunner {
         );
       this.emit({ event: "changed", task_id: task?.id, repair_id: repair?.id });
       invoked = true;
+
       const output = await execute({
         ...invocation,
         cwd,
@@ -410,12 +456,14 @@ export class AgentRunner {
           writes.write(`${line}\n`, (value) =>
             (stream === "stdout" ? stdout : stderr)!.write(value),
           );
+
           let raw: Record<string, unknown>;
           try {
             raw = object(JSON.parse(line));
           } catch {
             raw = { unparsed: line };
           }
+
           const conversationId = stream === "stdout" ? provider.conversationId(raw) : null;
           if (stream === "stdout") {
             usage.observe(id, raw);
@@ -424,27 +472,32 @@ export class AgentRunner {
               this.db.run(`UPDATE ${table} SET model=? WHERE id=?`, reportedModel, id);
               this.db.run("UPDATE ai_usage SET model=? WHERE id=?", reportedModel, id);
             }
+
             if (raw.event === "init" || ["system", "thread.started"].includes(String(raw.type))) {
               const reportedEffort =
                 object(raw.init).reasoning_effort ||
                 object(raw.init).effort ||
                 raw.reasoning_effort ||
                 raw.effort;
+
               if (typeof reportedEffort === "string" && reportedEffort) {
                 this.db.run(`UPDATE ${table} SET effort=? WHERE id=?`, reportedEffort, id);
                 this.db.run("UPDATE ai_usage SET effort=? WHERE id=?", reportedEffort, id);
               }
             }
           }
+
           this.emit({
             event: "usage.changed",
             task_id: task?.id || options?.telemetryTaskId,
             repair_id: repair?.id,
           });
+
           if (conversationId) {
             this.db.run("UPDATE ai_usage SET provider_session_id=? WHERE id=?", conversationId, id);
             this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
           }
+
           const result = stream === "stdout" ? provider.result(raw) : undefined;
           if (result !== undefined) final = result;
           for (const event of stream === "stderr"
@@ -455,6 +508,7 @@ export class AgentRunner {
               const plan = draft.observe(event.data);
               if (plan && JSON.stringify(plan) !== savedDraft) {
                 savedDraft = JSON.stringify(plan);
+
                 this.db.run(
                   "INSERT INTO task_artifacts VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,created_at=excluded.created_at",
                   draftId,
@@ -466,11 +520,14 @@ export class AgentRunner {
                 );
               }
             }
+
             if (!assignment) {
               utilityEvent(event, line, stream);
               continue;
             }
+
             commands.observe(task?.id || null, id, event, now(), repair?.id || null);
+
             this.db.run(
               "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream,repair_id) VALUES(?,?,?,?,?,?,?,?)",
               id,
@@ -482,6 +539,7 @@ export class AgentRunner {
               stream,
               repair?.id || null,
             );
+
             this.emit({
               event: "agent.event",
               task_id: task?.id,
@@ -492,6 +550,7 @@ export class AgentRunner {
           }
         },
       });
+
       await writes.drain();
       if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
       code = output.code;
@@ -501,14 +560,17 @@ export class AgentRunner {
           `${provider.name} / ${options?.purpose || stageStatus(t.stage)} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
           { provider: provider.name, stage: t.stage, code },
         );
+
       const value = provider.parseStructuredOutput
         ? provider.parseStructuredOutput(schema, final)
         : final;
+
       const result = options?.schema
         ? options.schema.parse(value)
         : options?.purpose === "scheduled"
           ? ActionSchema.parse(value)
           : validatePlan(t.stage, value);
+
       if (assignment && t.stage !== 3 && before !== (await fingerprint(assignment)))
         throw new AdeError(
           "planning_violation",
@@ -525,6 +587,7 @@ export class AgentRunner {
           const tests = implementation[field];
           for (const text of Array.isArray(tests) ? tests : []) {
             const data = { status, text, source: "provider-reported" };
+
             this.db.run(
               "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,'test.result',?,?, 'stdout')",
               id,
@@ -533,6 +596,7 @@ export class AgentRunner {
               JSON.stringify(data),
               JSON.stringify({ event: "vibestar.test.result", data }),
             );
+
             this.emit({
               event: "agent.event",
               task_id: t.id,
@@ -543,8 +607,10 @@ export class AgentRunner {
           }
         }
       }
+
       await writes.drain();
       if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
+
       this.db.run(
         `UPDATE ${table} SET status='completed',ended_at=?,exit_code=?,output=? WHERE id=?`,
         now(),
@@ -552,6 +618,7 @@ export class AgentRunner {
         JSON.stringify(result),
         id,
       );
+
       usage.finish(id, started, "completed");
       if (!options)
         this.db.run(
@@ -568,9 +635,11 @@ export class AgentRunner {
         kind: signal.aborted ? "run.cancelled" : "run.failed",
         data: { message: redact(String(error)) },
       });
+
       const e = outputFailure || error;
       const status = signal.aborted ? "cancelled" : "failed";
       usage.finish(id, started, status, redact(e instanceof Error ? e.message : String(e)));
+
       this.db.run(
         `UPDATE ${table} SET status=?,ended_at=?,exit_code=?,output=?,error=? WHERE id=?`,
         status,
@@ -580,6 +649,7 @@ export class AgentRunner {
         redact(String(e)),
         id,
       );
+
       this.emit({
         event: "agent.event",
         task_id: task?.id,
@@ -588,6 +658,7 @@ export class AgentRunner {
         kind: signal.aborted ? "run.cancelled" : "run.failed",
         data: { message: String(e) },
       });
+
       throw e;
     } finally {
       commands.finish(id);
@@ -603,8 +674,10 @@ export class AgentRunner {
             this.root,
             AbortSignal.any([signal, AbortSignal.timeout(5000)]),
           ).catch(() => null);
+
           usage.recordLimits(id, after?.subscriptionLimits, true);
         }
+
         this.emit({
           event: "usage.changed",
           task_id: task?.id || options?.telemetryTaskId,

@@ -1,7 +1,9 @@
 import { it, expect } from "vitest";
+
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
 import { parseIssue } from "../../backend/domain";
 import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
 import { execute } from "../../backend/execution/runtime/process";
@@ -11,11 +13,13 @@ import {
   FixtureProvider,
   finishFixtureTask as waitForTask,
 } from "../helpers/fixtures";
+
 it("mounts planning worktrees read-only and hides unrelated directories and ADE state", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-sandbox-"));
   const engine = await createFixtureEngine(join(dir, "ade"), () => new FixtureProvider());
   try {
     const { repo } = await fixtureRepository(engine, dir);
+
     const task = engine.enqueue(
       repo,
       parseIssue("https://github.com/fixture/fixture/issues/10"),
@@ -23,9 +27,11 @@ it("mounts planning worktrees read-only and hides unrelated directories and ADE 
       "",
       {},
     );
+
     await waitForTask(engine, task.id, (s) => s === "ready_for_review" || s === "failed");
     const t = engine.db.task(task.id);
     await writeFile(join(dir, "outside-canary"), "private");
+
     const invocation = await sandboxInvocation(
       engine.root,
       engine.db,
@@ -39,6 +45,7 @@ it("mounts planning worktrees read-only and hides unrelated directories and ADE 
       },
       true,
     );
+
     const output = await execute({ ...invocation, cwd: t.worktree_path });
     expect(output.code, output.stderr).toBe(0);
     expect(output.stdout).toContain("isolated");

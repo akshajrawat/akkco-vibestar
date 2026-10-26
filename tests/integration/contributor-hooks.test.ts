@@ -3,6 +3,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 const exec = promisify(execFile);
@@ -15,6 +16,7 @@ const run = (command: string, args: string[], cwd = repository) =>
     cwd,
     env: { ...process.env, CI: "", HUSKY: "1", XDG_CONFIG_HOME: join(root, "config") },
   });
+
 const git = (...args: string[]) => run("git", args);
 
 beforeEach(async () => {
@@ -32,6 +34,7 @@ beforeEach(async () => {
   ])
     await copyFile(resolve(file), join(repository, file));
   await symlink(resolve("node_modules"), join(repository, "node_modules"), "dir");
+
   await writeFile(
     join(repository, "package.json"),
     JSON.stringify({
@@ -44,16 +47,19 @@ beforeEach(async () => {
       },
     }),
   );
+
   for (const name of ["check", "security"])
     await writeFile(
       join(repository, `${name}.mjs`),
       `import { access, writeFile } from "node:fs/promises"; await writeFile(".${name}-ran", "yes"); process.exit(await access(".${name}-fail").then(() => 1, () => 0));\n`,
     );
   await writeFile(join(repository, ".gitignore"), "node_modules/\n.husky/_/\n.*-ran\n.*-fail\n");
+
   await writeFile(
     join(repository, "example.ts"),
     "export const staged = 1;\n\nexport const retained = 1;\n",
   );
+
   await git("init", "-b", "main");
   await git("config", "user.name", "Hook fixture");
   await git("config", "user.email", "fixture@example.invalid");
@@ -71,16 +77,21 @@ it("formats staged content while preserving unstaged hunks and unrelated files",
     join(repository, "example.ts"),
     "export const staged=2;\n\nexport const retained = 1;\n",
   );
+
   await git("add", "example.ts");
+
   await writeFile(
     join(repository, "example.ts"),
     "export const staged=2;\n\nexport const retained = 999;\n",
   );
+
   await writeFile(join(repository, "unrelated.md"), "keep   this\n");
   await git("commit", "-m", "format staged change");
+
   expect((await git("show", "HEAD:example.ts")).stdout).toBe(
     "export const staged = 2;\n\nexport const retained = 1;\n",
   );
+
   expect(await readFile(join(repository, "example.ts"), "utf8")).toContain("retained = 999");
   expect(await readFile(join(repository, "unrelated.md"), "utf8")).toBe("keep   this\n");
   expect((await git("status", "--porcelain")).stdout).toContain(" M example.ts");
@@ -147,6 +158,7 @@ it("skips linked worktrees without changing their shared hook policy", async () 
   await git("worktree", "add", "-b", "linked", linked);
   await run(process.execPath, ["scripts/install-hooks.mjs"], linked);
   expect((await git("config", "--get", "core.hooksPath")).stdout).toBe(policy);
+
   await expect(readFile(join(linked, ".husky", "_", "pre-commit"), "utf8")).rejects.toMatchObject({
     code: "ENOENT",
   });
@@ -158,8 +170,10 @@ it.each([".husky", ".husky/_"])("refuses a linked generated hook directory (%s)"
   await writeFile(join(privateHooks, "pre-push"), "private bytes\n");
   await rm(join(repository, path), { recursive: true, force: true });
   await symlink(privateHooks, join(repository, path), "dir");
+
   await expect(run(process.execPath, ["scripts/install-hooks.mjs"])).rejects.toThrow(
     "must be a physical directory",
   );
+
   expect(await readFile(join(privateHooks, "pre-push"), "utf8")).toBe("private bytes\n");
 });

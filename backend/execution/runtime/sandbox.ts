@@ -8,6 +8,7 @@ import type { Database } from "../../storage/database";
 import { checked, cleanEnvironment } from "./process";
 import { taskRuntime } from "../../workspace/runtime";
 import type { VerificationEnvironment } from "../verification/browser/contracts";
+
 export const sandboxInvocation = async (
   root: string,
   db: Database,
@@ -35,6 +36,7 @@ export const sandboxInvocation = async (
   const repo = repository ? await realpath(repository.path) : null;
   if (repo && repository?.source !== "imported" && !inside(join(root, "repos"), repo))
     throw new AdeError("isolation", "Managed clone is outside the repository root");
+
   const args = [
     "--die-with-parent",
     "--unsetenv",
@@ -69,6 +71,7 @@ export const sandboxInvocation = async (
     "TMPDIR",
     "/tmp",
   ];
+
   if (invocation.verificationEnvironment === "installed_browsers") {
     if (provider)
       throw new AdeError(
@@ -90,6 +93,7 @@ export const sandboxInvocation = async (
     if (installation?.isDirectory() && (await realpath(chrome)) === chrome)
       args.push("--ro-bind", chrome, chrome);
   }
+
   // Bubblewrap starts with an empty root. Only reviewed system installations
   // and individual runtime configuration files are visible, never the host /.
   for (const path of ["/usr", "/bin", "/sbin", "/lib", "/lib64"]) {
@@ -98,6 +102,7 @@ export const sandboxInvocation = async (
     if (entry.isSymbolicLink()) args.push("--symlink", await readlink(path), path);
     else args.push("--ro-bind", path, path);
   }
+
   for (const path of [
     "/etc/passwd",
     "/etc/group",
@@ -113,14 +118,17 @@ export const sandboxInvocation = async (
   ]) {
     if (await exists(path)) args.push("--ro-bind", await realpath(path), path);
   }
+
   // These provider-owned directories are mounted without inspecting any credential contents.
   // CLI authentication and conversation storage remain entirely provider-owned.
   const resolver = await realpath("/etc/resolv.conf");
   args.push("--ro-bind", resolver, "/etc/resolv.conf");
+
   const mountExecutable = async (program: string) => {
     const resolved = isAbsolute(program)
       ? program
       : resolve(cwd, program.includes("/") ? program : await checked("which", [program], cwd));
+
     if (inside(cwd, resolved)) return;
     const executable = await realpath(resolved);
     if (
@@ -134,19 +142,23 @@ export const sandboxInvocation = async (
     const npm = executable.indexOf("/node_modules/");
     if (npm >= 0) {
       const suffix = executable.slice(npm + "/node_modules/".length).split("/");
+
       installation = join(
         executable.slice(0, npm),
         "node_modules",
         suffix[0],
         ...(suffix[0].startsWith("@") ? [suffix[1]] : []),
       );
+
       if (suffix[0] === "@openai") installation = dirname(installation);
     } else if (/\/\.nvm\/versions\/node\/[^/]+\/bin\//.test(executable)) {
       installation = dirname(dirname(executable));
     }
+
     args.push("--ro-bind", installation, installation);
     if (resolved !== executable) args.push("--ro-bind", executable, resolved);
   };
+
   await mountExecutable(invocation.program);
   // Node/npm may live in a version-manager prefix outside system directories.
   // These are interpreter installations, not the user's home or runtime state.
@@ -154,10 +166,12 @@ export const sandboxInvocation = async (
     const detected = await checked("which", [program], root).catch(() => "");
     if (detected) await mountExecutable(detected);
   }
+
   if (provider) {
     const state = join(home, provider === "antigravity" ? ".gemini" : ".codex");
     if (await exists(state)) args.push("--bind", await realpath(state), state);
   }
+
   // Native tools installed in the user's bin directory remain available read-only.
   const localBin = join(home, ".local", "bin");
   if (await exists(localBin)) args.push("--ro-bind", localBin, localBin);
@@ -165,9 +179,11 @@ export const sandboxInvocation = async (
     const common = await realpath(
       await gitChecked(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd),
     );
+
     const gitdir = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], cwd));
     if (!inside(join(common, "worktrees"), gitdir))
       throw new AdeError("isolation", "Task has invalid Git worktree metadata");
+
     args.push(
       "--ro-bind",
       common,
@@ -179,6 +195,7 @@ export const sandboxInvocation = async (
       gitdir,
     );
   }
+
   args.push(readOnly ? "--ro-bind" : "--bind", cwd, cwd);
   if (repo) {
     const runtime = await taskRuntime(repo, cwd, true);
@@ -196,6 +213,7 @@ export const sandboxInvocation = async (
         "1",
       );
   }
+
   if (schemaPath) {
     await managedPath(root, schemaPath);
     const schema = await realpath(schemaPath);
@@ -203,6 +221,7 @@ export const sandboxInvocation = async (
       throw new AdeError("isolation", "Schema is outside managed artifacts");
     args.push("--ro-bind", schema, schema);
   }
+
   for (const path of contextPaths) {
     await managedPath(root, path);
     const context = await realpath(path);
@@ -210,6 +229,7 @@ export const sandboxInvocation = async (
       throw new AdeError("isolation", "Repair context is outside managed artifacts");
     args.push("--ro-bind", context, context);
   }
+
   args.push("--chdir", cwd, "--", invocation.program, ...invocation.args);
   return { program: "bwrap", args, input: invocation.input };
 };

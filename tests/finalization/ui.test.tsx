@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
 import { GitFinalization } from "../../src/features/git-finalization/GitFinalization";
 import { workspaceDetail } from "../workspace/fixtures";
 import { FinalizationSchema, type Finalization } from "../../backend/finalization/contracts";
@@ -19,6 +20,7 @@ const fixture = () => {
       body: "Original issue instructions",
     },
   };
+
   const preset = {
     name: "Normal commit + no-verify push",
     commit_hooks: "normal" as const,
@@ -26,8 +28,10 @@ const fixture = () => {
     remote: "origin",
     branch: task.branch_name,
   };
+
   let record: Finalization | undefined;
   let fingerprint = "reviewed-source";
+
   const file = {
     path: "source.txt",
     old_path: null,
@@ -43,6 +47,7 @@ const fixture = () => {
     committed: false,
     reviewed: true,
   };
+
   const rpc = vi.fn(async (method: string, input: Record<string, unknown>) => {
     if (method === "git.inspect")
       return {
@@ -114,6 +119,7 @@ const fixture = () => {
       };
     else if (method === "git.commit") {
       fingerprint = "committed-source";
+
       record = {
         ...record!,
         status: "committed",
@@ -154,15 +160,18 @@ const fixture = () => {
       };
     return structuredClone(record);
   });
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   return { task, rpc };
 };
 
 it("requires explicit subset review, exact-message confirmation and a separate destination confirmation", async () => {
   const { task, rpc } = fixture();
+
   render(
     <GitFinalization
       task={task}
@@ -182,34 +191,43 @@ it("requires explicit subset review, exact-message confirmation and a separate d
       complete={vi.fn()}
     />,
   );
+
   await screen.findByText("source.txt");
   expect(rpc.mock.calls.every(([method]) => method === "git.inspect")).toBe(true);
+
   expect((screen.getByRole("checkbox", { name: /source.txt/ }) as HTMLInputElement).checked).toBe(
     true,
   );
+
   expect((screen.getByRole("checkbox", { name: /notes.log/ }) as HTMLInputElement).checked).toBe(
     false,
   );
+
   expect((screen.getByRole("checkbox", { name: /\.env/ }) as HTMLInputElement).disabled).toBe(true);
   const editor = screen.getByLabelText("Exact Git commit message") as HTMLTextAreaElement;
   expect(editor.value).toBe("");
   fireEvent.click(screen.getByRole("button", { name: "Prepare staged preview" }));
   await screen.findByText(/This selection needs a fresh independent review/);
   expect(rpc.mock.calls.some(([method]) => method === "git.review")).toBe(false);
+
   expect(rpc.mock.calls.find(([method]) => method === "git.preview")?.[1].paths).toEqual([
     "source.txt",
   ]);
+
   fireEvent.click(screen.getByRole("button", { name: "Review selection with Antigravity" }));
   await screen.findByText("Selected patch is independently acceptable");
   fireEvent.click(screen.getByRole("button", { name: "Approve selected files" }));
+
   await waitFor(() =>
     expect(rpc.mock.calls.some(([method]) => method === "git.approve")).toBe(true),
   );
+
   const message = "  My exact title  \n\n# Literal message text  ";
   fireEvent.click(screen.getByRole("button", { name: "Continue to commit" }));
   fireEvent.change(editor, { target: { value: message } });
   fireEvent.click(screen.getByRole("button", { name: "Continue to publish" }));
   fireEvent.click(screen.getByRole("button", { name: "Review operation" }));
+
   await waitFor(() =>
     expect(
       (
@@ -219,11 +237,13 @@ it("requires explicit subset review, exact-message confirmation and a separate d
       ).disabled,
     ).toBe(true),
   );
+
   fireEvent.click(
     screen.getByRole("checkbox", {
       name: "I confirm this exact message and the approved selected files.",
     }),
   );
+
   await waitFor(() =>
     expect(
       (
@@ -233,24 +253,31 @@ it("requires explicit subset review, exact-message confirmation and a separate d
       ).disabled,
     ).toBe(false),
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Commit and prepare push" }));
   await screen.findByRole("button", { name: "Confirm push" });
+
   expect(rpc.mock.calls.find(([method]) => method === "git.commit")?.[1]).toMatchObject({
     message,
     skip_hooks: false,
     confirmed: true,
   });
+
   expect((screen.getByRole("button", { name: "Confirm push" }) as HTMLButtonElement).disabled).toBe(
     true,
   );
+
   expect(rpc.mock.calls.some(([method]) => method === "git.publish")).toBe(false);
+
   fireEvent.click(
     screen.getByRole("checkbox", {
       name: "Publish this exact commit to the repository and branch shown above.",
     }),
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Confirm push" }));
   await screen.findByText("Push verified against the remote branch.");
+
   expect(rpc.mock.calls.find(([method]) => method === "git.publish")?.[1]).toMatchObject({
     skip_hooks: true,
     confirmed: true,
@@ -259,34 +286,46 @@ it("requires explicit subset review, exact-message confirmation and a separate d
 
 it("preserves file and message edits across snapshots, and exposes loading failures with a retry", async () => {
   const { task, rpc } = fixture();
+
   const ui = render(
     <GitFinalization task={task} revision={0} close={vi.fn()} complete={vi.fn()} />,
   );
+
   await screen.findByText("source.txt");
   fireEvent.click(screen.getByRole("checkbox", { name: /notes.log/ }));
+
   fireEvent.change(screen.getByRole("searchbox", { name: "Search changed files" }), {
     target: { value: "source" },
   });
+
   expect(screen.queryByRole("checkbox", { name: /notes.log/ })).toBeNull();
+
   fireEvent.change(screen.getByRole("searchbox", { name: "Search changed files" }), {
     target: { value: "" },
   });
+
   expect((screen.getByRole("checkbox", { name: /notes.log/ }) as HTMLInputElement).checked).toBe(
     true,
   );
+
   fireEvent.change(screen.getByLabelText("Exact Git commit message"), {
     target: { value: "Unsent exact draft" },
   });
+
   ui.rerender(
     <GitFinalization task={{ ...task }} revision={1} close={vi.fn()} complete={vi.fn()} />,
   );
+
   await waitFor(() => expect(rpc).toHaveBeenCalledTimes(2));
+
   expect((screen.getByRole("checkbox", { name: /notes.log/ }) as HTMLInputElement).checked).toBe(
     true,
   );
+
   expect((screen.getByLabelText("Exact Git commit message") as HTMLTextAreaElement).value).toBe(
     "Unsent exact draft",
   );
+
   ui.unmount();
   rpc.mockRejectedValue(new Error("Update the execution helper before using Git Finalization."));
   render(<GitFinalization task={task} revision={0} close={vi.fn()} complete={vi.fn()} />);

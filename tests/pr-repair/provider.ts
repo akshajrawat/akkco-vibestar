@@ -4,6 +4,7 @@ import { CodexProvider } from "../../backend/execution/providers/codex";
 // Only injected from tests. Production has no fixture provider selection.
 export class RepairFixtureProvider implements AgentProvider {
   private readonly adapter = new CodexProvider();
+
   constructor(
     readonly name: "codex" | "antigravity",
     private readonly options: {
@@ -13,6 +14,7 @@ export class RepairFixtureProvider implements AgentProvider {
       readonlyProbe?: boolean;
     } = {},
   ) {}
+
   detect = async () => ({
     provider: "test-fixture",
     installed: true,
@@ -23,16 +25,22 @@ export class RepairFixtureProvider implements AgentProvider {
     capabilities: ["test-fixture"],
     error: null,
   });
+
   normalize = this.adapter.normalize;
+
   result = this.adapter.result;
+
   conversationId = this.adapter.conversationId;
+
   invocation = (request: AgentRunRequest) => {
     const context = request.prompt.match(/context directory ([^\n]+?)\. It contains/)?.[1];
     const implementation = this.name === "codex";
     const testFile = `const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs/promises');const {selectors,hasDraft}=require('./utilities.cjs');test('selectors live in utilities',()=>assert.deepEqual(selectors,['draft','publish']));test('original exploration is retained',async()=>assert.ok((await fs.readFile('spec.ts','utf8')).includes(require('./legacy-puppeteer.cjs').exploration)));test('draft assertion rejects an empty list',()=>{assert.equal(hasDraft([]),false);assert.equal(hasDraft(['draft']),true)});`;
+
     const action = implementation
       ? `await fs.writeFile('utilities.cjs',"exports.selectors=['draft','publish'];exports.hasDraft=(items)=>items.includes('draft');\\n");await fs.writeFile('spec.ts',"// Selectors/assertions moved to utilities.cjs; original-exploration retained.\\n");await fs.writeFile('repair.test.cjs',${JSON.stringify(testFile)});`
       : "";
+
     return {
       program: process.execPath,
       input: "",

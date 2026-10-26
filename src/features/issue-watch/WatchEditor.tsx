@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
+
 import { parseIssue, remoteIdentity } from "../../../backend/domain";
 import type {
   Watch,
@@ -33,13 +34,16 @@ export const WatchEditor = ({
   const [repository, setRepository] = useState(initial?.watch.repository.full_name || "");
   const [prompt, setPrompt] = useState(original?.prompt || "");
   const [labels, setLabels] = useState(original?.rules.excluded_labels || []);
+
   const [banned, setBanned] = useState(
     original?.rules.excluded_issues
       .map((issue) => `https://github.com/${issue.repository}/issues/${issue.number}`)
       .join("\n") || "",
   );
+
   const [trackers, setTrackers] = useState<WatchRules["trackers"]>(original?.rules.trackers || []);
   const [unassigned, setUnassigned] = useState(original?.rules.unassigned_only ?? true);
+
   const [model, setModel] = useState<WatchConfiguration["model"]>(
     original?.model || {
       provider: "codex",
@@ -52,6 +56,7 @@ export const WatchEditor = ({
       timeout_secs: 120,
     },
   );
+
   const [limits, setLimits] = useState(
     original?.limits || {
       max_candidates: 200,
@@ -60,32 +65,39 @@ export const WatchEditor = ({
       max_requests: 400,
     },
   );
+
   const [preview, setPreview] = useState<ReturnType<typeof previewRules> | null>(null);
+
   const [decisions, setDecisions] = useState<
     Record<string, "" | "semantic_preference" | "confirmed_controls">
   >({});
+
   const [busy, setBusy] = useState(false);
   const [compiling, setCompiling] = useState(false);
   const [error, setError] = useState("");
   const request = useRef({ payload: "", id: "" });
   const dialog = useDialogFocus();
   const { providers, loading, error: providerError, refresh: refreshModels } = useProviders();
+
   const invalidate = () => {
     setPreview(null);
     setDecisions({});
   };
+
   useEffect(() => {
     let alive = true;
     if (!repository.trim() || !prompt.trim()) {
       setCompiling(false);
       return;
     }
+
     const compile = async () => {
       setCompiling(true);
       try {
         const repo = remoteIdentity(
           repository.includes("://") ? repository : `https://github.com/${repository}`,
         );
+
         const excluded = banned
           .split(/[\n,]+/)
           .map((line) => line.trim())
@@ -102,6 +114,7 @@ export const WatchEditor = ({
               number: ref.number,
             };
           });
+
         const result = await rpc<ReturnType<typeof previewRules>>("issueWatch.previewRules", {
           repository,
           prompt,
@@ -112,6 +125,7 @@ export const WatchEditor = ({
             unassigned_only: unassigned,
           },
         });
+
         if (alive) {
           setPreview(result);
           setError("");
@@ -125,12 +139,14 @@ export const WatchEditor = ({
         if (alive) setCompiling(false);
       }
     };
+
     const timer = setTimeout(() => void compile(), 250);
     return () => {
       alive = false;
       clearTimeout(timer);
     };
   }, [repository, prompt, labels, banned, trackers, unassigned]);
+
   const save = async () => {
     if (!preview) return;
     setBusy(true);
@@ -147,6 +163,7 @@ export const WatchEditor = ({
         model,
         limits,
       };
+
       const payload = {
         name,
         repository,
@@ -158,13 +175,16 @@ export const WatchEditor = ({
             }
           : {}),
       };
+
       const serialized = JSON.stringify(payload);
       if (request.current.payload !== serialized)
         request.current = { payload: serialized, id: crypto.randomUUID() };
+
       const result = await rpc<{ watch: Watch }>(
         initial ? "issueWatch.update" : "issueWatch.create",
         { ...payload, request_id: request.current.id },
       );
+
       saved(result.watch.id);
     } catch (e) {
       setError(errorMessage(e));
@@ -172,6 +192,7 @@ export const WatchEditor = ({
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -185,6 +206,7 @@ export const WatchEditor = ({
             event.stopPropagation();
             close();
           }
+
           containDialogFocus(event);
         }}
       >
@@ -193,6 +215,7 @@ export const WatchEditor = ({
             <span className="eyebrow">MANUAL DISCOVERY</span>
             <h2>{initial ? "Edit Issue Watch" : "New Issue Watch"}</h2>
           </div>
+
           <Button
             variant="ghost"
             size="icon"
@@ -203,10 +226,12 @@ export const WatchEditor = ({
             <X size={16} />
           </Button>
         </div>
+
         <p className="subtle">
           Save your criteria, then scan when you choose. Saving never starts GitHub discovery or AI
           screening.
         </p>
+
         <fieldset disabled={busy} className="watch-editor-fields">
           <div className="watch-form-grid">
             <label>
@@ -218,6 +243,7 @@ export const WatchEditor = ({
                 maxLength={120}
               />
             </label>
+
             <label>
               GitHub repository
               <input
@@ -237,6 +263,7 @@ export const WatchEditor = ({
               </datalist>
             </label>
           </div>
+
           <label>
             Describe issues to find
             <textarea
@@ -250,6 +277,7 @@ export const WatchEditor = ({
               placeholder="Find triaged, unassigned issues with no confirmed active claim."
             />
           </label>
+
           <LabelExclusions
             repository={repository}
             labels={labels}
@@ -258,17 +286,20 @@ export const WatchEditor = ({
               invalidate();
             }}
           />
+
           <details className="watch-editor-section">
             <summary>Advanced filters</summary>
             <p className="subtle">
               Enforced by Vibestar before and after AI. The prompt compiler recognizes a small
               grammar; unresolved requirements need confirmation.
             </p>
+
             <div className="watch-checks">
               <label>
                 <input type="checkbox" checked disabled />
                 GitHub issues only · Open only
               </label>
+
               <label>
                 <input
                   type="checkbox"
@@ -281,6 +312,7 @@ export const WatchEditor = ({
                 Exclude assigned issues
               </label>
             </div>
+
             <div className="watch-form-grid">
               <label>
                 Excluded issue URLs or numbers
@@ -295,11 +327,13 @@ export const WatchEditor = ({
                 />
               </label>
             </div>
+
             <p className="subtle">
               Confirmed competing open PRs and active maintainer grants are excluded. Possible
               claims, missing coverage and uncertain policies stay in manual review.
             </p>
           </details>
+
           <section className="watch-editor-section">
             <div className="watch-section-heading">
               <h3>Excluded trackers</h3>
@@ -315,6 +349,7 @@ export const WatchEditor = ({
                 <Plus size={13} /> Add tracker
               </Button>
             </div>
+
             {trackers.map((tracker, index) => (
               <div className="watch-tracker-input" key={index}>
                 <label>
@@ -328,11 +363,13 @@ export const WatchEditor = ({
                           i === index ? { ...item, url: event.target.value } : item,
                         ),
                       );
+
                       invalidate();
                     }}
                     placeholder="https://github.com/owner/repository/issues/123"
                   />
                 </label>
+
                 <label>
                   Reference scope
                   <select
@@ -348,6 +385,7 @@ export const WatchEditor = ({
                             : item,
                         ),
                       );
+
                       invalidate();
                     }}
                   >
@@ -355,6 +393,7 @@ export const WatchEditor = ({
                     <option value="all">Body + every comment</option>
                   </select>
                 </label>
+
                 <Button
                   variant="ghost"
                   size="icon"
@@ -368,17 +407,20 @@ export const WatchEditor = ({
                 </Button>
               </div>
             ))}
+
             <small>
               Freshly verified for every scan. Code/HTML examples and PR links are skipped.
               Incomplete required trackers block eligibility.
             </small>
           </section>
+
           <section className="watch-editor-section">
             {compiling && (
               <p className="subtle" role="status">
                 Checking filter interpretation…
               </p>
             )}
+
             {preview && (
               <div className="watch-rule-preview">
                 <p>
@@ -387,6 +429,7 @@ export const WatchEditor = ({
                   {preview.rules.excluded_labels.length} labels · Exclude{" "}
                   {preview.rules.trackers.length} trackers
                 </p>
+
                 {preview.explanation.length > 0 && (
                   <details>
                     <summary>How your words became filters</summary>
@@ -397,6 +440,7 @@ export const WatchEditor = ({
                     ))}
                   </details>
                 )}
+
                 {preview.ambiguities.map((item) => (
                   <label className="watch-ambiguity" key={item.id}>
                     <strong>Confirm meaning</strong>
@@ -416,12 +460,14 @@ export const WatchEditor = ({
                       <option value="semantic_preference">
                         Treat remaining text as AI preferences
                       </option>
+
                       <option value="confirmed_controls">
                         The visible hard controls capture this requirement
                       </option>
                     </select>
                   </label>
                 ))}
+
                 <p className="subtle">
                   AI preferences:{" "}
                   {preview.preferences || "No additional semantic preferences detected."}
@@ -429,6 +475,7 @@ export const WatchEditor = ({
               </div>
             )}
           </section>
+
           <section className="watch-editor-section">
             <h3>Subscription screening</h3>
             <label>
@@ -449,10 +496,12 @@ export const WatchEditor = ({
                 </option>
               </select>
             </label>
+
             <p className="subtle">
               Selected GitHub content, including private content, is sent to this provider during an
               explicit scan. Antigravity consumer-plan app wrapping is not officially supported.
             </p>
+
             <AgentConfiguration
               id="watch-model"
               label="Model and effort"
@@ -463,6 +512,7 @@ export const WatchEditor = ({
               maxTimeout={120}
               onChange={(config) => setModel({ ...config, provider: model.provider })}
             />
+
             <Button
               size="sm"
               variant="ghost"
@@ -473,6 +523,7 @@ export const WatchEditor = ({
             </Button>
             {providerError && <p className="warning">{providerError}</p>}
           </section>
+
           <details className="watch-editor-section">
             <summary>Collection and allowance bounds</summary>
             <div className="watch-limits-grid">
@@ -501,6 +552,7 @@ export const WatchEditor = ({
                 </label>
               ))}
             </div>
+
             <p className="subtle">
               At most one semantic CLI invocation per scan, 128 KiB input, 1 MiB per source, 20 MiB
               collected data, four concurrent GitHub requests. Limits produce visible partial
@@ -509,16 +561,19 @@ export const WatchEditor = ({
             </p>
           </details>
         </fieldset>
+
         {error && (
           <p className="error-box" role="alert">
             {error}
           </p>
         )}
+
         <div className="modal-actions">
           <small>No clone required · Manual scans only</small>
           <Button variant="ghost" onClick={close} disabled={busy}>
             Cancel
           </Button>
+
           <Button
             onClick={() => void save()}
             disabled={

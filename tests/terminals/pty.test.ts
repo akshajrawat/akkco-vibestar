@@ -1,6 +1,8 @@
 import { it, expect } from "vitest";
 import { spawn } from "node-pty";
+
 import { tmpdir } from "node:os";
+
 it("streams official-login style PTY output and accepts keyboard input", async () => {
   const output = await new Promise<string>((resolve, reject) => {
     const pty = spawn(
@@ -17,12 +19,15 @@ it("streams official-login style PTY output and accepts keyboard input", async (
         env: process.env as Record<string, string>,
       },
     );
+
     let text = "";
     let sent = false;
+
     const timer = setTimeout(() => {
       pty.kill();
       reject(new Error("PTY deadline exceeded"));
     }, 5000);
+
     pty.onData((data) => {
       text += data;
       if (text.includes("PTY ready") && !sent) {
@@ -30,10 +35,12 @@ it("streams official-login style PTY output and accepts keyboard input", async (
         pty.write("hello\r");
       }
     });
+
     pty.onExit(() => {
       clearTimeout(timer);
       resolve(text);
     });
   });
+
   expect(output).toContain("received:hello");
 });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { AdeError, now } from "../../domain";
 import type { GitHubClient } from "../../github/client";
 import { parsePullRequest } from "../../scheduled/contracts";
@@ -9,11 +10,13 @@ const repository = z.object({
   full_name: z.string().min(1),
   clone_url: z.string().url(),
 });
+
 const branch = z.object({
   ref: z.string().min(1),
   sha: z.string(),
   repo: repository,
 });
+
 const pr = z.object({
   node_id: z.string().min(1),
   number: z.number().int().positive(),
@@ -26,14 +29,17 @@ const pr = z.object({
 // This only reads official gh API metadata. It never reads provider credentials.
 export class PRIdentityReader {
   constructor(private readonly client: GitHubClient) {}
+
   read = async (url: string, signal: AbortSignal) => {
     const reference = parsePullRequest(url);
+
     const metadata = pr.parse(
       await this.client.api(
         `repos/${reference.owner}/${reference.repo}/pulls/${reference.number}`,
         signal,
       ),
     );
+
     const [head, viewer, base] = await Promise.all([
       this.client.api(`repos/${metadata.head.repo.full_name}`, signal),
       this.client.api("user", signal),
@@ -42,6 +48,7 @@ export class PRIdentityReader {
         signal,
       ),
     ]);
+
     const source = repository.extend({ permissions: z.object({ push: z.boolean() }) }).parse(head);
     if (
       metadata.html_url !== reference.url ||
@@ -55,11 +62,13 @@ export class PRIdentityReader {
         "pr_identity",
         "GitHub PR repository identity changed or is inconsistent.",
       );
+
     const repo = (value: z.infer<typeof repository>) => ({
       name: value.full_name,
       id: value.node_id,
       url: value.clone_url,
     });
+
     const identity = PRIdentitySchema.parse({
       url: reference.url,
       number: reference.number,
@@ -79,6 +88,7 @@ export class PRIdentityReader {
       state: metadata.state,
       checked_at: now(),
     });
+
     // Git commands validate refs too; reject ambiguous or option-like values here.
     for (const ref of [identity.head.branch, identity.base.branch])
       if (

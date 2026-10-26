@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { RefreshCw, CheckCircle2, Plug, Terminal, Github, Sparkles } from "lucide-react";
+
 import { useProviders } from "../../hooks/useWorkspace";
 import { AuthDialog } from "./AuthDialog";
 import { Button } from "../../components/ui/button";
 import { PageHeader, ListSkeleton } from "../../components/ui/PageHeader";
+
 export const ProvidersPage = () => {
   const { providers, loading, error, refresh } = useProviders();
   const [login, setLogin] = useState("");
@@ -29,7 +31,9 @@ export const ProvidersPage = () => {
               : p.provider === "codex"
                 ? "OpenAI Codex"
                 : "Google Antigravity";
+
           const connected = p.connected;
+
           const Icon =
             p.provider === "github"
               ? Github
@@ -38,11 +42,13 @@ export const ProvidersPage = () => {
                 : p.provider === "antigravity"
                   ? Sparkles
                   : Plug;
+
           return (
             <section className="provider-row" key={p.provider}>
               <div className="provider-icon">
                 <Icon size={20} />
               </div>
+
               <div className="provider-info">
                 <h2>{name}</h2>
                 <p className={connected ? "success" : "subtle"}>
@@ -57,6 +63,7 @@ export const ProvidersPage = () => {
                   <summary>
                     {p.models.length ? `${p.models.length} available models` : "Model availability"}
                   </summary>
+
                   {p.models.length > 0 && (
                     <pre>
                       {p.models
@@ -67,6 +74,7 @@ export const ProvidersPage = () => {
                   {!p.models.length && <p className="subtle">No models reported by this CLI.</p>}
                 </details>
               </div>
+
               <Button disabled={!p.installed || !!login} onClick={() => setLogin(p.provider)}>
                 {connected
                   ? "Reconnect"
@@ -76,10 +84,12 @@ export const ProvidersPage = () => {
           );
         })}
       </div>
+
       <p className="provider-footnote">
         Subscriptions and authentication are managed by the official CLIs in your execution
         environment.
       </p>
+
       {login && (
         <AuthDialog
           provider={login}

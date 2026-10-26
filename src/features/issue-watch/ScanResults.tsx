@@ -10,6 +10,7 @@ export const claimLabel = (state: CandidateSummary["claim_state"]) =>
     eligibility_uncertain: "Eligibility uncertain",
     ineligible: "Ineligible",
   })[state] || state;
+
 const groups = [
   ["Newly matching", ["new_issue", "newly_matching", "reentered", "criteria_changed"]],
   ["Initial discoveries", ["initial_discovery"]],
@@ -19,6 +20,7 @@ const groups = [
   ["Not rechecked / unknown", ["not_rechecked"]],
   ["Excluded / did not match", ["excluded"]],
 ] as const;
+
 const lineage: Partial<Record<CandidateSummary["classification"], string>> = {
   new_issue: "Created after the previous complete scan",
   newly_matching: "Newly matching existing issue",
@@ -28,6 +30,7 @@ const lineage: Partial<Record<CandidateSummary["classification"], string>> = {
   existing_match: "Previously matching",
   not_rechecked: "Historical evidence · Not rechecked",
 };
+
 export const ScanResults = ({
   candidates,
   selected,
@@ -50,16 +53,20 @@ export const ScanResults = ({
       aria-activedescendant={selected ? `watch-result-${selected}` : undefined}
       onKeyDown={(event) => {
         if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+
         const rows = [
           ...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[role=option]"),
         ];
+
         const index = rows.indexOf(event.target as HTMLButtonElement);
+
         const next =
           event.key === "Home"
             ? 0
             : event.key === "End"
               ? rows.length - 1
               : Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)));
+
         if (rows[next]) {
           event.preventDefault();
           rows[next].focus();
@@ -71,6 +78,7 @@ export const ScanResults = ({
         const rows = visible.filter((candidate) =>
           (classifications as readonly string[]).includes(candidate.classification),
         );
+
         if (!rows.length) return null;
         return (
           <section role="group" aria-label={label} className="watch-result-group" key={label}>
@@ -78,6 +86,7 @@ export const ScanResults = ({
               {label}
               <span>{rows.length}</span>
             </h3>
+
             {rows.map((candidate) => (
               <button
                 key={candidate.issue.id}
@@ -98,17 +107,20 @@ export const ScanResults = ({
                   <strong>{candidate.issue.title}</strong>
                   {candidate.dismissed_at && <small>Dismissed</small>}
                 </div>
+
                 <div className="watch-result-meta">
                   <span className={`watch-claim ${candidate.claim_state}`}>
                     {provisional && candidate.eligible ? "Provisional · " : ""}
                     {claimLabel(candidate.claim_state)}
                   </span>
+
                   <span>
                     {candidate.semantic_state === "completed"
                       ? `${candidate.semantic?.difficulty || "unknown"} · ${candidate.semantic?.technical_area || "unspecified"}`
                       : "GitHub evidence"}
                   </span>
                 </div>
+
                 <p>
                   {candidate.semantic_state === "completed"
                     ? candidate.semantic?.why_it_matches
@@ -116,6 +128,7 @@ export const ScanResults = ({
                       candidate.uncertainty[0] ||
                       "No competing work detected in the checked sources; recheck before requesting assignment."}
                 </p>
+
                 <small
                   title={`Created ${candidate.issue.created_at} · Updated ${candidate.issue.updated_at}`}
                 >
@@ -127,6 +140,7 @@ export const ScanResults = ({
           </section>
         );
       })}
+
       {!visible.length && (
         <div className="watch-empty">
           <h3>No newly matching issues found in the checked candidate set.</h3>

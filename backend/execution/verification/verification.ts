@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import { verificationCommandText } from "./verification-command";
 
 export const VerificationCheckSchema = z
@@ -44,6 +45,7 @@ export const verificationArgv = (command: string) => {
   } catch {
     /* Provider commands commonly arrive as text rather than JSON argv. */
   }
+
   return /^[\w./:@=+\s-]+$/.test(command.trim()) ? command.trim().split(/\s+/) : null;
 };
 
@@ -54,6 +56,7 @@ const canonicalArgv = (command: string) => {
   while (["--offline", "--no-install"].includes(args[0])) args.shift();
   return [program, ...args];
 };
+
 const commandKey = (command: string) =>
   JSON.stringify(canonicalArgv(command) || verificationCommandText(command).trim());
 
@@ -92,6 +95,7 @@ const applicationError = (output: string) =>
   /AssertionError|\bFAIL\b|error TS\d+|SyntaxError|TypeError|ReferenceError|RangeError|Expected:.*Received:/s.test(
     output,
   );
+
 const environmentReason = (output: string) => {
   if (applicationError(output)) return undefined;
   if (/canceled due to missing packages|could not determine executable to run/i.test(output))
@@ -125,19 +129,25 @@ export const commandVerification = (
 ): VerificationEvidence => {
   const recognized = commandKind(command.command);
   let kind = recognized === "unknown" ? reported?.kind || "check" : recognized;
+
   const interrupted =
     ["interrupted", "cancelled", "canceled"].includes(command.status) ||
     (kind === "setup" && command.exit_code !== null && [130, 137, 143].includes(command.exit_code));
+
   const failed =
     command.status === "failed" || (command.exit_code !== null && command.exit_code !== 0);
+
   const demonstratedFailure =
     failed &&
     recognized === "unknown" &&
     applicationError(`${command.stdout || ""}\n${command.stderr || ""}`);
+
   if (demonstratedFailure) kind = "check";
+
   const environment = failed
     ? environmentReason(`${command.stdout || ""}\n${command.stderr || ""}`)
     : undefined;
+
   const outcome = interrupted
     ? "interrupted"
     : failed
@@ -150,6 +160,7 @@ export const commandVerification = (
       : command.exit_code === 0
         ? "passed"
         : "unknown";
+
   return {
     name: reported?.name || command.command,
     command: command.command,
@@ -188,11 +199,13 @@ export const verificationSummary = (
     implementation && typeof implementation === "object"
       ? { ...(implementation as Record<string, unknown>) }
       : {};
+
   const parsed = z.array(VerificationCheckSchema).max(200).safeParse(report.verification);
   const reportedChecks = parsed.success ? [...parsed.data] : [];
   const currentTemplates = new Set(reportedChecks);
   const priorFailures = new Map<string, VerificationEvidence>();
   const ambiguousFailures = new Set<string>();
+
   const observeAttempt = (
     command: VerificationCommand,
     reported?: z.infer<typeof VerificationCheckSchema>,
@@ -210,18 +223,22 @@ export const verificationSummary = (
           priorFailures.delete(identity);
       ambiguousFailures.delete(evidence.name);
     }
+
     return evidence;
   };
+
   let invalidHistory = false;
   for (const entry of history) {
     const previous =
       entry.report && typeof entry.report === "object"
         ? (entry.report as Record<string, unknown>)
         : {};
+
     const previousChecks = z
       .array(VerificationCheckSchema)
       .max(200)
       .safeParse(previous.verification);
+
     invalidHistory ||= previous.verification !== undefined && !previousChecks.success;
     const previousCommands = new Map<string, VerificationCommand>();
     for (const command of entry.commands)
@@ -241,6 +258,7 @@ export const verificationSummary = (
           reportedChecks.filter((check) => check.name === old.name).length === 1
             ? reportedChecks.find((check) => check.name === old.name && check.kind === old.kind)
             : undefined);
+
         if (current) {
           current.required ||= old.required;
           if (old.scope === "repository" || old.scope === "issue") current.scope = old.scope;
@@ -257,6 +275,7 @@ export const verificationSummary = (
             outcome: old.kind === "setup" ? old.outcome : "not_run",
           });
       }
+
       const command = old.command ? previousCommands.get(commandKey(old.command)) : undefined;
       if (!command && old.required && old.outcome === "failed")
         priorFailures.set(
@@ -269,12 +288,14 @@ export const verificationSummary = (
           { ...old, source: "provider_reported" },
         );
     }
+
     for (const command of entry.commands) {
       const reported = previousChecks.success
         ? previousChecks.data.find(
             (check) => check.command && commandKey(check.command) === commandKey(command.command),
           )
         : undefined;
+
       const evidence = observeAttempt(
         command,
         reported,
@@ -282,6 +303,7 @@ export const verificationSummary = (
           previousChecks.success &&
           previousChecks.data.filter((check) => check.name === reported.name).length === 1,
       );
+
       if (evidence.required) {
         if (
           previousChecks.success &&
@@ -290,9 +312,11 @@ export const verificationSummary = (
           )
         )
           continue;
+
         const current = reportedChecks.find(
           (check) => check.command && commandKey(check.command) === commandKey(command.command),
         );
+
         if (current) {
           current.required = true;
           current.kind = evidence.kind;
@@ -309,15 +333,19 @@ export const verificationSummary = (
           });
       }
     }
+
     for (const key of ["testsPassed", "testsFailed", "testsSkipped"]) {
       if (!Array.isArray(previous[key])) continue;
+
       const names = previous[key].filter((name) => {
         if (typeof name !== "string") return false;
+
         const structured = previousChecks.success
           ? previousChecks.data.find((check) =>
               [check.name, check.command, check.detail].includes(name),
             )
           : undefined;
+
         return (
           !structured ||
           (key === "testsFailed" &&
@@ -325,6 +353,7 @@ export const verificationSummary = (
             (!structured.command || !previousCommands.has(commandKey(structured.command))))
         );
       });
+
       if (key === "testsFailed")
         for (const name of names)
           if (
@@ -339,25 +368,31 @@ export const verificationSummary = (
           const current = reportedChecks.find((check) =>
             [check.name, check.command, check.detail].includes(name),
           );
+
           if (current) current.required = true;
         }
+
       report[key] = [...new Set([...(Array.isArray(report[key]) ? report[key] : []), ...names])];
     }
   }
+
   const checks: VerificationEvidence[] = [];
   const used = new Set<string>();
   const latest = new Map<string, VerificationCommand>();
   for (const command of commands) {
     latest.set(commandKey(command.command), command);
+
     const reported = reportedChecks.find(
       (check) => check.command && commandKey(check.command) === commandKey(command.command),
     );
+
     observeAttempt(
       command,
       reported,
       !!reported && reportedChecks.filter((check) => check.name === reported.name).length === 1,
     );
   }
+
   for (const reported of reportedChecks) {
     const observed = reported.command ? latest.get(commandKey(reported.command)) : undefined;
     if (observed) {
@@ -377,6 +412,7 @@ export const verificationSummary = (
       });
     }
   }
+
   for (const [key, outcome] of [
     ["testsPassed", "passed"],
     ["testsFailed", "unknown"],
@@ -388,14 +424,17 @@ export const verificationSummary = (
       const structured = reportedChecks.find((check) =>
         [check.name, check.command, check.detail].includes(name),
       );
+
       if (structured) {
         const observed = structured.command
           ? latest.get(commandKey(structured.command))
           : undefined;
+
         // A contradictory legacy failure cannot disappear behind an unobserved
         // structured pass. An actual matching command retry can settle it.
         if (key !== "testsFailed" || structured.outcome !== "passed" || observed) continue;
       }
+
       checks.push({
         name,
         command: null,
@@ -412,11 +451,13 @@ export const verificationSummary = (
       });
     }
   }
+
   for (const command of latest.values()) {
     if (used.has(command.id)) continue;
     const evidence = commandVerification(command);
     if (evidence.required || evidence.outcome !== "passed") checks.push(evidence);
   }
+
   for (const check of checks) {
     const failedBefore =
       [...priorFailures].some(
@@ -429,16 +470,19 @@ export const verificationSummary = (
       [...ambiguousFailures].some((name) =>
         [check.name, check.command, check.detail].includes(name),
       );
+
     if (
       failedBefore &&
       check.outcome !== "failed" &&
       !(check.outcome === "passed" && check.source !== "provider_reported")
     ) {
       check.priorFailure = true;
+
       check.detail +=
         " A previous implementation reported or demonstrated failure here. Repair requires an observed passing rerun; a new environmental blocker cannot establish that the failure was fixed.";
     }
   }
+
   if (invalidHistory)
     checks.push({
       name: "Invalid historical verification requirements",
@@ -474,6 +518,7 @@ export const verificationSummary = (
       prerequisite: null,
       source: "provider_reported",
     });
+
   const parents = (check: VerificationEvidence) =>
     check.prerequisite
       ?.split(";")
@@ -484,6 +529,7 @@ export const verificationSummary = (
             reference.trim().startsWith(`${candidate.name} for `),
         ),
       ) || [];
+
   const optional = new Map<VerificationEvidence, string>();
   for (const check of checks)
     if (
@@ -513,9 +559,11 @@ export const verificationSummary = (
         ["repository", "issue"].includes(check.scope || "")
       )
         continue;
+
       const dependents = checks.filter(
         (candidate) => candidate.required && parents(candidate).includes(check),
       );
+
       if (
         dependents.every((candidate) => optional.has(candidate) || candidate.outcome === "passed")
       ) {
@@ -523,18 +571,22 @@ export const verificationSummary = (
           check,
           "Setup observation is not needed by any outstanding required application check. Its original result is retained.",
         );
+
         added = true;
       }
     }
   }
+
   const optionalCandidates = [...optional]
     .filter(([check]) => check.required)
     .map(([check, reason]) => ({ name: check.name, reason }));
+
   if (policy === "repository")
     for (const [check, reason] of optional) {
       if (check.required) check.optionalReason = reason;
       check.required = false;
     }
+
   const roots = checks.filter(
     (check) =>
       check.outcome !== "passed" &&
@@ -546,6 +598,7 @@ export const verificationSummary = (
         check.environment ||
         environmentReason(check.detail)),
   );
+
   const environmentFor = (
     check: VerificationEvidence,
     visited = new Set<VerificationEvidence>(),
@@ -566,10 +619,12 @@ export const verificationSummary = (
     const reasons = unresolved.map((parent) => parent && environmentFor(parent, new Set(visited)));
     return reasons.length && reasons.every(Boolean) ? reasons.join("; ") : undefined;
   };
+
   for (const check of checks) {
     const environment = environmentFor(check);
     if (environment) check.environment = environment;
   }
+
   const blockers = roots.map((root) => ({
     title: root.environment!,
     reason: root.detail,
@@ -585,9 +640,11 @@ export const verificationSummary = (
         visited.add(current);
         queue.push(...parents(current).filter((parent) => parent !== undefined));
       }
+
       return false;
     }),
   }));
+
   const grouped = new Map<string, (typeof blockers)[number]>();
   for (const blocker of blockers.filter((blocker) =>
     blocker.checks.some((check) => check.required),
@@ -600,10 +657,12 @@ export const verificationSummary = (
       if (previous.reason !== blocker.reason) previous.reason += `\n${blocker.reason}`;
     }
   }
+
   const required = checks.filter((check) => check.required);
   const failures = required.filter((check) => check.outcome === "failed");
   const gaps = required.filter((check) => !["passed", "failed"].includes(check.outcome));
   const passed = checks.filter((check) => check.kind === "check" && check.outcome === "passed");
+
   const outcome = failures.length
     ? "failed"
     : gaps.length
@@ -611,6 +670,7 @@ export const verificationSummary = (
       : passed.length
         ? "passed"
         : "unknown";
+
   const summary = failures.length
     ? `${failures.length} required check${failures.length === 1 ? "" : "s"} failed. Inspect the application/test evidence before retrying implementation.`
     : gaps.length
@@ -618,6 +678,7 @@ export const verificationSummary = (
       : passed.length
         ? "Recorded checks passed. This establishes only the checks listed below."
         : "Verification outcome unknown. No successful check evidence is available.";
+
   const canReviewWithGaps =
     failures.length === 0 &&
     gaps.length > 0 &&
@@ -625,6 +686,7 @@ export const verificationSummary = (
     gaps.every(
       (check) => !!check.environment && !check.priorFailure && check.source !== "vibestar",
     );
+
   return {
     outcome,
     summary,

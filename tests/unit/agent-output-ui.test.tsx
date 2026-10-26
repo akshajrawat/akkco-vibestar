@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within, act } from "@testing-library/react";
+
 import { LogView } from "../../src/features/chat/LogView";
 import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
 import { AgentResponse } from "../../src/features/chat/AgentResponse";
@@ -12,13 +13,16 @@ import type { AgentEvent, Detail, Run } from "../../src/lib/types";
 vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [], refresh: vi.fn() }),
 }));
+
 vi.mock("../../src/components/shared/TaskTerminal", () => ({
   TaskTerminal: () => <p>Fixture terminal</p>,
 }));
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+
 const run: Run = {
   id: "run",
   stage: 3,
@@ -35,6 +39,7 @@ const run: Run = {
   output: null,
   error: null,
 };
+
 const event = (id: number, kind: string, data: unknown, stream = "stdout"): AgentEvent => ({
   id,
   kind,
@@ -45,6 +50,7 @@ const event = (id: number, kind: string, data: unknown, stream = "stdout"): Agen
   timestamp: run.started_at,
   raw: JSON.stringify(data),
 });
+
 const detail = (id: string): Detail => ({
   task: {
     id,
@@ -92,6 +98,7 @@ it.each([
         runs={[run]}
       />,
     );
+
     const card = ui.container.querySelector(`.tool-event[data-state="${state}"]`);
     expect(card).not.toBeNull();
     expect(card?.textContent).toContain(`Exit ${exit_code}`);
@@ -99,6 +106,7 @@ it.each([
     expect(card?.querySelector(".success")).toBeNull();
   },
 );
+
 const bridge = (
   handler: (
     method: string,
@@ -112,23 +120,28 @@ const bridge = (
   ) => Promise<unknown> = async () => null,
 ) => {
   const rpc = vi.fn(handler);
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     configurable: true,
     value: vi.fn(),
   });
+
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText: vi.fn(async () => {}) },
   });
+
   return rpc;
 };
 
 it("renders streamed messages, tool arguments and separate live streams, and never succeeds unfinished or explicitly interrupted tools", () => {
   bridge();
+
   const initial = [
     event(1, "message", { call_id: "message", text_delta: "Inspecting " }),
     event(2, "command.started", {
@@ -139,9 +152,11 @@ it("renders streamed messages, tool arguments and separate live streams, and nev
       status: "RUNNING",
     }),
   ];
+
   const ui = render(<AgentTimeline runs={[run]} events={initial} />);
   expect(screen.getByText("Inspecting")).toBeTruthy();
   expect(ui.container.querySelector("[data-state=running]")).toBeTruthy();
+
   ui.rerender(
     <AgentTimeline
       runs={[run]}
@@ -160,6 +175,7 @@ it("renders streamed messages, tool arguments and separate live streams, and nev
       ]}
     />,
   );
+
   expect(screen.getByText("Inspecting the repository.")).toBeTruthy();
   expect(screen.getByText("one check passed")).toBeTruthy();
   expect(screen.getByText("compiler warning")).toBeTruthy();
@@ -168,6 +184,7 @@ it("renders streamed messages, tool arguments and separate live streams, and nev
   ui.rerender(<AgentTimeline runs={[{ ...run, status: "cancelled" }]} events={initial} />);
   expect(ui.container.querySelector(".tool-event[data-state=interrupted]")).toBeTruthy();
   expect(ui.container.querySelector(".tool-event .success")).toBeNull();
+
   ui.rerender(
     <AgentTimeline
       runs={[{ ...run, status: "completed" }]}
@@ -181,8 +198,10 @@ it("renders streamed messages, tool arguments and separate live streams, and nev
       ]}
     />,
   );
+
   expect(ui.container.querySelector(".tool-event[data-state=interrupted]")).toBeTruthy();
   expect(ui.container.querySelector(".tool-event .success")).toBeNull();
+
   ui.rerender(
     <AgentTimeline
       runs={[run]}
@@ -196,6 +215,7 @@ it("renders streamed messages, tool arguments and separate live streams, and nev
       ]}
     />,
   );
+
   expect(ui.container.querySelector(".tool-event[data-state=failed]")).toBeTruthy();
   expect(screen.getByText("Exit 1")).toBeTruthy();
   expect(screen.getByText("3s")).toBeTruthy();
@@ -204,11 +224,13 @@ it("renders streamed messages, tool arguments and separate live streams, and nev
 it("shows actual execution independently from follow-up selection and keeps the status strip across task tabs", () => {
   bridge();
   const data = detail("status-strip");
+
   updateTaskView(data.task.id, {
     followupModel: "composer-model",
     followupProvider: "antigravity",
     followupEffort: "low",
   });
+
   const ui = render(<TaskWorkspace detail={data} revision={0} onError={vi.fn()} back={vi.fn()} />);
   const current = screen.getByLabelText("Current agent run");
   expect(current.textContent).toContain("actual-model");
@@ -225,6 +247,7 @@ it("shows actual execution independently from follow-up selection and keeps the 
   expect(ui.container.querySelector("aside")?.contains(current)).toBe(false);
   fireEvent.click(screen.getByLabelText("Collapse secondary workspace"));
   expect(screen.getByLabelText("Current agent run")).toBe(current);
+
   ui.rerender(
     <TaskWorkspace
       detail={{
@@ -237,11 +260,14 @@ it("shows actual execution independently from follow-up selection and keeps the 
       back={vi.fn()}
     />,
   );
+
   expect(screen.getByLabelText("Current agent run").textContent).toContain("completed");
   expect(screen.getByLabelText("Current agent run").textContent).not.toContain("running");
 });
+
 it("shows provider-emitted failures and status text while the CLI is still running without synthesizing progress", () => {
   bridge();
+
   render(
     <AgentTimeline
       runs={[run]}
@@ -254,6 +280,7 @@ it("shows provider-emitted failures and status text while the CLI is still runni
       ]}
     />,
   );
+
   expect(screen.getByText("Provider error")).toBeTruthy();
   expect(screen.getByText("Official provider quota error")).toBeTruthy();
   expect(screen.queryByText("Provider emitted status")).toBeNull();
@@ -261,21 +288,25 @@ it("shows provider-emitted failures and status text while the CLI is still runni
 
 it("pages historical tools with completion context, searches saved events, filters and copies exact saved prompts", async () => {
   const id = "historical-output";
+
   const start = event(1, "command.started", {
     call_id: "old",
     command: "old command",
     arguments: { file: "old.ts" },
     status: "running",
   });
+
   const finish = event(800, "command.finished", {
     call_id: "old",
     exit_code: 0,
     status: "completed",
   });
+
   start.raw = JSON.stringify({
     type: "item.started",
     item: { arguments: { unknownParameter: "needle in retained raw fields" } },
   });
+
   const rpc = bridge(
     vi.fn(async (method, params) =>
       method === "task.events"
@@ -287,24 +318,31 @@ it("pages historical tools with completion context, searches saved events, filte
         : null,
     ),
   );
+
   const ui = render(<LogView taskId={id} runs={[{ ...run, status: "completed" }]} events={[]} />);
   expect(await screen.findByText("Load earlier output")).toBeTruthy();
   expect(ui.container.querySelector(".tool-event[data-state=completed]")).toBeTruthy();
   fireEvent.click(screen.getByText("Load earlier output"));
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.events", expect.objectContaining({ before: 800 })),
   );
+
   const search = screen.getByLabelText("Search saved output");
   search.focus();
   fireEvent.change(search, { target: { value: "needle" } });
   expect(document.activeElement).toBe(search);
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.events", expect.objectContaining({ search: "needle" })),
   );
+
   expect(ui.container.querySelector(".tool-event[data-state=completed]")).toBeTruthy();
+
   fireEvent.change(screen.getByLabelText("Output filter"), {
     target: { value: "messages" },
   });
+
   expect(ui.container.querySelector(".tool-event")).toBeNull();
   fireEvent.keyDown(search, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: "Saved prompt" }));
@@ -315,9 +353,11 @@ it("pages historical tools with completion context, searches saved events, filte
 
 it("keeps raw stdout/stderr distinct, follows streamed updates, rejects late data after task switching and persists per-task output preferences", async () => {
   let release!: (value: unknown) => void;
+
   const pending = new Promise((resolve) => {
     release = resolve;
   });
+
   const rpc = bridge(
     vi.fn(async (method, params) =>
       method === "task.logs"
@@ -333,21 +373,28 @@ it("keeps raw stdout/stderr distinct, follows streamed updates, rejects late dat
         : { events: [], more: false },
     ),
   );
+
   updateTaskView("switch-a", {
     outputView: "raw",
     outputStream: "stdout",
     outputFollow: true,
   });
+
   const ui = render(<LogView taskId="switch-a" runs={[run]} events={[]} />);
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.logs", expect.objectContaining({ stream: "stdout" })),
   );
+
   ui.rerender(<LogView taskId="switch-b" runs={[{ ...run, id: "run-b" }]} events={[]} />);
   fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+
   fireEvent.change(screen.getByLabelText("Raw output stream"), {
     target: { value: "stderr" },
   });
+
   expect(await screen.findByText("switch-b stderr")).toBeTruthy();
+
   release({
     text: "stale task a",
     start: 0,
@@ -355,6 +402,7 @@ it("keeps raw stdout/stderr distinct, follows streamed updates, rejects late dat
     size: 12,
     truncated: false,
   });
+
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(screen.queryByText("stale task a")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Pause scrolling" }));
@@ -364,11 +412,13 @@ it("keeps raw stdout/stderr distinct, follows streamed updates, rejects late dat
   fireEvent.keyDown(transcript, { key: "End", ctrlKey: true });
   expect(screen.getByRole("button", { name: "Pause scrolling" })).toBeTruthy();
   const saved = JSON.parse(localStorage.getItem("vibestar.layout.switch-b")!);
+
   expect(saved).toMatchObject({
     outputView: "raw",
     outputStream: "stderr",
     outputFollow: true,
   });
+
   ui.rerender(<LogView taskId="switch-a" runs={[run]} events={[]} />);
   expect((screen.getByLabelText("Raw output stream") as HTMLSelectElement).value).toBe("stdout");
   ui.rerender(<LogView taskId="switch-b" runs={[{ ...run, id: "run-b" }]} events={[]} />);
@@ -380,6 +430,7 @@ it("continues capturing raw output while scrolling is paused and drains event bu
   const id = "live-stream-paused";
   updateTaskView(id, { outputView: "raw", outputStream: "stdout" });
   let calls = 0;
+
   const rpc = bridge(async (method) =>
     method === "task.logs"
       ? ++calls === 1
@@ -399,25 +450,32 @@ it("continues capturing raw output while scrolling is paused and drains event bu
           }
       : { events: [], more: false },
   );
+
   const ui = render(<LogView taskId={id} runs={[run]} events={[]} />);
+
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
+
   expect(screen.getByText("first line")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Pause scrolling" }));
   vi.mocked(HTMLElement.prototype.scrollTo).mockClear();
+
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
+
   expect(screen.getByLabelText("Agent output transcript").textContent).toContain(
     "live second line",
   );
+
   expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
   expect(rpc).toHaveBeenCalledWith("task.logs", expect.objectContaining({ after: 11 }));
   fireEvent.click(screen.getByRole("button", { name: "Follow output" }));
   expect(HTMLElement.prototype.scrollTo).toHaveBeenCalled();
   cleanup();
   let pages = 0;
+
   const burstRpc = bridge(async () =>
     ++pages === 1
       ? {
@@ -434,16 +492,21 @@ it("continues capturing raw output while scrolling is paused and drains event bu
             more: false,
           },
   );
+
   const burst = render(<LogView taskId="completed-burst" runs={[run]} events={[]} />);
+
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10);
   });
+
   burst.rerender(
     <LogView taskId="completed-burst" runs={[{ ...run, status: "completed" }]} events={[]} />,
   );
+
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1000);
   });
+
   expect(screen.getByText("burst final page")).toBeTruthy();
   expect(burstRpc).toHaveBeenCalledWith("task.events", expect.objectContaining({ after: 2 }));
   ui.unmount();
@@ -451,6 +514,7 @@ it("continues capturing raw output while scrolling is paused and drains event bu
 
 it("restores persisted layouts and contains prompt dialog focus while preserving composer IME and newline behavior", async () => {
   const id = "persisted-layout";
+
   localStorage.setItem(
     `vibestar.layout.${id}`,
     JSON.stringify({
@@ -462,6 +526,7 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
       outputFollow: false,
     }),
   );
+
   const rpc = bridge(
     vi.fn(async (method, params) =>
       method === "task.chat"
@@ -484,6 +549,7 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
           : null,
     ),
   );
+
   render(<TaskWorkspace detail={detail(id)} revision={0} onError={vi.fn()} back={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Follow output" })).toBeTruthy();
   expect((screen.getByLabelText("Raw output stream") as HTMLSelectElement).value).toBe("stderr");
@@ -504,6 +570,7 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
   fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
   expect(rpc.mock.calls.filter(([method]) => method === "task.chat")).toHaveLength(0);
   fireEvent.keyDown(input, { key: "Enter" });
+
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
       "task.chat",
@@ -514,6 +581,7 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
 
 it("renders nested results and unknown fields as readable content and treats completed activity as completed in the status strip", () => {
   bridge();
+
   render(
     <AgentResponse
       expanded
@@ -528,10 +596,12 @@ it("renders nested results and unknown fields as readable content and treats com
       })}
     />,
   );
+
   expect(screen.getByText("Review this file")).toBeTruthy();
   expect(screen.getByText("emitted detail")).toBeTruthy();
   expect(screen.queryByText("[object Object]")).toBeNull();
   cleanup();
+
   render(
     <CurrentRun
       detail={{
@@ -548,5 +618,6 @@ it("renders nested results and unknown fields as readable content and treats com
       output={vi.fn()}
     />,
   );
+
   expect(screen.getByText("completed · npm test")).toBeTruthy();
 });

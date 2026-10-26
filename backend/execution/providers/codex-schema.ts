@@ -13,6 +13,7 @@ export const codexSchema = (schema: Record<string, unknown>): Record<string, unk
     const required = Array.isArray(copy.required) ? copy.required : [];
     copy.additionalProperties = false;
     copy.required = Object.keys(properties);
+
     copy.properties = Object.fromEntries(
       Object.entries(properties).map(([key, value]) => {
         const child = codexSchema(object(value));
@@ -20,6 +21,7 @@ export const codexSchema = (schema: Record<string, unknown>): Record<string, unk
       }),
     );
   }
+
   if (copy.items) copy.items = codexSchema(object(copy.items));
   for (const key of ["anyOf", "oneOf", "allOf"])
     if (Array.isArray(copy[key])) copy[key] = copy[key].map((child) => codexSchema(object(child)));
@@ -29,6 +31,7 @@ export const codexSchema = (schema: Record<string, unknown>): Record<string, unk
     );
   return copy;
 };
+
 export const codexResult = (schema: Record<string, unknown>, value: unknown): unknown => {
   if (Array.isArray(value)) return value.map((item) => codexResult(object(schema.items), item));
   if (!value || typeof value !== "object") return value;
@@ -37,11 +40,13 @@ export const codexResult = (schema: Record<string, unknown>, value: unknown): un
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, item]) => {
       const child = object(properties[key]);
+
       const nullable =
         child.type === "null" ||
         (Array.isArray(child.type) && child.type.includes("null")) ||
         (Array.isArray(child.anyOf) &&
           child.anyOf.some((branch) => object(branch).type === "null"));
+
       if (item === null && key in properties && !required.includes(key) && !nullable) return [];
       return [[key, codexResult(child, item)]];
     }),

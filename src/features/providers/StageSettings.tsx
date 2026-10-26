@@ -3,6 +3,7 @@ import {
   supportedEfforts,
   configurationError,
 } from "../../../backend/execution/providers/contracts";
+
 export const AgentConfiguration = ({
   config,
   provider,
@@ -37,6 +38,7 @@ export const AgentConfiguration = ({
           onChange={(e) => {
             const model = e.target.value;
             const available = supportedEfforts(detected, model);
+
             onChange({
               ...config,
               model,
@@ -49,9 +51,11 @@ export const AgentConfiguration = ({
           <option value="" disabled={!allowDefault}>
             {allowDefault ? "Official CLI default" : "Select a discovered model"}
           </option>
+
           {config.model && !detected?.models.some((m) => m.id === config.model) && (
             <option value={config.model}>{config.model} · availability not confirmed</option>
           )}
+
           {detected?.models.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label || m.id}
@@ -59,6 +63,7 @@ export const AgentConfiguration = ({
           ))}
         </select>
       </label>
+
       <label>
         Reasoning / effort
         <select
@@ -70,11 +75,13 @@ export const AgentConfiguration = ({
               {config.effort} {detected ? "(unsupported or unknown)" : "(models not loaded)"}
             </option>
           )}
+
           {efforts.map((e) => (
             <option key={e}>{e}</option>
           ))}
         </select>
       </label>
+
       <label>
         Timeout (seconds)
         <input
@@ -89,6 +96,7 @@ export const AgentConfiguration = ({
     </section>
   );
 };
+
 export const StageSettings = ({
   settings,
   onChange,

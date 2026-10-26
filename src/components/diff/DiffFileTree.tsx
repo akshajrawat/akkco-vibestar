@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
 import { ChevronRight, ChevronDown, Folder, FileCode2, Search } from "lucide-react";
+
 import type { DiffFile } from "../../lib/types";
+
 interface TreeNode {
   path: string;
   name: string;
   children: Map<string, TreeNode>;
   file?: DiffFile;
 }
+
 export const DiffFileTree = ({
   files,
   selected,
@@ -24,6 +27,7 @@ export const DiffFileTree = ({
 }) => {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
   const visibleFiles = useMemo(
     () =>
       files.filter((file) =>
@@ -31,11 +35,13 @@ export const DiffFileTree = ({
       ),
     [files, query],
   );
+
   const tree = useMemo(() => {
     const root: TreeNode = { path: "", name: "", children: new Map() };
     for (const file of visibleFiles) {
       let parent = root;
       const parts = file.path.split("/");
+
       parts.forEach((name, index) => {
         const path = parts.slice(0, index + 1).join("/");
         let node = parent.children.get(name);
@@ -43,12 +49,15 @@ export const DiffFileTree = ({
           node = { path, name, children: new Map() };
           parent.children.set(name, node);
         }
+
         if (index === parts.length - 1) node.file = file;
         parent = node;
       });
     }
+
     return root;
   }, [visibleFiles]);
+
   const toggle = (path: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -56,6 +65,7 @@ export const DiffFileTree = ({
       else next.add(path);
       return next;
     });
+
   const renderFile = (file: DiffFile, depth: number) => (
     <button
       key={file.path}
@@ -73,11 +83,13 @@ export const DiffFileTree = ({
       ) : (
         <FileCode2 size={13} />
       )}
+
       {!!reviews.find((r) => r.path === file.path)?.notes && (
         <small title="Local review notes">
           {reviews.find((r) => r.path === file.path)?.notes} ◇
         </small>
       )}
+
       <span className="file-identity">
         <span className="file-basename mono">{file.path.split("/").at(-1)}</span>
         {mode === "flat" && (
@@ -92,6 +104,7 @@ export const DiffFileTree = ({
         <span className="success">+{file.insertions}</span>
         <span className="failure">−{file.deletions}</span>
       </span>
+
       <span
         className={`file-status ${file.status === "D" ? "failure" : file.status === "A" ? "success" : "warning"}`}
       >
@@ -99,6 +112,7 @@ export const DiffFileTree = ({
       </span>
     </button>
   );
+
   const render = (node: TreeNode, depth: number): React.ReactNode =>
     Array.from(node.children.values())
       .sort((a, b) => Number(!!a.file) - Number(!!b.file) || a.name.localeCompare(b.name))
@@ -125,6 +139,7 @@ export const DiffFileTree = ({
           </div>
         ),
       );
+
   return (
     <aside className="file-tree">
       <div className="file-tree-caption">
@@ -140,6 +155,7 @@ export const DiffFileTree = ({
           </button>
         )}
       </div>
+
       <div className="file-search">
         <Search size={12} />
         <input
@@ -149,6 +165,7 @@ export const DiffFileTree = ({
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+
       {mode === "flat"
         ? visibleFiles
             .slice()

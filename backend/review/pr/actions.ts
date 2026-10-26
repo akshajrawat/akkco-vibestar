@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+
 import { AdeError, now } from "../../domain";
 import type { Database } from "../../storage/database";
 import { discussionEntries } from "../../scheduled/action";
@@ -30,6 +31,7 @@ export const persistReviewActions = (
         "analysis_evidence",
         "Bot activity cannot be attributed to a human reviewer.",
       );
+
     const replies = observation.authorReplyIds.map((id) => {
       const reply = sources.find((s) => s.id === id);
       if (
@@ -44,6 +46,7 @@ export const persistReviewActions = (
         );
       return reply;
     });
+
     for (const id of observation.reviewerAcknowledgmentIds) {
       const acknowledgment = sources.find((s) => s.id === id);
       if (
@@ -57,6 +60,7 @@ export const persistReviewActions = (
           "Reviewer acknowledgment has no valid later source.",
         );
     }
+
     if (
       observation.evidenceIds.some((id) => !sources.some((s) => s.id === id)) ||
       observation.commitShas.some((sha) => !knownCommits.has(sha))
@@ -79,12 +83,15 @@ export const persistReviewActions = (
         "Analysis claimed a response without author evidence.",
       );
     const anchor = `${source.id}/${createHash("sha256").update(observation.originalText.trim()).digest("hex")}`;
+
     const matched = previous.find(
       (a) => a.sourceId === source.id && a.originalText.trim() === observation.originalText.trim(),
     );
+
     const existing = observation.existingActionId
       ? previous.find((a) => a.id === observation.existingActionId)
       : matched;
+
     if (
       observation.existingActionId &&
       (!existing || existing.reviewer !== source.author || existing.sourceId !== source.id)
@@ -93,11 +100,13 @@ export const persistReviewActions = (
         "analysis_evidence",
         "Existing observation does not belong to the same review source.",
       );
+
     const stored = db.all<{ id: string }>(
       "SELECT id FROM pr_review_actions WHERE job_id=? AND anchor=?",
       jobId,
       anchor,
     )[0];
+
     const id = existing?.id || stored?.id || randomUUID();
     if (used.has(id))
       throw new AdeError(
@@ -106,6 +115,7 @@ export const persistReviewActions = (
       );
     used.add(id);
     db.run("INSERT OR IGNORE INTO pr_review_actions VALUES(?,?,?,?)", id, jobId, anchor, now());
+
     const action: ReviewAction = {
       ...observation,
       affectedFiles: [...new Set(observation.affectedFiles)],
@@ -127,12 +137,14 @@ export const persistReviewActions = (
       codeStatus: "unverified",
       confidence: source.author === "unknown" ? "low" : observation.confidence,
     };
+
     db.run(
       "INSERT INTO pr_action_assessments VALUES(?,?,?)",
       analysisId,
       id,
       JSON.stringify(action),
     );
+
     return action;
   });
 };

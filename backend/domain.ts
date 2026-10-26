@@ -1,8 +1,10 @@
 import { z } from "zod";
+
 import type {
   VerificationEnvironment,
   BrowserEnvironmentReport,
 } from "./execution/verification/browser/contracts";
+
 export interface ActivityBlocker {
   id: string;
   kind:
@@ -18,6 +20,7 @@ export interface ActivityBlocker {
   task_id?: string;
   stoppable: boolean;
 }
+
 export class AdeError extends Error {
   constructor(
     public readonly kind: string,
@@ -28,13 +31,16 @@ export class AdeError extends Error {
     this.name = "AdeError";
   }
 }
+
 export const modelEffortError = (provider: string, model: string, effort: string) => {
   const suffix =
     provider === "antigravity" ? model.match(/-(low|medium|high|xhigh|max)$/)?.[1] : null;
+
   return suffix && suffix !== effort
     ? `Antigravity model ${model} encodes ${suffix} effort and conflicts with ${effort}. Select a matching model or effort.`
     : null;
 };
+
 export const StageConfigSchema = z.object({
   model: z
     .string()
@@ -43,10 +49,12 @@ export const StageConfigSchema = z.object({
   effort: z.string().min(1).max(30),
   timeout_secs: z.number().int().min(10).max(86400),
 });
+
 export const FollowupConfigSchema = z.object({
   provider: z.enum(["codex", "antigravity"]),
   config: StageConfigSchema,
 });
+
 export const PipelineStageSettingsSchema = z
   .object({
     1: StageConfigSchema.optional(),
@@ -55,6 +63,7 @@ export const PipelineStageSettingsSchema = z
     5: StageConfigSchema.optional(),
   })
   .strict();
+
 export const SettingsSchema = z
   .object({
     concurrency: z.number().int().min(1).max(4),
@@ -100,12 +109,14 @@ export const SettingsSchema = z
           message: error,
         });
     }
+
     if (settings.review_ai) {
       const reviewError = modelEffortError(
         settings.review_ai.provider,
         settings.review_ai.model,
         settings.review_ai.effort,
       );
+
       if (reviewError)
         context.addIssue({
           code: "custom",
@@ -113,12 +124,14 @@ export const SettingsSchema = z
           message: reviewError,
         });
     }
+
     if (settings.utility_ai.provider === "antigravity") {
       const utilityError = modelEffortError(
         "antigravity",
         settings.utility_ai.model,
         settings.utility_ai.effort,
       );
+
       if (utilityError)
         context.addIssue({
           code: "custom",
@@ -127,8 +140,10 @@ export const SettingsSchema = z
         });
     }
   });
+
 export type Settings = z.infer<typeof SettingsSchema>;
 export type StageConfig = z.infer<typeof StageConfigSchema>;
+
 export const defaultSettings: Settings = {
   concurrency: 2,
   default_editor: "",
@@ -148,6 +163,7 @@ export const defaultSettings: Settings = {
     scan_home: true,
   },
 };
+
 export const taskStatuses = [
   "not_started",
   "preserved",
@@ -167,13 +183,16 @@ export const taskStatuses = [
   "interrupted",
   "completed",
 ] as const;
+
 export type TaskStatus = (typeof taskStatuses)[number];
+
 export interface IssueRef {
   owner: string;
   repo: string;
   number: number;
   url: string;
 }
+
 export interface Repository {
   id: string;
   owner: string;
@@ -194,6 +213,7 @@ export interface Repository {
   upstream_remote?: string;
   origin_remote?: string | null;
 }
+
 export interface Task {
   disposal_authorization?: {
     fingerprint: string;
@@ -261,11 +281,13 @@ export interface Task {
   };
   approval_gate?: "antigravity_plan" | "codex_plan" | "implementation" | "final_review";
 }
+
 // Shared physical assignment; repair workflows do not become issue tasks.
 export type WorkspaceAssignment = Pick<
   Task,
   "id" | "repo_id" | "branch_name" | "worktree_path" | "base_commit_sha"
 >;
+
 export interface CoreEvent {
   event: string;
   task_id?: string;
@@ -279,6 +301,7 @@ export interface CoreEvent {
   text?: string;
   stream?: string;
 }
+
 export interface NormalizedEvent {
   kind:
     | "run.started"
@@ -295,6 +318,7 @@ export interface NormalizedEvent {
     | "run.cancelled";
   data: unknown;
 }
+
 export const stageStatuses: TaskStatus[] = [
   "preparing",
   "planning_antigravity",
@@ -304,11 +328,13 @@ export const stageStatuses: TaskStatus[] = [
   "reviewing_antigravity",
   "ready_for_review",
 ];
+
 export const stageStatus = (stage: number) => {
   const status = stageStatuses[stage];
   if (!status) throw new AdeError("invalid_state", "Invalid pipeline stage");
   return status;
 };
+
 export const retryTarget = (task: Task, target: number, active: boolean) => {
   if (
     active ||
@@ -323,6 +349,7 @@ export const retryTarget = (task: Task, target: number, active: boolean) => {
     );
   return target;
 };
+
 export const parseIssue = (input: string): IssueRef => {
   let u: URL;
   try {
@@ -330,6 +357,7 @@ export const parseIssue = (input: string): IssueRef => {
   } catch {
     throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
   }
+
   const m = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/issues\/(\d+)\/?$/);
   if (
     u.protocol !== "https:" ||
@@ -352,6 +380,7 @@ export const parseIssue = (input: string): IssueRef => {
     url: `https://github.com/${m[1]}/${m[2]}/issues/${number}`,
   };
 };
+
 export const slug = (scope: string) =>
   scope
     .trim()
@@ -362,12 +391,15 @@ export const slug = (scope: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "") || "scope";
+
 export const branchName = (number: number, scope: string, suffix = 0) =>
   `akkco/${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`;
+
 export const remoteIdentity = (input: string) => {
   const u = new URL(
     input.startsWith("git@github.com:") ? `https://github.com/${input.slice(15)}` : input,
   );
+
   const m = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
   if (
     !["https:", "ssh:"].includes(u.protocol) ||
@@ -386,7 +418,9 @@ export const remoteIdentity = (input: string) => {
     );
   return { owner: m[1], name: m[2] };
 };
+
 export const now = () => new Date().toISOString();
+
 export const repositoryMatchesIssue = (repository: Repository, reference: IssueRef) =>
   `${repository.owner}/${repository.name}`.toLowerCase() ===
   `${reference.owner}/${reference.repo}`.toLowerCase();

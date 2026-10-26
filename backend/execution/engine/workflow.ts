@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+
 import type { z } from "zod";
+
 import {
   AdeError,
   FollowupConfigSchema,
@@ -21,6 +23,7 @@ import type { Engine } from "../engine";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 import type { VerificationTransitions } from "./verification";
+
 /** Coordinates explicit workflow startup, read-only chat and the approved stage sequence. */
 export class WorkflowOrchestrator {
   constructor(
@@ -46,14 +49,17 @@ export class WorkflowOrchestrator {
       savedReviewVerdict: VerificationTransitions["savedReviewVerdict"];
     },
   ) {}
+
   startWorkflow = async (input: z.input<typeof StartWorkflowSchema>) => {
     this.host.assertAvailable();
     const p = StartWorkflowSchema.parse(input);
     if (new Set(p.message_ids).size !== p.message_ids.length)
       throw new AdeError("invalid_input", "Select each conversation instruction once.");
+
     const digest = createHash("sha256")
       .update(JSON.stringify({ ...p, message_ids: [...p.message_ids].sort() }))
       .digest("hex");
+
     const task = this.host.db.task(p.id);
     if (task.status === "preserved")
       throw new AdeError(
@@ -65,17 +71,20 @@ export class WorkflowOrchestrator {
         throw new AdeError("invalid_state", "This task's workflow has already been authorized.");
       return Promise.resolve(task);
     }
+
     const starting = this.state.startingWorkflows.get(p.id);
     if (starting) {
       if (starting.digest !== digest)
         throw new AdeError("busy", "Another workflow start is being validated for this task.");
       return starting.promise;
     }
+
     if (task.status !== "not_started" || task.archived)
       throw new AdeError(
         "invalid_state",
         "Only an unarchived task whose workflow has not started can start.",
       );
+
     const promise = this.host
       .withTaskMaintenance(
         p.id,
@@ -87,6 +96,7 @@ export class WorkflowOrchestrator {
               { environment: "wsl", path: repo.path },
               repo.source !== "imported",
             );
+
             if (
               !verified.remotes.some(
                 (remote) =>
@@ -104,6 +114,7 @@ export class WorkflowOrchestrator {
               "Reconnect the missing source checkout before starting.",
             );
           }
+
           await this.runner.validateWorkflow(task, this.state.repositoryController.signal);
           for (const id of p.message_ids) {
             if (
@@ -118,6 +129,7 @@ export class WorkflowOrchestrator {
                 "Selected conversation instructions must belong to this task and be complete.",
               );
           }
+
           // Re-read immediately before the atomic authorization; metadata discovery is read-only.
           const current = this.host.db.task(task.id);
           if (
@@ -133,6 +145,7 @@ export class WorkflowOrchestrator {
               "invalid_state",
               "The task changed while workflow startup was being checked.",
             );
+
           const started = {
             ...current,
             status: "queued" as const,
@@ -146,6 +159,7 @@ export class WorkflowOrchestrator {
             error: null,
             updated_at: now(),
           };
+
           this.host.db.saveTask(started);
           this.host.changed(task.id);
           return started;
@@ -153,9 +167,11 @@ export class WorkflowOrchestrator {
         "Checking workflow startup",
       )
       .finally(() => this.state.startingWorkflows.delete(p.id));
+
     this.state.startingWorkflows.set(p.id, { digest, promise });
     return promise;
   };
+
   chat = (input: z.input<typeof TaskChatSchema>) => {
     this.host.assertAvailable();
     const p = TaskChatSchema.parse(input);
@@ -166,6 +182,7 @@ export class WorkflowOrchestrator {
         "This task's conversation history was removed. Its retained worktree can be opened in your editor.",
       );
     this.host.taskRepository(task.repo_id, parseIssue(task.issue_url));
+
     const existing = this.host.db.all<{
       id: string;
       task_id: string;
@@ -174,6 +191,7 @@ export class WorkflowOrchestrator {
       purpose: string;
       status: string;
     }>("SELECT * FROM task_messages WHERE id=?", p.request_id)[0];
+
     if (existing) {
       if (
         existing.task_id !== task.id ||
@@ -187,6 +205,7 @@ export class WorkflowOrchestrator {
         );
       return { message: existing, disposition: existing.status };
     }
+
     if (
       task.archived ||
       task.status === "queued" ||
@@ -197,6 +216,7 @@ export class WorkflowOrchestrator {
         "busy",
         "Wait for this task's active operation and an available execution slot before asking a question.",
       );
+
     const message = {
       id: p.request_id,
       role: "user",
@@ -205,6 +225,7 @@ export class WorkflowOrchestrator {
       status: "chat_pending",
       purpose: "chat",
     };
+
     this.host.db.run(
       "INSERT INTO task_messages(id,task_id,role,content,created_at,status,configuration,purpose) VALUES(?,?,?,?,?,?,?,'chat')",
       message.id,
@@ -215,7 +236,9 @@ export class WorkflowOrchestrator {
       message.status,
       JSON.stringify(p.configuration),
     );
+
     const prompt = chatPrompt(this.host.db, task, p.content);
+
     void this.operations
       .withExecutionSlot(
         task.id,
@@ -224,6 +247,7 @@ export class WorkflowOrchestrator {
         async (signal) => {
           if (!task.worktree_path || task.workspace_checkpoint?.state !== "ready")
             await this.prepareTaskWorkspace(task, signal, "chat_preparation");
+
           const result = ChatResponseSchema.parse(
             await this.runner.run(
               { ...task, stage: 1 },
@@ -239,12 +263,14 @@ export class WorkflowOrchestrator {
               },
             ),
           );
+
           this.host.db.transaction(() => {
             this.host.db.run(
               "UPDATE task_messages SET status='chat_completed' WHERE id=? AND task_id=?",
               message.id,
               task.id,
             );
+
             this.host.db.run(
               "INSERT INTO task_messages(id,task_id,role,content,created_at,status,run_id,purpose) SELECT ?,task_id,'assistant',?,?,'chat_completed',run_id,'chat' FROM task_messages WHERE id=?",
               randomUUID(),
@@ -266,6 +292,7 @@ export class WorkflowOrchestrator {
           message.id,
           task.id,
         );
+
         this.host.db.run(
           "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'chat_error',?,?)",
           task.id,
@@ -277,14 +304,17 @@ export class WorkflowOrchestrator {
         );
       })
       .finally(() => this.host.changed(task.id));
+
     this.host.changed(task.id);
     return { message, disposition: message.status };
   };
+
   prepareTaskWorkspace = async (t: Task, signal: AbortSignal, kind = "preparation") => {
     const repo = this.host.db.repository(t.repo_id);
     await this.host.prepareClone(repo, signal);
     const logDir = join(this.host.root, "logs", t.id);
     await mkdir(logDir, { recursive: true, mode: 0o700 });
+
     await this.host.git.prepare(
       repo,
       t,
@@ -298,15 +328,19 @@ export class WorkflowOrchestrator {
           JSON.stringify(record),
           now(),
         );
+
         this.host.changed(t.id);
+
         await appendFile(join(logDir, "preparation.jsonl"), JSON.stringify(record) + "\n", {
           mode: 0o600,
         });
       },
     );
+
     this.host.db.saveRepository(repo);
     this.host.db.saveTask(t);
   };
+
   pipeline = async (t: Task, signal: AbortSignal) => {
     for (; t.stage < 6; t.stage++) {
       if (signal.aborted) throw new AdeError("cancelled", "Task cancelled");
@@ -338,22 +372,26 @@ export class WorkflowOrchestrator {
               "Review requires verified checks or a current explicit acknowledgment of environmental gaps.",
             );
         }
+
         const runtime = await taskRuntime(
           this.host.db.repository(t.repo_id).path,
           t.worktree_path,
           true,
         );
+
         t.runtime = {
           python: runtime.python,
           dependencies: runtime.dependencies,
           warnings: runtime.warnings,
         };
+
         this.host.db.saveTask(t);
         // Refresh authored context at each approved stage, never invoke a model to fetch it.
         if (t.issue.context_fetched_at || t.issue.number === t.issue_number) {
           t.issue = await fetchIssue(parseIssue(t.issue_url), this.host.root, signal);
           this.host.db.saveTask(t);
         }
+
         await this.runner.run(t, t.execution_settings ?? this.host.db.settings(), signal);
       } else {
         const output = await this.host.manual(
@@ -362,6 +400,7 @@ export class WorkflowOrchestrator {
           signal,
           true,
         );
+
         if (output.code !== 0)
           throw new AdeError("validation", "git diff --check failed. Inspect Tests.");
         const verification = taskVerification(this.host.db, t.id);
@@ -371,10 +410,12 @@ export class WorkflowOrchestrator {
             verification.summary,
           );
       }
+
       if (t.stage === 5) {
         t.final_review_hash = await this.host.git.fingerprint(t);
         t.final_review_verdict = this.operations.savedReviewVerdict(t.id);
       }
+
       const queued =
         t.stage === 4
           ? []
@@ -382,6 +423,7 @@ export class WorkflowOrchestrator {
               "SELECT id,configuration FROM task_messages WHERE task_id=? AND status='queued' ORDER BY created_at,rowid",
               t.id,
             );
+
       if (queued.length) {
         const message = queued.at(-1)!;
         if (message.configuration)
@@ -394,10 +436,12 @@ export class WorkflowOrchestrator {
             },
             FollowupConfigSchema.parse,
           );
+
         this.host.db.run(
           "UPDATE task_messages SET status='delivered' WHERE task_id=? AND status='queued'",
           t.id,
         );
+
         if (t.stage >= 3) {
           this.host.db.run("DELETE FROM task_artifacts WHERE task_id=? AND stage>=3", t.id);
           t.final_review_hash = undefined;
@@ -413,7 +457,9 @@ export class WorkflowOrchestrator {
           t.stage = 1;
         }
       }
+
       const nextStage = t.stage + 1;
+
       const approvalGate = queued.length
         ? undefined
         : t.stage === 1
@@ -425,6 +471,7 @@ export class WorkflowOrchestrator {
               : t.stage === 5
                 ? "final_review"
                 : undefined;
+
       if (approvalGate) {
         this.host.db.saveTask({
           ...t,
@@ -433,11 +480,14 @@ export class WorkflowOrchestrator {
           status: "awaiting_approval",
           updated_at: now(),
         });
+
         this.host.changed(t.id);
         return;
       }
+
       this.host.db.saveTask({ ...t, stage: nextStage, approval_gate: undefined });
     }
+
     t.status = "ready_for_review";
     t.updated_at = now();
     this.host.db.saveTask(t);

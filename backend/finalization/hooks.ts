@@ -1,5 +1,6 @@
 import { lstat, realpath } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+
 import { AdeError } from "../domain";
 import type { Engine } from "../execution/engine";
 import { OutputBudget } from "../execution/output/bounded-output";
@@ -10,6 +11,7 @@ import { inside, managedPath } from "../workspace/paths";
 import { type Finalization } from "./contracts";
 import type { FinalizationStore } from "./store";
 import type { FinalizationWorkspaces } from "./workspaces";
+
 /** Runs optional repository hooks under the existing sandbox policy; host publication guards remain separate. */
 export class OptionalHooks {
   constructor(
@@ -17,6 +19,7 @@ export class OptionalHooks {
     private readonly workspaces: FinalizationWorkspaces,
     private readonly store: FinalizationStore,
   ) {}
+
   hookConfiguration = async (cwd: string, signal?: AbortSignal) => {
     const extension = await gitExecute({
       program: "git",
@@ -32,15 +35,18 @@ export class OptionalHooks {
         "extensions.worktreeConfig",
       ],
     });
+
     if (![0, 1].includes(extension.code))
       throw new AdeError(
         "hook_policy",
         `Cannot read worktree configuration (${extension.code}): ${redact(extension.stderr)}`,
       );
+
     const scopes =
       extension.code === 0 && extension.stdout.trim() === "true"
         ? ["--worktree", "--local"]
         : ["--local"];
+
     for (const scope of scopes) {
       const value = await gitExecute({
         program: "git",
@@ -49,6 +55,7 @@ export class OptionalHooks {
         rawStdoutForIntegrity: true,
         args: ["config", scope, "--no-includes", "--get", "core.hooksPath"],
       });
+
       if (value.code === 0) {
         const path = value.stdout.endsWith("\n") ? value.stdout.slice(0, -1) : value.stdout;
         if (Buffer.byteLength(path) > 4096)
@@ -58,14 +65,17 @@ export class OptionalHooks {
           );
         return path;
       }
+
       if (value.code !== 1)
         throw new AdeError(
           "hook_policy",
           `Cannot read optional hook configuration (${value.code}): ${redact(value.stderr)}`,
         );
     }
+
     return null;
   };
+
   hooks = async (
     record: Finalization,
     names: string[],
@@ -88,8 +98,10 @@ export class OptionalHooks {
         "Optional hook policy",
         "Repository/worktree configuration explicitly disables optional hooks.",
       );
+
       return;
     }
+
     if (
       configured !== null &&
       (!configured || configured.startsWith("~") || configured.includes("\\"))
@@ -98,12 +110,15 @@ export class OptionalHooks {
         "hook_policy",
         "Optional hook configuration must identify an authorized worktree or shared Git hook directory.",
       );
+
     const sourceDirectory =
       configured === null ? join(common, "hooks") : resolve(source, configured);
+
     const directory =
       sourceDirectory === source || inside(source, sourceDirectory)
         ? resolve(cwd, relative(source, sourceDirectory))
         : sourceDirectory;
+
     const sharedHooks = join(common, "hooks");
     if (directory === cwd || inside(cwd, directory)) {
       if (directory !== cwd) await managedPath(cwd, directory);
@@ -114,10 +129,12 @@ export class OptionalHooks {
         "hook_policy",
         "Optional hooks outside the authorized worktree or shared Git hooks directory cannot run. Configure a supported local directory or explicitly skip optional hooks.",
       );
+
     const metadata = await lstat(directory).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+
     if (
       metadata &&
       (!metadata.isDirectory() ||
@@ -130,10 +147,12 @@ export class OptionalHooks {
       );
     for (const name of names) {
       const path = join(directory, name);
+
       const entry = await lstat(path).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") return null;
         throw error;
       });
+
       if (!entry || !(entry.mode & 0o111)) {
         if (sourceDirectory !== directory) {
           const original = await lstat(join(sourceDirectory, name)).catch(
@@ -142,22 +161,27 @@ export class OptionalHooks {
               throw error;
             },
           );
+
           if (original && original.mode & 0o111)
             throw new AdeError(
               "hook_policy",
               "A configured optional hook is missing from the selected review workspace. Include its files in a fresh review or explicitly skip optional hooks.",
             );
         }
+
         continue;
       }
+
       if (!entry.isFile() || entry.isSymbolicLink())
         throw new AdeError("hook_policy", "Optional hook aliases are not supported.");
+
       const args =
         name === "pre-push"
           ? [record.destination!.remote, record.destination!.url]
           : name === "pre-commit" || name === "post-commit"
             ? []
             : [messageFile!, ...(name === "prepare-commit-msg" ? ["message"] : [])];
+
       const invocation = await sandboxInvocation(
         this.engine.root,
         this.engine.db,
@@ -169,8 +193,10 @@ export class OptionalHooks {
         undefined,
         messageFile ? [messageFile] : [],
       );
+
       const outputBudget = new OutputBudget(1024 * 1024);
       let outputLines = 0;
+
       const result = await execute({
         ...invocation,
         cwd,
@@ -196,6 +222,7 @@ export class OptionalHooks {
           this.engine.changed(task.id);
         },
       });
+
       record.pid = null;
       record.process_identity = null;
       this.store.save(record);

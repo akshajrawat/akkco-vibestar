@@ -1,5 +1,6 @@
 import { MarkdownContent } from "../../components/ui/MarkdownContent";
 import { VerificationCheckSchema } from "../../../backend/execution/verification/verification";
+
 const resultValue = (value: unknown): React.ReactNode => {
   const verification = VerificationCheckSchema.safeParse(value);
   if (verification.success) {
@@ -17,6 +18,7 @@ const resultValue = (value: unknown): React.ReactNode => {
         >
           {check.name} · {check.outcome.replaceAll("_", " ")}
         </strong>
+
         <small>
           Provider reported · {check.kind} · {check.required ? "required" : "optional"}
         </small>
@@ -31,6 +33,7 @@ const resultValue = (value: unknown): React.ReactNode => {
       </div>
     );
   }
+
   if (typeof value === "string") return <MarkdownContent text={value} />;
   if (Array.isArray(value))
     return value.length ? (
@@ -55,6 +58,7 @@ const resultValue = (value: unknown): React.ReactNode => {
     );
   return <p>{value === null ? "Not reported" : String(value)}</p>;
 };
+
 export const AgentResponse = ({ text, expanded = false }: { text: string; expanded?: boolean }) => {
   let fields: Record<string, unknown> | undefined;
   try {
@@ -64,10 +68,12 @@ export const AgentResponse = ({ text, expanded = false }: { text: string; expand
   } catch {
     /* Prose and incomplete streams remain readable. */
   }
+
   if (fields) {
     const summaryKey = ["summary", "goal", "understanding"].find(
       (key) => typeof fields![key] === "string",
     );
+
     const summary = summaryKey ? String(fields[summaryKey]) : "Provider result";
     return (
       <div className="agent-response markdown">
@@ -86,6 +92,7 @@ export const AgentResponse = ({ text, expanded = false }: { text: string; expand
       </div>
     );
   }
+
   // Never display provider envelopes or streaming schema fragments as chat.
   if (text.trim().startsWith("{"))
     return (

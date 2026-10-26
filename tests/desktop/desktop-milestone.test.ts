@@ -1,9 +1,11 @@
 import { it, expect } from "vitest";
 import { _electron } from "playwright-core";
+
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
 import { parseIssue, defaultSettings } from "../../backend/domain";
 import {
   createFixtureEngine,
@@ -12,6 +14,7 @@ import {
   finishFixtureTask as waitForTask,
 } from "../helpers/fixtures";
 import type { Detail, Detection, Snapshot } from "../../src/lib/types";
+
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
@@ -23,6 +26,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
     let taskId = "";
     try {
       const { repo, upstream } = await fixtureRepository(engine, dir);
+
       const task = engine.enqueue(
         repo,
         parseIssue("https://github.com/fixture/fixture/issues/1"),
@@ -30,8 +34,10 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
         "",
         {},
       );
+
       taskId = task.id;
       await waitForTask(engine, task.id, (status) => status === "ready_for_review");
+
       engine.db.run(
         "INSERT INTO settings VALUES('github_watch',?)",
         JSON.stringify({
@@ -40,6 +46,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
           verify_codex: false,
         }),
       );
+
       engine.db.saveSettings({
         ...defaultSettings,
         utility_ai: {
@@ -57,8 +64,10 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
     } finally {
       await engine.close();
     }
+
     const evidence = join(root, "artifacts", "verification");
     await mkdir(evidence, { recursive: true });
+
     const app = await _electron.launch({
       executablePath: require("electron") as string,
       args: [resolve(".")],
@@ -69,6 +78,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       },
       timeout: 30000,
     });
+
     try {
       const page = await app.firstWindow();
       page.setDefaultTimeout(30000);
@@ -76,20 +86,25 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       page.on("pageerror", (e) => errors.push(e.message));
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
       await page.getByRole("button", { name: "Providers", exact: true }).click();
+
       const detections = await page.evaluate(() =>
         window.vibestar.rpc<Detection[]>("providers.detect"),
       );
+
       expect(
         detections
           .filter((d) => d.connected)
           .map((d) => d.provider)
           .sort(),
       ).toEqual(["antigravity", "codex", "github"]);
+
       await page.getByRole("button", { name: "Refresh", exact: true }).click();
       await expect.poll(() => page.locator(".provider-info .success").count()).toBe(3);
+
       expect(detections.find((d) => d.provider === "antigravity")!.models.length).toBeGreaterThan(
         0,
       );
+
       await page.screenshot({ path: join(evidence, "electron-providers.png") });
       await page.evaluate(() => window.vibestar.rpc("github.sync"));
       const github = await page.evaluate(() => window.vibestar.rpc<Snapshot>("snapshot"));
@@ -107,6 +122,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
             }),
           pr.url,
         );
+
         await expect
           .poll(
             () =>
@@ -114,6 +130,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
                 const watched = (await window.vibestar.rpc<Snapshot>("snapshot")).scheduled?.find(
                   (j) => j.id === id,
                 );
+
                 return watched?.status === "error"
                   ? "error"
                   : watched?.last_snapshot
@@ -123,11 +140,13 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
             { timeout: 180000 },
           )
           .not.toBe("pending");
+
         const snapshot = await page.evaluate(() => window.vibestar.rpc<Snapshot>("snapshot"));
         const inspected = snapshot.scheduled!.find((j) => j.id === job.id)!;
         expect(inspected.error, inspected.error || "").toBeNull();
         expect(inspected.last_snapshot?.authenticatedUser).toBe(github.github?.status?.username);
         expect(inspected.action?.conversationState).toBeTruthy();
+
         console.log(
           "Live PR decision",
           inspected.url,
@@ -135,42 +154,55 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
           inspected.action?.summary,
           inspected.analysis_method,
         );
+
         await page.evaluate(
           (id) => window.vibestar.rpc("scheduled.enabled", { id, enabled: false }),
           job.id,
         );
+
         await page.getByRole("button", { name: "Pull Requests", exact: true }).click();
         await page.getByText(inspected.title!, { exact: true }).first().click();
         await page.getByRole("dialog", { name: "Pull request details" }).waitFor();
+
         await page.screenshot({
           path: join(evidence, "electron-pr-conversation.png"),
         });
+
         await page.getByRole("tab", { name: "CI / Checks", exact: true }).click();
         await page.getByRole("button", { name: "Overview", exact: true }).click();
         await page.getByRole("tab", { name: "Analysis History", exact: true }).click();
+
         await page.screenshot({
           path: join(evidence, "electron-pr-analysis.png"),
         });
+
         await page.getByLabel("Close PR details").click();
       }
+
       await page.getByRole("button", { name: "Settings", exact: true }).click();
+
       await page
         .locator(".settings-nav")
         .getByRole("button", { name: "Repositories", exact: true })
         .click();
+
       await page.getByRole("button", { name: "Scan now", exact: true }).click();
       await page.getByText("Repositories indexed: 1", { exact: true }).waitFor();
+
       await page
         .locator(".settings-nav")
         .getByRole("button", { name: "Storage", exact: true })
         .click();
+
       await page.getByText(root, { exact: true }).waitFor();
       expect(await page.locator(".storage-sizes").innerText()).toContain("Database");
       await page.screenshot({ path: join(evidence, "electron-storage.png") });
+
       await page
         .locator(".settings-nav")
         .getByRole("button", { name: "Usage", exact: true })
         .click();
+
       await page.getByText(/Agent runs: [3-9]/).waitFor();
       await page.screenshot({ path: join(evidence, "electron-usage.png") });
       await page.locator(".tree-task").filter({ hasText: "Keyboard verification" }).click();
@@ -179,47 +211,59 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Close shell" }).waitFor();
       const composer = page.getByLabel("Task conversation");
       let navigations = 0;
+
       page.on("framenavigated", () => {
         navigations++;
       });
+
       await composer.fill("First line");
       await composer.press("Shift+Enter");
       await composer.pressSequentially("Second line");
       expect(await composer.inputValue()).toBe("First line\nSecond line");
       await composer.press("Enter");
       await expect.poll(() => composer.inputValue()).toBe("");
+
       const detail = await page.evaluate(
         (id) => window.vibestar.rpc<Detail>("task.detail", { id }),
         taskId,
       );
+
       expect(detail.messages.at(-1)).toMatchObject({
         content: "First line\nSecond line",
         status: "draft",
       });
+
       expect(navigations).toBe(0);
       await page.getByText("First line", { exact: false }).waitFor();
       await page.getByRole("button", { name: "Close shell" }).click();
       await page.getByLabel("Hide utility dock").click();
       await expect.poll(() => composer.getAttribute("placeholder")).toBe("Ask Vibestar…");
       await page.getByLabel("Choose chat model").click();
+
       await page
         .getByRole("dialog", { name: "Chat model configuration" })
         .getByRole("button", { name: "low", exact: true })
         .click();
+
       await page
         .getByRole("dialog", { name: "Chat model configuration" })
         .getByRole("button", { name: "Done", exact: true })
         .click();
+
       const instruction =
         "Verify that chat execution works. Do not change any files or run tests for this verification. Return the required structured implementation result with a concise summary and empty test arrays. The previous First line/Second line message was a keyboard test only.";
+
       await composer.fill(instruction);
       await composer.press("Enter");
       await expect.poll(() => composer.inputValue()).toBe("");
+
       const saved = await page.evaluate(
         (id) => window.vibestar.rpc<Detail>("task.detail", { id }),
         taskId,
       );
+
       expect(saved.messages.at(-1)?.content).toBe(instruction);
+
       await expect
         .poll(
           () =>
@@ -230,20 +274,25 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
           { timeout: 120000 },
         )
         .toBe("ready_for_review");
+
       const completed = await page.evaluate(
         (id) => window.vibestar.rpc<Detail>("task.detail", { id }),
         taskId,
       );
+
       expect(completed.usage?.find((r) => r.purpose === "Chat Follow-up")).toMatchObject({
         provider: "codex",
         model: "gpt-6.1-sol",
         effort: "low",
         status: "completed",
       });
+
       expect(navigations).toBe(0);
+
       await page.screenshot({
         path: join(evidence, "electron-chat.png"),
       });
+
       await writeFile(
         join(evidence, "results.json"),
         JSON.stringify(
@@ -264,6 +313,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
           2,
         ),
       );
+
       expect(errors).toEqual([]);
       console.log("Electron milestone evidence:", root);
     } finally {

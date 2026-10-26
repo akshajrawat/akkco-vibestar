@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, Minimize2, X } from "lucide-react";
+
 import { useTaskView, updateTaskView } from "../../lib/taskView";
 import { navigateTabs, focusWorkspace } from "../../lib/keyboard";
 import { ResizeHandle } from "../../components/shared/ResizeHandle";
@@ -17,9 +18,11 @@ export const BottomDock = ({
   const view = useTaskView(id);
   const surface = useRef<HTMLElement>(null);
   const [attached, setAttached] = useState(view.terminalDock && view.dockTab === "Terminal");
+
   useEffect(() => {
     if (view.terminalDock && view.dockTab === "Terminal") setAttached(true);
   }, [view.terminalDock, view.dockTab]);
+
   return (
     <>
       {view.terminalDock && !view.dockMaximized && (
@@ -33,6 +36,7 @@ export const BottomDock = ({
           onChange={(bottomHeight) => updateTaskView(id, { bottomHeight })}
         />
       )}
+
       <section
         ref={surface}
         className="utility-dock bottom-dock"
@@ -62,6 +66,7 @@ export const BottomDock = ({
           >
             {view.dockMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           </Button>
+
           <Button
             size="icon"
             variant="ghost"
@@ -74,6 +79,7 @@ export const BottomDock = ({
             <X size={13} />
           </Button>
         </div>
+
         <div className="dock-content" hidden={view.dockTab !== "Terminal"}>
           {attached && terminal}
         </div>

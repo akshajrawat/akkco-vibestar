@@ -1,7 +1,9 @@
 import { open, realpath } from "node:fs/promises";
 import { join } from "node:path";
+
 import { AdeError } from "../domain";
 import { inside, managedPath, safeFile } from "../workspace/paths";
+
 export const readLogTail = async (
   root: string,
   taskId: string,
@@ -13,10 +15,12 @@ export const readLogTail = async (
     const dir = await realpath(await managedPath(root, join("logs", taskId)));
     if (!inside(join(root, "logs"), dir))
       throw new AdeError("isolation", "Log directory is outside managed logs");
+
     const path = await safeFile(
       dir,
       runId ? `${runId}${stream === "stdout" ? ".jsonl" : ".stderr.log"}` : "preparation.jsonl",
     );
+
     const handle = await open(path, "r");
     try {
       const size = (await handle.stat()).size;
@@ -49,11 +53,13 @@ export const readLogTail = async (
             }
           }
         }
+
         if (matches.length < 200 && matchedBytes < limit && position === size) {
           if (pending.toString("utf8").toLowerCase().includes(query))
             matches.push(pending.toString("utf8"));
           cursor = size;
         }
+
         return {
           text: matches.join(""),
           truncated: cursor < size,
@@ -62,15 +68,19 @@ export const readLogTail = async (
           size,
         };
       }
+
       const end =
         options?.after !== undefined
           ? Math.min(size, options.after + limit)
           : Math.min(size, options?.before ?? size);
+
       let start =
         options?.after !== undefined ? Math.min(options.after, size) : Math.max(0, end - limit);
+
       const buffer = Buffer.alloc(
         Math.min(size - start, end - start + (options?.after !== undefined ? 4 : 0)),
       );
+
       const position = start;
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
       let from = 0;
@@ -84,6 +94,7 @@ export const readLogTail = async (
         if (newline >= 0) to = newline + 1;
         else while (to > 0 && (buffer[to] & 0xc0) === 0x80) to--;
       }
+
       start += from;
       return {
         text: buffer.subarray(from, to).toString("utf8"),

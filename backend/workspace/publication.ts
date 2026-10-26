@@ -24,6 +24,7 @@ export const publishFastForward = async (request: PublicationRequest, executor =
   const ref = `refs/heads/${branch}`;
   const creating = /^0+$/.test(expectedRemote);
   const ancestor = creating ? request.ancestryBase : expectedRemote;
+
   if (
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(expectedRemote) ||
     !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(localHead) ||
@@ -32,6 +33,7 @@ export const publishFastForward = async (request: PublicationRequest, executor =
     (await gitCapture(["check-ref-format", ref], cwd, signal)).code !== 0
   )
     throw new AdeError("publication", "Invalid publication object or branch.");
+
   if (
     (await gitCapture(["cat-file", "-t", localHead], cwd, signal)).stdout.trim() !== "commit" ||
     (await gitCapture(["merge-base", "--is-ancestor", ancestor, localHead], cwd, signal)).code !== 0
@@ -40,6 +42,7 @@ export const publishFastForward = async (request: PublicationRequest, executor =
       "ancestry",
       "Publication must be a fast-forward descendant of the exact expected remote head.",
     );
+
   return gitExecute(
     {
       program: "git",

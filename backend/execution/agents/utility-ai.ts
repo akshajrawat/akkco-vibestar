@@ -1,4 +1,5 @@
 import { z } from "zod";
+
 import type { Settings } from "../../domain";
 import type { Database } from "../../storage/database";
 
@@ -19,6 +20,7 @@ export interface UtilityRequest {
     scanId?: string;
   };
 }
+
 export class UtilityAI {
   constructor(
     private readonly db: Database,
@@ -27,6 +29,7 @@ export class UtilityAI {
       config: Settings["utility_ai"],
     ) => Promise<unknown>,
   ) {}
+
   run = (request: UtilityRequest) =>
     this.execute(
       {

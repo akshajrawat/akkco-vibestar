@@ -1,10 +1,12 @@
 import { z } from "zod";
+
 import { AdeError } from "../domain";
 import { BatchSelectionSchema, StartPRBatchSchema } from "../review/pr/batches";
 import { GitHubMonitor } from "../scheduled/github";
 import { readLogTail } from "../storage/logs";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
+
 export const pullRequestsMethods = [
   "scheduled.add",
   "scheduled.analyze",
@@ -21,6 +23,7 @@ export const pullRequestsMethods = [
   "scheduled.fix",
   "scheduled.discover",
 ] as const;
+
 /** Validates and dispatches pull-requests requests through their existing domain services. */
 export const callPullRequests = async (
   services: Pick<RpcServices, "engine" | "scheduler" | "prBatches">,
@@ -31,18 +34,24 @@ export const callPullRequests = async (
   switch (method) {
     case "scheduled.add":
       return services.scheduler.add(input);
+
     case "scheduled.analyze": {
       const p = idInput.extend({ request_id: z.string().uuid() }).strict().parse(input);
       return services.scheduler.analyze(p.id, p.request_id);
     }
+
     case "scheduled.batch.preview":
       return services.prBatches.preview(BatchSelectionSchema.parse(input));
+
     case "scheduled.batch.start":
       return services.prBatches.start(StartPRBatchSchema.parse(input));
+
     case "scheduled.batch.cancel":
       return services.prBatches.cancel(idInput.strict().parse(input).id);
+
     case "scheduled.cancel":
       return services.scheduler.cancel(idInput.strict().parse(input).id);
+
     case "scheduled.detail": {
       const p = idInput.strict().parse(input);
       if (!services.scheduler.jobs().some((job) => job.id === p.id))
@@ -56,6 +65,7 @@ export const callPullRequests = async (
         usage: e.db.all("SELECT * FROM ai_usage WHERE job_id=? ORDER BY started_at DESC", p.id),
       };
     }
+
     case "scheduled.logs": {
       const p = idInput
         .extend({
@@ -64,6 +74,7 @@ export const callPullRequests = async (
         })
         .strict()
         .parse(input);
+
       if (
         !e.db.all("SELECT id FROM scheduled_agent_runs WHERE id=? AND job_id=?", p.run_id, p.id)
           .length
@@ -71,14 +82,17 @@ export const callPullRequests = async (
         throw new AdeError("isolation", "Run does not belong to this PR");
       return readLogTail(e.root, `pr-watch-${p.id}`, p.run_id, p.stream);
     }
+
     case "scheduled.enabled": {
       const p = idInput.extend({ enabled: z.boolean() }).parse(input);
       return services.scheduler.setEnabled(p.id, p.enabled);
     }
+
     case "scheduled.run": {
       const p = idInput.extend({ retry: z.boolean().default(false) }).parse(input);
       return services.scheduler.runNow(p.id);
     }
+
     case "scheduled.remove": {
       const p = idInput.extend({ confirmed: z.literal(true) }).parse(input);
       if (e.db.all("SELECT id FROM pr_repairs WHERE job_id=?", p.id).length)
@@ -97,15 +111,19 @@ export const callPullRequests = async (
       e.changed();
       return null;
     }
+
     case "scheduled.dismiss":
       return services.scheduler.dismiss(idInput.parse(input).id);
+
     case "scheduled.fix":
       idInput.strict().parse(input);
       return services.scheduler.fix();
+
     case "scheduled.discover": {
       const p = z.object({ repository: z.string().max(200) }).parse(input);
       return new GitHubMonitor(e.root).discover(p.repository, new AbortController().signal);
     }
+
     default:
       throw new AdeError("invalid_method", `Unknown method: ${method}`);
   }

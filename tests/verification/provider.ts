@@ -10,6 +10,7 @@ export class ValidationBlockerProvider extends FixtureProvider {
   ) {
     super();
   }
+
   invocation = (request: AgentRunRequest) =>
     request.stage !== 3
       ? new FixtureProvider().invocation(request)

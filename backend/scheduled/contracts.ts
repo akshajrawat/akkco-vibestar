@@ -1,5 +1,7 @@
 import { z } from "zod";
+
 import { AdeError } from "../domain";
+
 export const parsePullRequest = (value: string) => {
   const u = new URL(value);
   const match = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/);
@@ -23,12 +25,14 @@ export const parsePullRequest = (value: string) => {
     url: `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}`,
   };
 };
+
 export const ScheduleInput = z.object({
   url: z.string().max(2000),
   task_id: z.string().uuid().nullable(),
   interval_minutes: z.number().int().min(5).max(10080),
   verify_codex: z.boolean().default(false),
 });
+
 export interface PullRequestState {
   fetchedAt?: string;
   identity?: {
@@ -93,6 +97,7 @@ export interface PullRequestState {
     id?: string;
   }[];
 }
+
 export const PullRequestStateSchema = z
   .object({
     fetchedAt: z.string().optional(),
@@ -236,6 +241,7 @@ export const PullRequestStateSchema = z
       .optional(),
   })
   .strict();
+
 export interface DiscussionEntry {
   id: string;
   type: "issue_comment" | "review_comment" | "review" | "thread";
@@ -263,6 +269,7 @@ export interface DiscussionEntry {
   diffHunk?: string;
   outdated?: boolean;
 }
+
 export interface ScheduleJob {
   id: string;
   url: string;
@@ -287,6 +294,7 @@ export interface ScheduleJob {
   analysis_method?: "deterministic" | "utility_ai";
   conversation_action?: import("./action").PullRequestAction;
 }
+
 export interface ScheduleAttention {
   id: string;
   job_id: string;
@@ -299,6 +307,7 @@ export interface ScheduleAttention {
   error: string | null;
   dismissed: number;
 }
+
 export const changedPullRequest = (previous: PullRequestState, current: PullRequestState) => {
   const changes: string[] = [];
   if (

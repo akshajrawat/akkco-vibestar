@@ -18,12 +18,14 @@ export const FinalReviewSummary = ({
   const artifact = [...detail.artifacts]
     .reverse()
     .find((entry) => entry.stage === 5 && entry.kind === "plan");
+
   let value: unknown;
   try {
     value = artifact && JSON.parse(artifact.content);
   } catch {
     /* Preserve invalid reports in Logs. */
   }
+
   const parsed = planSchemas[5].safeParse(value);
   if (!parsed.success)
     return (
@@ -31,27 +33,33 @@ export const FinalReviewSummary = ({
     );
   const review = parsed.data;
   const verification = detailVerification(detail);
+
   const passed = verification.checks.filter(
     (check) => check.kind === "check" && check.outcome === "passed",
   ).length;
+
   const unverified = verification.checks.filter(
     (check) =>
       check.kind === "check" && check.required && !["passed", "failed"].includes(check.outcome),
   );
+
   const failed = verification.checks.filter(
     (check) => check.required && check.outcome === "failed",
   ).length;
+
   const skipped = verification.checks.filter(
     (check) =>
       check.kind === "check" &&
       check.optionalReason &&
       !["passed", "failed"].includes(check.outcome),
   ).length;
+
   const approved =
     review.approval === "approved" &&
     !failed &&
     !review.issues?.length &&
     !review.implementationConcerns?.length;
+
   return (
     <section className="final-review-summary" aria-label="Independent review result">
       <strong
@@ -70,10 +78,12 @@ export const FinalReviewSummary = ({
             ? "Changes requested"
             : "Review blocked — insufficient evidence"}
       </strong>
+
       <p>
         Tests: {passed} passed, {unverified.length} unverified
         {failed ? `, ${failed} failed` : ""}
       </p>
+
       {unverified.length > 0 && (
         <p className="warning">Unverified: {unverified.map((check) => check.name).join(", ")}</p>
       )}
@@ -88,6 +98,7 @@ export const FinalReviewSummary = ({
             : "Keep reviewed changes locally / additional verification"
           : "Inspect findings and request fixes"}
       </p>
+
       {review.issues?.map((issue, index) => (
         <article key={index}>
           <strong>
@@ -97,13 +108,16 @@ export const FinalReviewSummary = ({
           <p>{issue.evidence}</p>
         </article>
       ))}
+
       <div className="actions">
         <Button size="sm" variant="ghost" onClick={changes}>
           Open Changes
         </Button>
+
         <Button size="sm" variant="ghost" onClick={tests}>
           Open Checks
         </Button>
+
         {fix && (
           <Button size="sm" variant="ghost" onClick={fix}>
             Request Codex fixes

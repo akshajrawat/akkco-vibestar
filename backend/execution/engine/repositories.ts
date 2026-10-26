@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
+
 import type { z } from "zod";
+
 import { AdeError, now, remoteIdentity, type Repository } from "../../domain";
 import type { RepositoryIndex } from "../../workspace/discovery";
 import { ConnectLocalInput, type LocalRepositoryInput } from "../../workspace/discovery";
 import { gitChecked } from "../../workspace/git-command";
 import { exists, inside, managedPath } from "../../workspace/paths";
 import type { Engine } from "../engine";
+
 /** Owns repository connection and clone operations under the engine maintenance lease. */
 export class RepositoryOperations {
   constructor(
@@ -25,8 +28,10 @@ export class RepositoryOperations {
     private readonly operation: <T>(operation: () => Promise<T>, label?: string) => Promise<T>,
     private readonly signal: AbortSignal,
   ) {}
+
   register = (...args: Parameters<RepositoryOperations["registerData"]>) =>
     this.operation(() => this.registerData(...args));
+
   private registerData = async (
     upstream: string,
     origin: string | null,
@@ -51,17 +56,20 @@ export class RepositoryOperations {
       throw new AdeError("repository_exists", "Repository is already registered");
     await gitChecked(["check-ref-format", "--branch", base], this.host.root);
     if (discover && !localPath) await this.host.repositoryIndex.scan();
+
     const candidate = localPath
       ? await this.host.repositoryIndex.inspect(localPath)
       : discover
         ? this.host.repositoryIndex.matches(`${owner}/${name}`)[0]
         : undefined;
+
     if (candidate && !candidate.identities.includes(`${owner}/${name}`.toLowerCase()))
       throw new AdeError(
         "repository_mismatch",
         "Selected checkout does not have a matching GitHub remote.",
       );
     const id = randomUUID();
+
     const r: Repository = {
       id,
       owner,
@@ -77,6 +85,7 @@ export class RepositoryOperations {
       last_fetched: null,
       created_at: now(),
     };
+
     this.host.db.saveRepository(r);
     if (!deferred) {
       try {
@@ -86,9 +95,11 @@ export class RepositoryOperations {
         throw error;
       }
     }
+
     this.host.changed();
     return r;
   };
+
   prepareClone = (
     r: Repository,
     signal = this.signal,
@@ -106,6 +117,7 @@ export class RepositoryOperations {
             );
           return;
         }
+
         await managedPath(this.host.root, r.path);
         // A caller can wait behind the original clone's lock. Refresh its
         // marker before deciding whether an incomplete destination is removable.
@@ -113,6 +125,7 @@ export class RepositoryOperations {
           const current = this.host.db.repository(r.id);
           if (current.clone_status === "ready") Object.assign(r, current);
         }
+
         if (r.clone_status === "cloning" && (await exists(r.path))) {
           if (
             !inside(join(this.host.root, "repos"), r.path) ||
@@ -124,13 +137,16 @@ export class RepositoryOperations {
             );
           await rm(r.path, { recursive: true, force: true });
         }
+
         if (await exists(join(r.path, ".git"))) return;
         if (r.selection !== "explicit") await this.host.repositoryIndex.scan();
+
         const existing = localPath
           ? await this.host.repositoryIndex.inspect(localPath)
           : r.selection !== "explicit"
             ? this.host.repositoryIndex.matches(`${r.owner}/${r.name}`)[0]
             : undefined;
+
         if (existing) {
           if (!existing.identities.includes(`${r.owner}/${r.name}`.toLowerCase()))
             throw new AdeError(
@@ -147,17 +163,20 @@ export class RepositoryOperations {
           this.host.db.saveRepository(r);
           return;
         }
+
         try {
           await this.host.git.clone(r.upstream_url, r.path, signal, onProgress);
           onProgress?.("Configuring remotes…");
           if (r.origin_url)
             await gitChecked(["remote", "add", "origin", r.origin_url], r.path, signal);
           await this.host.git.fetch(r, signal);
+
           await gitChecked(
             ["rev-parse", "--verify", `refs/remotes/upstream/${r.base_branch}^{commit}`],
             r.path,
             signal,
           );
+
           r.clone_status = "ready";
           this.host.db.saveRepository(r);
         } catch (error) {
@@ -165,10 +184,12 @@ export class RepositoryOperations {
             await managedPath(this.host.root, r.path);
             await rm(r.path, { recursive: true, force: true });
           }
+
           throw error;
         }
       }),
     );
+
   private readonly localVerifications = new Map<
     string,
     {
@@ -177,22 +198,27 @@ export class RepositoryOperations {
       expires: number;
     }
   >();
+
   verifyLocalRepository = (input: z.infer<typeof LocalRepositoryInput>) =>
     this.operation(async () => {
       const result = await this.host.repositoryIndex.verifyLocal(input);
       for (const [id, verification] of this.localVerifications) {
         if (verification.expires < Date.now()) this.localVerifications.delete(id);
       }
+
       if (this.localVerifications.size >= 100)
         this.localVerifications.delete(this.localVerifications.keys().next().value!);
       const verification_id = randomUUID();
+
       this.localVerifications.set(verification_id, {
         input,
         result,
         expires: Date.now() + 10 * 60 * 1000,
       });
+
       return { ...result, verification_id };
     }, "Local repository verification is running");
+
   connectLocalRepository = (input: z.infer<typeof ConnectLocalInput>) =>
     this.operation(async () => {
       const p = ConnectLocalInput.parse(input);
@@ -212,9 +238,11 @@ export class RepositoryOperations {
           "Repository location or remotes changed. Verify again before connecting.",
         );
       const upstream = current.remotes.find((r) => r.name === p.upstream_remote && r.identity);
+
       const origin = p.origin_remote
         ? current.remotes.find((r) => r.name === p.origin_remote && r.identity)
         : null;
+
       if (!upstream || (p.origin_remote && !origin))
         throw new AdeError(
           "invalid_input",
@@ -229,6 +257,7 @@ export class RepositoryOperations {
       if (!current.branches.includes(p.base_branch))
         throw new AdeError("invalid_input", "Choose a base branch found in this repository.");
       const { owner, name } = remoteIdentity(upstream.url);
+
       const existing = this.host.db
         .repositories()
         .find(
@@ -236,6 +265,7 @@ export class RepositoryOperations {
             r.path === current.path &&
             `${r.owner}/${r.name}`.toLowerCase() === `${owner}/${name}`.toLowerCase(),
         );
+
       if (
         existing &&
         this.host.db
@@ -247,6 +277,7 @@ export class RepositoryOperations {
           )
       )
         throw new AdeError("busy", "Stop this repository's tasks before reconnecting.");
+
       const repo: Repository = {
         id: existing?.id || randomUUID(),
         owner,
@@ -266,21 +297,26 @@ export class RepositoryOperations {
         last_fetched: existing?.last_fetched || null,
         created_at: existing?.created_at || now(),
       };
+
       this.host.db.saveRepository(repo);
       this.localVerifications.delete(p.verification_id);
       this.host.changed();
       return repo;
     }, "Local repository connection is running");
+
   disconnectRepository = (id: string) =>
     this.operation(async () => {
       const repo = this.host.db.repository(id);
+
       const taskIds = this.host.db
         .tasks()
         .filter((t) => t.repo_id === id)
         .map((t) => t.id);
+
       const blockers = this.host
         .cleanupBlockers()
         .filter((blocker) => blocker.task_id && taskIds.includes(blocker.task_id));
+
       if (blockers.length)
         throw new AdeError(
           "busy",
@@ -291,6 +327,7 @@ export class RepositoryOperations {
       this.host.changed();
       return null;
     }, "Repository disconnection is running");
+
   reconnectRepository = (id: string) =>
     this.operation(async () => {
       const repo = this.host.db.repository(id);
@@ -303,6 +340,7 @@ export class RepositoryOperations {
       this.host.changed();
       return repo;
     }, "Managed repository reconnection is running");
+
   verifyRepository = (id: string) =>
     this.operation(async () => {
       const repo = this.host.db.repository(id);
@@ -311,23 +349,29 @@ export class RepositoryOperations {
         repo.source !== "imported",
       );
     }, "Repository verification is running");
+
   fetchRepository = (id: string) =>
     this.operation(() => this.fetchRepositoryData(id), "Repository fetch is running");
+
   private fetchRepositoryData = async (id: string) => {
     const r = this.host.db.repository(id);
     await this.prepareClone(r);
+
     await this.host.git.withLock(id, async () => {
       await this.host.git.fetch(r, this.signal);
       this.host.db.saveRepository(r);
     });
+
     this.host.changed();
     return r;
   };
+
   configureRepository = (...args: Parameters<RepositoryOperations["configureRepositoryData"]>) =>
     this.operation(
       () => this.configureRepositoryData(...args),
       "Repository configuration is being updated",
     );
+
   private configureRepositoryData = async (
     id: string,
     configuration: {
@@ -356,6 +400,7 @@ export class RepositoryOperations {
         "Wait for this repository's active tasks before changing its remotes",
       );
     const updated = { ...r, ...configuration };
+
     await this.host.git.withLock(id, async () => {
       if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
         await gitChecked(["remote", "set-url", "upstream", updated.upstream_url], r.path);
@@ -373,8 +418,10 @@ export class RepositoryOperations {
         else if (remotes.includes("origin"))
           await gitChecked(["remote", "remove", "origin"], r.path);
       }
+
       this.host.db.saveRepository(updated);
     });
+
     this.host.changed();
     return updated;
   };

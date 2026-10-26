@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+
 import { useTaskView, updateTaskView } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
 
@@ -23,6 +24,7 @@ export const ActionTray = ({
         <strong>{title}</strong>
         {!view.approvalCompact && detail && <small>{detail}</small>}
       </div>
+
       <Button
         size="icon"
         variant="ghost"

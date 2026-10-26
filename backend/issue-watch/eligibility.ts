@@ -16,9 +16,11 @@ export const hardExclusions = (
   const reasons: string[] = [];
   if (issue.pull_request) reasons.push("GitHub identified this item as a pull request.");
   if (issue.state !== "open") reasons.push("Issue is closed.");
+
   const labels = issue.labels.filter((label) =>
     rules.excluded_labels.includes(label.trim().toLowerCase()),
   );
+
   if (labels.length) reasons.push(`Excluded labels: ${labels.join(", ")}.`);
   const key = issueKey({ repository: issue.repository, number: issue.number });
   if (rules.excluded_issues.some((reference) => issueKey(reference) === key))
@@ -45,6 +47,7 @@ export const assessClaims = (sources: WatchSource[]) => {
     if (!source.actor) continue;
     const actor = source.actor.toLowerCase();
     const text = source.text.trim();
+
     const add = (kind: ClaimEvidence["kind"]) =>
       evidence.push({
         kind,
@@ -53,6 +56,7 @@ export const assessClaims = (sources: WatchSource[]) => {
         excerpt: text.slice(0, 4000),
         authority: "text_interpretation",
       });
+
     if (
       /\b(?:i (?:am|have|will|would like to|want to|can)|i'm|please assign (?:this (?:issue )?to )?me|can i)\b[^\n.!?]{0,100}\b(?:work(?:ing)?|assign|implement|fix|take)\b|\bplease assign (?:this (?:issue )?to )?me\b/i.test(
         text,
@@ -63,6 +67,7 @@ export const assessClaims = (sources: WatchSource[]) => {
       if (source.created_at !== source.updated_at)
         warnings.push("An edited claim needs manual interpretation; age does not expire it.");
     }
+
     if (
       /\b(?:i (?:am no longer|cannot|can't|will not|won't)|i'm no longer|withdraw(?:ing)? my claim|unassign me)\b/i.test(
         text,
@@ -72,14 +77,17 @@ export const assessClaims = (sources: WatchSource[]) => {
       grants.delete(actor);
       add("claim_withdrawal");
     }
+
     const grant = text.match(
       /@([\w-]+)[,\s]+(?:you (?:can|may)|please)\s+(?:work|take|start|proceed)|(?:assign(?:ed|ing) (?:this )?to)\s+@([\w-]+)/i,
     );
+
     if (["OWNER", "MEMBER", "COLLABORATOR"].includes(source.association || "")) {
       if (grant) {
         grants.add((grant[1] || grant[2]).toLowerCase());
         add("maintainer_grant");
       }
+
       if (
         /\b(?:please wait|do not start|don't start|wait for (?:approval|assignment)|needs? (?:maintainer )?approval)\b/i.test(
           text,
@@ -93,6 +101,7 @@ export const assessClaims = (sources: WatchSource[]) => {
         "An assignment instruction came from an actor without verified maintainer authority.",
       );
   }
+
   return {
     evidence,
     possible: claims.size > 0,
@@ -127,6 +136,7 @@ export const initialCandidate = (
     dismissed_at: null,
   };
 };
+
 export const applyContext = (
   candidate: WatchCandidate,
   sources: WatchSource[],
@@ -146,6 +156,7 @@ export const applyContext = (
   } else if (claims.confirmed) {
     candidate.eligible = false;
     candidate.claim_state = "ineligible";
+
     candidate.reasons.push(
       "A retrieved maintainer grant indicates an active claim; recheck on GitHub before proceeding.",
     );
@@ -155,6 +166,7 @@ export const applyContext = (
   else candidate.claim_state = "candidate_for_claim_request";
   return candidate;
 };
+
 export const isMatch = (candidate: WatchCandidate) =>
   candidate.eligible &&
   candidate.claim_state === "candidate_for_claim_request" &&

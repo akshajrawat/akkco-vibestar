@@ -1,4 +1,5 @@
 /* Compact workspace statuses and conversation-first PR rows. */
+
 .status-chip,
 .pr-state {
   display: inline-flex;
@@ -11,23 +12,28 @@
   white-space: nowrap;
   background: var(--background-elevated);
 }
+
 .status-chip.warning,
 .pr-state.warning {
   background: var(--background-warning);
 }
+
 .status-chip.failure,
 .pr-state.failure {
   background: var(--background-error);
 }
+
 .status-chip.success,
 .pr-state.success,
 .pr-state.healthy {
   background: var(--background-success);
 }
+
 .status-chip.running,
 .pr-state.running {
   background: var(--background-info);
 }
+
 .pr-inbox-row {
   display: flex;
   align-items: flex-start;
@@ -41,19 +47,23 @@
     background-color var(--motion-fast),
     border-color var(--motion-fast);
 }
+
 .pr-inbox-row:hover {
   background: var(--background-elevated);
 }
+
 .pr-row-heading {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
 }
+
 .pr-reference {
   font-size: 12px;
   font-weight: 600;
 }
+
 .pr-row-content .pr-title {
   display: block;
   margin-top: 7px;
@@ -65,6 +75,7 @@
   font-size: 15px;
   font-weight: 500;
 }
+
 .pr-row-content .pr-one-line {
   margin: 9px 0 6px;
   color: var(--text-primary);
@@ -73,10 +84,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .pr-metadata > span + span::before {
   content: "·";
   margin-right: 5px;
 }
+
 .pr-metadata {
   display: flex;
   flex-wrap: wrap;
@@ -84,12 +97,15 @@
   color: var(--text-muted);
   font-size: 11px;
 }
+
 .pr-row-details {
   margin-top: 8px;
 }
+
 .pr-row-details summary {
   font-size: 11px;
 }
+
 .pr-row-details[open] {
   margin-top: 10px;
   padding: 10px 12px;
@@ -97,70 +113,87 @@
   color: var(--text-secondary);
   font-size: 12px;
 }
+
 .pr-row-details p {
   margin: 4px 0;
 }
+
 .pr-inbox-row > .row-actions {
   max-width: 270px;
   padding-top: 2px;
   gap: 6px;
 }
+
 .operation-error {
   margin-top: 18px;
   padding: 12px 14px;
   border-left: 2px solid var(--accent-red);
   background: var(--background-error);
 }
+
 .operation-error > strong {
   color: var(--text-primary);
   font-weight: 600;
   margin-bottom: 7px;
 }
+
 .operation-error.operation-blocked {
   border-left-color: var(--accent-amber);
   background: var(--background-warning);
 }
+
 .operation-error ul {
   padding-left: 18px;
   margin: 8px 0 12px;
 }
+
 .operation-error li {
   margin: 5px 0;
 }
+
 .operation-error details {
   margin-top: 12px;
 }
+
 .operation-error pre {
   max-height: 160px;
   overflow: auto;
 }
+
 .operation-error .actions {
   flex-wrap: wrap;
 }
+
 .workspace-heading > .status {
   flex-shrink: 0;
 }
+
 .workspace-heading .button {
   font-size: 11px;
   padding: 5px 8px;
 }
+
 .button.primary:hover:not(:disabled) {
   background: var(--button-primary-hover);
   border-color: var(--button-primary-hover);
 }
+
 .modal,
 .compact-dialog,
 .model-picker {
   background: var(--background-elevated);
   border-color: var(--border-strong);
 }
+
 .user-message {
   border-left: 0;
 }
+
 @media (max-width: 1100px) {
   .pr-inbox-row {
     flex-wrap: wrap;
   }
+
   .pr-inbox-row > .row-actions {
     width: 100%;
     max-width: none;

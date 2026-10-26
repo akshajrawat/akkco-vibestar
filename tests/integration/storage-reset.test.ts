@@ -44,21 +44,26 @@ it("previews exact removals, backs up valid SQLite and metadata, preserves impor
     expect(await readFile(join(source, ".git", "index"))).toEqual(index);
     expect(await readFile(join(source, "source.txt"))).toEqual(content);
     expect(await checked("git", ["rev-parse", "personal"], source)).toBe(task.base_commit_sha);
+
     expect(await readFile(join(root, "runtime", "auth-sentinel"), "utf8")).toBe(
       "Provider session remains",
     );
+
     expect(await readFile(join(result.backup, "logs", task.id, "raw.log"), "utf8")).toBe(
       "Fixture retained evidence",
     );
+
     const backup = new BetterSqlite3(join(result.backup, "vibestar.sqlite"), {
       readonly: true,
     });
+
     try {
       expect(backup.pragma("quick_check", { simple: true })).toBe("ok");
       expect(backup.prepare("SELECT id FROM tasks").all()).toEqual([{ id: task.id }]);
     } finally {
       backup.close();
     }
+
     await engine.close();
     engine = await createFixtureEngine(root);
     expect(engine.db.tasks()).toEqual([]);
@@ -108,6 +113,7 @@ it.each(["dirty", "unpushed", "unknown"])(
             protectedTask.worktree_path,
           );
       }
+
       await writeFile(join(engine.root, "cache", "unknown-data"), "Unknown owner");
       const storage = new StorageService(engine);
       const preview = await storage.previewReset();
@@ -117,9 +123,11 @@ it.each(["dirty", "unpushed", "unknown"])(
       expect(result.preserved).toMatchObject([{ id: protectedTask.id }]);
       expect(await exists(protectedTask.worktree_path)).toBe(true);
       expect(engine.db.tasks().map((task) => task.id)).toEqual([protectedTask.id]);
+
       expect(await readFile(join(engine.root, "cache", "unknown-data"), "utf8")).toBe(
         "Unknown owner",
       );
+
       if (kind === "unpushed") expect(result.preserved[0].reason).toContain("Unpushed");
     } finally {
       await engine.close();
@@ -137,9 +145,11 @@ it("refuses active processes and stale reset previews before any backup or delet
     const storage = new StorageService(engine);
     const preview = await storage.previewReset();
     const release = engine.acquireTerminal(task.id);
+
     await expect(storage.reset(preview.token)).rejects.toMatchObject({
       kind: "busy",
     });
+
     release();
     await writeFile(join(task.worktree_path, "new.txt"), "Changed after preview");
     await expect(storage.reset(preview.token)).rejects.toThrow("changed");
@@ -155,10 +165,12 @@ it("refuses an uncertain Git publication and preserves its worktree and journal"
   const fixture = await finalizationFixture();
   try {
     const record = await fixture.preview();
+
     fixture.engine.db.run(
       "UPDATE git_finalizations SET status='uncertain',data=json_set(data,'$.status','uncertain') WHERE id=?",
       record.id,
     );
+
     const storage = new StorageService(fixture.engine);
     const preview = await storage.previewReset();
     expect(preview.sensitive).toMatchObject([{ id: record.id, status: "uncertain" }]);

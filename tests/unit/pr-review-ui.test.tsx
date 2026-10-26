@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+
 import { ScheduledPage } from "../../src/features/pull-requests/ScheduledPage";
 import { PrDetails } from "../../src/features/pull-requests/PrDetails";
 import { defaultSettings } from "../../backend/domain";
@@ -13,6 +14,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
 const job: ScheduleJob = {
   id: "job",
   url: "https://github.com/upstream/project/pull/1",
@@ -30,6 +32,7 @@ const job: ScheduleJob = {
   error: null,
   title: "Review fixture",
 };
+
 const session: PRAnalysisSession = {
   id: "analysis",
   job_id: "job",
@@ -64,17 +67,21 @@ const session: PRAnalysisSession = {
     })),
   },
 };
+
 const install = (analyses = [session]) => {
   const rpc = vi.fn(async (method: string) =>
     method === "scheduled.detail" ? { analyses, runs: [], usage: [] } : {},
   );
+
   window.vibestar = {
     rpc,
     openExternal: vi.fn().mockResolvedValue(undefined),
     subscribe: vi.fn(() => () => {}),
   } as unknown as typeof window.vibestar;
+
   return rpc;
 };
+
 const snapshot: Snapshot = {
   repositories: [],
   tasks: [],
@@ -104,9 +111,11 @@ it("shows the configured analysis model and performs no inspection/inference mer
 it("refreshes GitHub metadata without a manual tracking form or inference", async () => {
   const rpc = install();
   const refresh = vi.fn().mockResolvedValue(undefined);
+
   render(
     <ScheduledPage snapshot={{ ...snapshot, scheduled: [] }} refresh={refresh} open={vi.fn()} />,
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Refresh PR List" }));
   await waitFor(() => expect(rpc).toHaveBeenCalledWith("github.sync", {}));
   expect(screen.queryByLabelText("PR URL")).toBeNull();
@@ -126,6 +135,7 @@ const discoveredPR = {
   updated_at: "2026-10-23T12:00:00Z",
   task_id: null,
 };
+
 const discoveredSnapshot: Snapshot = {
   ...snapshot,
   scheduled: [],
@@ -149,18 +159,22 @@ it("opens discovered PRs through an inactive saved record without analyzing them
   const rpc = install();
   rpc.mockImplementation(async (method) => (method === "scheduled.add" ? job : {}));
   const refresh = vi.fn().mockResolvedValue(undefined);
+
   const { rerender } = render(
     <ScheduledPage snapshot={discoveredSnapshot} refresh={refresh} open={vi.fn()} />,
   );
+
   expect(rpc).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: discoveredPR.title }));
   await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+
   expect(rpc).toHaveBeenCalledWith("scheduled.add", {
     url: job.url,
     task_id: null,
     interval_minutes: 60,
     verify_codex: false,
   });
+
   rerender(
     <ScheduledPage
       snapshot={{ ...discoveredSnapshot, scheduled: [job] }}
@@ -168,7 +182,9 @@ it("opens discovered PRs through an inactive saved record without analyzing them
       open={vi.fn()}
     />,
   );
+
   expect(screen.getByRole("dialog", { name: "Pull request details" })).toBeTruthy();
+
   expect(
     rpc.mock.calls.some(([method]) => method === "scheduled.analyze" || method === "scheduled.run"),
   ).toBe(false);
@@ -176,6 +192,7 @@ it("opens discovered PRs through an inactive saved record without analyzing them
 
 it("merges duplicate discoveries, filters saved metadata and retains rows after a failed refresh", () => {
   const rpc = install();
+
   render(
     <ScheduledPage
       snapshot={{
@@ -190,24 +207,30 @@ it("merges duplicate discoveries, filters saved metadata and retains rows after 
       open={vi.fn()}
     />,
   );
+
   expect(screen.getAllByRole("button", { name: discoveredPR.title })).toHaveLength(1);
   expect(screen.getByRole("alert").textContent).toContain("GitHub rate limit reached");
   expect(screen.getByRole("button", { name: "Retry refresh" })).toBeTruthy();
+
   fireEvent.change(screen.getByLabelText("Search pull requests"), {
     target: { value: "not found" },
   });
+
   expect(screen.getByRole("heading", { name: "No matching pull requests" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
   expect(screen.getByRole("button", { name: discoveredPR.title })).toBeTruthy();
+
   fireEvent.change(screen.getByLabelText("Filter by status"), {
     target: { value: "MERGED" },
   });
+
   expect(screen.queryByRole("button", { name: discoveredPR.title })).toBeNull();
   expect(rpc).not.toHaveBeenCalled();
 });
 
 it("launches one explicit analysis and reads local saved details when opening its report", async () => {
   const rpc = install();
+
   render(
     <ScheduledPage
       snapshot={snapshot}
@@ -215,14 +238,19 @@ it("launches one explicit analysis and reads local saved details when opening it
       open={vi.fn()}
     />,
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Analyze Again" }));
+
   await waitFor(() =>
     expect(rpc.mock.calls.filter(([method]) => method === "scheduled.analyze")).toHaveLength(1),
   );
+
   expect(
     rpc.mock.calls.some(([method]) => method === "github.sync" || method === "scheduled.run"),
   ).toBe(false);
+
   expect(screen.getByRole("dialog", { name: "Pull request details" })).toBeTruthy();
+
   expect((screen.getByRole("button", { name: "Solve Review" }) as HTMLButtonElement).disabled).toBe(
     true,
   );
@@ -230,14 +258,18 @@ it("launches one explicit analysis and reads local saved details when opening it
 
 it("renders the entire original multiline review, source links, independent observations and positive feedback", async () => {
   install();
+
   const { container } = render(
     <PrDetails job={job} configuration={defaultSettings.utility_ai} close={vi.fn()} />,
   );
+
   await screen.findByText("Three observations require consideration.");
   fireEvent.click(screen.getByRole("tab", { name: "Full Conversation" }));
+
   expect(container.textContent).toContain(
     "those selectors and expect functions are moved into the utility files",
   );
+
   expect(container.textContent).toContain("This is not mentioned in the PR description.");
   expect(container.textContent).toContain("it may miss some problem in that behavior");
   expect(container.textContent).toContain("Apart from that, everything seems to be fine to me.");
@@ -264,6 +296,7 @@ it("keeps incomplete coverage and cancellation visible and preserves a complete 
     report: undefined,
     method: "utility_ai",
   };
+
   install([cancelled, session]);
   render(<PrDetails job={{ ...job, status: "interrupted" }} close={vi.fn()} />);
   await screen.findByText(/Stopped by user/);
@@ -271,6 +304,7 @@ it("keeps incomplete coverage and cancellation visible and preserves a complete 
   fireEvent.click(screen.getByRole("button", { name: /completed/ }));
   expect(screen.getByText("Three observations require consideration.")).toBeTruthy();
   cleanup();
+
   install([
     {
       ...session,
@@ -282,6 +316,7 @@ it("keeps incomplete coverage and cancellation visible and preserves a complete 
       },
     },
   ]);
+
   render(<PrDetails job={job} close={vi.fn()} />);
   await screen.findByText(/Every request has not been assessed/);
   expect(screen.getByText("Source review-2 was deferred.")).toBeTruthy();

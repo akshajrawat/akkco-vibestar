@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
 import { z } from "zod";
+
 import { AdeError, now, remoteIdentity } from "../domain";
 import type { Engine } from "../execution/engine";
 import { planSchemas } from "../execution/providers/contracts";
@@ -36,10 +38,13 @@ const identitySchema = z.object({
   parent: z.object({ full_name: z.string() }).optional(),
   viewer: z.string().min(1),
 });
+
 const operationInput = z
   .object({ id: z.string().uuid(), operation_id: z.string().uuid() })
   .strict();
+
 const destinationInput = GitPresetSchema.pick({ remote: true, branch: true });
+
 const gitPhases = new Map([
   ["worktree", "Preparing isolated review workspace"],
   ["add", "Staging selected files"],
@@ -50,21 +55,27 @@ const gitPhases = new Map([
 
 export class FinalizationService {
   private readonly optionalHooks: OptionalHooks;
+
   readonly store: FinalizationStore;
+
   private readonly workspaces: FinalizationWorkspaces;
+
   private readonly active = new Map<
     string,
     { controller: AbortController; promise: Promise<unknown> }
   >();
+
   constructor(
     private readonly engine: Engine,
     private readonly identity = async (repository: string, signal: AbortSignal) => {
       const client = new GitHubClient(engine.root);
       const viewer = await client.api<{ login: string }>("user", signal);
+
       const repositoryData = await client.api<Record<string, unknown>>(
         `repos/${repository}`,
         signal,
       );
+
       return identitySchema.parse({ ...repositoryData, viewer: viewer.login });
     },
     private readonly transport?: (url: string) => string,
@@ -74,6 +85,7 @@ export class FinalizationService {
     this.workspaces = new FinalizationWorkspaces(engine, this.git);
     this.optionalHooks = new OptionalHooks(this.engine, this.workspaces, this.store);
   }
+
   private git = async (record: Finalization, cwd: string, args: string[], signal: AbortSignal) => {
     const result = await gitExecute({
       program: "git",
@@ -95,14 +107,17 @@ export class FinalizationService {
               this.engine.changed(record.task_id);
             },
     });
+
     record.pid = null;
     record.process_identity = null;
+
     this.store.event(
       record,
       `git ${args[0]}`,
       result.stderr || (args[0] === "diff" ? "Diff inspected" : result.stdout),
       result.code,
     );
+
     this.store.save(record);
     const phase = gitPhases.get(args[0]);
     if (phase)
@@ -119,6 +134,7 @@ export class FinalizationService {
       );
     return result.stdout;
   };
+
   private exclusive = <T>(
     id: string,
     label: string,
@@ -130,14 +146,17 @@ export class FinalizationService {
     const releaseTask = this.engine.acquireTaskWorkspace(id, "Git finalization");
     const controller = new AbortController();
     let releaseActivity = () => {};
+
     const promise = Promise.resolve()
       .then(async () => {
         const task = this.engine.db.task(id);
         const repo = this.engine.db.repository(task.repo_id);
+
         const releaseBranch = await this.engine.git.acquireWrite(
           repo.path,
           `branch:${task.branch_name}`,
         );
+
         try {
           return await this.engine.git.withLock(repo.id, () => operation(controller.signal));
         } finally {
@@ -150,7 +169,9 @@ export class FinalizationService {
         releaseActivity();
         this.engine.changed(id);
       });
+
     this.active.set(id, { controller, promise });
+
     releaseActivity = this.engine.trackActivity(
       { id: `git:${id}`, kind: "task", task_id: id, label, stoppable: true },
       async () => {
@@ -158,14 +179,18 @@ export class FinalizationService {
         await promise.catch(() => {});
       },
     );
+
     return promise;
   };
+
   private preset = (taskId: string) => {
     const task = this.engine.db.task(taskId);
+
     const saved = this.engine.db.all<{ data: string }>(
       "SELECT data FROM task_git_presets WHERE task_id=?",
       taskId,
     )[0];
+
     return saved
       ? this.engine.db.records.decode(
           {
@@ -184,13 +209,16 @@ export class FinalizationService {
           branch: task.branch_name,
         });
   };
+
   private verifiedTask = (id: string) => {
     const verification = taskVerification(this.engine.db, id);
     if (!verification.canReview) throw new AdeError("verification_blocked", verification.summary);
     return verification;
   };
+
   private selectionGap = (record: Finalization) => {
     if (record.review_source !== "selection") return null;
+
     const required = this.verifiedTask(record.task_id).checks.filter(
       (check) =>
         check.required &&
@@ -198,10 +226,12 @@ export class FinalizationService {
         check.command &&
         check.command !== JSON.stringify(["git", "diff", "--check", record.base, "--"]),
     );
+
     const commands = this.engine.db.all<VerificationCommand>(
       "SELECT id,run_id,command,status,exit_code FROM test_runs WHERE run_id=? ORDER BY started_at,rowid",
       record.review_run_id,
     );
+
     const result = verificationSummary(
       {
         verification: required.map((check) => ({
@@ -216,26 +246,32 @@ export class FinalizationService {
       },
       commands,
     );
+
     return result.checks.some((check) => check.required && check.outcome !== "passed")
       ? result.summary
       : null;
   };
+
   private verifiedSelection = (record: Finalization) => {
     const gap = this.selectionGap(record);
     if (gap) throw new AdeError("verification_blocked", gap);
   };
+
   inspect = async (id: string) => {
     const task = this.engine.db.task(id);
     const cwd = await this.workspaces.source(task);
     const diff = await this.engine.git.diff(task);
+
     const hasImplementation =
       this.engine.db.all(
         "SELECT id FROM task_artifacts WHERE task_id=? AND stage=3 AND kind='plan' LIMIT 1",
         id,
       ).length > 0;
+
     const implementation = planSchemas[3].safeParse(
       hasImplementation ? this.engine.db.artifact(id, 3) : null,
     );
+
     const reviewedPaths = new Set(implementation.success ? implementation.data.filesChanged : []);
     const files = [];
     for (const file of diff.files) {
@@ -247,6 +283,7 @@ export class FinalizationService {
       } catch (error) {
         excluded = redact(error instanceof Error ? error.message : String(error));
       }
+
       const committed =
         (
           await gitCapture(
@@ -254,6 +291,7 @@ export class FinalizationService {
             cwd,
           )
         ).stdout.length > 0;
+
       files.push({
         ...file,
         size,
@@ -262,12 +300,14 @@ export class FinalizationService {
         reviewed: reviewedPaths.has(file.path),
       });
     }
+
     const ignored = await gitExecute({
       program: "git",
       args: ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
       cwd,
       rawStdoutForIntegrity: true,
     });
+
     if (ignored.code !== 0 || ignored.stdout_truncated)
       throw new AdeError("git_finalization", "Ignored-file evidence is incomplete.");
     return {
@@ -280,6 +320,7 @@ export class FinalizationService {
       active: this.active.has(id),
     };
   };
+
   preview = async (input: unknown) => {
     const request = SelectedFilesInput.parse(input);
     const digest = createHash("sha256").update(JSON.stringify(request)).digest("hex");
@@ -292,6 +333,7 @@ export class FinalizationService {
         );
       return existing;
     }
+
     return this.exclusive(request.id, "Preparing selected Git files", async (signal) => {
       const task = this.engine.db.task(request.id);
       this.verifiedTask(task.id);
@@ -338,9 +380,11 @@ export class FinalizationService {
       const paths = new Set(request.paths);
       for (const file of state.files.filter((file) => selected.has(file.path)))
         if (file.old_path) paths.add(file.old_path);
+
       const staged = state.files
         .filter((file) => file.staged && selected.has(file.path))
         .map((file) => file.path);
+
       if (staged.length && !request.replace_selected_staged)
         throw new AdeError(
           "staged_changes",
@@ -348,6 +392,7 @@ export class FinalizationService {
         );
       const cwd = await this.workspaces.source(task);
       const parent = await gitChecked(["rev-parse", "HEAD"], cwd);
+
       const record: Finalization = FinalizationSchema.parse({
         id: request.request_id,
         task_id: task.id,
@@ -384,12 +429,15 @@ export class FinalizationService {
         created_at: now(),
         updated_at: now(),
       });
+
       this.store.save(record);
+
       this.store.event(
         record,
         "Preparing selected files",
         `${record.paths.length} literal paths; original worktree and index preserved`,
       );
+
       try {
         await this.workspaces.create(
           record,
@@ -397,17 +445,20 @@ export class FinalizationService {
           new Set(state.files.filter((file) => file.untracked).map((file) => file.path)),
           signal,
         );
+
         if ((await this.engine.git.fingerprint(task)) !== record.source_hash)
           throw new AdeError(
             "review_changed",
             "Source files changed while preparing the selection.",
           );
+
         await this.git(
           record,
           record.preview_path,
           ["diff", "--cached", "--check", record.base, "--"],
           signal,
         );
+
         const full = state.files.every((file) => selected.has(file.path));
         if (full && task.final_review_hash === record.source_hash) {
           record.review = planSchemas[5].parse(this.engine.db.artifact(task.id, 5));
@@ -424,6 +475,7 @@ export class FinalizationService {
       }
     });
   };
+
   private current = async (record: Finalization, signal: AbortSignal) => {
     const task = this.engine.db.task(record.task_id);
     this.verifiedTask(task.id);
@@ -436,12 +488,14 @@ export class FinalizationService {
     const cwd = await this.workspaces.unchanged(record, task, signal);
     return { task, cwd };
   };
+
   review = (taskId: string, id: string) =>
     this.exclusive(taskId, "Independent review of selected Git files", async (signal) => {
       const record = this.store.get(taskId, id);
       if (!["draft", "reviewed"].includes(record.status))
         throw new AdeError("invalid_state", "Prepare a selected-file preview before review.");
       const { task, cwd } = await this.current(record, signal);
+
       const required = this.verifiedTask(task.id).checks.filter(
         (check) =>
           check.required &&
@@ -449,15 +503,18 @@ export class FinalizationService {
           check.command &&
           check.command !== JSON.stringify(["git", "diff", "--check", record.base, "--"]),
       );
+
       await this.git(record, cwd, ["diff", "--cached", "--check", record.base, "--"], signal);
       record.status = "reviewing";
       record.error = null;
       this.store.save(record);
+
       this.store.event(
         record,
         "Reviewing selected files",
         "Antigravity receives the isolated projected worktree. Unselected task changes are absent.",
       );
+
       try {
         record.review = planSchemas[5].parse(
           await this.engine.reviewFinalization(
@@ -466,13 +523,16 @@ export class FinalizationService {
             signal,
           ),
         );
+
         await this.current(record, signal);
         record.review_source = "selection";
+
         record.review_run_id =
           this.engine.db.all<{ id: string }>(
             "SELECT id FROM agent_runs WHERE task_id=? AND purpose='git-finalization-review' ORDER BY started_at DESC,rowid DESC LIMIT 1",
             task.id,
           )[0]?.id || null;
+
         record.verification_gap = this.selectionGap(record);
         record.status = "reviewed";
         record.approved_at = null;
@@ -486,6 +546,7 @@ export class FinalizationService {
         throw error;
       }
     });
+
   approve = (taskId: string, id: string) =>
     this.exclusive(taskId, "Approving selected Git files", async (signal) => {
       const record = this.store.get(taskId, id);
@@ -502,10 +563,13 @@ export class FinalizationService {
       this.store.save(record);
       return record;
     });
+
   private hookConfiguration = (...args: Parameters<OptionalHooks["hookConfiguration"]>) =>
     this.optionalHooks.hookConfiguration(...args);
+
   private hooks = (...args: Parameters<OptionalHooks["hooks"]>) =>
     this.optionalHooks.hooks(...args);
+
   commit = (taskId: string, id: string, message: string, skipHooks: boolean) =>
     this.exclusive(taskId, "Committing selected Git files", async (signal) => {
       CommitMessageSchema.parse(message);
@@ -518,6 +582,7 @@ export class FinalizationService {
           );
         return record;
       }
+
       if (
         record.status !== "approved" ||
         !record.approved_at ||
@@ -532,10 +597,12 @@ export class FinalizationService {
       record.message = message;
       record.preset.commit_hooks = skipHooks ? "skip" : "normal";
       this.store.save(record);
+
       const messageFile = await managedPath(
         this.engine.root,
         join("artifacts", `git-message-${record.id}-${randomUUID()}.txt`),
       );
+
       await writeFile(messageFile, message, { flag: "wx", mode: 0o600 });
       if (!skipHooks)
         await this.hooks(
@@ -548,11 +615,13 @@ export class FinalizationService {
       record.head = await createExactCommit(cwd, record.tree!, record.parent, message, signal);
       record.status = "committing";
       this.store.save(record);
+
       this.store.event(
         record,
         "Creating commit",
         `Exact message; selected tree ${record.tree}; parent ${record.parent}`,
       );
+
       try {
         await this.applyLocalCommit(record, signal);
         if (!skipHooks)
@@ -567,6 +636,7 @@ export class FinalizationService {
         throw error;
       }
     });
+
   private indexAfterCommit = (record: Finalization) => {
     const selected = new Set(record.paths);
     const entries = new Map<string, string>();
@@ -578,11 +648,13 @@ export class FinalizationService {
         const path = entry.slice(entry.indexOf("\t") + 1);
         if (selected.has(path) === includeSelected) entries.set(path, entry);
       }
+
     return [...entries]
       .sort(([a], [b]) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
       .map(([, entry]) => `${entry}\0`)
       .join("");
   };
+
   private localState = async (record: Finalization, signal: AbortSignal) => {
     const task = this.engine.db.task(record.task_id);
     const source = await this.workspaces.source(task);
@@ -612,6 +684,7 @@ export class FinalizationService {
       );
     return { task, source, head, index, expectedIndex };
   };
+
   private applyLocalCommit = async (record: Finalization, signal: AbortSignal) => {
     this.verifiedTask(record.task_id);
     this.verifiedSelection(record);
@@ -634,6 +707,7 @@ export class FinalizationService {
         ["update-ref", `refs/heads/${task.branch_name}`, record.head!, record.parent],
         signal,
       );
+
     const indexPaths = new Set(
       [record.source_index, record.projected_index].flatMap((source) =>
         source
@@ -642,6 +716,7 @@ export class FinalizationService {
           .map((entry) => entry.slice(entry.indexOf("\t") + 1)),
       ),
     );
+
     const restorePaths = record.paths.filter((path) => indexPaths.has(path));
     if (restorePaths.length)
       await this.git(
@@ -672,6 +747,7 @@ export class FinalizationService {
     this.store.save(record);
     return record;
   };
+
   private destination = async (record: Finalization, signal: AbortSignal) => {
     const task = this.engine.db.task(record.task_id);
     const repo = this.engine.db.repository(task.repo_id);
@@ -687,12 +763,14 @@ export class FinalizationService {
         ["remote", "get-url", ...mode, "--all", record.preset.remote],
         cwd,
       );
+
       if (actual.split("\n").length !== 1 || githubTransport(actual) !== url)
         throw new AdeError(
           "destination",
           "The selected remote does not identify the configured contribution repository.",
         );
     }
+
     if (
       (await gitCapture(["check-ref-format", `refs/heads/${record.preset.branch}`], cwd, signal))
         .code !== 0
@@ -727,9 +805,11 @@ export class FinalizationService {
       expected_remote: await this.remoteHead(record, url, signal),
     };
   };
+
   private remoteHead = async (record: Finalization, url: string, signal: AbortSignal) => {
     const cwd = await this.workspaces.source(this.engine.db.task(record.task_id));
     const destination = this.transport?.(url) ?? url;
+
     const result = await gitExecute({
       program: "git",
       cwd,
@@ -738,6 +818,7 @@ export class FinalizationService {
       rawStdoutForIntegrity: true,
       args: ["ls-remote", "--heads", "--", destination, `refs/heads/${record.preset.branch}`],
     });
+
     if (result.code !== 0 || result.stdout_truncated)
       throw new AdeError(
         "remote_head",
@@ -753,6 +834,7 @@ export class FinalizationService {
       throw new AdeError("remote_head", "Remote branch evidence is ambiguous.");
     return rows[0].split("\t")[0];
   };
+
   private committed = async (record: Finalization, signal: AbortSignal) => {
     const task = this.engine.db.task(record.task_id);
     this.verifiedTask(task.id);
@@ -773,6 +855,7 @@ export class FinalizationService {
       );
     return cwd;
   };
+
   prepare = (taskId: string, id: string, destination?: z.infer<typeof destinationInput>) =>
     this.exclusive(taskId, "Checking Git publication destination", async (signal) => {
       const record = this.store.get(taskId, id);
@@ -789,9 +872,11 @@ export class FinalizationService {
         };
       record.destination = await this.destination(record, signal);
       const cwd = await this.workspaces.source(this.engine.db.task(taskId));
+
       const ancestor = /^0+$/.test(record.destination.expected_remote)
         ? record.base
         : record.destination.expected_remote;
+
       if (
         (await gitCapture(["merge-base", "--is-ancestor", ancestor, record.head!], cwd, signal))
           .code !== 0
@@ -802,14 +887,17 @@ export class FinalizationService {
         );
       record.status = "prepared";
       record.error = null;
+
       this.store.event(
         record,
         "Ready for explicit push confirmation",
         `${record.destination.repository} ${record.destination.branch}; expected ${record.destination.expected_remote}; local ${record.head}`,
       );
+
       this.store.save(record);
       return record;
     });
+
   publish = (taskId: string, id: string, skipHooks: boolean) =>
     this.exclusive(taskId, "Publishing approved Git commit", async (signal) => {
       const record = this.store.get(taskId, id);
@@ -826,21 +914,25 @@ export class FinalizationService {
           "stale_remote_head",
           "Remote head, account, permission or destination changed after preparation. Review a fresh confirmation.",
         );
+
       const releaseDestination = await this.engine.git.acquireWrite(
         cwd,
         `pr:${fresh.repository_id}:${fresh.branch}`,
       );
+
       try {
         if (!skipHooks) await this.hooks(record, ["pre-push"], signal);
         await this.committed(record, signal);
         record.status = "pushing";
         record.preset.push = skipHooks ? "skip" : "normal";
         this.store.save(record);
+
         this.store.event(
           record,
           "Publishing",
           `${fresh.repository} ${fresh.branch}; optional pre-push hooks ${skipHooks ? "skipped" : "checked"}; mandatory host guard enforced`,
         );
+
         try {
           const result = await publishFastForward(
             {
@@ -861,16 +953,19 @@ export class FinalizationService {
             },
             this.push,
           );
+
           this.store.event(
             record,
             "Push process completed",
             result.stderr || result.stdout,
             result.code,
           );
+
           if (result.code !== 0) record.error = redact(result.stderr || result.stdout);
         } catch (error) {
           record.error = redact(String(error));
         }
+
         record.status = "uncertain";
         record.pid = null;
         record.process_identity = null;
@@ -880,6 +975,7 @@ export class FinalizationService {
         await releaseDestination();
       }
     });
+
   private reconcileRecord = async (record: Finalization) => {
     if (["committing", "interrupted"].includes(record.status) && record.head) {
       try {
@@ -890,6 +986,7 @@ export class FinalizationService {
           record.error = null;
         } else {
           record.status = "interrupted";
+
           record.error =
             "The exact local commit is preserved. Explicitly resume the local branch/index update; reconciliation performed no writes.";
         }
@@ -897,9 +994,11 @@ export class FinalizationService {
         record.status = "interrupted";
         record.error = redact(String(error));
       }
+
       this.store.save(record);
       return record;
     }
+
     if (!["pushing", "uncertain"].includes(record.status) || !record.destination) return record;
     try {
       const remote = await this.remoteHead(
@@ -907,9 +1006,11 @@ export class FinalizationService {
         record.destination.url,
         AbortSignal.timeout(60000),
       );
+
       if (remote === record.head) {
         record.status = "published";
         record.error = null;
+
         this.store.event(
           record,
           "Push verified",
@@ -918,6 +1019,7 @@ export class FinalizationService {
         );
       } else if (remote === record.destination.expected_remote) {
         record.status = "not_published";
+
         this.store.event(
           record,
           "Not published",
@@ -925,24 +1027,29 @@ export class FinalizationService {
         );
       } else {
         record.status = "failed";
+
         record.error =
           "The remote moved to a different commit. Fetch and review it before any further publication.";
+
         this.store.event(record, "Remote changed", record.error);
       }
     } catch (error) {
       record.status = "uncertain";
       record.error = redact(String(error));
     }
+
     this.store.save(record);
     this.engine.changed(record.task_id);
     return record;
   };
+
   private dispatch = async (method: string, input: unknown) => {
     if (method === "remove") {
       const request = operationInput
         .extend({ confirmed: z.literal(true) })
         .strict()
         .parse(input);
+
       return this.exclusive(request.id, "Removing an owned Git review preview", async (signal) => {
         const record = this.store.get(request.id, request.operation_id);
         if (
@@ -970,28 +1077,33 @@ export class FinalizationService {
         const head = await gitChecked(["rev-parse", "HEAD"], cwd, signal);
         if (![record.parent, record.head].includes(head))
           throw new AdeError("ownership", "The isolated preview branch changed. It was preserved.");
+
         await this.git(
           record,
           repo.path,
           ["worktree", "remove", "--force", "--", record.preview_path],
           signal,
         );
+
         await this.git(
           record,
           repo.path,
           ["update-ref", "-d", `refs/heads/${record.preview_branch}`, head],
           signal,
         );
+
         await this.git(
           record,
           repo.path,
           ["config", "--local", "--remove-section", `branch.${record.preview_branch}`],
           signal,
         );
+
         this.store.remove(record.id);
         return null;
       });
     }
+
     if (method === "inspect")
       return this.inspect(z.object({ id: z.string().uuid() }).strict().parse(input).id);
     if (method === "preview") return this.preview(input);
@@ -1000,16 +1112,20 @@ export class FinalizationService {
         .object({ id: z.string().uuid(), preset: GitPresetSchema })
         .strict()
         .parse(input);
+
       if (this.active.has(request.id) || this.engine.isActive(request.id))
         throw new AdeError("busy", "Wait for the active Git or task operation.");
       this.engine.db.task(request.id);
+
       this.engine.db.run(
         "INSERT INTO task_git_presets VALUES(?,?) ON CONFLICT(task_id) DO UPDATE SET data=excluded.data",
         request.id,
         JSON.stringify(request.preset),
       );
+
       return request.preset;
     }
+
     if (method === "commit") {
       const request = operationInput
         .extend({
@@ -1019,20 +1135,25 @@ export class FinalizationService {
         })
         .strict()
         .parse(input);
+
       return this.commit(request.id, request.operation_id, request.message, request.skip_hooks);
     }
+
     if (method === "publish") {
       const request = operationInput
         .extend({ skip_hooks: z.boolean(), confirmed: z.literal(true) })
         .strict()
         .parse(input);
+
       return this.publish(request.id, request.operation_id, request.skip_hooks);
     }
+
     if (method === "resumeCommit") {
       const request = operationInput
         .extend({ confirmed: z.literal(true) })
         .strict()
         .parse(input);
+
       return this.exclusive(request.id, "Resuming the exact local Git commit", async (signal) => {
         const record = this.store.get(request.id, request.operation_id);
         if (!["interrupted", "committing"].includes(record.status) || !record.head)
@@ -1043,13 +1164,16 @@ export class FinalizationService {
         return this.applyLocalCommit(record, signal);
       });
     }
+
     if (method === "approve") {
       const request = operationInput
         .extend({ confirmed: z.literal(true) })
         .strict()
         .parse(input);
+
       return this.approve(request.id, request.operation_id);
     }
+
     if (method === "cancel") {
       const request = z.object({ id: z.string().uuid() }).strict().parse(input);
       const operation = this.active.get(request.id);
@@ -1058,35 +1182,43 @@ export class FinalizationService {
       await operation.promise.catch(() => {});
       return null;
     }
+
     if (method === "prepare") {
       const request = operationInput
         .extend({ destination: destinationInput.optional() })
         .strict()
         .parse(input);
+
       return this.prepare(request.id, request.operation_id, request.destination);
     }
+
     if (method === "detail" || method === "output") {
       const request = operationInput
         .extend({ before: z.number().int().positive().optional() })
         .strict()
         .parse(input);
+
       const record = this.store.get(request.id, request.operation_id);
       const events = this.store.events(record.id, request.before);
+
       const output = {
         record: FinalizationViewSchema.parse(record),
         events: events.slice(-200),
         events_older: events.length > 200,
         active: this.active.has(request.id),
       };
+
       if (method === "output") return output;
       try {
         const task = this.engine.db.task(request.id);
         const cwd = await this.workspaces.assert(record, task);
+
         const diff = await gitExecute({
           program: "git",
           cwd,
           args: ["diff", "--cached", "--no-ext-diff", "--no-textconv", record.base, "--"],
         });
+
         if (diff.code !== 0) throw new Error(`Diff unavailable: ${diff.stderr}`);
         return {
           ...output,
@@ -1102,6 +1234,7 @@ export class FinalizationService {
         };
       }
     }
+
     const request = operationInput.parse(input);
     if (method === "review") return this.review(request.id, request.operation_id);
     if (method === "reconcile")
@@ -1110,11 +1243,13 @@ export class FinalizationService {
       );
     throw new AdeError("invalid_method", `Unknown Git finalization method: ${method}`);
   };
+
   call = async (method: string, input: unknown) => {
     const result = await this.dispatch(method, input);
     const record = FinalizationSchema.safeParse(result);
     return record.success ? FinalizationViewSchema.parse(record.data) : result;
   };
+
   close = async () => {
     for (const operation of this.active.values()) operation.controller.abort();
     await Promise.allSettled([...this.active.values()].map((operation) => operation.promise));

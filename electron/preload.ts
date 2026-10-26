@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
+
 import type { DesktopApi, ElectronWindowApi } from "./contracts";
+
 const api: DesktopApi = {
   rpc: async (method, params = {}) => {
     const response = await ipcRenderer.invoke("core:rpc", { method, params });
@@ -9,6 +11,7 @@ const api: DesktopApi = {
   subscribe: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof callback>[0]) =>
       callback(payload);
+
     ipcRenderer.on("core:event", listener);
     return () => ipcRenderer.removeListener("core:event", listener);
   },
@@ -17,6 +20,7 @@ const api: DesktopApi = {
   installHelper: () => ipcRenderer.invoke("desktop:install"),
   openExternal: (url) => ipcRenderer.invoke("desktop:external", url),
 };
+
 contextBridge.exposeInMainWorld("vibestar", api);
 
 const windowApi: ElectronWindowApi = {
@@ -29,6 +33,7 @@ const windowApi: ElectronWindowApi = {
   onStateChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: Parameters<typeof callback>[0]) =>
       callback(state);
+
     ipcRenderer.on("window:state", listener);
     return () => ipcRenderer.removeListener("window:state", listener);
   },
@@ -39,8 +44,10 @@ const windowApi: ElectronWindowApi = {
   onMaximizedChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: { maximized: boolean }) =>
       callback(state.maximized);
+
     ipcRenderer.on("window:state", listener);
     return () => ipcRenderer.removeListener("window:state", listener);
   },
 };
+
 contextBridge.exposeInMainWorld("electronWindow", windowApi);

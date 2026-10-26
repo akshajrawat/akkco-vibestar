@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+
 import { AdeError, now } from "../domain";
 import type { Database } from "./database";
 
@@ -9,6 +10,7 @@ interface StoredJson {
   source: string;
   identity?: string;
 }
+
 export interface PersistenceDiagnostic {
   table_name: string;
   record_id: string;
@@ -17,6 +19,7 @@ export interface PersistenceDiagnostic {
   first_seen: string;
   last_seen: string;
 }
+
 const objectValue = (value: unknown) => {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Expected a saved object");
@@ -25,18 +28,23 @@ const objectValue = (value: unknown) => {
 
 export class PersistedRecords {
   private ready = false;
+
   private pending = new Map<string, StoredJson>();
+
   constructor(private readonly db: Database) {}
+
   initialize = () => {
     this.ready = true;
     for (const record of this.pending.values()) this.report(record);
     this.pending.clear();
   };
+
   private report = (record: StoredJson) => {
     if (!this.ready) {
       this.pending.set(JSON.stringify([record.table, record.id, record.column]), record);
       return;
     }
+
     // Source bytes remain in their original record and pre-migration backup.
     // Diagnostics never copy potentially sensitive payloads into UI or errors.
     this.db.run(
@@ -49,6 +57,7 @@ export class PersistedRecords {
       now(),
     );
   };
+
   decode = <T = Record<string, unknown>>(
     record: StoredJson,
     parse = (value: unknown) => objectValue(value) as T,
@@ -68,6 +77,7 @@ export class PersistedRecords {
         { table: record.table, id: String(record.id), column: record.column },
       );
     }
+
     if (this.ready)
       this.db.run(
         "UPDATE persistence_diagnostics SET resolved_at=? WHERE table_name=? AND record_id=? AND column_name=? AND resolved_at IS NULL",
@@ -78,6 +88,7 @@ export class PersistedRecords {
       );
     return value;
   };
+
   tryDecode = <T = Record<string, unknown>>(record: StoredJson, parse?: (value: unknown) => T) => {
     try {
       return this.decode(record, parse);
@@ -86,6 +97,7 @@ export class PersistedRecords {
       throw error;
     }
   };
+
   list = <T = Record<string, unknown>>(
     table: string,
     rows: { id: string | number; data: string }[],
@@ -97,8 +109,10 @@ export class PersistedRecords {
         { table, id: row.id, column: "data", source: row.data, identity },
         parse,
       );
+
       return value === undefined ? [] : [value];
     });
+
   diagnostics = () =>
     this.db.all<PersistenceDiagnostic>(
       "SELECT table_name,record_id,column_name,source_hash,first_seen,last_seen FROM persistence_diagnostics WHERE resolved_at IS NULL ORDER BY table_name,record_id,column_name",

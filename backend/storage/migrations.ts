@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 INSERT OR IGNORE INTO schema_migrations VALUES(1,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `,
   },
+
   {
     version: 2,
     sql: "ALTER TABLE test_runs ADD COLUMN pid INTEGER; ALTER TABLE test_runs ADD COLUMN process_identity TEXT;",
   },
+
   {
     version: 3,
     sql: `
@@ -29,14 +31,17 @@ CREATE TABLE scheduled_attention(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERE
 ALTER TABLE agent_runs ADD COLUMN purpose TEXT NOT NULL DEFAULT 'pipeline';
 `,
   },
+
   {
     version: 4,
     sql: `CREATE TABLE task_review_notes(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,path TEXT NOT NULL,side TEXT NOT NULL,line_start INTEGER NOT NULL,line_end INTEGER NOT NULL,content TEXT NOT NULL,source_hash TEXT NOT NULL,created_at TEXT NOT NULL);CREATE INDEX task_review_notes_by_task ON task_review_notes(task_id,created_at);`,
   },
+
   {
     version: 5,
     sql: `CREATE TABLE terminal_sessions(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,pid INTEGER,process_identity TEXT,exit_code INTEGER);`,
   },
+
   {
     version: 6,
     sql: `
@@ -47,10 +52,12 @@ CREATE TABLE github_repositories(id INTEGER PRIMARY KEY,full_name TEXT NOT NULL 
 CREATE TABLE github_pull_requests(url TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at TEXT NOT NULL);
 `,
   },
+
   {
     version: 7,
     sql: `CREATE TABLE scheduled_agent_runs(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,stage INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,pid INTEGER,process_identity TEXT,conversation_id TEXT,output TEXT,error TEXT,purpose TEXT NOT NULL DEFAULT 'scheduled');`,
   },
+
   {
     version: 8,
     sql: `
@@ -63,6 +70,7 @@ ALTER TABLE task_messages ADD COLUMN run_id TEXT;
 CREATE TABLE utility_runs(id TEXT PRIMARY KEY,stage INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,pid INTEGER,process_identity TEXT,conversation_id TEXT,output TEXT,error TEXT,purpose TEXT NOT NULL);
 `,
   },
+
   {
     version: 9,
     sql: `
@@ -72,10 +80,12 @@ INSERT OR IGNORE INTO ai_usage(id,job_id,purpose,provider,model,effort,started_a
 SELECT id,job_id,CASE stage WHEN 1 THEN 'PR Review Analysis' ELSE 'Scheduler Verification' END,provider,model,effort,started_at,ended_at,CASE WHEN ended_at IS NOT NULL THEN MAX(0,CAST(ROUND((julianday(ended_at)-julianday(started_at))*86400000) AS INTEGER)) END,status,error FROM scheduled_agent_runs;
 `,
   },
+
   {
     version: 10,
     sql: "ALTER TABLE ai_usage ADD COLUMN subscription_limits TEXT;",
   },
+
   {
     version: 11,
     sql: `
@@ -88,6 +98,7 @@ UPDATE scheduled_jobs SET data=json_insert(data,'$.action.conversationState','ne
 UPDATE scheduled_jobs SET data=json_insert(data,'$.conversation_action.conversationState','neutral','$.conversation_action.outstandingRequests',json('[]'),'$.conversation_action.alreadyAddressed',json('[]'),'$.conversation_action.newActivity',json('[]')) WHERE json_type(CASE WHEN json_valid(data) THEN data END,'$.conversation_action')='object';
 `,
   },
+
   {
     version: 12,
     foreign_keys_off: true,
@@ -99,6 +110,7 @@ ALTER TABLE repositories_new RENAME TO repositories;
 CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),json_extract(CASE WHEN json_valid(data) THEN data END,'$.path'));
 `,
   },
+
   {
     version: 13,
     sql: `
@@ -110,14 +122,17 @@ CREATE TABLE code_questions(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES
 CREATE INDEX code_questions_task ON code_questions(task_id,created_at);
 `,
   },
+
   {
     version: 14,
     sql: `UPDATE tasks SET stage=6,data=json_set(data,'$.stage',6) WHERE json_valid(data) AND stage=5 AND status IN ('ready_for_review','completed');`,
   },
+
   {
     version: 15,
     sql: `UPDATE tasks SET status='awaiting_approval',stage=5,data=json_set(data,'$.status','awaiting_approval','$.stage',5,'$.approval_gate','implementation') WHERE json_valid(data) AND status='ready_for_review' AND NOT EXISTS(SELECT 1 FROM task_artifacts a WHERE a.task_id=tasks.id AND a.stage=5 AND a.kind='plan');`,
   },
+
   {
     version: 16,
     sql: `ALTER TABLE test_runs ADD COLUMN run_id TEXT;
@@ -125,6 +140,7 @@ ALTER TABLE test_runs ADD COLUMN call_id TEXT;
 ALTER TABLE test_runs ADD COLUMN output_truncated INTEGER NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX test_runs_provider_call ON test_runs(task_id,run_id,call_id);`,
   },
+
   {
     version: 17,
     sql: `
@@ -133,6 +149,7 @@ UPDATE scheduled_jobs SET data=json_set(data,'$.enabled',json('false'),'$.check_
 INSERT OR REPLACE INTO settings VALUES('pr_execution_policy','"manual_only_v1"');
 `,
   },
+
   {
     version: 18,
     sql: `
@@ -144,6 +161,7 @@ ALTER TABLE scheduled_agent_runs ADD COLUMN analysis_id TEXT REFERENCES pr_analy
 ALTER TABLE ai_usage ADD COLUMN analysis_id TEXT REFERENCES pr_analyses(id) ON DELETE SET NULL;
 `,
   },
+
   {
     version: 19,
     sql: `
@@ -156,6 +174,7 @@ CREATE INDEX repair_publications_session ON repair_publications(repair_id,create
 CREATE TABLE repair_reviewed_files(repair_id TEXT NOT NULL REFERENCES pr_repairs(id),path TEXT NOT NULL,source_hash TEXT NOT NULL,reviewed_at TEXT NOT NULL,PRIMARY KEY(repair_id,path));
 `,
   },
+
   {
     version: 20,
     foreign_keys_off: true,
@@ -185,6 +204,7 @@ ALTER TABLE ai_usage ADD COLUMN repair_id TEXT REFERENCES pr_repairs(id) ON DELE
 CREATE INDEX repair_usage ON ai_usage(repair_id,started_at);
 `,
   },
+
   {
     version: 21,
     sql: `
@@ -194,6 +214,7 @@ DROP INDEX IF EXISTS repositories_checkout;
 CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),CASE WHEN json_valid(data) THEN json_extract(CASE WHEN json_valid(data) THEN data END,'$.path') END);
 `,
   },
+
   {
     version: 22,
     sql: `
@@ -209,6 +230,7 @@ CREATE INDEX issue_watch_candidate_identity ON issue_watch_candidates(repository
 CREATE TABLE issue_watch_results(watch_id TEXT NOT NULL REFERENCES issue_watches(id),issue_id TEXT NOT NULL,last_evaluated_scan_id TEXT NOT NULL REFERENCES issue_watch_scans(id),last_complete_match_scan_id TEXT REFERENCES issue_watch_scans(id),classification TEXT NOT NULL,dismissed_at TEXT,first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(watch_id,issue_id));
 `,
   },
+
   {
     version: 23,
     sql: `
@@ -222,6 +244,7 @@ CREATE TABLE utility_events(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT
 CREATE INDEX utility_run_events ON utility_events(run_id,id);
 `,
   },
+
   {
     version: 24,
     sql: `
@@ -232,6 +255,7 @@ CREATE INDEX git_operation_history ON git_operation_events(finalization_id,id);
 CREATE TABLE task_git_presets(task_id TEXT PRIMARY KEY REFERENCES tasks(id),data TEXT NOT NULL CHECK(json_valid(data)));
 `,
   },
+
   {
     version: 25,
     sql: `
@@ -239,6 +263,7 @@ ALTER TABLE task_messages ADD COLUMN purpose TEXT NOT NULL DEFAULT 'instruction'
 CREATE INDEX task_conversation ON task_messages(task_id,purpose,created_at);
 `,
   },
+
   {
     version: 26,
     sql: `CREATE TABLE pr_analysis_batches(id TEXT PRIMARY KEY,status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL);`,

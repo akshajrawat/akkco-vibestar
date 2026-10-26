@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import type { Detail } from "../../lib/types";
 import { duration } from "../../lib/format";
 import { parseArgv } from "./commands";
@@ -29,12 +30,14 @@ export const CommandRuns = ({
   const [stage, setStage] = useState("all");
   const [stream, setStream] = useState("all");
   const transcript = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (selectedId) {
       transcript.current?.focus();
       transcript.current?.scrollIntoView?.({ block: "nearest" });
     }
   }, [selectedId]);
+
   const commands = detail.tests.filter((test) => {
     const run = detail.runs.find((r) => r.id === test.run_id);
     return (
@@ -44,13 +47,16 @@ export const CommandRuns = ({
       (stage === "all" || (stage === "manual" ? !run : String(run?.stage) === stage))
     );
   });
+
   const command = commands.find((test) => test.id === selected) || commands.at(-1);
   const run = detail.runs.find((r) => r.id === command?.run_id);
   const evidence = command ? commandVerification(command) : null;
+
   const label = (runId?: string | null) => {
     const run = detail.runs.find((r) => r.id === runId);
     return run ? `${run.provider} · ${run.purpose || `stage ${run.stage}`}` : "Manual / validation";
   };
+
   return (
     <section className="command-runs" aria-label="Command executions">
       <h2>
@@ -59,6 +65,7 @@ export const CommandRuns = ({
           {commands.length} / {detail.tests.length}
         </small>
       </h2>
+
       <div className="command-filters">
         <input
           aria-label="Search commands"
@@ -66,6 +73,7 @@ export const CommandRuns = ({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+
         <select
           aria-label="Command status"
           value={status}
@@ -76,6 +84,7 @@ export const CommandRuns = ({
             <option key={value}>{value}</option>
           ))}
         </select>
+
         <select aria-label="Command stage" value={stage} onChange={(e) => setStage(e.target.value)}>
           <option value="all">All stages</option>
           <option value="1">Antigravity planning</option>
@@ -85,6 +94,7 @@ export const CommandRuns = ({
           <option value="manual">Manual / validation</option>
         </select>
       </div>
+
       <div className="command-browser">
         <div className="command-list" role="list" aria-label="Recorded commands">
           {commands.map((test) => (
@@ -108,6 +118,7 @@ export const CommandRuns = ({
               </small>
             </button>
           ))}
+
           {!commands.length && (
             <p className="empty-row">
               {detail.tests.length
@@ -116,6 +127,7 @@ export const CommandRuns = ({
             </p>
           )}
         </div>
+
         {command && (
           <div className="command-transcript" ref={transcript} tabIndex={-1}>
             <div className="command-log-heading">
@@ -137,21 +149,25 @@ export const CommandRuns = ({
                 <option value="stderr">stderr</option>
               </select>
             </div>
+
             {evidence?.outcome !== command.status && (
               <small className="subtle">
                 Original command status: {command.status}. Verification classification uses command
                 purpose and exit evidence.
               </small>
             )}
+
             {evidence && evidence.outcome !== "passed" && command.status !== "running" && (
               <p className="warning">{evidence.detail}</p>
             )}
+
             {command.call_id && (
               <small className="subtle">
                 Provider command output may combine streams. Agent Output retains the exact emitted
                 fields and separate CLI stdout/stderr.
               </small>
             )}
+
             {!!command.output_truncated && (
               <p className="warning">
                 Showing the last 1 MiB per stream.
@@ -160,17 +176,20 @@ export const CommandRuns = ({
                   : " Live command output is bounded; the final capture replaces it when the command finishes."}
               </p>
             )}
+
             <pre className="command-log" aria-label="Selected command output">
               <span className="command-invocation">
                 $ {displayCommand(command.command)}
                 {"\n\n"}
               </span>
+
               {stream !== "stderr" && (
                 <>
                   {command.stdout || "(no stdout yet)"}
                   {"\n"}
                 </>
               )}
+
               {stream !== "stdout" && (
                 <span className="command-stderr">
                   {"\n[stderr]\n"}

@@ -1,7 +1,9 @@
 import { it, expect } from "vitest";
+
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { TaskTerminals } from "../../backend/execution/terminals/task-terminals";
 import { parseIssue } from "../../backend/domain";
 import {
@@ -11,12 +13,14 @@ import {
   finishFixtureTask as waitForTask,
   prepareFixtureTask,
 } from "../helpers/fixtures";
+
 it("runs a real task-scoped PTY, retains the session and excludes simultaneous agents in that worktree", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-task-terminal-"));
   const engine = await createFixtureEngine(join(dir, "ade"), () => new FixtureProvider());
   const terminals = new TaskTerminals(engine);
   try {
     const { repo } = await fixtureRepository(engine, dir);
+
     const a = engine.enqueue(
       repo,
       parseIssue("https://github.com/fixture/fixture/issues/12"),
@@ -24,18 +28,24 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
       "",
       {},
     );
+
     await waitForTask(engine, a.id, (s) => s === "ready_for_review" || s === "failed");
     const task = engine.db.task(a.id);
     const session = await terminals.open(a.id, 100, 25);
     expect(engine.isActive(a.id)).toBe(true);
+
     expect(engine.cleanupBlockers(a.id)).toMatchObject([
       { id: `terminal:${a.id}`, kind: "terminal", task_id: a.id },
     ]);
+
     expect((await terminals.open(a.id, 120, 25)).session_id).toBe(session.session_id);
+
     expect(engine.followUp(a.id, "Save during this terminal")).toMatchObject({
       disposition: "draft",
     });
+
     expect(engine.db.detail(a.id).messages.at(-1)?.content).toBe("Save during this terminal");
+
     const b = engine.enqueue(
       repo,
       parseIssue("https://github.com/fixture/fixture/issues/13"),
@@ -43,14 +53,18 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
       "",
       {},
     );
+
     await waitForTask(engine, b.id, (s) => s === "ready_for_review" || s === "failed");
     expect(engine.db.task(b.id).status).toBe("ready_for_review");
+
     const done = new Promise<void>((resolve, reject) => {
       let output = "";
+
       const timer = setTimeout(() => {
         engine.off("event", check);
         reject(Error("Task PTY output deadline"));
       }, 10000);
+
       const check = (e: { event: string; task_id?: string; text?: string }) => {
         if (e.event === "terminal.output" && e.task_id === a.id) {
           output += e.text;
@@ -61,23 +75,30 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
           }
         }
       };
+
       engine.on("event", check);
     });
+
     terminals.input(
       a.id,
       session.session_id,
       "printf terminal-A > source.txt; printf 'TERM_'; printf 'A_DONE\\n'\r",
     );
+
     await done;
     expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("terminal-A");
+
     expect(await readFile(join(engine.db.task(b.id).worktree_path, "source.txt"), "utf8")).toBe(
       "B\n",
     );
+
     expect(terminals.current(a.id)?.output).toContain("TERM_A_DONE");
     terminals.resize(a.id, session.session_id, 90, 20);
+
     expect(
       engine.db.all("SELECT id FROM terminal_sessions WHERE task_id=? AND status='running'", a.id),
     ).toHaveLength(1);
+
     await terminals.close(a.id);
     expect(engine.isActive(a.id)).toBe(false);
     expect(engine.cleanupBlockers(a.id)).toEqual([]);
@@ -99,13 +120,16 @@ it("saves and replays only sanitized split-token output with continuous emitted 
     const task = await prepareFixtureTask(engine, repo, "redacted-terminal");
     const session = await terminals.open(task.id, 100, 25);
     const chunks: { text: string; sequence: number }[] = [];
+
     const done = new Promise<void>((resolve) => {
       engine.on("event", (event) => {
         if (event.event !== "terminal.output" || event.task_id !== task.id) return;
+
         chunks.push({
           text: event.text!,
           sequence: (event.data as { sequence: number }).sequence,
         });
+
         if (
           chunks
             .map((chunk) => chunk.text)
@@ -115,6 +139,7 @@ it("saves and replays only sanitized split-token output with continuous emitted 
           resolve();
       });
     });
+
     const secret = "github_pat_abcdefghijklmnopqrstuvwxyz123456_ABCDEFG";
     const encoded = Buffer.from(secret).toString("base64");
     const script = `const v=Buffer.from("${encoded}","base64").toString();process.stdout.write(v.slice(0,7));setTimeout(()=>{process.stdout.write(v.slice(7)+"\\n");console.log(["TERM","SECRET","CHECK"].join("_"));},30);`;
@@ -127,10 +152,12 @@ it("saves and replays only sanitized split-token output with continuous emitted 
     for (let index = 1; index < chunks.length; index++)
       expect(chunks[index].sequence).toBe(chunks[index - 1].sequence + 1);
     await terminals.close(task.id);
+
     const log = await readFile(
       join(engine.root, "logs", task.id, `${session.session_id}.terminal.log`),
       "utf8",
     );
+
     expect(log).toContain("[REDACTED]");
     expect(log).not.toContain(secret);
     expect(log).not.toContain("hijklmnopqrstuvwxyz123456");

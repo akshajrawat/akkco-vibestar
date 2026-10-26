@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
 import { now, type Repository } from "../../backend/domain";
 import { checked } from "../../backend/execution/runtime/process";
 import type { Engine } from "../../backend/execution/engine";
@@ -21,14 +22,17 @@ export const repairFixture = async (
   await checked("git", ["init", "-b", baseBranch], seed);
   await checked("git", ["config", "user.name", "Repair Fixture"], seed);
   await checked("git", ["config", "user.email", "fixture@example.invalid"], seed);
+
   await writeFile(
     join(seed, "spec.ts"),
     "export const selectors = ['draft'];\nexport const exploration = 'original-exploration';\n",
   );
+
   await writeFile(
     join(seed, "legacy-puppeteer.cjs"),
     "exports.exploration='original-exploration';\n",
   );
+
   await writeFile(join(seed, "README.md"), "Original acceptance migration\n");
   await checked("git", ["add", "."], seed);
   await checked("git", ["commit", "-m", "original base"], seed);
@@ -38,19 +42,23 @@ export const repairFixture = async (
   await checked("git", ["clone", "--bare", seed, upstream], dir);
   await checked("git", ["clone", "--bare", seed, fork], dir);
   await checked("git", ["switch", "-c", "fix-translation-tests"], seed);
+
   await writeFile(
     join(seed, "spec.ts"),
     "export const selectors = ['draft', 'publish'];\nexport const exploration = 'different-exploration';\nexport const hasDraft = (items: string[]) => items.every((item) => item === 'draft');\n",
   );
+
   await checked("git", ["add", "."], seed);
   await checked("git", ["commit", "-m", "migrate acceptance test"], seed);
   await checked("git", ["push", fork, "HEAD:refs/heads/fix-translation-tests"], seed);
   const head = await checked("git", ["rev-parse", "HEAD"], seed);
   await checked("git", ["switch", baseBranch], seed);
+
   await writeFile(
     join(seed, options.conflict ? "spec.ts" : "README.md"),
     options.conflict ? "export const selectors = ['upstream'];\n" : "Latest upstream development\n",
   );
+
   await checked("git", ["add", "."], seed);
   await checked("git", ["commit", "-m", "advance upstream"], seed);
   await checked("git", ["push", upstream, baseBranch], seed);
@@ -58,24 +66,30 @@ export const repairFixture = async (
   const repoId = randomUUID();
   const source = options.imported ? join(dir, "checkout") : join(engine.root, "repos", repoId);
   await checked("git", ["clone", "--origin", "upstream", upstream, source], dir);
+
   await checked(
     "git",
     ["fetch", fork, "refs/heads/fix-translation-tests:refs/heads/fix-translation-tests"],
     source,
   );
+
   await checked("git", ["switch", "fix-translation-tests"], source);
+
   await checked(
     "git",
     ["remote", "set-url", "upstream", "https://github.com/oppia/oppia.git"],
     source,
   );
+
   await checked(
     "git",
     ["remote", "add", "origin", "https://github.com/akshajrawat/oppia.git"],
     source,
   );
+
   await writeFile(join(source, "README.md"), "Personal dirty source checkout\n");
   await writeFile(join(source, "personal.txt"), "Preserve this untracked file\n");
+
   const repo: Repository = {
     id: repoId,
     owner: "oppia",
@@ -89,8 +103,10 @@ export const repairFixture = async (
     last_fetched: null,
     created_at: now(),
   };
+
   engine.db.saveRepository(repo);
   const id = randomUUID();
+
   const identity = {
     url: "https://github.com/oppia/oppia/pull/27527",
     number: 27527,
@@ -109,6 +125,7 @@ export const repairFixture = async (
     state: "open" as const,
     checked_at: now(),
   };
+
   const snapshot = {
     ...structuredClone(prSnapshot),
     headRefOid: head,
@@ -132,6 +149,7 @@ export const repairFixture = async (
       baseBranch: identity.base.branch,
     },
   };
+
   const actions = observations.slice(0, 3).map((action) => ({
     ...action,
     id: randomUUID(),
@@ -142,8 +160,10 @@ export const repairFixture = async (
     outdated: null,
     codeStatus: "unverified" as const,
   }));
+
   const jobId = randomUUID();
   const analysisId = randomUUID();
+
   const context = {
     id: analysisId,
     job_id: jobId,
@@ -161,11 +181,13 @@ export const repairFixture = async (
       warnings: [],
     },
   };
+
   engine.db.run(
     "INSERT INTO scheduled_jobs VALUES(?,?)",
     jobId,
     JSON.stringify({ id: jobId, url: identity.url, enabled: false }),
   );
+
   engine.db.run(
     "INSERT INTO pr_analyses VALUES(?,?,?,?,?,?)",
     analysisId,
@@ -175,6 +197,7 @@ export const repairFixture = async (
     now(),
     JSON.stringify(context),
   );
+
   const session: RepairSession = {
     id,
     repo_id: repoId,
@@ -215,6 +238,7 @@ export const repairFixture = async (
     implementation: null,
     verification: null,
   };
+
   const checkpoint = () =>
     engine.db.run(
       "INSERT INTO pr_repairs VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,data=excluded.data,updated_at=excluded.updated_at",
@@ -227,6 +251,7 @@ export const repairFixture = async (
       session.created_at,
       now(),
     );
+
   checkpoint();
   return {
     repo,

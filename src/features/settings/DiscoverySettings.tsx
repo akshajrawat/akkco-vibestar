@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+
 import type { Settings } from "../../lib/types";
 import type { RepositoryIndexSnapshot } from "../../../backend/workspace/discovery";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
+
 export const DiscoverySettings = ({
   value,
   onChange,
@@ -14,11 +16,13 @@ export const DiscoverySettings = ({
   const [location, setLocation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
   useEffect(() => {
     void rpc<RepositoryIndexSnapshot>("repositories.index")
       .then(setIndex)
       .catch((e) => setError(errorMessage(e)));
   }, []);
+
   const scan = async () => {
     setBusy(true);
     setError("");
@@ -32,6 +36,7 @@ export const DiscoverySettings = ({
       setBusy(false);
     }
   };
+
   return (
     <section className="discovery-settings">
       <h2>Local repository discovery</h2>
@@ -39,6 +44,7 @@ export const DiscoverySettings = ({
         Find checkouts in the configured execution environment before cloning. Windows locations
         must be explicitly added as /mnt/c/Users/… paths. WSL checkouts are preferred.
       </p>
+
       <div className="search-roots">
         {value.roots.map((root, i) => (
           <div key={i}>
@@ -52,6 +58,7 @@ export const DiscoverySettings = ({
                 })
               }
             />
+
             <Button
               size="sm"
               aria-label={`Remove ${root}`}
@@ -67,6 +74,7 @@ export const DiscoverySettings = ({
           </div>
         ))}
       </div>
+
       <div className="actions">
         <input
           aria-label="New repository location"
@@ -74,6 +82,7 @@ export const DiscoverySettings = ({
           value={location}
           onChange={(e) => setLocation(e.target.value)}
         />
+
         <Button
           disabled={!location.trim()}
           onClick={() => {
@@ -84,6 +93,7 @@ export const DiscoverySettings = ({
           + Add location
         </Button>
       </div>
+
       <label>
         Maximum depth
         <input
@@ -94,6 +104,7 @@ export const DiscoverySettings = ({
           onChange={(e) => onChange({ ...value, max_depth: Number(e.target.value) })}
         />
       </label>
+
       <label className="checkbox-label">
         <input
           type="checkbox"
@@ -102,6 +113,7 @@ export const DiscoverySettings = ({
         />
         Scan home directory with the same depth limit
       </label>
+
       <Button disabled={busy} onClick={() => void scan()}>
         {busy ? "Scanning…" : "Scan now"}
       </Button>
@@ -114,11 +126,13 @@ export const DiscoverySettings = ({
           ? "—"
           : `${(index.duration_ms / 1000).toFixed(1)}s`}
       </p>
+
       {index?.warnings.map((w) => (
         <p className="warning-box" key={w}>
           {w}
         </p>
       ))}
+
       {index?.repositories.map((repo) => (
         <p className="indexed-repo" key={repo.path}>
           <code>{repo.path}</code>

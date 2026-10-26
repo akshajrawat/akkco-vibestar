@@ -1,9 +1,12 @@
 import { z } from "zod";
+
 import { randomUUID, createHash } from "node:crypto";
+
 import { AdeError, now, StageConfigSchema } from "../domain";
 import { redact } from "../execution/runtime/process";
 import type { Engine } from "../execution/engine";
 import { fileHash } from "./file-hash";
+
 const noteInput = z
   .object({
     id: z.string().uuid(),
@@ -15,6 +18,7 @@ const noteInput = z
     content: z.string().trim().min(1).max(8000),
   })
   .refine((p) => p.line_end >= p.line_start, "Invalid line range");
+
 export interface ReviewNote {
   id: string;
   task_id: string;
@@ -26,6 +30,7 @@ export interface ReviewNote {
   source_hash: string;
   created_at: string;
 }
+
 export interface CodeQuestion {
   id: string;
   task_id: string;
@@ -43,6 +48,7 @@ export interface CodeQuestion {
   run_id: string | null;
   created_at: string;
 }
+
 const questionInput = z
   .object(noteInput.shape)
   .omit({ content: true })
@@ -56,16 +62,20 @@ const questionInput = z
       .optional(),
   })
   .strict();
+
 export class ReviewService {
   constructor(private readonly engine: Engine) {}
+
   files = async (id: string) => {
     const task = this.engine.db.task(id);
     const diff = await this.engine.git.diff(task);
     const notes = this.list(id);
+
     const rows = this.engine.db.all<{ path: string; source_hash: string }>(
       "SELECT * FROM task_reviewed_files WHERE task_id=?",
       id,
     );
+
     const result = [];
     for (const file of diff.files) {
       const content = await this.engine.git.file(task, file.path, file.old_path);
@@ -77,6 +87,7 @@ export class ReviewService {
           id,
           file.path,
         );
+
       result.push({
         path: file.path,
         hash,
@@ -84,8 +95,10 @@ export class ReviewService {
         notes: notes.filter((n) => n.path === file.path || n.path === file.old_path).length,
       });
     }
+
     return result;
   };
+
   reviewed = async (input: unknown) => {
     const p = z
       .object({
@@ -97,6 +110,7 @@ export class ReviewService {
       })
       .strict()
       .parse(input);
+
     const content = await this.engine.git.file(this.engine.db.task(p.id), p.path, p.old_path);
     if (content.binary)
       throw new AdeError("binary", "Review binary or oversized files in your editor.");
@@ -122,6 +136,7 @@ export class ReviewService {
       );
     this.engine.changed(p.id);
   };
+
   questions = (id: string) => {
     this.engine.db.task(id);
     return this.engine.db.all<CodeQuestion>(
@@ -129,6 +144,7 @@ export class ReviewService {
       id,
     );
   };
+
   ask = async (input: unknown) => {
     const p = questionInput.parse(input);
     this.engine.assertAvailable();
@@ -148,17 +164,20 @@ export class ReviewService {
     const code = lines.slice(p.line_start - 1, p.line_end).join("\n");
     if (code.length > 16000)
       throw new AdeError("selection", "Select a smaller section (maximum 16,000 characters).");
+
     const parent = p.parent_id
       ? this.questions(p.id).find(
           (q) => q.id === p.parent_id && q.path === p.path && q.side === p.side,
         )
       : null;
+
     if (p.parent_id && !parent)
       throw new AdeError("not_found", "The prior question does not belong to this file and task.");
     const repository = this.engine.db.repository(task.repo_id);
     const id = randomUUID();
     const created = now();
     const question = redact(p.question);
+
     this.engine.db.run(
       "INSERT INTO code_questions(id,task_id,path,old_path,side,line_start,line_end,selected_code,source_hash,question,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,'running',?)",
       id,
@@ -173,6 +192,7 @@ export class ReviewService {
       question,
       created,
     );
+
     this.engine.db.run(
       "INSERT INTO task_messages(id,task_id,role,content,created_at,status) VALUES(?,?,'user',?,?,'review_question')",
       id,
@@ -180,6 +200,7 @@ export class ReviewService {
       `Asked about ${p.path}:${p.line_start}–${p.line_end} (${p.side})\n\n${question}`,
       created,
     );
+
     this.engine.changed(task.id);
     try {
       const context = {
@@ -205,6 +226,7 @@ export class ReviewService {
           .map((row) => JSON.parse(row.content)),
         priorQuestion: parent ? { question: parent.question, answer: parent.answer } : null,
       };
+
       const answer = z
         .object({ summary: z.string().min(1).max(24000) })
         .strict()
@@ -225,16 +247,19 @@ export class ReviewService {
               this.engine.db.settings().utility_ai,
           }),
         );
+
       const run = this.engine.db.all<{ run_id: string | null }>(
         "SELECT run_id FROM code_questions WHERE id=?",
         id,
       )[0];
+
       const event = run?.run_id
         ? this.engine.db.all<{ data: string }>(
             "SELECT data FROM agent_events WHERE run_id=? AND kind='run.completed' ORDER BY id DESC LIMIT 1",
             run.run_id,
           )[0]
         : undefined;
+
       const response = event ? JSON.parse(event.data).response : undefined;
       let explanation = answer.summary;
       // Antigravity can emit the answer as final prose and a separate completion
@@ -250,8 +275,10 @@ export class ReviewService {
             /* A brace in the explanation is ordinary prose. */
           }
         }
+
         if (prose) explanation = prose.slice(0, 24000);
       }
+
       this.engine.db.run(
         "UPDATE code_questions SET answer=?,status='completed' WHERE id=?",
         redact(explanation),
@@ -264,12 +291,15 @@ export class ReviewService {
         redact(error instanceof Error ? error.message : String(error)),
         id,
       );
+
       throw error;
     } finally {
       this.engine.changed(task.id);
     }
+
     return this.questions(task.id).find((q) => q.id === id)!;
   };
+
   list = (id: string) => {
     this.engine.db.task(id);
     return this.engine.db.all<ReviewNote>(
@@ -277,11 +307,13 @@ export class ReviewService {
       id,
     );
   };
+
   add = async (input: unknown) => {
     const p = noteInput.parse(input);
     const task = this.engine.db.task(p.id);
     const file = await this.engine.git.file(task, p.path, p.old_path);
     if (file.binary) throw new AdeError("invalid_input", "Text review notes require a text file");
+
     const note: ReviewNote = {
       id: randomUUID(),
       task_id: p.id,
@@ -295,6 +327,7 @@ export class ReviewService {
         .digest("hex"),
       created_at: now(),
     };
+
     this.engine.db.run(
       "INSERT INTO task_review_notes VALUES(?,?,?,?,?,?,?,?,?)",
       note.id,
@@ -307,13 +340,16 @@ export class ReviewService {
       note.source_hash,
       note.created_at,
     );
+
     this.engine.changed(p.id);
     return note;
   };
+
   remove = (id: string) => {
     this.engine.db.run("DELETE FROM task_review_notes WHERE id=?", id);
     this.engine.changed();
   };
+
   send = (id: string) => {
     const notes = this.list(id);
     if (!notes.length) throw new AdeError("invalid_state", "No saved local review notes");

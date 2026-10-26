@@ -1,9 +1,12 @@
 import { it, expect } from "vitest";
+
 import { CodexProvider } from "../../backend/execution/providers/codex";
 import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
 import { verifyFlags, validatePlan } from "../../backend/execution/providers/contracts";
+
 const codex = new CodexProvider();
 const agy = new AntigravityProvider();
+
 it("normalizes official Codex JSONL and conversation identity", () => {
   expect(
     codex.normalize({
@@ -11,14 +14,17 @@ it("normalizes official Codex JSONL and conversation identity", () => {
       item: { type: "command_execution", command: "git status" },
     })[0].kind,
   ).toBe("command.started");
+
   expect(
     codex.normalize({
       type: "item.completed",
       item: { type: "file_change" },
     })[0].kind,
   ).toBe("file.changed");
+
   expect(codex.normalize({ type: "turn.failed", error: "quota" })[0].kind).toBe("run.failed");
   expect(codex.conversationId({ thread_id: "thread" })).toBe("thread");
+
   expect(
     codex.result({
       type: "item.completed",
@@ -26,6 +32,7 @@ it("normalizes official Codex JSONL and conversation identity", () => {
     }),
   ).toEqual({ goal: "x" });
 });
+
 it("normalizes observed Antigravity event envelopes and nested output", () => {
   expect(
     agy.normalize({
@@ -33,13 +40,16 @@ it("normalizes observed Antigravity event envelopes and nested output", () => {
       step_update: { step_type: "user_input", state: "DONE" },
     }),
   ).toEqual([]);
+
   expect(agy.normalize({ event: "init", init: { model: "chosen" } })[0].kind).toBe("run.started");
+
   expect(
     agy.normalize({
       event: "step_update",
       step_update: { step_type: "agent_response", text_delta: "plan" },
     })[0].kind,
   ).toBe("message");
+
   const final = {
     event: "result",
     result: {
@@ -48,8 +58,10 @@ it("normalizes observed Antigravity event envelopes and nested output", () => {
       structured_output: { summary: "plan" },
     },
   };
+
   expect(agy.result(final)).toEqual({ summary: "plan" });
   expect(agy.normalize(final)[0].kind).toBe("run.completed");
+
   expect(
     agy.normalize({
       event: "step_update",
@@ -72,7 +84,9 @@ it("normalizes observed Antigravity event envelopes and nested output", () => {
       command: "ls -la",
     },
   });
+
   expect(agy.conversationId(final)).toBe("session");
+
   expect(
     agy.normalize({
       event: "result",
@@ -80,6 +94,7 @@ it("normalizes observed Antigravity event envelopes and nested output", () => {
     })[0].kind,
   ).toBe("run.failed");
 });
+
 it("does not disable real Antigravity plan mode or bypass permissions", () => {
   const request = {
     runId: "run",
@@ -90,6 +105,7 @@ it("does not disable real Antigravity plan mode or bypass permissions", () => {
     schemaPath: "/artifact",
     schema: {},
   };
+
   const invocation = agy.invocation(request);
   expect(agy.invocation({ ...request, stage: 3 }).args).toContain("accept-edits");
   expect(invocation.args).toContain("plan");
@@ -100,6 +116,7 @@ it("does not disable real Antigravity plan mode or bypass permissions", () => {
   expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
   expect(codex.invocation({ ...request, stage: 3 }).args).toContain("workspace-write");
 });
+
 it("retains exact tool arguments and distinguishes provider aggregates from separately emitted command streams", () => {
   const command = codex.normalize({
     type: "item.completed",
@@ -113,12 +130,14 @@ it("retains exact tool arguments and distinguishes provider aggregates from sepa
       exit_code: 0,
     },
   })[0];
+
   expect(command.data).toMatchObject({
     arguments: { cwd: "src" },
     output_source: "aggregate",
     stdout: "provider aggregate",
     stderr: "explicit stderr",
   });
+
   const read = agy.normalize({
     event: "step_update",
     step_update: {
@@ -132,6 +151,7 @@ it("retains exact tool arguments and distinguishes provider aggregates from sepa
       },
     },
   })[0];
+
   expect(read).toMatchObject({
     kind: "file.read",
     data: {
@@ -142,6 +162,7 @@ it("retains exact tool arguments and distinguishes provider aggregates from sepa
     },
   });
 });
+
 it("rejects missing flags and malformed plans", () => {
   expect(() => verifyFlags("--json", ["--json", "--sandbox"])).toThrow();
   expect(() => validatePlan(1, { summary: "missing fields" })).toThrow();

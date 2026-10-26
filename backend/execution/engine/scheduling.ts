@@ -3,6 +3,7 @@ import { redact } from "../runtime/process";
 import type { Engine } from "../engine";
 import type { ExecutionState } from "./state";
 import type { WorkflowOrchestrator } from "./workflow";
+
 /** Owns shared execution slots and maintenance leases; every writer observes the same state. */
 export class EngineScheduling {
   constructor(
@@ -10,20 +11,24 @@ export class EngineScheduling {
     private readonly state: ExecutionState,
     private readonly operations: { pipeline: WorkflowOrchestrator["pipeline"] },
   ) {}
+
   repositoryOperation = <T>(
     operation: () => Promise<T>,
     label = "Repository preparation is running",
   ) => {
     this.assertAvailable();
+
     const result = Promise.resolve()
       .then(operation)
       .finally(() => {
         this.state.repositoryOperations.delete(result);
         this.host.changed();
       });
+
     this.state.repositoryOperations.set(result, label);
     return result;
   };
+
   withStorageMaintenance = async <T>(operation: () => Promise<T>) => {
     const blockers = this.cleanupBlockers();
     if (blockers.length)
@@ -39,12 +44,15 @@ export class EngineScheduling {
       void this.drain();
     }
   };
+
   cleanupBlockers = (taskId?: string): ActivityBlocker[] => {
     const tasks = this.host.db.tasks();
+
     const label = (id: string) => {
       const task = tasks.find((t) => t.id === id);
       return task ? `Task #${task.issue_number}` : "Utility AI";
     };
+
     const blockers: ActivityBlocker[] = [];
     for (const [id, activity] of this.state.active) {
       if (activity.taskId && this.state.activities.has(`git:${activity.taskId}`)) continue;
@@ -54,6 +62,7 @@ export class EngineScheduling {
           this.state.activities.has(`issue-watch:${id.slice(8)}`))
       )
         continue;
+
       blockers.push({
         id: `run:${id}`,
         kind: "task",
@@ -64,8 +73,10 @@ export class EngineScheduling {
         stoppable: true,
       });
     }
+
     for (const [id, activity] of this.state.interactive) {
       if (this.state.activities.has(`git:${id}`)) continue;
+
       blockers.push({
         id: `terminal:${id}`,
         kind: "terminal",
@@ -74,6 +85,7 @@ export class EngineScheduling {
         stoppable: true,
       });
     }
+
     for (const task of tasks.filter(
       (t) => t.status === "queued" && !t.archived && !this.state.active.has(t.id),
     ))
@@ -112,6 +124,7 @@ export class EngineScheduling {
       (b) => !taskId || b.task_id === taskId || b.id === "storage-maintenance",
     );
   };
+
   trackActivity = (blocker: ActivityBlocker, stop: () => Promise<void>) => {
     this.assertAvailable();
     if (blocker.task_id && this.state.taskMaintenance.has(blocker.task_id))
@@ -125,6 +138,7 @@ export class EngineScheduling {
       this.host.changed();
     };
   };
+
   stopActivity = async (id: string) => {
     if (id.startsWith("run:")) {
       const key = id.slice(4);
@@ -138,6 +152,7 @@ export class EngineScheduling {
         this.cancel(key);
     } else await this.state.activities.get(id)?.stop();
   };
+
   withTaskMaintenance = async <T>(
     id: string,
     operation: () => Promise<T>,
@@ -160,6 +175,7 @@ export class EngineScheduling {
       void this.drain();
     }
   };
+
   assertAvailable = () => {
     if (this.state.maintenance || this.state.closed)
       throw new AdeError(
@@ -167,6 +183,7 @@ export class EngineScheduling {
         "Vibestar storage is being maintained. Try again when it finishes.",
       );
   };
+
   withExecutionSlot = async <T>(
     key: string,
     purpose: string,
@@ -182,6 +199,7 @@ export class EngineScheduling {
       );
     const controller = new AbortController();
     const result = Promise.resolve().then(() => run(AbortSignal.any([signal, controller.signal])));
+
     const promise = result
       .then(
         () => {},
@@ -192,6 +210,7 @@ export class EngineScheduling {
         this.host.changed(taskId);
         void this.drain();
       });
+
     this.state.active.set(key, { controller, promise, purpose, taskId });
     try {
       return await result;
@@ -199,6 +218,7 @@ export class EngineScheduling {
       await promise;
     }
   };
+
   acquireTaskWorkspace = (id: string, label: string) => {
     this.assertAvailable();
     if (this.state.taskMaintenance.has(id))
@@ -213,7 +233,9 @@ export class EngineScheduling {
       void this.drain();
     };
   };
+
   acquireTerminal = (id: string) => this.acquireTaskWorkspace(id, "terminal session");
+
   drain = async () => {
     if (this.state.draining || this.state.closed || this.state.maintenance) return;
     this.state.draining = true;
@@ -228,10 +250,12 @@ export class EngineScheduling {
         const controller = new AbortController();
         t.status = stageStatus(t.stage);
         this.host.db.saveTask(t);
+
         const promise = Promise.resolve()
           .then(() => this.operations.pipeline(t, controller.signal))
           .catch((e) => {
             const latest = this.host.db.task(t.id);
+
             this.host.db.saveTask({
               ...latest,
               ...(latest.stage === 0 && latest.preparation_timing
@@ -258,6 +282,7 @@ export class EngineScheduling {
             this.host.changed(t.id);
             void this.drain();
           });
+
         this.state.active.set(t.id, { controller, promise });
       }
     } catch (error) {
@@ -267,6 +292,7 @@ export class EngineScheduling {
       this.state.draining = false;
     }
   };
+
   cancel = (id: string) => {
     if (this.state.interactive.has(id))
       throw new AdeError("busy", "Close the task terminal before changing execution state");
@@ -277,6 +303,7 @@ export class EngineScheduling {
       if (t.workflow_version === 1 && !t.workflow_start) return;
       this.host.db.saveTask({ ...t, status: "cancelled", updated_at: now() });
     }
+
     this.host.changed(id);
   };
 }

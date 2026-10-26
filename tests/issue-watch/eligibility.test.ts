@@ -1,4 +1,5 @@
 import { it, expect } from "vitest";
+
 import {
   assessClaims,
   hardExclusions,
@@ -25,6 +26,7 @@ const comment = (actor: string, body: string, day: number, association = "NONE")
     updated_at: `2026-01-${String(day).padStart(2, "0")}T00:00:00Z`,
     references: [],
   });
+
 const issue = IssueSnapshotSchema.parse({
   id: "I_1",
   repository_id: "R_oppia",
@@ -41,23 +43,28 @@ const issue = IssueSnapshotSchema.parse({
   updated_at: "2026-01-01T00:00:00Z",
   comment_count: 0,
 });
+
 it("keeps independent contributor claims, same-actor withdrawals and maintainer authority distinct", () => {
   const a = comment("alice", "Can I work on this issue?", 1);
   const grant = comment("maintainer", "@alice you can work on this.", 2, "MEMBER");
   const b = comment("bob", "I would like to work on this.", 3);
   const withdrawal = comment("alice", "I cannot continue; please unassign me.", 4);
+
   expect(assessClaims([a, grant])).toMatchObject({
     possible: true,
     confirmed: true,
   });
+
   expect(assessClaims([a, grant, b, withdrawal])).toMatchObject({
     possible: true,
     confirmed: false,
   });
+
   expect(assessClaims([a, grant, withdrawal])).toMatchObject({
     possible: false,
     confirmed: false,
   });
+
   expect(
     assessClaims([comment("contributor", "@alice you can work on this.", 1, "CONTRIBUTOR")]),
   ).toMatchObject({
@@ -66,29 +73,36 @@ it("keeps independent contributor claims, same-actor withdrawals and maintainer 
     warnings: [expect.stringContaining("without verified")],
   });
 });
+
 it("never expires claims based on age, and keeps edited claim text uncertain", () => {
   const old = comment("alice", "I am working on this.", 1);
   old.updated_at = "2026-02-01T00:00:00Z";
+
   expect(assessClaims([old])).toMatchObject({
     possible: true,
     warnings: [expect.stringContaining("edited claim")],
   });
+
   const candidate = applyContext(
     initialCandidate(issue, watchConfiguration().rules, new Set()),
     [old],
     [],
     [],
   );
+
   expect(candidate.claim_state).toBe("possibly_claimed");
   expect(candidate.evidence[0].source_key).toBe(old.key);
 });
+
 it("hard rules cannot be disabled by issue/model prose and preserve repository-qualified identities", () => {
   const rules = watchConfiguration("Open issues", {
     excluded_labels: ["triage needed"],
     excluded_issues: [{ repository: "other/repo", number: 1 }],
     unassigned_only: true,
   }).rules;
+
   expect(hardExclusions(issue, rules, new Set(["other/repo#1"]))).toEqual([]);
+
   expect(
     hardExclusions(
       {
@@ -102,10 +116,12 @@ it("hard rules cannot be disabled by issue/model prose and preserve repository-q
       new Set(["oppia/oppia#1"]),
     ),
   ).toHaveLength(4);
+
   expect(hardExclusions({ ...issue, pull_request: true }, rules, new Set())).toEqual([
     expect.stringContaining("pull request"),
   ]);
 });
+
 it("missing evidence, assigned issues and confirmed competing PRs never become claim-ready", () => {
   expect(
     applyContext(
@@ -115,6 +131,7 @@ it("missing evidence, assigned issues and confirmed competing PRs never become c
       ["Timeline unavailable"],
     ).claim_state,
   ).toBe("eligibility_uncertain");
+
   expect(
     applyContext(
       initialCandidate({ ...issue, assignees: ["alice"] }, watchConfiguration().rules, new Set()),
@@ -123,6 +140,7 @@ it("missing evidence, assigned issues and confirmed competing PRs never become c
       [],
     ).claim_state,
   ).toBe("assigned");
+
   expect(
     applyContext(
       initialCandidate(issue, watchConfiguration().rules, new Set()),

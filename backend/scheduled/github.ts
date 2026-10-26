@@ -2,12 +2,15 @@ import { GitHubClient } from "../github/client";
 import { AdeError, now, parseIssue } from "../domain";
 import { parsePullRequest, type PullRequestState, type DiscussionEntry } from "./contracts";
 import { object } from "../execution/providers/contracts";
+
 export class GitHubMonitor {
   constructor(
     cwd: string,
     private readonly client = new GitHubClient(cwd),
   ) {}
+
   private gh = (args: string[], signal: AbortSignal) => this.client.gh(args, signal);
+
   discover = async (repository: string, signal: AbortSignal) => {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repository))
       throw new AdeError("invalid_input", "Use owner/repository");
@@ -31,8 +34,10 @@ export class GitHubMonitor {
       ),
     ) as { number: number; title: string; url: string; headRefName: string }[];
   };
+
   inspect = async (url: string, signal: AbortSignal): Promise<PullRequestState> => {
     const ref = parsePullRequest(url);
+
     const pr = object(
       JSON.parse(
         await this.gh(
@@ -47,14 +52,18 @@ export class GitHubMonitor {
         ),
       ),
     );
+
     const client = this.client;
+
     const pages = (endpoint: string) =>
       client.pages<Record<string, unknown>>(endpoint, signal, 100);
+
     const coverage = {
       complete: true,
       missing: [] as string[],
       warnings: [] as string[],
     };
+
     const optional = async <T>(name: string, get: () => Promise<T>, fallback: T) => {
       try {
         return await get();
@@ -62,29 +71,36 @@ export class GitHubMonitor {
         signal.throwIfAborted();
         coverage.complete = false;
         coverage.missing.push(name);
+
         coverage.warnings.push(
           `${name} unavailable: ${error instanceof Error ? error.message : String(error)}`,
         );
+
         return fallback;
       }
     };
+
     const base = `repos/${ref.owner}/${ref.repo}`;
+
     const metadata = await optional(
       "PR identity",
       () => client.api<Record<string, unknown>>(`${base}/pulls/${ref.number}`, signal),
       {},
     );
+
     const linkedUrls = new Set<string>();
     for (const match of String(metadata.body || pr.body || "").matchAll(
       /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/[1-9]\d*/g,
     ))
       linkedUrls.add(match[0]);
+
     const [comments, reviews, inline, viewer] = await Promise.all([
       pages(`${base}/issues/${ref.number}/comments`),
       pages(`${base}/pulls/${ref.number}/reviews`),
       pages(`${base}/pulls/${ref.number}/comments`),
       client.api<{ login: string }>("user", signal),
     ]);
+
     const threads: NonNullable<PullRequestState["threads"]> = [];
     let cursor: string | null = null;
     let baseRefOid = "";
@@ -93,6 +109,7 @@ export class GitHubMonitor {
       if (++threadPages > 100)
         throw new AdeError("github", "Review thread pagination exceeded its safety limit");
       const query = `query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefOid closingIssuesReferences(first:100){nodes{url} pageInfo{hasNextPage endCursor}} reviewThreads(first:100,after:$cursor){nodes{id isResolved isOutdated path line startLine comments(first:100){nodes{id body author{login} createdAt updatedAt url} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}`;
+
       const result = JSON.parse(
         await this.gh(
           [
@@ -111,6 +128,7 @@ export class GitHubMonitor {
           signal,
         ),
       );
+
       if (result.errors)
         throw new AdeError("github", "Review thread inspection failed; snapshot was not advanced");
       baseRefOid = result.data.repository.pullRequest.baseRefOid;
@@ -119,10 +137,12 @@ export class GitHubMonitor {
       if (linked?.pageInfo.hasNextPage && !coverage.missing.includes("linked issue references")) {
         coverage.complete = false;
         coverage.missing.push("linked issue references");
+
         coverage.warnings.push(
           "More than 100 linked issue references; additional linked context is incomplete.",
         );
       }
+
       const page = result.data.repository.pullRequest.reviewThreads;
       for (const t of page.nodes as {
         id: string;
@@ -154,6 +174,7 @@ export class GitHubMonitor {
             );
           if (++count > 100)
             throw new AdeError("github", "Thread history exceeds the inspection safety limit");
+
           const part = JSON.parse(
             await this.gh(
               [
@@ -169,6 +190,7 @@ export class GitHubMonitor {
               signal,
             ),
           );
+
           if (part.errors)
             throw new AdeError(
               "github",
@@ -183,6 +205,7 @@ export class GitHubMonitor {
           nodes.push(...next.nodes);
           info = next.pageInfo;
         }
+
         threads.push({
           id: t.id,
           resolved: t.isResolved,
@@ -195,6 +218,7 @@ export class GitHubMonitor {
           comments: nodes,
         });
       }
+
       if (
         page.pageInfo.hasNextPage &&
         (!page.pageInfo.endCursor || page.pageInfo.endCursor === cursor)
@@ -205,12 +229,15 @@ export class GitHubMonitor {
         );
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     } while (cursor);
+
     const commentIds = new Map(
       inline.map((comment) => [String(comment.id), String(comment.node_id || comment.id)]),
     );
+
     const reviewIds = new Map(
       reviews.map((review) => [String(review.id), String(review.node_id || review.id)]),
     );
+
     const entry = (c: Record<string, unknown>, type: DiscussionEntry["type"]): DiscussionEntry => {
       const id = String(c.node_id || c.id);
       const thread = threads.find((t) => t.commentIds?.includes(id));
@@ -260,6 +287,7 @@ export class GitHubMonitor {
           : {}),
       };
     };
+
     const discussion = [
       ...new Map(
         [
@@ -269,10 +297,12 @@ export class GitHubMonitor {
         ].map((entry) => [entry.id, entry]),
       ).values(),
     ].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+
     for (const thread of threads) {
       for (const comment of thread.comments || []) {
         if (discussion.some((source) => source.id === comment.id)) continue;
         const raw = object(comment);
+
         discussion.push({
           id: comment.id,
           type: "review_comment",
@@ -286,13 +316,16 @@ export class GitHubMonitor {
           outdated: thread.outdated,
           path: thread.path,
         });
+
         coverage.complete = false;
         coverage.missing.push(`REST review metadata for ${comment.id}`);
+
         coverage.warnings.push(
           `Thread source ${comment.id} was absent from REST comments; its full body is retained, but reply/diff metadata is incomplete.`,
         );
       }
     }
+
     discussion.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
     for (const source of discussion) {
       if (
@@ -302,15 +335,20 @@ export class GitHubMonitor {
         source.author === "unknown"
       ) {
         coverage.complete = false;
+
         coverage.warnings.push(
           `Missing identity, timestamp or author for source ${source.id}; chronology or response state is uncertain.`,
         );
+
         coverage.missing.push(`source metadata: ${source.id}`);
       }
     }
+
     const head = object(metadata.head),
       baseInfo = object(metadata.base);
+
     const headSha = String(head.sha || pr.headRefOid);
+
     const [files, commits, checks, statuses] = await Promise.all([
       optional("changed-file patches", () => pages(`${base}/pulls/${ref.number}/files`), []),
       optional("commit history", () => pages(`${base}/pulls/${ref.number}/commits`), []),
@@ -327,6 +365,7 @@ export class GitHubMonitor {
       ),
       optional("commit statuses", () => pages(`${base}/commits/${headSha}/statuses`), []),
     ]);
+
     for (const [name, expected, actual] of [
       ["changed files", metadata.changed_files, files.length],
       ["commits", metadata.commits, commits.length],
@@ -334,11 +373,13 @@ export class GitHubMonitor {
       if (typeof expected === "number" && expected !== actual) {
         coverage.complete = false;
         coverage.missing.push(String(name));
+
         coverage.warnings.push(
           `${name}: GitHub reports ${expected}, retrieved ${actual}; API coverage is incomplete.`,
         );
       }
     }
+
     const missingPatches = files.filter((f) => typeof f.patch !== "string");
     if (missingPatches.length)
       coverage.warnings.push(
@@ -348,6 +389,7 @@ export class GitHubMonitor {
     for (const url of [...linkedUrls].slice(0, 20)) {
       const issue = parseIssue(url);
       const endpoint = `repos/${issue.owner}/${issue.repo}/issues/${issue.number}`;
+
       const context = await optional(
         `linked issue ${url}`,
         async () => ({
@@ -356,20 +398,25 @@ export class GitHubMonitor {
         }),
         null as Record<string, unknown> | null,
       );
+
       if (context) linkedIssues.push(context);
     }
+
     if (linkedUrls.size > 20) {
       coverage.complete = false;
       coverage.missing.push("linked issue bodies");
+
       coverage.warnings.push(
         "Only 20 linked issue bodies retrieved; remaining references require another inspection.",
       );
     }
+
     const fresh = await optional(
       "final PR identity check",
       () => client.api<Record<string, unknown>>(`${base}/pulls/${ref.number}`, signal),
       metadata,
     );
+
     if (
       object(fresh.head).sha !== head.sha ||
       object(fresh.base).sha !== baseInfo.sha ||
@@ -377,11 +424,14 @@ export class GitHubMonitor {
       fresh.state !== metadata.state
     ) {
       coverage.complete = false;
+
       coverage.warnings.push(
         "PR changed during retrieval; refresh before relying on this analysis.",
       );
+
       coverage.missing.push("consistent PR snapshot");
     }
+
     const observedChecks = [
       ...checks.map((c) => ({
         contextKey: `check:${object(c.app).id || "unknown"}:${String(c.name || "CI")}`,
@@ -402,6 +452,7 @@ export class GitHubMonitor {
         completedAt: String(c.updated_at || ""),
       })),
     ];
+
     const latestChecks = [
       ...new Map(
         observedChecks
@@ -409,6 +460,7 @@ export class GitHubMonitor {
           .map((c) => [c.contextKey, c]),
       ).values(),
     ];
+
     return {
       fetchedAt: now(),
       coverage,

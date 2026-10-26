@@ -1,4 +1,5 @@
 import { it, expect, vi, afterEach } from "vitest";
+
 import { GitHubClient } from "../../backend/github/client";
 import { GitHubMonitor } from "../../backend/scheduled/github";
 import { reviewBody } from "../helpers/pr-fixtures";
@@ -7,6 +8,7 @@ afterEach(() => vi.restoreAllMocks());
 
 it("rejects a nonadvancing nested reply cursor instead of claiming complete discussion", async () => {
   const { client } = responses({ brokenReplyCursor: true });
+
   await expect(
     new GitHubMonitor("/tmp", client).inspect(
       "https://github.com/upstream/project/pull/1",
@@ -14,7 +16,9 @@ it("rejects a nonadvancing nested reply cursor instead of claiming complete disc
     ),
   ).rejects.toThrow("Thread comment pagination did not advance");
 });
+
 const sha = "a".repeat(40);
+
 const metadata = {
   node_id: "PR_1",
   title: "PR",
@@ -34,6 +38,7 @@ const metadata = {
     repo: { full_name: "upstream/project", node_id: "R_upstream" },
   },
 };
+
 const inline = (index: number) => ({
   id: index + 1,
   node_id: `C_${index}`,
@@ -67,6 +72,7 @@ const responses = (
 ) => {
   let identityReads = 0;
   const client = new GitHubClient("/tmp");
+
   const gh = vi.spyOn(client, "gh").mockImplementation(async (args) => {
     if (args[0] === "pr")
       return JSON.stringify({
@@ -144,10 +150,13 @@ const responses = (
         },
       });
     }
+
     const endpoint = args.at(-1)!;
+
     const page = Number(
       new URL(`https://api.github.com/${endpoint}`).searchParams.get("page") || 1,
     );
+
     if (endpoint === "user") return JSON.stringify({ login: "author" });
     if (endpoint === "repos/upstream/project/pulls/1") {
       identityReads++;
@@ -159,6 +168,7 @@ const responses = (
           : {}),
       });
     }
+
     if (endpoint.includes("/issues/1/comments"))
       return JSON.stringify(
         page === 1
@@ -233,6 +243,7 @@ const responses = (
         ],
       });
     }
+
     if (endpoint.includes("/statuses"))
       return JSON.stringify([
         {
@@ -252,22 +263,28 @@ const responses = (
       return JSON.stringify([{ id: 1, body: "Complete issue comment" }]);
     throw new Error(`Unexpected endpoint ${endpoint}`);
   });
+
   return { gh, client };
 };
 
 it("retrieves complete reviews/replies, canonical thread identities, original diff coordinates, patches, checks and issue context", async () => {
   const { gh, client } = responses();
+
   const snapshot = await new GitHubMonitor("/tmp", client).inspect(
     "https://github.com/upstream/project/pull/1",
     new AbortController().signal,
   );
+
   expect(snapshot.coverage).toMatchObject({ complete: true, missing: [] });
+
   expect(snapshot.identity).toMatchObject({
     headRepository: "author/project",
     headBranch: "feature",
     baseBranch: "develop",
   });
+
   expect(snapshot.discussion?.filter((source) => source.id === "C_100")).toHaveLength(1);
+
   expect(snapshot.discussion?.find((source) => source.id === "C_100")).toMatchObject({
     inReplyToId: "C_0",
     reviewId: "R_5",
@@ -279,19 +296,25 @@ it("retrieves complete reviews/replies, canonical thread identities, original di
     originalStartLine: 8,
     diffHunk: "@@ -8,3 +18,3 @@",
   });
+
   expect(snapshot.reviews[0].body).toBe(reviewBody);
   expect(snapshot.threads?.[0].comments).toHaveLength(101);
   expect(snapshot.files?.[0].patch).toContain("+new");
+
   expect(snapshot.linkedIssues?.[0]).toMatchObject({
     body: "Full original issue requirements",
     comments: [{ body: "Complete issue comment" }],
   });
+
   expect(snapshot.checks.filter((check) => check.name === "tests")).toHaveLength(2);
   expect(snapshot.checks.some((check) => check.state === "FAILURE")).toBe(true);
+
   expect(
     gh.mock.calls.some(([args]) => args.at(-1)?.includes("issues/1/comments?per_page=100&page=2")),
   ).toBe(true);
+
   expect(gh.mock.calls.some(([args]) => args.includes("cursor=reply-cursor"))).toBe(true);
+
   expect(
     gh.mock.calls.every(
       ([args]) =>
@@ -309,10 +332,12 @@ it.each([
   { missingThreadComment: true },
 ])("marks incomplete or unstable context explicitly: %j", async (options) => {
   const { client } = responses(options);
+
   const snapshot = await new GitHubMonitor("/tmp", client).inspect(
     "https://github.com/upstream/project/pull/1",
     new AbortController().signal,
   );
+
   expect(snapshot.coverage?.complete).toBe(false);
   expect(snapshot.coverage?.warnings.length).toBeGreaterThan(0);
   expect(snapshot.reviews[0].body).toBe(reviewBody);
@@ -324,6 +349,7 @@ it.each([
 
 it("rejects non-advancing review pagination instead of claiming every request was retrieved", async () => {
   const { client } = responses({ brokenCursor: true });
+
   await expect(
     new GitHubMonitor("/tmp", client).inspect(
       "https://github.com/upstream/project/pull/1",
@@ -335,6 +361,7 @@ it("rejects non-advancing review pagination instead of claiming every request wa
 it("reports an exhausted REST pagination limit instead of accepting a truncated collection", async () => {
   const client = new GitHubClient("/tmp");
   vi.spyOn(client, "api").mockResolvedValue(Array.from({ length: 100 }, (_, id) => ({ id })));
+
   await expect(client.pages("repos/a/b/pulls/1/comments", undefined, 2)).rejects.toThrow(
     "pagination limit reached",
   );

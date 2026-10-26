@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import type { ScheduleJob } from "../../../backend/scheduled/contracts";
 import { discussionEntries } from "../../../backend/scheduled/action";
 import type { UsageRecord } from "../../../backend/execution/output/usage";
@@ -14,6 +15,7 @@ import { SolveReview } from "./repair/SolveReview";
 import { containDialogFocus, navigateTabs } from "../../lib/keyboard";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
 import type { PRAnalysisSession, ReviewAction } from "../../../backend/review/pr/contracts";
+
 export const prTone = (job: ScheduleJob) =>
   ["analyzing", "polling", "pending"].includes(job.status)
     ? "running"
@@ -34,8 +36,10 @@ export const prTone = (job: ScheduleJob) =>
                     ) || ["analyzing", "polling"].includes(job.status)
                   ? "running"
                   : "healthy";
+
 export const PrState = ({ job }: { job: ScheduleJob }) => {
   const state = job.action?.conversationState;
+
   const label =
     job.status === "analyzing"
       ? "ANALYZING DISCUSSION"
@@ -68,12 +72,14 @@ export const PrState = ({ job }: { job: ScheduleJob }) => {
                                 ? "NO ACTION REQUIRED"
                                 : "GITHUB INSPECTED"
                               : "AWAITING CHECK";
+
   return (
     <span className={`pr-state ${prTone(job)}`}>
       {prTone(job) === "success" ? "✓" : state === "blocked" ? "×" : "●"} {label}
     </span>
   );
 };
+
 export const PrDetails = ({
   job,
   close,
@@ -108,8 +114,10 @@ export const PrDetails = ({
   const snapshot = analysis?.snapshot || job.pending_snapshot || job.last_snapshot;
   const report = analysis?.report;
   const running = ["polling", "analyzing"].includes(job.status);
+
   useEffect(() => {
     let alive = true;
+
     const refresh = () =>
       rpc<{
         analyses: PRAnalysisSession[];
@@ -126,6 +134,7 @@ export const PrDetails = ({
         .catch((e) => {
           if (alive) setError(errorMessage(e));
         });
+
     void refresh();
     const timer = running ? setInterval(() => void refresh(), 1000) : undefined;
     return () => {
@@ -133,10 +142,12 @@ export const PrDetails = ({
       if (timer) clearInterval(timer);
     };
   }, [job.id, job.last_checked_at, job.last_analyzed_at, job.status, running]);
+
   useEffect(() => {
     if (tab === "Conversation" && sourceId)
       document.getElementById(`pr-source-${sourceId}`)?.scrollIntoView?.({ block: "nearest" });
   }, [tab, sourceId]);
+
   const act = async (method: string, params: unknown) => {
     setBusy(true);
     try {
@@ -150,20 +161,24 @@ export const PrDetails = ({
       setBusy(false);
     }
   };
+
   const showSource = (id: string) => {
     setSourceId(id);
     setTab("Conversation");
   };
+
   const renderAction = (action: ReviewAction, index: number) => (
     <article className="discussion-entry" key={action.id}>
       <header>
         <strong>
           {index + 1}. {action.classification.replaceAll("_", " ")}
         </strong>
+
         <small>
           @{action.reviewer} · {action.priority} priority · {action.confidence} confidence
         </small>
       </header>
+
       <blockquote>
         <AgentResponse text={action.originalText} />
       </blockquote>
@@ -172,6 +187,7 @@ export const PrDetails = ({
         <strong>Response:</strong> {action.responseState.replaceAll("_", " ")} ·{" "}
         <strong>Code:</strong> unverified
       </p>
+
       <p className="subtle">
         {action.threadResolved === null
           ? "Top-level discussion"
@@ -180,6 +196,7 @@ export const PrDetails = ({
             : "GitHub thread unresolved"}
         {action.outdated ? " · Outdated diff lines" : ""}
       </p>
+
       {action.affectedFiles.map((path) => (
         <code key={path}>{path} </code>
       ))}
@@ -192,10 +209,12 @@ export const PrDetails = ({
           </button>
         ))}
       </p>
+
       <div className="actions">
         <Button size="sm" onClick={() => showSource(action.sourceId)}>
           Original review
         </Button>
+
         {action.sourceUrl && (
           <Button
             size="sm"
@@ -206,9 +225,11 @@ export const PrDetails = ({
           </Button>
         )}
       </div>
+
       <small>
         Action {action.id} · source {action.sourceId}
       </small>
+
       {!!action.authorReplyIds.length && (
         <p>
           Author replies:{" "}
@@ -219,6 +240,7 @@ export const PrDetails = ({
           ))}
         </p>
       )}
+
       {!!action.reviewerAcknowledgmentIds.length && (
         <p>
           Reviewer acknowledgments:{" "}
@@ -229,6 +251,7 @@ export const PrDetails = ({
           ))}
         </p>
       )}
+
       {!!action.commitShas.length && (
         <p className="mono">
           Possible code evidence: {action.commitShas.join(", ")} · A commit is not verification.
@@ -236,13 +259,16 @@ export const PrDetails = ({
       )}
     </article>
   );
+
   const considerations =
     report?.actions.filter(
       (a) => !["positive_feedback", "informational"].includes(a.classification),
     ) || [];
+
   const outstanding = considerations.filter(
     (a) => a.responseState !== "answered" && !a.reviewerAcknowledgmentIds.length,
   );
+
   return (
     <div
       className="modal-backdrop pr-detail-backdrop"
@@ -267,10 +293,12 @@ export const PrDetails = ({
             <h2>{snapshot?.title || job.title || "Pull request"}</h2>
             <PrState job={job} />
           </div>
+
           <Button variant="ghost" aria-label="Close PR details" onClick={close}>
             ×
           </Button>
         </div>
+
         <div
           className="workspace-tabs"
           role="tablist"
@@ -304,6 +332,7 @@ export const PrDetails = ({
             </button>
           ))}
         </div>
+
         <div className="pr-details-content">
           {tab === "Repair sessions" && (
             <>
@@ -315,6 +344,7 @@ export const PrDetails = ({
                     <strong>
                       PR #{repair.identity.number} · {repair.status.replaceAll("_", " ")}
                     </strong>
+
                     <p>
                       {repair.actions.length} selected review items ·{" "}
                       {new Date(repair.created_at).toLocaleString()}
@@ -331,6 +361,7 @@ export const PrDetails = ({
                     </Button>
                   </article>
                 ))}
+
               {!repairs.some((repair) => repair.job_id === job.id) && (
                 <p className="empty-row">
                   No repairs yet. Analyze the PR, then select Solve Review.
@@ -338,39 +369,46 @@ export const PrDetails = ({
               )}
             </>
           )}
+
           {error && (
             <p className="error-box" role="alert">
               {error}
             </p>
           )}
+
           {analysis?.status === "running" && (
             <p className="running" role="status">
               {analysis.phase} · {analysis.configuration.provider} ·{" "}
               {analysis.configuration.model || "CLI default"} · {analysis.configuration.effort}
             </p>
           )}
+
           {analysis?.error && (
             <p className="warning-box">
               {analysis.phase}: {analysis.error}. Previous reports remain in Analysis history.
             </p>
           )}
+
           {report && !report.complete && (
             <p className="warning-box">
               Partial analysis. Every request has not been assessed. Inspect coverage warnings
               before acting.
             </p>
           )}
+
           {report?.warnings.map((warning, index) => (
             <p className="warning" key={index}>
               {warning}
             </p>
           ))}
+
           {!report &&
             snapshot?.coverage?.warnings.map((warning, index) => (
               <p className="warning" key={index}>
                 {warning}
               </p>
             ))}
+
           {tab === "Overview" && (
             <>
               <h3>PR overview</h3>
@@ -407,6 +445,7 @@ export const PrDetails = ({
                     {snapshot ? discussionEntries(snapshot).length : report.coverage.length} sources
                     assessed
                   </summary>
+
                   {report.coverage.map((entry) => (
                     <p key={entry.sourceId}>
                       <button onClick={() => showSource(entry.sourceId)}>{entry.sourceId}</button> ·{" "}
@@ -415,11 +454,13 @@ export const PrDetails = ({
                   ))}
                 </details>
               )}
+
               <p>
                 {report
                   ? `${considerations.length} observations require consideration; ${outstanding.length} remain unanswered or unacknowledged. Code correctness remains unverified.`
                   : "Click Analyze PR to retrieve fresh context and request semantic analysis when needed."}
               </p>
+
               {snapshot && (
                 <details>
                   <summary>PR description</summary>
@@ -435,9 +476,11 @@ export const PrDetails = ({
                       {review.state} · {review.submitted_at}
                     </small>
                   </header>
+
                   <AgentResponse
                     text={review.body || "Empty review body; inspect associated inline comments."}
                   />
+
                   <Button size="sm" onClick={() => showSource(review.id)}>
                     Full discussion
                   </Button>
@@ -451,6 +494,7 @@ export const PrDetails = ({
               </p>
             </>
           )}
+
           {tab === "Conversation" && (
             <>
               {snapshot &&
@@ -477,6 +521,7 @@ export const PrDetails = ({
                         {entry.resolved ? " · Thread resolved" : ""}
                       </small>
                     </header>
+
                     {entry.path && (
                       <code>
                         {entry.path}
@@ -491,6 +536,7 @@ export const PrDetails = ({
                       {entry.threadId ? ` · Thread ${entry.threadId}` : ""}
                       {entry.inReplyToId ? ` · Reply to ${entry.inReplyToId}` : ""}
                     </small>
+
                     {entry.url && (
                       <Button
                         size="sm"
@@ -502,6 +548,7 @@ export const PrDetails = ({
                     )}
                   </article>
                 ))}
+
               {(!snapshot || !discussionEntries(snapshot).length) && (
                 <p className="empty-row">
                   No discussion saved. Analyze PR explicitly to retrieve it.
@@ -509,6 +556,7 @@ export const PrDetails = ({
               )}
             </>
           )}
+
           {tab === "Action items" && (
             <>
               <h3>Outstanding observations</h3>
@@ -535,6 +583,7 @@ export const PrDetails = ({
                 .map(renderAction)}
             </>
           )}
+
           {tab === "Checks" && (
             <>
               <h3>CI / merge blockers</h3>
@@ -542,6 +591,7 @@ export const PrDetails = ({
                 {snapshot?.mergeable || "Mergeability unknown"} · Check requiredness is not
                 inferred.
               </p>
+
               {snapshot?.checks.map((check) => (
                 <div className="check-row" key={check.id || check.name}>
                   <strong>{check.name}</strong>
@@ -556,6 +606,7 @@ export const PrDetails = ({
                   >
                     {check.state}
                   </span>
+
                   {check.url && (
                     <Button
                       size="sm"
@@ -570,6 +621,7 @@ export const PrDetails = ({
                   )}
                 </div>
               ))}
+
               {!snapshot?.checks.length && (
                 <p className="empty-row">
                   No check outcomes retrieved; this is not a claim that tests pass.
@@ -586,6 +638,7 @@ export const PrDetails = ({
               ))}
             </>
           )}
+
           {tab === "Analysis history" && (
             <>
               {analyses.map((session) => (
@@ -600,6 +653,7 @@ export const PrDetails = ({
                   >
                     {new Date(session.started_at).toLocaleString()} · {session.status}
                   </Button>
+
                   <p>
                     {session.method === "utility_ai"
                       ? `${session.configuration.provider} · ${session.configuration.model || "CLI default"} · ${session.configuration.effort}`
@@ -607,12 +661,14 @@ export const PrDetails = ({
                         ? "Saved complete analysis reused · No AI usage for this inspection"
                         : "GitHub inspection only · No AI usage"}
                   </p>
+
                   {session.changes?.map((change, index) => (
                     <p key={index}>{change}</p>
                   ))}
                   {session.error && <p className="warning">{session.error}</p>}
                 </article>
               ))}
+
               {!analyses.length && (
                 <p className="empty-row">
                   Legacy decisions remain below; no new analysis history yet.
@@ -654,6 +710,7 @@ export const PrDetails = ({
                   </div>
                 </article>
               ))}
+
               {raw && (
                 <>
                   <small>
@@ -664,6 +721,7 @@ export const PrDetails = ({
                   <pre className="raw-log">{raw.text || "No output"}</pre>
                 </>
               )}
+
               {job.action && (
                 <details>
                   <summary>Legacy / inbox decision</summary>
@@ -674,12 +732,14 @@ export const PrDetails = ({
             </>
           )}
         </div>
+
         <div className="pr-details-footer">
           <small>
             {configuration
               ? `Analyze: ${configuration.provider} · ${configuration.model || "CLI default"} · ${configuration.effort}`
               : "Configured Utility AI"}
           </small>
+
           <Button
             disabled={busy || running}
             onClick={() =>
@@ -691,11 +751,13 @@ export const PrDetails = ({
           >
             {job.last_analyzed_at ? "Analyze Again" : "Analyze PR"}
           </Button>
+
           {running && (
             <Button disabled={busy} onClick={() => void act("scheduled.cancel", { id: job.id })}>
               Cancel analysis
             </Button>
           )}
+
           <Button
             disabled={
               busy ||
@@ -715,6 +777,7 @@ export const PrDetails = ({
           <Button onClick={close}>Done</Button>
         </div>
       </section>
+
       {solve && analysis && settings && refresh && openRepair && (
         <SolveReview
           analysis={analysis}

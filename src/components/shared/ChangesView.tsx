@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import type { Task, Diff, FileDiff, DiffFile } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { useTaskView, updateTaskView } from "../../lib/taskView";
@@ -39,13 +40,16 @@ export const ChangesView = ({
   const reviewRows = owner === "task" ? issueReviews : reviews;
   const review = reviewRows.find((row) => row.path === path);
   const fileKey = `${owner}:${task.id}:${layer}:${path}:${oldPath}`;
+
   const [loaded, setLoaded] = useState<{
     key: string;
     value: FileDiff;
     revision: number;
   }>();
+
   const content = loaded?.key === fileKey ? loaded.value : null;
   const [error, setError] = useState("");
+
   const selectFile = (file: DiffFile, expand = false) =>
     updateTaskView(task.id, {
       diffPath: file.path,
@@ -54,6 +58,7 @@ export const ChangesView = ({
         ? { diffLayerPaths: { ...view.diffLayerPaths, [layer]: file.path } }
         : {}),
     });
+
   useEffect(() => {
     let alive = true;
     if (owner === "task")
@@ -74,12 +79,14 @@ export const ChangesView = ({
       alive = false;
     };
   }, [owner, task.id, revision]);
+
   const markReviewed = async (checked: boolean) => {
     if (!file || !review || marking) return;
     if (owner === "repair") {
       reviewed?.(file.path, file.old_path, review.hash, checked);
       return;
     }
+
     setMarking(true);
     try {
       await rpc("review.reviewed", {
@@ -89,6 +96,7 @@ export const ChangesView = ({
         expected_hash: review.hash,
         reviewed: checked,
       });
+
       setIssueReviews((rows) =>
         rows.map((row) => (row.path === file.path ? { ...row, reviewed: checked } : row)),
       );
@@ -98,6 +106,7 @@ export const ChangesView = ({
       setMarking(false);
     }
   };
+
   useEffect(() => {
     let alive = true;
     setError("");
@@ -118,6 +127,7 @@ export const ChangesView = ({
       alive = false;
     };
   }, [task.id, path, oldPath, revision, owner, layer, compact, fileKey]);
+
   if (compact)
     return (
       <section className="changes-summary" aria-label="Changed files">
@@ -127,9 +137,11 @@ export const ChangesView = ({
           <span className="success">+{diff?.insertions ?? 0}</span> /{" "}
           <span className="failure">−{diff?.deletions ?? 0}</span>
         </p>
+
         <Button size="sm" onClick={() => updateTaskView(task.id, { expandedTool: true })}>
           Open full diff review
         </Button>
+
         <DiffFileTree
           files={diff?.files || []}
           selected={file?.path}
@@ -150,6 +162,7 @@ export const ChangesView = ({
         reviews={reviewRows.map((row) => ({ ...row, notes: row.notes || 0 }))}
         onSelect={(file) => selectFile(file)}
       />
+
       <div className="change-content">
         <div className="cwd-banner">
           <code>{file?.path || "No changed files"}</code>
@@ -161,6 +174,7 @@ export const ChangesView = ({
               <span className="failure">−{file.deletions}</span>
             </span>
           )}
+
           {review && file && (owner === "task" || reviewed) && (
             <label>
               <input
@@ -176,6 +190,7 @@ export const ChangesView = ({
             </label>
           )}
         </div>
+
         <div className="diff-toolbar" aria-label="Diff presentation">
           <Button
             size="sm"
@@ -185,6 +200,7 @@ export const ChangesView = ({
           >
             Unified diff
           </Button>
+
           <Button
             size="sm"
             variant="ghost"
@@ -193,10 +209,12 @@ export const ChangesView = ({
           >
             Side-by-side diff
           </Button>
+
           {reviewError && (
             <small className="warning">Review marks unavailable: {reviewError}</small>
           )}
         </div>
+
         {error ? (
           <p className="empty-row warning">{error} Open the file in your editor for full review.</p>
         ) : content && path ? (

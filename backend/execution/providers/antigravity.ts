@@ -7,11 +7,14 @@ import {
   type ProviderDetection,
 } from "./contracts";
 import type { NormalizedEvent } from "../../domain";
+
 // These CLI models expose adjustable thinking effort rather than fixed variants.
 // New unsuffixed models require an explicit capability entry before execution.
 const adjustableModels = new Set(["claude-sonnet-4-6", "claude-opus-4-6-thinking"]);
+
 export class AntigravityProvider implements AgentProvider {
   readonly name = "antigravity";
+
   detect = async (cwd: string, signal?: AbortSignal): Promise<ProviderDetection> => {
     const d: ProviderDetection = {
       provider: this.name,
@@ -23,10 +26,12 @@ export class AntigravityProvider implements AgentProvider {
       capabilities: [],
       error: null,
     };
+
     try {
       d.version = await checked("agy", ["--version"], cwd, signal);
       d.installed = true;
       const help = await capture("agy", ["--help"], cwd, signal);
+
       verifyFlags(help.stdout + help.stderr, [
         "--mode",
         "--sandbox",
@@ -34,6 +39,7 @@ export class AntigravityProvider implements AgentProvider {
         "--output-format",
         "--json-schema",
       ]);
+
       const models = await capture("agy", ["models"], cwd, signal);
       if (models.code === 0) {
         d.models = models.stdout
@@ -48,10 +54,13 @@ export class AntigravityProvider implements AgentProvider {
               supportedEfforts: effort ? [effort] : adjustableModels.has(id) ? d.efforts : [],
             };
           });
+
         d.connected = d.models.length > 0;
+
         d.accountLabel = d.connected
           ? "Authenticated account · managed by Antigravity CLI"
           : undefined;
+
         if (!d.connected)
           d.error = "Model discovery returned no available models. Reconnect Antigravity.";
       } else d.error = models.stderr;
@@ -59,8 +68,10 @@ export class AntigravityProvider implements AgentProvider {
     } catch (e) {
       d.error = String(e);
     }
+
     return d;
   };
+
   invocation = (r: AgentRunRequest) => ({
     program: "agy",
     args: [
@@ -78,6 +89,7 @@ export class AntigravityProvider implements AgentProvider {
       r.prompt,
     ],
   });
+
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {
     if (raw.event === "init") return [{ kind: "run.started", data: raw.init }];
     if (raw.event === "step_update") {
@@ -89,6 +101,7 @@ export class AntigravityProvider implements AgentProvider {
       if (type === "agent_response") kind = "message";
       else if (type === "tool") {
         const name = String(step.tool_name || object(step.tool_info).name);
+
         kind = ["run_command", "send_command_input", "Bash"].includes(name)
           ? ["DONE", "ERROR"].includes(String(step.state))
             ? "command.finished"
@@ -108,12 +121,15 @@ export class AntigravityProvider implements AgentProvider {
         kind = step.state === "DONE" ? "command.finished" : "command.started";
       else if (type.includes("file") && type.includes("view")) kind = "file.read";
       else if (type.includes("replace") || type.includes("write")) kind = "file.changed";
+
       const info = object(step.tool_info),
         params = object(info.parameters);
+
       const reportedExit =
         kind === "command.finished" && typeof info.output === "string"
           ? info.output.match(/^Command exited with code (-?\d{1,9})\.(?:\r?\n|$)/)
           : null;
+
       return [
         {
           kind,
@@ -146,6 +162,7 @@ export class AntigravityProvider implements AgentProvider {
         },
       ];
     }
+
     if (raw.event === "result") {
       const r = object(raw.result);
       return [
@@ -155,6 +172,7 @@ export class AntigravityProvider implements AgentProvider {
         },
       ];
     }
+
     if (raw.type === "system") return [{ kind: "run.started", data: raw }];
     if (raw.type === "result")
       return [{ kind: raw.is_error ? "run.failed" : "run.completed", data: raw }];
@@ -189,6 +207,7 @@ export class AntigravityProvider implements AgentProvider {
           };
         });
     }
+
     return [
       {
         kind: raw.type === "user" ? "command.output" : "analysis.status",
@@ -196,11 +215,14 @@ export class AntigravityProvider implements AgentProvider {
       },
     ];
   };
+
   result = (raw: Record<string, unknown>) => {
     if (raw.type !== "result" && raw.event !== "result") return undefined;
     const nested = object(raw.result);
+
     const value =
       raw.structured_output ?? nested.structured_output ?? nested.response ?? raw.result;
+
     if (value && typeof value === "object") return value;
     if (typeof value === "string") {
       try {
@@ -208,6 +230,7 @@ export class AntigravityProvider implements AgentProvider {
       } catch {
         const start = value.indexOf("{"),
           end = value.lastIndexOf("}");
+
         if (start >= 0 && end > start) {
           try {
             return JSON.parse(value.slice(start, end + 1));
@@ -217,8 +240,10 @@ export class AntigravityProvider implements AgentProvider {
         }
       }
     }
+
     return undefined;
   };
+
   outputSchema = (schema: Record<string, unknown>) => ({
     ...schema,
     properties: {
@@ -227,6 +252,7 @@ export class AntigravityProvider implements AgentProvider {
       ...object(schema.properties),
     },
   });
+
   parseStructuredOutput = (schema: Record<string, unknown>, value: unknown) => {
     const plan = { ...object(value) };
     const properties = object(schema.properties);
@@ -234,6 +260,7 @@ export class AntigravityProvider implements AgentProvider {
     if (!("toolSummary" in properties)) delete plan.toolSummary;
     return plan;
   };
+
   conversationId = (raw: Record<string, unknown>) =>
     typeof raw.session_id === "string"
       ? raw.session_id

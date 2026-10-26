@@ -52,18 +52,23 @@ it.each([
     const value = `${program} api_key=fixture-private-value`;
     await checked("git", ["config", key, value], source);
     const before = await readFile(join(source, ".git", "config"));
+
     const metadata = (await readFile(join(task.worktree_path, ".git"), "utf8"))
       .slice("gitdir: ".length)
       .trim();
+
     const index = await readFile(join(metadata, "index"));
+
     const operation = gitExecute({
       program: "git",
       args: ["add", "."],
       cwd: task.worktree_path,
     });
+
     await expect(operation).rejects.toThrow(
       new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
     );
+
     await expect(operation).rejects.not.toThrow("fixture-private-value");
     expect(await exists(marker)).toBe(false);
     expect(await readFile(join(source, ".git", "config"))).toEqual(before);
@@ -82,12 +87,16 @@ it("blocks a configured merge driver before a conflicting merge can modify the w
     await checked("git", ["add", "."], cwd);
     await checked("git", ["commit", "-m", value.trim()], cwd);
   }
+
   const head = await gitChecked(["rev-parse", "HEAD"], task.worktree_path);
+
   const metadata = (await readFile(join(task.worktree_path, ".git"), "utf8"))
     .slice("gitdir: ".length)
     .trim();
+
   const index = await readFile(join(metadata, "index"));
   await checked("git", ["config", "merge.hostile.driver", program], source);
+
   await expect(
     gitExecute({
       program: "git",
@@ -95,6 +104,7 @@ it("blocks a configured merge driver before a conflicting merge can modify the w
       cwd: task.worktree_path,
     }),
   ).rejects.toThrow("merge.hostile.driver");
+
   expect(await exists(marker)).toBe(false);
   expect(await readFile(join(task.worktree_path, "file.txt"), "utf8")).toBe("local\n");
   await checked("git", ["config", "--unset", "merge.hostile.driver"], source);
@@ -105,15 +115,18 @@ it("blocks a configured merge driver before a conflicting merge can modify the w
 it("suppresses hooks and signing while making an ordinary local commit", async () => {
   const { source, task, program, marker } = await securityWorkspace();
   const hooks = join(source, ".git", "hooks");
+
   await writeFile(join(hooks, "pre-commit"), await readFile(program), {
     mode: 0o700,
   });
+
   await checked("git", ["config", "commit.gpgSign", "true"], source);
   await writeFile(join(task.worktree_path, "file.txt"), "reviewed\n");
   await gitChecked(["add", "."], task.worktree_path);
   await gitChecked(["commit", "-m", "reviewed local commit"], task.worktree_path);
   expect(await exists(marker)).toBe(false);
   expect(await gitChecked(["show", "HEAD:file.txt"], task.worktree_path)).toBe("reviewed");
+
   await expect(gitCapture(["-c", `core.hooksPath=${hooks}`, "status"], source)).rejects.toThrow(
     "core.hookspath",
   );
@@ -140,14 +153,17 @@ it.each(["true", "2", "-1"])(
   async (enabled) => {
     const { source, task, program, marker } = await securityWorkspace();
     await checked("git", ["config", "extensions.worktreeConfig", enabled], source);
+
     await checked(
       "git",
       ["config", "--worktree", "filter.hostile.process", program],
       task.worktree_path,
     );
+
     await expect(gitCapture(["status", "--porcelain"], task.worktree_path)).rejects.toThrow(
       "filter.hostile.process",
     );
+
     expect(await exists(marker)).toBe(false);
   },
 );
@@ -155,6 +171,7 @@ it.each(["true", "2", "-1"])(
 it("binds HTTPS transport, gh authentication and redirect policy without contacting GitHub", async () => {
   const { source } = await securityWorkspace();
   let invocation: ProcessRequest | undefined;
+
   await gitExecute(
     {
       program: "git",
@@ -166,11 +183,14 @@ it("binds HTTPS transport, gh authentication and redirect policy without contact
       return { code: 0, stdout: "", stderr: "", duration_ms: 0 };
     },
   );
+
   expect(invocation?.args).toContain("https://github.com/oppia/oppia.git");
   expect(invocation?.args).toContain("credential.helper=");
+
   expect(invocation?.args).toContain(
     "credential.https://github.com.helper=!gh auth git-credential",
   );
+
   expect(invocation?.args).toContain("http.followRedirects=false");
   expect(invocation?.gitEnvironment).toBe(true);
   for (const destination of [
@@ -188,6 +208,7 @@ it("binds HTTPS transport, gh authentication and redirect policy without contact
       }),
     ).rejects.toThrow();
   }
+
   expect(
     (
       await gitExecute({
@@ -204,6 +225,7 @@ it("rejects partial clones on Git versions that cannot disable implicit transpor
   const { source } = await securityWorkspace();
   await checked("git", ["config", "remote.upstream.promisor", "true"], source);
   const original = processes.execute;
+
   vi.spyOn(processes, "execute").mockImplementation((request) =>
     request.args[0] === "--version"
       ? Promise.resolve({
@@ -214,12 +236,14 @@ it("rejects partial clones on Git versions that cannot disable implicit transpor
         })
       : original(request),
   );
+
   await expect(gitCapture(["show", "HEAD:file.txt"], source)).rejects.toThrow("Git 2.45 or newer");
 });
 
 it("fails integrity capture explicitly on overflow and keeps streamed output redacted", async () => {
   const { source } = await securityWorkspace();
   const lines: string[] = [];
+
   await expect(
     execute({
       program: process.execPath,
@@ -232,18 +256,21 @@ it("fails integrity capture explicitly on overflow and keeps streamed output red
       onLine: (_, line) => lines.push(line),
     }),
   ).rejects.toThrow("capture limit");
+
   expect(lines.length).toBeGreaterThan(0);
   expect(lines.some((line) => line.includes("fixture-secret"))).toBe(false);
 });
 
 it("captures NUL-delimited integrity evidence beyond the display line budget", async () => {
   const { source } = await securityWorkspace();
+
   const output = await execute({
     program: process.execPath,
     args: ["-e", "process.stdout.write(('100644 '+ 'a'.repeat(40)+' 0\\tpath\\0').repeat(50000))"],
     cwd: source,
     rawStdoutForIntegrity: true,
   });
+
   expect(output.code).toBe(0);
   expect(Buffer.byteLength(output.stdout)).toBeGreaterThan(2 * 1024 * 1024);
   expect(output.stdout.split("\0")).toHaveLength(50001);

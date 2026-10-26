@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import { rpc, errorMessage } from "../../lib/api";
 import type { StorageService } from "../../../backend/storage/service";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
@@ -13,8 +14,10 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
+
   useEffect(() => {
     let alive = true;
+
     void rpc<typeof preview>("storage.resetPreview", {})
       .then((value) => {
         if (alive) setPreview(value);
@@ -22,10 +25,12 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
       .catch((error) => {
         if (alive) setError(errorMessage(error));
       });
+
     return () => {
       alive = false;
     };
   }, [revision]);
+
   const act = async (operation: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -37,6 +42,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
       setBusy(false);
     }
   };
+
   return (
     <div className="modal-backdrop">
       <section
@@ -58,24 +64,29 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
           Review the exact task data selected for removal. A validated SQLite backup and metadata
           copy are created before cleanup.
         </p>
+
         {error && (
           <p role="alert" className="failure">
             {error}
           </p>
         )}
+
         {result ? (
           <>
             <p>
               {result.removed.length} tasks removed. {result.preserved.length} tasks preserved.
             </p>
+
             <p>
               Recoverable backup: <code>{result.backup}</code>
             </p>
+
             {result.preserved.map((task) => (
               <p className="warning" key={task.id}>
                 {task.id}: {task.reason}
               </p>
             ))}
+
             <p>
               Provider connections and source repositories remain available. No agent was started.
             </p>
@@ -85,18 +96,21 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
             <p>
               Data root: <code>{preview.root}</code>
             </p>
+
             <p>
               {preview.tasks.filter((task) => task.eligible).length} eligible tasks ·{" "}
               {preview.tasks.filter((task) => !task.eligible).length} protected tasks ·{" "}
               {preview.repairs.length} retained repair sessions · {preview.finalizations.length}{" "}
               retained Git Finalizations
             </p>
+
             {preview.tasks.map((task) => (
               <details key={task.id} open={!task.eligible}>
                 <summary>
                   {task.eligible ? "Remove" : "Preserve"}: {task.title}
                   {task.archived ? " (archived)" : ""}
                 </summary>
+
                 {!task.eligible ? (
                   <p className="warning">{task.reason}</p>
                 ) : (
@@ -110,6 +124,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                 )}
               </details>
             ))}
+
             <details>
               <summary>Preserved resources and connections</summary>
               <ul>
@@ -118,6 +133,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                 ))}
               </ul>
             </details>
+
             {preview.blockers.length > 0 && (
               <>
                 <p className="warning">Stop active agents and terminals before resetting.</p>
@@ -126,6 +142,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                     <li key={blocker.id}>{blocker.label}</li>
                   ))}
                 </ul>
+
                 <Button
                   disabled={busy || preview.blockers.every((blocker) => !blocker.stoppable)}
                   onClick={() =>
@@ -135,6 +152,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                           .filter((blocker) => blocker.stoppable)
                           .map((blocker) => blocker.id),
                       });
+
                       setRevision((value) => value + 1);
                     })
                   }
@@ -143,12 +161,14 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                 </Button>
               </>
             )}
+
             {preview.sensitive.length > 0 && (
               <p className="warning">
                 Resolve pending sensitive Git operations before reset:{" "}
                 {preview.sensitive.map((operation) => operation.id).join(", ")}
               </p>
             )}
+
             <label>
               Type RESET LOCAL TEST WORKSPACE
               <input
@@ -156,6 +176,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                 onChange={(event) => setConfirmation(event.target.value)}
               />
             </label>
+
             <Button
               variant="destructive"
               disabled={
@@ -172,6 +193,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                     confirmation,
                     preview_token: preview.token,
                   });
+
                   setResult(value);
                   await done();
                 })
@@ -179,6 +201,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
             >
               Back up & reset eligible task data
             </Button>
+
             <Button
               variant="ghost"
               disabled={busy}
@@ -193,6 +216,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
         ) : (
           <p>Inspecting owned local resources…</p>
         )}
+
         <div className="actions">
           <Button disabled={busy} onClick={close}>
             Close

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import type { Run, AgentEvent } from "../../lib/types";
 import { duration } from "../../lib/format";
 import { errorMessage } from "../../lib/api";
@@ -28,6 +29,7 @@ const OutputBody = ({
 }) => {
   const view = useTaskView(taskId);
   const raw = view.outputView === "raw";
+
   const output = useAgentOutput({
     taskId,
     run,
@@ -40,10 +42,12 @@ const OutputBody = ({
     watchId,
     scanId,
   });
+
   const scroll = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const restore = useRef<{ height: number; top: number } | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
+
   const text =
     view.outputView === "prompt"
       ? run?.prompt || "No saved prompt"
@@ -60,6 +64,7 @@ const OutputBody = ({
             )
             .join("\n")
         : output.log.text;
+
   const displayedText =
     view.outputView === "prompt" && view.outputSearch
       ? text
@@ -67,6 +72,7 @@ const OutputBody = ({
           .filter((line) => line.toLowerCase().includes(view.outputSearch.toLowerCase()))
           .join("\n")
       : text;
+
   useEffect(() => {
     const element = scroll.current;
     if (!element) return;
@@ -76,6 +82,7 @@ const OutputBody = ({
     } else if (!restore.current && view.outputFollow)
       element.scrollTo({ top: element.scrollHeight });
   }, [text, output.events.length, output.loading, view.outputFollow, run?.output]);
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(
@@ -83,11 +90,13 @@ const OutputBody = ({
           ? displayedText
           : scroll.current?.innerText || scroll.current?.textContent || "",
       );
+
       setCopyStatus("Copied");
     } catch (e) {
       setCopyStatus(errorMessage(e));
     }
   };
+
   return (
     <>
       <div
@@ -109,6 +118,7 @@ const OutputBody = ({
           value={view.outputSearch}
           onChange={(e) => updateTaskView(taskId, { outputSearch: e.target.value })}
         />
+
         {!raw && view.outputView !== "prompt" && (
           <select
             aria-label="Output filter"
@@ -122,6 +132,7 @@ const OutputBody = ({
             ))}
           </select>
         )}
+
         <Button
           size="sm"
           variant="ghost"
@@ -130,18 +141,22 @@ const OutputBody = ({
         >
           {view.outputFollow ? "Pause scrolling" : "Follow output"}
         </Button>
+
         <Button size="sm" variant="ghost" onClick={() => void copy()}>
           Copy output
         </Button>
+
         <span className="output-copy-status" role="status">
           {copyStatus}
         </span>
       </div>
+
       {output.error && (
         <p className="error-box" role="alert">
           {output.error}
         </p>
       )}
+
       <div
         className="output-scroll"
         ref={scroll}
@@ -157,6 +172,7 @@ const OutputBody = ({
             e.preventDefault();
             searchInput.current?.focus();
           }
+
           if (e.key === "End" && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             updateTaskView(taskId, { outputFollow: true });
@@ -181,6 +197,7 @@ const OutputBody = ({
             {view.outputSearch ? "More search matches" : "Load earlier output"}
           </Button>
         )}
+
         {view.outputSearch && (
           <p className="output-note">
             Searching saved{" "}
@@ -192,6 +209,7 @@ const OutputBody = ({
             . Matches are paged; clear search to restore the transcript.
           </p>
         )}
+
         {raw || preparation || view.outputView === "prompt" ? (
           <pre className="raw-log">
             {displayedText || (view.outputSearch ? "No matches" : "No output saved yet")}
@@ -208,6 +226,7 @@ const OutputBody = ({
         ) : (
           <p className="empty-row">No provider run has started.</p>
         )}
+
         {raw && !view.outputSearch && output.log.end < output.log.size && (
           <Button size="sm" onClick={() => void output.refresh()}>
             Load newer output
@@ -239,10 +258,12 @@ export const LogView = ({
   const view = useTaskView(taskId);
   const selection = view.outputRun || selectedRun || "";
   const preparation = owner !== "issueWatch" && selection === "preparation";
+
   const run =
     runs.find((r) => r.id === selection) ||
     [...runs].reverse().find((r) => r.status === "running") ||
     runs.at(-1);
+
   return (
     <section
       className="logs-panel"
@@ -269,6 +290,7 @@ export const LogView = ({
             </option>
           ))}
         </select>
+
         {(["readable", "raw", "prompt"] as const).map((mode) => (
           <button
             key={mode}
@@ -279,6 +301,7 @@ export const LogView = ({
             {mode === "prompt" ? "Saved prompt" : mode === "raw" ? "Raw" : "Readable"}
           </button>
         ))}
+
         {view.outputView === "raw" && (
           <select
             aria-label="Raw output stream"
@@ -295,6 +318,7 @@ export const LogView = ({
           </select>
         )}
       </div>
+
       {!preparation && run && (
         <div className="run-metadata">
           <Status status={run.status} />
@@ -312,6 +336,7 @@ export const LogView = ({
           </details>
         </div>
       )}
+
       <OutputBody
         key={`${taskId}/${preparation ? "preparation" : run?.id}/${view.outputView}/${view.outputStream}`}
         taskId={taskId}

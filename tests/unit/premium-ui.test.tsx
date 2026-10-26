@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+
 import { Button } from "../../src/components/ui/button";
 import { SettingsPage } from "../../src/features/settings/SettingsPage";
 import { UsageCharts } from "../../src/features/usage/UsageCharts";
@@ -16,6 +17,7 @@ import type { BrowserEnvironmentReport } from "../../backend/execution/verificat
 vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [] }),
 }));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -26,6 +28,7 @@ it("requires an explicit environment choice before inspection and preserves an u
     outcome: "available" as const,
     detail: "Fixture capability",
   };
+
   const report: BrowserEnvironmentReport = {
     checked_at: "2026-10-23T12:00:00Z",
     environment: "isolated",
@@ -37,24 +40,30 @@ it("requires an explicit environment choice before inspection and preserves an u
     http: observation,
     note: "Fixture capability snapshot; no application checks.",
   };
+
   const rpc = vi.fn(async (method: string) =>
     method === "task.browser.inspect" ? { ...report, environment: "installed_browsers" } : {},
   );
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc },
   });
+
   const task = {
     ...workspaceDetail("browser-ui").task,
     browser_environment_report: report,
   };
+
   const onError = vi.fn();
   const ui = render(<BrowserEnvironment task={task} unavailable={false} onError={onError} />);
   fireEvent.click(screen.getByText("Browser verification environment"));
   expect(rpc).not.toHaveBeenCalled();
+
   fireEvent.change(screen.getByLabelText("Verification environment"), {
     target: { value: "installed_browsers" },
   });
+
   ui.rerender(
     <BrowserEnvironment
       task={{ ...task, browser_environment_report: { ...report } }}
@@ -62,9 +71,11 @@ it("requires an explicit environment choice before inspection and preserves an u
       onError={onError}
     />,
   );
+
   expect((screen.getByLabelText("Verification environment") as HTMLSelectElement).value).toBe(
     "installed_browsers",
   );
+
   expect(
     (
       screen.getByRole("button", {
@@ -72,7 +83,9 @@ it("requires an explicit environment choice before inspection and preserves an u
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
+
   fireEvent.click(screen.getByRole("button", { name: "Use environment" }));
+
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.browser.configure", {
       id: task.id,
@@ -80,6 +93,7 @@ it("requires an explicit environment choice before inspection and preserves an u
       confirmed: true,
     }),
   );
+
   ui.rerender(
     <BrowserEnvironment
       task={{
@@ -91,21 +105,26 @@ it("requires an explicit environment choice before inspection and preserves an u
       onError={onError}
     />,
   );
+
   fireEvent.click(screen.getByRole("button", { name: "Inspect browser environment" }));
   await screen.findByText("Fixture capability snapshot; no application checks.");
+
   expect(rpc.mock.calls.map(([method]) => method)).toEqual([
     "task.browser.configure",
     "task.browser.inspect",
   ]);
+
   expect(onError).not.toHaveBeenCalled();
 });
 
 it("copies exact fenced source and keeps repository HTML inert while highlighting code", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
+
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText },
   });
+
   const code = 'const value = "<img src=x onerror=alert(1)>";\n';
   const ui = render(<AgentResponse text={"```ts\n" + code + "```"} />);
   expect(ui.container.querySelector("img")).toBeNull();
@@ -119,6 +138,7 @@ it("keeps completed runs without exit evidence neutral and represents cancellati
   const detail = workspaceDetail("pipeline-evidence");
   detail.task.stage = 4;
   detail.task.status = "verification_blocked";
+
   detail.runs = [
     {
       id: "run",
@@ -137,12 +157,15 @@ it("keeps completed runs without exit evidence neutral and represents cancellati
       error: null,
     },
   ];
+
   const ui = render(
     <PipelineView detail={detail} busy={false} action={vi.fn()} finalize={vi.fn()} />,
   );
+
   const implementation = screen.getByText(/fixture-model/).closest("li");
   expect(implementation?.textContent).toContain("Evidence unavailable");
   expect(implementation?.querySelector(".success")).toBeNull();
+
   ui.rerender(
     <PipelineView
       detail={{
@@ -155,12 +178,14 @@ it("keeps completed runs without exit evidence neutral and represents cancellati
       finalize={vi.fn()}
     />,
   );
+
   expect(screen.getByText(/fixture-model/).closest("li")?.className).toContain("cancelled");
 });
 
 it("keeps busy actions labelled and prevents duplicate activation or accidental form submission", () => {
   const action = vi.fn();
   const submit = vi.fn((event) => event.preventDefault());
+
   render(
     <form onSubmit={submit}>
       <Button busy onClick={action}>
@@ -168,6 +193,7 @@ it("keeps busy actions labelled and prevents duplicate activation or accidental 
       </Button>
     </form>,
   );
+
   const button = screen.getByRole("button", { name: "Refresh metadata" });
   expect(button.getAttribute("aria-busy")).toBe("true");
   fireEvent.click(button);
@@ -177,6 +203,7 @@ it("keeps busy actions labelled and prevents duplicate activation or accidental 
 
 it("retains dirty settings through background snapshots and separates utility models from the coding pipeline", async () => {
   const rpc = vi.fn(async (method: string) => (method === "editors.list" ? { editors: [] } : {}));
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: {
@@ -190,13 +217,16 @@ it("retains dirty settings through background snapshots and separates utility mo
       }),
     },
   });
+
   const refresh = vi.fn().mockResolvedValue(undefined);
   const ui = render(<SettingsPage settings={defaultSettings} refresh={refresh} />);
   await screen.findByText("All changes saved");
   const models = screen.getAllByLabelText("Model");
+
   fireEvent.change(screen.getAllByLabelText("Timeout (seconds)")[0], {
     target: { value: "1234" },
   });
+
   expect(screen.getByText("Unsaved changes")).toBeTruthy();
   ui.rerender(<SettingsPage settings={{ ...defaultSettings }} refresh={refresh} />);
   expect((screen.getAllByLabelText("Timeout (seconds)")[0] as HTMLInputElement).value).toBe("1234");
@@ -204,6 +234,7 @@ it("retains dirty settings through background snapshots and separates utility mo
   fireEvent.click(screen.getByRole("button", { name: "Models" }));
   expect(screen.getByRole("heading", { name: "Utility AI" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
       "settings.save",
@@ -212,6 +243,7 @@ it("retains dirty settings through background snapshots and separates utility mo
       }),
     ),
   );
+
   expect(rpc.mock.calls.every(([method]) => !String(method).includes("analyze"))).toBe(true);
 });
 
@@ -239,57 +271,74 @@ it("keeps missing totals unavailable and pages every saved run while charts repo
     provider_session_id: null,
     error: null,
   };
+
   const ui = render(<UsageCharts rows={[row]} />);
+
   expect(
     screen.getByRole("button", {
       name: /2026-10-23: Unavailable tokens · 0\/1/,
     }),
   ).toBeTruthy();
+
   expect(screen.getByRole("button", { name: "2026-10-23: 1 runs" })).toBeTruthy();
   ui.rerender(<UsageCharts rows={[row, { ...row, id: "two", total_tokens: 75 }]} />);
+
   const tokenBar = screen.getByRole("button", {
     name: /2026-10-23: 75 tokens · 1\/2/,
   });
+
   fireEvent.focus(tokenBar);
+
   expect(
     screen.getAllByText("2026-10-23: 75 tokens · 1/2 runs reported totals").length,
   ).toBeGreaterThan(0);
+
   ui.unmount();
   const scoped = render(<UsageView records={[row]} />);
   expect(scoped.container.querySelector(".usage-run summary strong")?.textContent).toBe("Fixture");
   expect(screen.queryByRole("table")).toBeNull();
   scoped.unmount();
+
   const rows = Array.from({ length: 201 }, (_, index) => ({
     ...row,
     id: `run-${index}`,
     purpose: `Fixture ${index + 1}`,
   }));
+
   const rpc = vi.fn(async (method: string) =>
     method === "usage.list" ? rows : { database: "/fixture.sqlite" },
   );
+
   Object.defineProperty(window, "vibestar", {
     configurable: true,
     value: { rpc, subscribe: () => () => {} },
   });
+
   render(<UsageView />);
   await screen.findByRole("table");
+
   expect(
     screen.getByRole("img", {
       name: /Input: .* tokens · 201\/201 runs reported/,
     }),
   ).toBeTruthy();
+
   expect(screen.getByRole("img", { name: /Cached: Unavailable tokens · 0\/201/ })).toBeTruthy();
   for (let page = 0; page < 4; page++)
     fireEvent.click(screen.getByRole("button", { name: "Next runs" }));
   expect(screen.getByRole("cell", { name: "Fixture 201" })).toBeTruthy();
+
   expect((screen.getByRole("button", { name: "Next runs" }) as HTMLButtonElement).disabled).toBe(
     true,
   );
+
   fireEvent.change(screen.getByLabelText("Search usage runs"), {
     target: { value: "Fixture 201" },
   });
+
   expect(
     (screen.getByRole("button", { name: "Previous runs" }) as HTMLButtonElement).disabled,
   ).toBe(true);
+
   expect(screen.getByRole("cell", { name: "Fixture 201" })).toBeTruthy();
 });

@@ -19,10 +19,12 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
       continue;
     const tracked = await gitCapture(["ls-files", "--", name], worktree);
     const sourceTracked = await gitCapture(["ls-files", "--", name], source);
+
     const ignored = await gitCapture(
       ["check-ignore", "--", `${name}/.vibestar-runtime-probe`],
       worktree,
     );
+
     if (
       tracked.code !== 0 ||
       sourceTracked.code !== 0 ||
@@ -38,6 +40,7 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
       dependencies.push(name);
     }
   }
+
   // Some projects install their toolchain beside the checkout (e.g. oppia_tools).
   // Preserve that explicit project naming convention inside the sandbox only.
   const toolchainName = `${basename(source)}_tools`;
@@ -48,13 +51,17 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
       source: toolchain,
       target: join(dirname(worktree), toolchainName),
     });
+
     dependencies.push(`../${toolchainName}`);
   }
+
   let python: string | null = null;
   let pythonPrefix: string | null = null;
+
   const versionFile =
     (await readFile(join(worktree, ".python-version"), "utf8").catch(() => null)) ??
     (await readFile(join(source, ".python-version"), "utf8").catch(() => null));
+
   const version = versionFile?.trim();
   if (
     version &&
@@ -101,6 +108,7 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
     pythonPrefix = candidate;
     break;
   }
+
   if (version && !python)
     warnings.push(
       `Selected Python environment ${version} is unavailable; system Python will be used. No dependencies were installed automatically.`,

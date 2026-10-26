@@ -3,34 +3,43 @@
   border-bottom: 1px solid var(--border);
   overflow-wrap: anywhere;
 }
+
 .verification-summary ul {
   padding-left: 18px;
 }
+
 .verification-summary li {
   margin: 12px 0;
 }
+
 .verification-summary li small {
   display: block;
   color: var(--text-secondary);
 }
+
 .agent-verification-item {
   margin: 8px 0;
   overflow-wrap: anywhere;
 }
+
 .agent-verification-item small {
   display: block;
   color: var(--text-secondary);
 }
+
 .task-dot.verification_blocked {
   background: var(--accent-amber);
 }
+
 .command-runs h2 {
   font-size: 13px;
 }
+
 .command-runs h2 small {
   color: var(--text-muted);
   font-weight: 400;
 }
+
 .command-filters,
 .command-log-heading {
   display: flex;
@@ -40,10 +49,12 @@
   margin: 10px 0;
   font-size: 11px;
 }
+
 .command-filters input {
   flex: 1;
   min-width: 160px;
 }
+
 .command-browser {
   display: flex;
   border: 1px solid var(--border);
@@ -51,12 +62,14 @@
   height: 420px;
   max-height: 65vh;
 }
+
 .command-list {
   width: 32%;
   min-width: 180px;
   overflow: auto;
   border-right: 1px solid var(--border);
 }
+
 .command-row {
   display: flex;
   flex-direction: column;
@@ -68,22 +81,27 @@
   padding: 10px;
   text-align: left;
 }
+
 .command-row[aria-current="true"] {
   background: var(--background-hover);
   box-shadow: none;
 }
+
 .command-row code {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   font-size: 11px;
 }
+
 .command-row small {
   color: var(--text-muted);
   font-size: 10px;
 }
+
 .command-failed code {
   color: var(--accent-red);
 }
+
 .command-transcript {
   display: flex;
   flex-direction: column;
@@ -92,10 +110,12 @@
   min-height: 0;
   background: var(--background-app);
 }
+
 .command-log-heading {
   padding: 0 10px;
   flex-shrink: 0;
 }
+
 .command-log {
   flex: 1;
   overflow: auto;
@@ -103,16 +123,20 @@
   font-size: 12px;
   white-space: pre;
 }
+
 .command-invocation {
   color: var(--accent-blue);
   font-weight: 600;
 }
+
 .command-stderr {
   color: var(--accent-amber);
 }
+
 .provider-test-reports {
   margin: 14px 0;
 }
+
 .cwd-banner {
   display: flex;
   align-items: center;
@@ -121,64 +145,79 @@
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
+
 .cwd-banner code {
   font-size: 10px;
 }
+
 .manual-command {
   margin: 10px 0;
 }
+
 .command-form {
   display: flex;
   gap: 9px;
   align-items: flex-end;
   padding: 8px 0;
 }
+
 .command-form label {
   flex: 1;
   margin: 0;
 }
+
 .test-report {
   display: flex;
   gap: 20px;
   margin: 15px 0;
 }
+
 .test-report section {
   flex: 1;
   font-size: 12px;
 }
+
 .test-report h3 {
   margin-bottom: 7px;
 }
+
 .test-report small {
   display: block;
   font-size: 10px;
 }
+
 .test-command {
   border-bottom: 1px solid var(--border);
   padding: 9px 0;
 }
+
 .test-command summary {
   display: flex;
   align-items: center;
   gap: 10px;
 }
+
 .test-command summary code {
   flex: 1;
   font-size: 11px;
   overflow-wrap: anywhere;
 }
+
 .test-command summary > span:last-child {
   font-size: 10px;
 }
+
 .test-command pre {
   padding: 8px;
   font-size: 11px;
   background: var(--background-sidebar);
 }
+
 .test-command h3 {
   margin: 7px 0;
   color: var(--text-muted);
 }
+
 .task-terminal {
   display: flex;
   flex-direction: column;
@@ -188,6 +227,7 @@
   min-width: 0;
   background: var(--background-sidebar);
 }
+
 .task-terminal header {
   display: flex;
   align-items: center;
@@ -196,6 +236,7 @@
   min-height: 32px;
   font-size: 11px;
 }
+
 .task-terminal header code {
   flex: 1;
   min-width: 0;
@@ -205,6 +246,7 @@
   font-size: 10px;
   color: var(--text-muted);
 }
+
 .terminal-surface {
   flex: 1;
   min-width: 0;
@@ -212,6 +254,7 @@
   overflow: hidden;
   padding: 6px 12px;
 }
+
 .task-terminal footer {
   padding: 4px 12px;
   color: var(--text-muted);

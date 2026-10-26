@@ -8,6 +8,7 @@ export const readLimits = (
     const value = JSON.parse(json || "null");
     if (!value || typeof value.reportedAt !== "string" || !Array.isArray(value.windows))
       return undefined;
+
     const windows = value.windows.filter(
       (w: Record<string, unknown>) =>
         w &&
@@ -19,6 +20,7 @@ export const readLimits = (
         typeof w.resetsAt === "number" &&
         Number.isFinite(w.resetsAt),
     );
+
     return windows.length
       ? {
           reportedAt: value.reportedAt,
@@ -30,6 +32,7 @@ export const readLimits = (
     return undefined;
   }
 };
+
 export const limitDeltas = (row: UsageRecord) => {
   const before = readLimits(row.subscription_limits);
   const after = readLimits(row.subscription_limits_after);
@@ -38,6 +41,7 @@ export const limitDeltas = (row: UsageRecord) => {
     const b = after.windows.find(
       (w) => w.windowDurationMins === a.windowDurationMins && w.resetsAt === a.resetsAt,
     );
+
     return b
       ? [
           {
@@ -50,6 +54,7 @@ export const limitDeltas = (row: UsageRecord) => {
       : [];
   });
 };
+
 export const windowLabel = (minutes: number) =>
   minutes === 300
     ? "5 hour"
@@ -58,6 +63,7 @@ export const windowLabel = (minutes: number) =>
       : minutes >= 60
         ? `${minutes / 60} hour`
         : `${minutes} minute`;
+
 export const usageRuntime = (row: UsageRecord) =>
   row.duration_ms ??
   (row.status === "running" ? Math.max(0, Date.now() - Date.parse(row.started_at)) : 0);

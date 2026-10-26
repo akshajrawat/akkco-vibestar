@@ -1,6 +1,8 @@
 import { z } from "zod";
+
 import type { NormalizedEvent, StageConfig } from "../../domain";
 import { VerificationCheckSchema } from "../verification/verification";
+
 export interface ProviderDetection {
   provider: string;
   installed: boolean;
@@ -26,11 +28,13 @@ export interface ProviderDetection {
   capabilities: string[];
   error: string | null;
 }
+
 export const supportedEfforts = (d: ProviderDetection | undefined, model: string) =>
   (model ? d?.models.find((m) => m.id === model) : d?.models.find((m) => m.isDefault))
     ?.supportedEfforts ||
   d?.efforts ||
   [];
+
 export const configurationError = (d: ProviderDetection, config: StageConfig) => {
   if (config.model && !d.models.some((m) => m.id === config.model))
     return `${d.provider} model '${config.model}' is not available from the official CLI. Refresh model discovery.`;
@@ -39,6 +43,7 @@ export const configurationError = (d: ProviderDetection, config: StageConfig) =>
     return `${d.provider} model '${config.model || "CLI default"}' does not support '${config.effort}' effort. Supported: ${efforts.join(", ") || "capabilities unavailable"}.`;
   return null;
 };
+
 export interface AgentRunRequest {
   runId: string;
   cwd: string;
@@ -49,6 +54,7 @@ export interface AgentRunRequest {
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
 }
+
 export interface AgentProvider {
   readonly name: string;
   detect: (cwd: string, signal?: AbortSignal) => Promise<ProviderDetection>;
@@ -63,7 +69,9 @@ export interface AgentProvider {
   outputSchema?: (schema: Record<string, unknown>) => Record<string, unknown>;
   parseStructuredOutput?: (schema: Record<string, unknown>, value: unknown) => unknown;
 }
+
 const list = z.array(z.string());
+
 export const planSchemas = {
   1: z
     .object({
@@ -128,18 +136,22 @@ export const planSchemas = {
     })
     .strict(),
 };
+
 export const schemaFor = (stage: number) => {
   const schema = planSchemas[stage as keyof typeof planSchemas];
   if (!schema) throw new Error("No schema for stage");
   return z.toJSONSchema(schema) as Record<string, unknown>;
 };
+
 export const validatePlan = (stage: number, value: unknown) =>
   planSchemas[stage as keyof typeof planSchemas].parse(value);
+
 export const verifyFlags = (help: string, flags: string[]) => {
   for (const flag of flags)
     if (!help.includes(flag))
       throw new Error(`Installed CLI lacks ${flag}. Update the official CLI before running.`);
 };
+
 export const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)

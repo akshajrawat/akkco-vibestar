@@ -19,6 +19,7 @@ export const LocalRepositoryInput = z
       .min(1),
   })
   .strict();
+
 export const ConnectLocalInput = z
   .object({
     verification_id: z.string().uuid(),
@@ -27,6 +28,7 @@ export const ConnectLocalInput = z
     base_branch: z.string().min(1).max(200),
   })
   .strict();
+
 export interface VerifiedLocalRepository {
   verification_id: string;
   path: string;
@@ -57,6 +59,7 @@ export interface LocalRepository {
   environment: "wsl" | "windows";
   indexed_at: string;
 }
+
 const localRepositorySchema = z
   .object({
     path: z.string(),
@@ -69,6 +72,7 @@ const localRepositorySchema = z
     indexed_at: z.string(),
   })
   .loose();
+
 const indexMetadataSchema = z
   .object({
     last_scan: z.string().nullable().optional(),
@@ -76,6 +80,7 @@ const indexMetadataSchema = z
     warnings: z.array(z.string()).optional(),
   })
   .strict();
+
 const ignored = new Set([
   "node_modules",
   ".git",
@@ -87,6 +92,7 @@ const ignored = new Set([
   ".akkco-ade",
   ".akkco-vibestar",
 ]);
+
 const indexedRemote = (value: string | null) => {
   if (!value) return value;
   try {
@@ -101,8 +107,10 @@ const indexedRemote = (value: string | null) => {
   } catch {
     /* SCP-style SSH remotes are normalized by remoteIdentity. */
   }
+
   return redact(value);
 };
+
 export interface RepositoryIndexSnapshot {
   repositories: LocalRepository[];
   scanning: boolean;
@@ -110,6 +118,7 @@ export interface RepositoryIndexSnapshot {
   duration_ms: number | null;
   warnings: string[];
 }
+
 export const discoveryRoot = (value: string, home = homedir()) => {
   const path = value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value;
   if (!isAbsolute(path))
@@ -129,18 +138,23 @@ export const discoveryRoot = (value: string, home = homedir()) => {
     );
   return root;
 };
+
 export class RepositoryIndex {
   private running: Promise<RepositoryIndexSnapshot> | undefined;
+
   private controller: AbortController | undefined;
+
   constructor(
     private readonly root: string,
     private readonly db: Database,
     private readonly onScan?: () => () => void,
   ) {}
+
   snapshot = (): RepositoryIndexSnapshot => {
     const metadata = this.db.all<{ value: string }>(
       "SELECT value FROM settings WHERE key='repository_index'",
     )[0];
+
     return {
       repositories: this.db.records.list<LocalRepository>(
         "local_repositories",
@@ -167,6 +181,7 @@ export class RepositoryIndex {
         : {}),
     };
   };
+
   verifyLocal = async (input: z.infer<typeof LocalRepositoryInput>, allowManaged = false) => {
     const p = LocalRepositoryInput.parse(input);
     let executionPath = p.path;
@@ -185,6 +200,7 @@ export class RepositoryIndex {
     } else if (!p.path.startsWith("/") && !p.path.startsWith("~/")) {
       throw new AdeError("invalid_input", "Enter an absolute WSL path or a path starting with ~/.");
     }
+
     const path = await realpath(discoveryRoot(executionPath));
     if (discoveryRoot(path) !== path)
       throw new AdeError("invalid_input", "Invalid repository location.");
@@ -192,17 +208,20 @@ export class RepositoryIndex {
     if (local.path !== path)
       throw new AdeError("invalid_input", `Choose the repository root: ${local.path}`);
     const git = (args: string[]) => gitCapture(["-c", "core.fsmonitor=false", ...args], path);
+
     const status = await git([
       "--no-optional-locks",
       "status",
       "--porcelain=v1",
       "--untracked-files=normal",
     ]);
+
     if (status.code !== 0)
       throw new AdeError("git_verify", "Couldn't read repository status.", {
         details: status.stderr,
       });
     const names = await gitChecked(["remote"], path);
+
     const remotes = await Promise.all(
       names
         .split("\n")
@@ -212,6 +231,7 @@ export class RepositoryIndex {
             git(["remote", "get-url", name]),
             git(["symbolic-ref", "--short", `refs/remotes/${name}/HEAD`]),
           ]);
+
           const cleanUrl = indexedRemote(url.code === 0 ? url.stdout.trim() : null) || "";
           let identity: string | null = null;
           try {
@@ -220,6 +240,7 @@ export class RepositoryIndex {
           } catch {
             /* Non-GitHub remotes remain visible but cannot be an issue upstream. */
           }
+
           return {
             name,
             url: cleanUrl,
@@ -228,10 +249,12 @@ export class RepositoryIndex {
           };
         }),
     );
+
     const refs = await gitChecked(
       ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"],
       path,
     );
+
     const branches = [
       ...new Set(
         refs
@@ -241,13 +264,17 @@ export class RepositoryIndex {
           .map((ref) => ref.replace(/^refs\/heads\//, "").replace(/^refs\/remotes\/[^/]+\//, "")),
       ),
     ];
+
     const github = remotes.filter((remote) => remote.identity);
+
     const upstream =
       github.find((remote) => remote.name === "upstream") ||
       (github.length === 1 ? github[0] : null);
+
     const origin = github.find(
       (remote) => remote.name === "origin" && remote.name !== upstream?.name,
     );
+
     return {
       ...local,
       environment: p.environment,
@@ -261,6 +288,7 @@ export class RepositoryIndex {
       base_branch: upstream?.default_branch || null,
     };
   };
+
   inspect = async (
     path: string,
     signal?: AbortSignal,
@@ -269,19 +297,24 @@ export class RepositoryIndex {
     const top = await realpath(await gitChecked(["rev-parse", "--show-toplevel"], path, signal));
     if (!allowManaged && (inside(this.root, top) || top === this.root))
       throw new AdeError("isolation", "Vibestar-managed directories cannot be imported.");
+
     const git = async (args: string[]) => {
       const result = await gitCapture(["-c", "core.fsmonitor=false", ...args], top, signal);
       return result.code === 0 ? result.stdout.trim() : null;
     };
+
     const [rawOrigin, rawUpstream, branch, defaultRef] = await Promise.all([
       git(["remote", "get-url", "origin"]),
       git(["remote", "get-url", "upstream"]),
       git(["branch", "--show-current"]),
       git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
     ]);
+
     const origin = indexedRemote(rawOrigin),
       upstream = indexedRemote(rawUpstream);
+
     const all = await git(["remote", "-v"]);
+
     const identities = [
       ...new Set(
         [origin, upstream, ...(all || "").split("\n").map((r) => r.split(/\s+/)[1])]
@@ -296,6 +329,7 @@ export class RepositoryIndex {
           }),
       ),
     ];
+
     return {
       path: top,
       origin,
@@ -307,6 +341,7 @@ export class RepositoryIndex {
       indexed_at: now(),
     };
   };
+
   matches = (identity: string) =>
     this.snapshot()
       .repositories.filter((r) => r.identities.includes(identity.toLowerCase()))
@@ -315,10 +350,12 @@ export class RepositoryIndex {
           Number(a.environment === "windows") - Number(b.environment === "windows") ||
           a.path.localeCompare(b.path),
       );
+
   scan = () => {
     if (this.running) return this.running;
     const release = this.onScan?.();
     this.controller = new AbortController();
+
     this.running = this.performScan(this.controller.signal).then(
       () => {
         this.running = undefined;
@@ -331,27 +368,34 @@ export class RepositoryIndex {
         throw error;
       },
     );
+
     return this.running;
   };
+
   close = async () => {
     await this.stop();
   };
+
   stop = async () => {
     this.controller?.abort();
     await this.running?.catch(() => {});
   };
+
   private performScan = async (signal: AbortSignal) => {
     const start = Date.now();
     const settings = this.db.settings().repository_discovery;
+
     const roots = [
       ...new Set(
         [...settings.roots, ...(settings.scan_home ? ["~"] : [])].map((r) => discoveryRoot(r)),
       ),
     ];
+
     const visited = new Set<string>();
     const found = new Map<string, LocalRepository>();
     const warnings: string[] = [];
     let entries = 0;
+
     const visit = async (path: string, depth: number) => {
       signal.throwIfAborted();
       if (depth > settings.max_depth || entries >= 30000 || Date.now() - start > 60000) return;
@@ -366,6 +410,7 @@ export class RepositoryIndex {
           found.set(repo.path, repo);
           return;
         }
+
         for (const row of rows) {
           if (
             row.isDirectory() &&
@@ -381,6 +426,7 @@ export class RepositoryIndex {
           warnings.push(`${path}: ${e instanceof Error ? e.message : String(e)}`);
       }
     };
+
     for (const root of roots) {
       signal.throwIfAborted();
       try {
@@ -391,16 +437,20 @@ export class RepositoryIndex {
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") warnings.push(`${root}: ${String(e)}`);
       }
     }
+
     if (entries >= 30000 || Date.now() - start > 60000)
       warnings.push(
         "Scan reached its safety limit. Add narrower search roots for complete coverage.",
       );
+
     const metadata = {
       last_scan: now(),
       duration_ms: Date.now() - start,
       warnings,
     };
+
     signal.throwIfAborted();
+
     this.db.transaction(() => {
       this.db.run("DELETE FROM local_repositories");
       for (const repo of found.values())
@@ -410,11 +460,13 @@ export class RepositoryIndex {
           JSON.stringify(repo),
           repo.indexed_at,
         );
+
       this.db.run(
         "INSERT INTO settings VALUES('repository_index',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         JSON.stringify(metadata),
       );
     });
+
     return this.snapshot();
   };
 }

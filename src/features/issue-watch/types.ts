@@ -15,6 +15,7 @@ export interface SavedWatch extends Watch {
   latest: WatchScan | null;
   error: string | null;
 }
+
 export interface WatchDetail {
   watch: Watch;
   revision: WatchRevision;
@@ -23,6 +24,7 @@ export interface WatchDetail {
   results: CandidateSummary[];
   provider_support: Record<string, { supported: boolean; reason: string; url?: string }>;
 }
+
 export interface ScanDetail {
   scan: WatchScan;
   candidates: CandidateSummary[];
@@ -33,6 +35,7 @@ export interface ScanDetail {
   run: Run | null;
   usage: UsageRecord[];
 }
+
 export interface CandidateDetail {
   candidate: WatchCandidate;
   sources: WatchSource[];

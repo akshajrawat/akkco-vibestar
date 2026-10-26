@@ -11,6 +11,7 @@ import { AntigravityProvider } from "../../backend/execution/providers/antigravi
 
 const seed = (db: Database) => {
   db.run("INSERT INTO repositories VALUES('repo','owner','repo','{}')");
+
   db.run(
     "INSERT INTO tasks(id,repo_id,status,stage,data,created_at) VALUES('task','repo','completed',6,'{\"id\":\"task\"}','2026-10-09T00:00:00Z')",
   );
@@ -22,6 +23,7 @@ it("records actual cumulative output, isolates repeated calls across runs and pr
     seed(db);
     const commands = new CommandExecutions(db);
     const codex = new CodexProvider();
+
     const observe = (run: string, type: string, output?: string, exit?: number) => {
       for (const event of codex.normalize({
         type,
@@ -35,15 +37,19 @@ it("records actual cumulative output, isolates repeated calls across runs and pr
       }))
         commands.observe("task", run, event);
     };
+
     observe("implement", "item.started");
     observe("implement", "item.updated", "test one passed\n");
+
     expect(db.detail("task").tests[0]).toMatchObject({
       status: "running",
       stdout: "test one passed\n",
     });
+
     observe("implement", "item.completed", "test one passed\ntest two passed\n", 0);
     observe("review", "item.started");
     observe("review", "item.completed", "test two failed\n", 1);
+
     commands.observe("task", "review", {
       kind: "command.finished",
       data: {
@@ -53,11 +59,14 @@ it("records actual cumulative output, isolates repeated calls across runs and pr
         stdout: "lint complete",
       },
     });
+
     commands.observe("task", "review", {
       kind: "command.started",
       data: { call_id: 3, command: "npm run typecheck" },
     });
+
     commands.finish("review");
+
     expect(db.detail("task").tests).toEqual([
       expect.objectContaining({
         run_id: "implement",
@@ -82,6 +91,7 @@ it("records actual cumulative output, isolates repeated calls across runs and pr
         exit_code: null,
       }),
     ]);
+
     const agy = new AntigravityProvider();
     for (const event of agy.normalize({
       event: "step_update",
@@ -97,6 +107,7 @@ it("records actual cumulative output, isolates repeated calls across runs and pr
       },
     }))
       commands.observe("task", "agy", event);
+
     expect(db.detail("task").tests.at(-1)).toMatchObject({
       status: "failed",
       stderr: "connection dropped",
@@ -111,6 +122,7 @@ it("retains bounded command tails with explicit truncation", () => {
   const db = new Database(":memory:");
   try {
     seed(db);
+
     new CommandExecutions(db).observe("task", "run", {
       kind: "command.finished",
       data: {
@@ -120,6 +132,7 @@ it("retains bounded command tails with explicit truncation", () => {
         exit_code: 0,
       },
     });
+
     const test = db.detail("task").tests[0];
     expect(String(test.stdout)).toHaveLength(1024 * 1024);
     expect(String(test.stdout).endsWith("last line")).toBe(true);
@@ -133,9 +146,11 @@ it("recovers only Antigravity tool-header exits from saved raw events and retain
   const db = new Database(":memory:");
   try {
     seed(db);
+
     db.run(
       "INSERT INTO agent_runs(id,task_id,stage,provider,model,effort,prompt,status,started_at) VALUES('agy','task',5,'antigravity','','high','','completed','2026-10-25T00:00:00Z')",
     );
+
     const commands = new CommandExecutions(db);
     const provider = new AntigravityProvider();
     for (const [index, exit] of [
@@ -156,6 +171,7 @@ it("recovers only Antigravity tool-header exits from saved raw events and retain
           },
         },
       };
+
       commands.observe("task", "agy", {
         kind: "command.finished",
         data: {
@@ -164,17 +180,21 @@ it("recovers only Antigravity tool-header exits from saved raw events and retain
           ...(index === 3 ? { exit_code: 2 } : {}),
         },
       });
+
       db.run(
         "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES('agy','task','2026-10-25T00:00:01Z','command.finished','{}',?,'stdout')",
         JSON.stringify(raw),
       );
+
       expect(provider.normalize(raw)[0].data).toMatchObject({
         exit_code: exit,
       });
     }
+
     expect(commands.recoverToolExits("task")).toBe(2);
     expect(db.detail("task").tests.map((row) => row.exit_code)).toEqual([0, 1, 2]);
     expect(commands.recoverToolExits("task")).toBe(0);
+
     expect(
       provider.normalize({
         event: "step_update",
@@ -190,6 +210,7 @@ it("recovers only Antigravity tool-header exits from saved raw events and retain
         },
       })[0].data,
     ).not.toMatchObject({ exit_code: 0 });
+
     expect(
       provider.normalize({
         event: "step_update",
@@ -214,26 +235,32 @@ it("migrates historic provider command logs once without replacing manual valida
   try {
     for (const migration of migrations.filter((m) => m.version < 16)) {
       old.exec(migration.sql);
+
       old
         .prepare("INSERT OR IGNORE INTO schema_migrations VALUES(?,?)")
         .run(migration.version, "2026-10-09T00:00:00Z");
     }
+
     old.exec(
       "INSERT INTO repositories VALUES('repo','owner','repo','{}'); INSERT INTO tasks(id,repo_id,status,stage,data,created_at) VALUES('task','repo','completed',6,'{\"id\":\"task\"}','2026-10-09T00:00:00Z'); INSERT INTO agent_runs(id,task_id,stage,provider,model,effort,prompt,status,started_at,ended_at) VALUES('run','task',3,'codex','','high','','completed','2026-10-09T00:00:00Z','2026-10-09T00:01:00Z'); INSERT INTO test_runs(id,task_id,command,status,started_at) VALUES('manual','task','git diff --check','passed','2026-10-09T00:00:00Z');",
     );
+
     const insert = old.prepare(
       "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES('run','task',?,?,?,'','stdout')",
     );
+
     insert.run(
       "2026-10-09T00:00:01Z",
       "command.started",
       JSON.stringify({ call_id: 1, command: "npm test" }),
     );
+
     insert.run(
       "2026-10-09T00:00:02Z",
       "command.finished",
       JSON.stringify({ call_id: 1, stdout: "passed", exit_code: 0 }),
     );
+
     insert.run(
       "2026-10-09T00:00:03Z",
       "command.started",
@@ -242,13 +269,16 @@ it("migrates historic provider command logs once without replacing manual valida
   } finally {
     old.close();
   }
+
   try {
     let db = new Database(path);
     try {
       expect(db.detail("task").tests).toHaveLength(3);
+
       expect(db.detail("task").tests.at(-1)).toMatchObject({
         status: "interrupted",
       });
+
       expect(db.detail("task").tests[1]).toMatchObject({
         command: "npm test",
         status: "passed",
@@ -257,6 +287,7 @@ it("migrates historic provider command logs once without replacing manual valida
     } finally {
       db.close();
     }
+
     db = new Database(path);
     try {
       expect(db.detail("task").tests).toHaveLength(3);

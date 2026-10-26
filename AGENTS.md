@@ -41,6 +41,18 @@ Keep directories flat while they contain only a few related files. Group growing
 responsibilities by domain, without empty folders or symmetrical `index.ts` files.
 Move feature code to its owner instead of treating nearby reuse as global utility.
 
+## Code Readability
+
+Code must be organized for human review. Separate logical sections with blank
+lines, keep functions focused, avoid compressed control flow, and prefer explicit
+readable code over dense expressions. Passing Prettier is necessary but not
+sufficient.
+
+Keep import groups together, with a blank line after each group. Separate top-level
+functions and classes, and put blank lines between class methods. Use spacing to
+mark meaningful phases and conclusions; keep short related statements compact.
+Avoid adding a blank line after every statement. Prettier and ESLint enforce layout.
+
 ## Security invariants
 
 - Keep renderer Node integration disabled, context isolation and Chromium sandbox enabled.

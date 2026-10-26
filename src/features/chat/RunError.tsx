@@ -2,6 +2,7 @@ import type { Run } from "../../lib/types";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "../../components/ui/button";
+
 export const RunError = ({
   error,
   run,
@@ -18,9 +19,12 @@ export const RunError = ({
   blocked?: boolean;
 }) => {
   const [dismissed, setDismissed] = useState(false);
+
   const cancelled =
     run?.status === "cancelled" || (stage !== 4 && /cancelled|stopped|interrupt/i.test(error));
+
   const validation = stage === 4;
+
   const provider =
     run?.provider === "antigravity" || (!run && [1, 5].includes(stage))
       ? "Antigravity"
@@ -29,6 +33,7 @@ export const RunError = ({
         : stage === 0
           ? "Repository"
           : "Task";
+
   const stageName =
     run?.purpose === "Code Review Ask AI"
       ? "code review"
@@ -43,6 +48,7 @@ export const RunError = ({
               : stage === 0
                 ? "preparation"
                 : "validation";
+
   if (dismissed) return null;
   return (
     <section
@@ -53,6 +59,7 @@ export const RunError = ({
         <span className={cancelled || blocked ? "warning" : "failure"} aria-hidden="true">
           {cancelled || blocked ? "●" : "×"}
         </span>
+
         <strong>
           {validation
             ? "Verification needs attention"
@@ -60,6 +67,7 @@ export const RunError = ({
               ? "Run cancelled"
               : `${provider} ${stageName} failed`}
         </strong>
+
         <span className="subtle">
           {validation
             ? error
@@ -68,11 +76,13 @@ export const RunError = ({
               : "This stage couldn't finish. Review the technical details before retrying."}
         </span>
       </div>
+
       {retry && !cancelled && (
         <Button size="sm" onClick={retry}>
           Retry
         </Button>
       )}
+
       <details className="run-error-details">
         <summary>Technical details</summary>
         <p>
@@ -93,6 +103,7 @@ export const RunError = ({
           </Button>
         )}
       </details>
+
       <Button
         size="icon"
         variant="ghost"

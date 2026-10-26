@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import type { Task, StageConfig } from "../../lib/types";
 import { defaultSettings } from "../../../backend/domain";
 import {
@@ -10,10 +11,13 @@ import { useTaskView, updateTaskView } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { containDialogFocus } from "../../lib/keyboard";
+
 export const followupConfiguration = (task: Task, view: ReturnType<typeof useTaskView>) => {
   const defaults = task.execution_settings || defaultSettings;
+
   const config =
     view.followupProvider === "codex" ? defaults.codex_implementation : defaults.antigravity;
+
   return {
     provider: view.followupProvider,
     config: {
@@ -23,6 +27,7 @@ export const followupConfiguration = (task: Task, view: ReturnType<typeof useTas
     },
   };
 };
+
 export const ComposerSettings = ({ task }: { task: Task }) => {
   const view = useTaskView(task.id);
   const { provider, config } = followupConfiguration(task, view);
@@ -32,19 +37,24 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
   const container = useRef<HTMLDivElement>(null);
   const detected = providers.find((p) => p.provider === provider);
   const efforts = supportedEfforts(detected, config.model);
+
   const update = (value: Partial<StageConfig>) =>
     updateTaskView(task.id, {
       ...(value.model !== undefined ? { followupModel: value.model } : {}),
       ...(value.effort !== undefined ? { followupEffort: value.effort } : {}),
     });
+
   useEffect(() => {
     if (!open) return;
+
     const dismiss = (event: MouseEvent) => {
       if (!container.current?.contains(event.target as Node)) setOpen(false);
     };
+
     document.addEventListener("mousedown", dismiss);
     return () => document.removeEventListener("mousedown", dismiss);
   }, [open]);
+
   return (
     <div
       className="composer-settings"
@@ -72,6 +82,7 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
           "CLI default"}{" "}
         · {config.effort.toUpperCase()}
       </Button>
+
       {open && (
         <section
           ref={dialog}
@@ -85,6 +96,7 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
             Applies to explicit implementation follow-ups. Planning and final review retain their
             pipeline models.
           </p>
+
           <small
             className={
               detected?.installed === false || detected?.connected === false ? "warning" : "subtle"
@@ -127,6 +139,7 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
             >
               Official CLI default
             </button>
+
             {detected?.models.map((m) => (
               <button
                 type="button"
@@ -152,12 +165,15 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
               </button>
             ))}
           </div>
+
           {detected?.models.length && configurationError(detected, config) ? (
             <p className="warning">{configurationError(detected, config)}</p>
           ) : null}
+
           <Button size="sm" disabled={loading} onClick={() => void refresh()}>
             {loading ? "Discovering…" : "Refresh models"}
           </Button>
+
           <Button size="sm" onClick={() => setOpen(false)}>
             Done
           </Button>

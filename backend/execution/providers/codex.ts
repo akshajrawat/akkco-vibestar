@@ -9,10 +9,14 @@ import {
 import type { NormalizedEvent } from "../../domain";
 import { discoverCodexModels } from "./codex-models";
 import { codexSchema, codexResult } from "./codex-schema";
+
 export class CodexProvider implements AgentProvider {
   readonly name = "codex";
+
   outputSchema = codexSchema;
+
   parseStructuredOutput = codexResult;
+
   detect = async (cwd: string, signal?: AbortSignal): Promise<ProviderDetection> => {
     const d: ProviderDetection = {
       provider: this.name,
@@ -24,11 +28,13 @@ export class CodexProvider implements AgentProvider {
       capabilities: [],
       error: null,
     };
+
     try {
       d.version = await checked("codex", ["--version"], cwd, signal);
       d.installed = true;
       verifyFlags(await checked("codex", ["--help"], cwd, signal), ["--no-daemon"]);
       const help = await checked("codex", ["exec", "--help"], cwd, signal);
+
       verifyFlags(help, [
         "--json",
         "--sandbox",
@@ -37,6 +43,7 @@ export class CodexProvider implements AgentProvider {
         "--ignore-rules",
         "--skip-git-repo-check",
       ]);
+
       d.capabilities = [
         "read-only",
         "workspace-write",
@@ -44,6 +51,7 @@ export class CodexProvider implements AgentProvider {
         "schema",
         "subscription-auth",
       ];
+
       const login = await capture("codex", ["login", "status"], cwd, signal);
       const output = login.stdout + login.stderr;
       d.connected = login.code === 0 && output.includes("ChatGPT");
@@ -57,8 +65,10 @@ export class CodexProvider implements AgentProvider {
     } catch (e) {
       d.error = String(e);
     }
+
     return d;
   };
+
   invocation = (r: AgentRunRequest) => ({
     program: "codex",
     args: [
@@ -91,6 +101,7 @@ export class CodexProvider implements AgentProvider {
     ],
     input: r.prompt,
   });
+
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {
     const event = raw.type;
     const item = object(raw.item);
@@ -109,6 +120,7 @@ export class CodexProvider implements AgentProvider {
               ? "command.finished"
               : "command.output";
     }
+
     return [
       {
         kind,
@@ -140,6 +152,7 @@ export class CodexProvider implements AgentProvider {
       },
     ];
   };
+
   result = (raw: Record<string, unknown>) => {
     const item = object(raw.item);
     if (
@@ -153,8 +166,10 @@ export class CodexProvider implements AgentProvider {
         return undefined;
       }
     }
+
     return undefined;
   };
+
   conversationId = (raw: Record<string, unknown>) =>
     typeof raw.thread_id === "string" ? raw.thread_id : null;
 }

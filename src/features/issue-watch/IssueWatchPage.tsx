@@ -10,6 +10,7 @@ import {
   Square,
   X,
 } from "lucide-react";
+
 import type { Snapshot } from "../../lib/types";
 import type { CandidateSummary, WatchSource } from "../../../backend/issue-watch/contracts";
 import { useIssueWatch } from "./useIssueWatch";
@@ -27,6 +28,7 @@ import { WatchEditor } from "./WatchEditor";
 import { ScanResults } from "./ScanResults";
 import { IssueCandidateDetails } from "./IssueCandidateDetails";
 import { IssueMarkdown } from "./IssueMarkdown";
+
 const emptyCandidates: CandidateSummary[] = [];
 
 export const IssueWatchPage = ({
@@ -45,23 +47,28 @@ export const IssueWatchPage = ({
   const [tab, setTab] = useState("Results");
   const [busy, setBusy] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
+
   const [showWatches, setShowWatches] = useState(
     () => localStorage.getItem("vibestar.issueWatch.watchesCollapsed") !== "true",
   );
+
   const [showDetails, setShowDetails] = useState(
     () => localStorage.getItem("vibestar.issueWatch.detailsCollapsed") !== "true",
   );
+
   const [watchWidth, setWatchWidth] = usePaneSize("issueWatch.watchWidth", 226, 180, 360);
   const [detailsWidth, setDetailsWidth] = usePaneSize("issueWatch.detailsWidth", 370, 280, 700);
   const [selection, setSelection] = useState<string[] | null>(null);
   const [source, setSource] = useState<WatchSource | null>(null);
   const [dispositionRevision, setDispositionRevision] = useState(0);
   const dialog = useDialogFocus(selection !== null || source !== null);
+
   const [request, setRequest] = useState({
     payload: "",
     id: "",
     completed: false,
   });
+
   const detail = state.detail?.watch.id === state.watchId ? state.detail : null;
   const scan = state.scan?.scan.watch_id === state.watchId ? state.scan : null;
   const active = detail?.active;
@@ -69,6 +76,7 @@ export const IssueWatchPage = ({
   const model = detail?.revision.configuration.model;
   const unsupported = model && !detail?.provider_support[model.provider]?.supported;
   const provisional = !!scan && scan.scan.status !== "completed";
+
   useEffect(() => {
     if (
       !candidates.some(
@@ -80,10 +88,12 @@ export const IssueWatchPage = ({
         candidates.find((candidate) => showDismissed || !candidate.dismissed_at)?.issue.id || "",
       );
   }, [candidates, selected, showDismissed]);
+
   useEffect(() => {
     localStorage.setItem("vibestar.issueWatch.watchesCollapsed", String(!showWatches));
     localStorage.setItem("vibestar.issueWatch.detailsCollapsed", String(!showDetails));
   }, [showWatches, showDetails]);
+
   const run = async (kind: "scan" | "retry" | "continue" = "scan", ids?: string[]) => {
     if (!detail) return;
     setBusy(true);
@@ -101,14 +111,19 @@ export const IssueWatchPage = ({
               scan_id: scan?.scan.id,
               ...(ids ? { candidate_ids: ids } : {}),
             };
+
       const serialized = JSON.stringify({ kind, ...payload });
+
       const identity =
         request.payload === serialized && !request.completed ? request.id : crypto.randomUUID();
+
       setRequest({ payload: serialized, id: identity, completed: false });
+
       const operation = await rpc<{ scan_id: string }>(`issueWatch.${kind}`, {
         ...payload,
         request_id: identity,
       });
+
       setRequest({ payload: serialized, id: identity, completed: true });
       state.setScanId(operation.scan_id);
       setTab("Results");
@@ -120,6 +135,7 @@ export const IssueWatchPage = ({
       setBusy(false);
     }
   };
+
   const cancel = async () => {
     if (!detail || !active) return;
     setBusy(true);
@@ -128,6 +144,7 @@ export const IssueWatchPage = ({
         watch_id: detail.watch.id,
         scan_id: active.id,
       });
+
       await state.refresh();
     } catch (e) {
       state.setError(errorMessage(e));
@@ -135,6 +152,7 @@ export const IssueWatchPage = ({
       setBusy(false);
     }
   };
+
   const organize = async () => {
     if (!detail) return;
     setBusy(true);
@@ -144,6 +162,7 @@ export const IssueWatchPage = ({
         expected_revision: detail.watch.current_revision,
         archived: !detail.watch.archived,
       });
+
       state.setArchived(!detail.watch.archived);
       await state.refresh();
     } catch (e) {
@@ -152,9 +171,11 @@ export const IssueWatchPage = ({
       setBusy(false);
     }
   };
+
   const pending = candidates.filter(
     (candidate) => candidate.eligible && candidate.semantic_state !== "completed",
   );
+
   if (!enabled)
     return (
       <section className="watch-update-required">
@@ -186,6 +207,7 @@ export const IssueWatchPage = ({
                 Cancel scan
               </Button>
             )}
+
             <Button variant="default" onClick={() => setEditor("new")}>
               <Plus size={14} />
               New watch
@@ -193,6 +215,7 @@ export const IssueWatchPage = ({
           </>
         }
       />
+
       {state.error && (
         <div className="error-box watch-error" role="alert">
           <span>{state.error}</span>
@@ -206,6 +229,7 @@ export const IssueWatchPage = ({
           </Button>
         </div>
       )}
+
       <div className="watch-layout">
         {(state.watches.length > 0 || state.archived) && (
           <div className="watch-panel-toggles">
@@ -219,6 +243,7 @@ export const IssueWatchPage = ({
             </Button>
           </div>
         )}
+
         {showWatches && (state.watches.length > 0 || state.archived) && (
           <>
             <aside className="watch-saved" style={{ width: watchWidth }} aria-label="Saved watches">
@@ -226,6 +251,7 @@ export const IssueWatchPage = ({
                 <h2>
                   Saved watches <span>{state.watches.length}</span>
                 </h2>
+
                 <label>
                   <input
                     type="checkbox"
@@ -235,14 +261,17 @@ export const IssueWatchPage = ({
                   Archived
                 </label>
               </div>
+
               <div className="watch-saved-list">
                 {state.watches.map((watch) => {
                   const counts = watch.latest?.summary || {};
+
                   const newCount =
                     (counts.initial_discovery || 0) +
                     (counts.newly_matching || 0) +
                     (counts.new_issue || 0) +
                     (counts.reentered || 0);
+
                   return (
                     <button
                       key={watch.id}
@@ -265,12 +294,14 @@ export const IssueWatchPage = ({
                           "Configuration unavailable"}{" "}
                         · {watch.revision?.configuration.model.model}
                       </small>
+
                       <footer>
                         <span className={watch.active ? "watch-running" : ""}>
                           {watch.active
                             ? watch.active.phase
                             : watch.latest?.status || "Never scanned"}
                         </span>
+
                         <time>
                           {watch.latest?.ended_at
                             ? new Date(watch.latest.ended_at).toLocaleDateString()
@@ -280,6 +311,7 @@ export const IssueWatchPage = ({
                     </button>
                   );
                 })}
+
                 {!state.watches.length && (
                   <p className="watch-empty">
                     {state.archived
@@ -287,6 +319,7 @@ export const IssueWatchPage = ({
                       : "Create a watch to save your repository, filters and model. Nothing runs until Scan Now."}
                   </p>
                 )}
+
                 {state.moreWatches && (
                   <Button variant="ghost" size="sm" onClick={state.loadWatches}>
                     Load more watches
@@ -294,6 +327,7 @@ export const IssueWatchPage = ({
                 )}
               </div>
             </aside>
+
             <ResizeHandle
               label="Saved watches width"
               value={watchWidth}
@@ -303,6 +337,7 @@ export const IssueWatchPage = ({
             />
           </>
         )}
+
         <main className="watch-discovery">
           {detail ? (
             <>
@@ -314,6 +349,7 @@ export const IssueWatchPage = ({
                     <span>· Revision {detail.watch.current_revision}</span>
                   </p>
                 </div>
+
                 <div className="watch-toolbar-actions">
                   <Button
                     size="sm"
@@ -324,6 +360,7 @@ export const IssueWatchPage = ({
                     <Pencil size={13} />
                     Edit
                   </Button>
+
                   <Button
                     size="sm"
                     variant="ghost"
@@ -332,6 +369,7 @@ export const IssueWatchPage = ({
                   >
                     {detail.watch.archived ? "Restore" : "Archive"}
                   </Button>
+
                   {active ? (
                     <Button variant="destructive" disabled={busy} onClick={() => void cancel()}>
                       <Square size={12} />
@@ -349,14 +387,17 @@ export const IssueWatchPage = ({
                   )}
                 </div>
               </header>
+
               <div className="watch-effective-model">
                 <span>
                   Next scan · {model?.provider} / {model?.model} / {model?.effort}
                 </span>
+
                 <small>
                   At most one semantic invocation · {model?.timeout_secs}s · Private GitHub content
                   is sent to this provider
                 </small>
+
                 {scan?.run && (
                   <small>
                     Selected attempt · {scan.run.provider} / {scan.run.model} / {scan.run.effort} ·{" "}
@@ -364,9 +405,11 @@ export const IssueWatchPage = ({
                   </small>
                 )}
               </div>
+
               {unsupported && (
                 <p className="error-box">{detail.provider_support[model!.provider].reason}</p>
               )}
+
               {active && (
                 <section className="watch-progress" role="status" aria-live="polite">
                   <span className="watch-pulse" />
@@ -377,6 +420,7 @@ export const IssueWatchPage = ({
                       {active.coverage.excluded} excluded · Trackers{" "}
                       {active.coverage.exclusions_complete ? "verified" : "pending"}
                     </p>
+
                     <small>
                       {active.semantic_attempts
                         ? "Semantic invocation reserved / active; see Output and actual Usage."
@@ -385,6 +429,7 @@ export const IssueWatchPage = ({
                   </div>
                 </section>
               )}
+
               <div className="watch-history-toolbar">
                 <label>
                   <History size={13} />
@@ -406,21 +451,25 @@ export const IssueWatchPage = ({
                     ))}
                   </select>
                 </label>
+
                 {state.moreHistory && (
                   <Button variant="ghost" size="sm" onClick={state.loadHistory}>
                     Load older attempts
                   </Button>
                 )}
+
                 <span>
                   {detail.baseline
                     ? `Last complete: ${new Date(detail.baseline.ended_at || detail.baseline.started_at).toLocaleString()}`
                     : "Complete baseline not established"}
                 </span>
+
                 <Button variant="ghost" size="sm" onClick={() => setShowDetails(!showDetails)}>
                   {showDetails ? "Hide details" : "Show details"}
                   <ChevronRight size={13} />
                 </Button>
               </div>
+
               {scan && !active && (
                 <section
                   className={`watch-coverage-banner ${scan.scan.status === "completed" ? "complete" : "partial"}`}
@@ -431,6 +480,7 @@ export const IssueWatchPage = ({
                       ? "Scan complete within the declared collection scope"
                       : `${scan.scan.status.replaceAll("_", " ")} · Coverage is incomplete`}
                   </strong>
+
                   <p>
                     {scan.scan.coverage.checked} issues checked of{" "}
                     {scan.scan.coverage.search_total ?? "unknown"} search results ·{" "}
@@ -442,12 +492,14 @@ export const IssueWatchPage = ({
                     {provisional
                       ? "Provisional results; the last complete baseline is preserved. "
                       : "GitHub search can lag and is not an atomic repository snapshot. "}
+
                     {scan.scan.semantic_attempts === 0
                       ? "GitHub-only screening · No AI usage"
                       : scan.usage.length
                         ? tokenUsage(scan.usage[0])
                         : "Semantic slot reserved · No reported usage"}
                   </small>
+
                   {scan.scan.status === "partial" && pending.length > 0 && (
                     <Button
                       size="sm"
@@ -463,6 +515,7 @@ export const IssueWatchPage = ({
                       Continue Analysis · choose candidates
                     </Button>
                   )}
+
                   {["failed", "blocked", "cancelled", "interrupted"].includes(scan.scan.status) && (
                     <Button
                       size="sm"
@@ -474,6 +527,7 @@ export const IssueWatchPage = ({
                   )}
                 </section>
               )}
+
               <div
                 className="watch-view-tabs"
                 role="tablist"
@@ -492,6 +546,7 @@ export const IssueWatchPage = ({
                     {view}
                   </button>
                 ))}
+
                 <label>
                   <input
                     type="checkbox"
@@ -501,6 +556,7 @@ export const IssueWatchPage = ({
                   Show dismissed
                 </label>
               </div>
+
               <div className="watch-view-content" role="tabpanel" aria-label={tab}>
                 {tab === "Results" ? (
                   <>
@@ -514,6 +570,7 @@ export const IssueWatchPage = ({
                       provisional={provisional}
                       showDismissed={showDismissed}
                     />
+
                     <footer className="watch-scope-note">
                       Counts include dismissed results. New matching describes eligibility history;
                       each issue retains its actual creation date. No issue is claimed or assigned
@@ -563,6 +620,7 @@ export const IssueWatchPage = ({
                             </div>
                           ))}
                         </dl>
+
                         <ul>
                           {scan.scan.coverage.warnings.map((warning, index) => (
                             <li key={index}>{warning}</li>
@@ -599,6 +657,7 @@ export const IssueWatchPage = ({
                               </small>
                             </button>
                           ))}
+
                         <p className="subtle">
                           Source hashes describe retained snapshots after shared process redaction,
                           not raw GitHub response bytes. No stale tracker set is treated as current
@@ -627,6 +686,7 @@ export const IssueWatchPage = ({
                     <Plus size={14} />
                     Create a watch
                   </Button>
+
                   <Button variant="ghost" onClick={() => state.setArchived(!state.archived)}>
                     {state.archived ? "Show active watches" : "Show archived watches"}
                   </Button>
@@ -635,6 +695,7 @@ export const IssueWatchPage = ({
             />
           )}
         </main>
+
         {showDetails && selected && scan && tab === "Results" && (
           <>
             <ResizeHandle
@@ -645,6 +706,7 @@ export const IssueWatchPage = ({
               max={700}
               reverse
             />
+
             <div className="watch-details-container" style={{ width: detailsWidth }}>
               <IssueCandidateDetails
                 watchId={state.watchId}
@@ -664,6 +726,7 @@ export const IssueWatchPage = ({
           </>
         )}
       </div>
+
       {editor && (
         <WatchEditor
           key={`${editor}:${detail?.watch.id || "new"}`}
@@ -681,6 +744,7 @@ export const IssueWatchPage = ({
           }}
         />
       )}
+
       {selection !== null && (
         <div className="modal-backdrop">
           <section
@@ -705,11 +769,13 @@ export const IssueWatchPage = ({
                 <X size={14} />
               </Button>
             </div>
+
             <p>
               This is a new explicit attempt with at most one additional {model?.provider}{" "}
               invocation using {model?.model} / {model?.effort}. Trackers and hard facts are fetched
               again; a scoped attempt preserves the full baseline.
             </p>
+
             <div className="watch-continue-list">
               {pending.map((candidate) => (
                 <label key={candidate.issue.id}>
@@ -728,15 +794,18 @@ export const IssueWatchPage = ({
                 </label>
               ))}
             </div>
+
             <p className="subtle">
               {selection.length} selected · At most{" "}
               {detail?.revision.configuration.limits.max_semantic_candidates} semantic candidates
               fit each invocation; packet limits may omit more.
             </p>
+
             <div className="modal-actions">
               <Button variant="ghost" onClick={() => setSelection(null)}>
                 Cancel
               </Button>
+
               <Button
                 variant="default"
                 disabled={busy || !selection.length}
@@ -748,6 +817,7 @@ export const IssueWatchPage = ({
           </section>
         </div>
       )}
+
       {source && (
         <div className="modal-backdrop">
           <section

@@ -5,20 +5,24 @@ select {
   font: inherit;
   border-radius: var(--radius);
 }
+
 button {
   color: inherit;
   cursor: pointer;
 }
+
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
 input,
 textarea,
 select {
@@ -32,19 +36,23 @@ select {
     border-color var(--motion-fast),
     box-shadow var(--motion-fast);
 }
+
 input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 18%, transparent);
 }
+
 input,
 textarea {
   width: 100%;
 }
+
 textarea {
   resize: vertical;
 }
+
 label {
   display: flex;
   flex-direction: column;
@@ -53,78 +61,97 @@ label {
   color: var(--text-secondary);
   font-size: 12px;
 }
+
 h1,
 h2,
 h3,
 p {
   margin: 0;
 }
+
 h1 {
   font-size: 16px;
   font-weight: 600;
 }
+
 h2 {
   font-size: 13px;
   font-weight: 600;
 }
+
 h3 {
   font-size: 12px;
   font-weight: 500;
 }
+
 p {
   line-height: 1.65;
 }
+
 code,
 .mono,
 pre {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+
 code {
   color: var(--text-secondary);
 }
+
 pre {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.6;
 }
+
 small {
   font-size: 11px;
   color: var(--muted);
 }
+
 svg {
   flex-shrink: 0;
 }
+
 summary {
   cursor: pointer;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
 }
+
 details > pre {
   margin-top: 8px;
 }
+
 .subtle,
 .muted {
   color: var(--muted);
 }
+
 .success {
   color: var(--accent-green);
 }
+
 .failure {
   color: var(--accent-red);
 }
+
 .warning {
   color: var(--accent-amber);
 }
+
 .running {
   color: var(--accent-blue);
 }
+
 .spacer {
   flex: 1;
   min-width: 0;
 }
+
 .eyebrow {
   display: none;
 }

@@ -21,16 +21,21 @@ it.each([true, false])(
         imported,
         conflict: false,
       });
+
       const { repo, session, checkpoint, source, fork, upstream, head, base, originalBase } =
         fixture;
+
       const workspaces = new RepairWorkspaces(engine.root, engine.git, (_, side) =>
         side === "head" ? fork : upstream,
       );
+
       const before = await checked("git", ["status", "--porcelain"], source);
       const sourceIndex = await readFile(join(source, ".git", "index"));
+
       expect(
         await workspaces.prepare(session, repo, checkpoint, new AbortController().signal),
       ).toBe("ready");
+
       const cwd = await workspaces.assert(session, repo);
       expect(cwd).not.toBe(source);
       expect(session.workspace.branch_owned).toBe(true);
@@ -38,40 +43,52 @@ it.each([true, false])(
       expect(session.workspace.original_base).toBe(originalBase);
       expect(session.workspace.fetched_base).toBe(base);
       expect(session.workspace.merge_commit).not.toBeNull();
+
       expect(await checked("git", ["show", "-s", "--format=%P", "HEAD"], cwd)).toBe(
         `${head} ${base}`,
       );
+
       expect(await readFile(join(cwd, "README.md"), "utf8")).toBe("Latest upstream development\n");
+
       expect(await readFile(join(source, "README.md"), "utf8")).toBe(
         "Personal dirty source checkout\n",
       );
+
       expect(await checked("git", ["status", "--porcelain"], source)).toBe(before);
       expect(await readFile(join(source, ".git", "index"))).toEqual(sourceIndex);
+
       expect(await checked("git", ["branch", "--show-current"], source)).toBe(
         "fix-translation-tests",
       );
+
       expect(await checked("git", ["rev-parse", "refs/heads/fix-translation-tests"], fork)).toBe(
         head,
       );
+
       expect(await checked("git", ["rev-parse", "refs/heads/develop"], upstream)).toBe(base);
       const integrated = await checked("git", ["rev-parse", "HEAD"], cwd);
       // A restart reconciles intent from Git; it never creates a second merge.
       session.workspace.merge_state = "intent";
       session.workspace.preparation = "merging";
       checkpoint();
+
       expect(
         await workspaces.prepare(session, repo, checkpoint, new AbortController().signal),
       ).toBe("ready");
+
       expect(await checked("git", ["rev-parse", "HEAD"], cwd)).toBe(integrated);
       const wrong = { ...repo, owner: "other" };
+
       await expect(
         workspaces.prepare(session, wrong, checkpoint, new AbortController().signal),
       ).rejects.toThrow("upstream repository");
+
       await checked(
         "git",
         ["config", "--local", `branch.${session.workspace.branch_name}.vibestarRepair`, "foreign"],
         source,
       );
+
       await expect(workspaces.assert(session, repo)).rejects.toThrow("ownership");
     } finally {
       await engine.close();
@@ -89,31 +106,39 @@ it("preserves conflicted index stages and explicitly recovers a resolved merge",
       imported: true,
       conflict: true,
     });
+
     const workspaces = new RepairWorkspaces(engine.root, engine.git, (_, side) =>
       side === "head" ? fork : upstream,
     );
+
     const signal = new AbortController().signal;
     expect(await workspaces.prepare(session, repo, checkpoint, signal)).toBe("conflict");
     expect(session.workspace.conflict_paths).toEqual(["spec.ts"]);
     expect(session.workspace.conflict_index).toContain(" 1\tspec.ts");
     expect(session.workspace.conflict_index).toContain(" 2\tspec.ts");
     expect(session.workspace.conflict_index).toContain(" 3\tspec.ts");
+
     const mergeHead = await checked(
       "git",
       ["rev-parse", "MERGE_HEAD"],
       session.workspace.worktree_path,
     );
+
     expect(await workspaces.prepare(session, repo, checkpoint, signal)).toBe("conflict");
+
     expect(await checked("git", ["rev-parse", "MERGE_HEAD"], session.workspace.worktree_path)).toBe(
       mergeHead,
     );
+
     await expect(workspaces.recoverConflict(session, repo, checkpoint, signal)).rejects.toThrow(
       "Stage resolved files",
     );
+
     await writeFile(
       join(session.workspace.worktree_path, "spec.ts"),
       "export const selectors = ['upstream', 'draft', 'publish'];\n",
     );
+
     await checked("git", ["add", "spec.ts"], session.workspace.worktree_path);
     expect(await workspaces.recoverConflict(session, repo, checkpoint, signal)).toBe("ready");
     expect(session.workspace.conflict_paths).toEqual([]);
@@ -135,25 +160,33 @@ it("rejects changed PR head and serializes registrations sharing Git metadata", 
     engine.db.saveRepository(duplicate);
     let release!: () => void;
     let entered!: () => void;
+
     const ready = new Promise<void>((resolve) => {
       entered = resolve;
     });
+
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+
     let secondEntered = false;
+
     const first = engine.git.withLock(repo.id, async () => {
       entered();
       await gate;
     });
+
     await ready;
+
     const second = engine.git.withLock(duplicate.id, async () => {
       secondEntered = true;
     });
+
     // Inspect the authoritative common lock while the first operation is live.
     expect(await readFile(join(repo.path, ".git", "HEAD"), "utf8")).toContain(
       "fix-translation-tests",
     );
+
     expect(secondEntered).toBe(false);
     release();
     await Promise.all([first, second]);
@@ -163,12 +196,15 @@ it("rejects changed PR head and serializes registrations sharing Git metadata", 
     await checked("git", ["add", "."], seed);
     await checked("git", ["commit", "-m", "new remote head"], seed);
     await checked("git", ["push", fork, "HEAD:refs/heads/fix-translation-tests"], seed);
+
     const workspaces = new RepairWorkspaces(engine.root, engine.git, (_, side) =>
       side === "head" ? fork : upstream,
     );
+
     await expect(
       workspaces.prepare(session, repo, checkpoint, new AbortController().signal),
     ).rejects.toThrow("remote PR head changed");
+
     expect(
       (
         await capture(
@@ -193,14 +229,18 @@ it("integrates the actual PR base ref even when the selected repository has a di
       conflict: false,
       baseBranch: "release/candidate",
     });
+
     repo.base_branch = "unrelated-source-default";
     engine.db.saveRepository(repo);
+
     const workspace = new RepairWorkspaces(engine.root, engine.git, (_, side) =>
       side === "head" ? fork : upstream,
     );
+
     expect(await workspace.prepare(session, repo, checkpoint, new AbortController().signal)).toBe(
       "ready",
     );
+
     expect(session.workspace.fetched_base).toBe(base);
     expect(session.identity.base.branch).toBe("release/candidate");
   } finally {
@@ -219,6 +259,7 @@ it("recovers a crash between exact-head worktree creation and its ownership chec
     session.status = "preparing";
     checkpoint();
     await mkdir(dirname(session.workspace.worktree_path), { recursive: true });
+
     await checked(
       "git",
       [
@@ -231,12 +272,16 @@ it("recovers a crash between exact-head worktree creation and its ownership chec
       ],
       repo.path,
     );
+
     await engine.close();
     engine = await createFixtureEngine(join(dir, "ade"));
+
     const workspace = new RepairWorkspaces(engine.root, engine.git, (_, side) =>
       side === "head" ? fork : upstream,
     );
+
     const store = new RepairStore(engine.db);
+
     expect(
       await workspace.prepare(
         session,
@@ -245,6 +290,7 @@ it("recovers a crash between exact-head worktree creation and its ownership chec
         new AbortController().signal,
       ),
     ).toBe("ready");
+
     expect(session.workspace.branch_owned).toBe(true);
     expect(await workspace.assert(session, repo)).toBe(session.workspace.worktree_path);
     expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
@@ -262,6 +308,7 @@ it("preserves ignored local files that an upstream merge would overwrite", async
       engine,
       dir,
     );
+
     await writeFile(join(seed, "ignored-local.txt"), "Upstream tracked content\n");
     await checked("git", ["add", "ignored-local.txt"], seed);
     await checked("git", ["commit", "-m", "upstream tracked file"], seed);
@@ -271,6 +318,7 @@ it("preserves ignored local files that an upstream merge would overwrite", async
     session.workspace.preparation = "creating";
     checkpoint();
     await mkdir(dirname(session.workspace.worktree_path), { recursive: true });
+
     await checked(
       "git",
       [
@@ -283,19 +331,24 @@ it("preserves ignored local files that an upstream merge would overwrite", async
       ],
       source,
     );
+
     await writeFile(
       join(session.workspace.worktree_path, "ignored-local.txt"),
       "Preserve my ignored data\n",
     );
+
     const workspace = new RepairWorkspaces(engine.root, engine.git, (_, side) =>
       side === "head" ? fork : upstream,
     );
+
     await expect(
       workspace.prepare(session, repo, checkpoint, new AbortController().signal),
     ).rejects.toThrow("ignored-local.txt");
+
     expect(await readFile(join(session.workspace.worktree_path, "ignored-local.txt"), "utf8")).toBe(
       "Preserve my ignored data\n",
     );
+
     expect(await checked("git", ["rev-parse", "HEAD"], session.workspace.worktree_path)).toBe(head);
   } finally {
     await engine.close();

@@ -26,16 +26,27 @@ export class Rpc {
     string,
     (method: string, input: unknown) => Promise<unknown>
   >();
+
   private readonly auth: AuthSessions;
+
   readonly scheduler: Scheduler;
+
   readonly prBatches: PRAnalysisBatches;
+
   readonly github: GitHubService;
+
   readonly issueWatch: IssueWatchService;
+
   private readonly review: ReviewService;
+
   readonly repairs: RepairService;
+
   private readonly terminals: TaskTerminals;
+
   private readonly repairTerminals: TaskTerminals;
+
   private readonly storage: StorageService;
+
   constructor(
     readonly engine: Engine,
     monitor = new GitHubMonitor(engine.root),
@@ -50,14 +61,18 @@ export class Rpc {
     this.review = new ReviewService(engine);
     this.repairs = repairs;
     this.terminals = new TaskTerminals(engine);
+
     this.repairTerminals = new TaskTerminals(engine, {
       assignment: this.repairs.assignment,
       acquire: this.repairs.acquireTerminal,
     });
+
     this.storage = new StorageService(engine);
+
     this.auth = new AuthSessions(engine.root, (event) => {
       engine.publish(event);
     });
+
     const services = {
       engine: this.engine,
       auth: this.auth,
@@ -71,6 +86,7 @@ export class Rpc {
       repairTerminals: this.repairTerminals,
       storage: this.storage,
     };
+
     for (const [methods, handler] of [
       [systemMethods, callSystem],
       [repositoriesMethods, callRepositories],
@@ -86,6 +102,7 @@ export class Rpc {
         this.handlers.set(method, (method, input) => handler(services, method, input));
     }
   }
+
   /** Keeps transport dispatch narrow; domain handlers retain validation and ownership checks. */
   call = async (method: string, input: unknown) => {
     if (method.startsWith("git."))
@@ -96,6 +113,7 @@ export class Rpc {
     if (!handler) throw new AdeError("invalid_method", `Unknown method: ${method}`);
     return handler(method, input);
   };
+
   close = async () => {
     this.auth.dispose();
     await this.finalization.close();

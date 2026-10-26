@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { PageHeader, EmptyState } from "../../components/ui/PageHeader";
 import { ScheduledAttention } from "../pull-requests/ScheduledPage";
 import { useState } from "react";
+
 export const Overview = ({
   snapshot,
   refresh,
@@ -19,6 +20,7 @@ export const Overview = ({
 }) => {
   const [archived, setArchived] = useState(false);
   const tasks = snapshot.tasks.filter((t) => archived || !t.archived);
+
   const groups = [
     {
       name: "Running agents",
@@ -31,6 +33,7 @@ export const Overview = ({
         .slice(0, 30),
     },
   ];
+
   return (
     <div className="page task-library">
       <PageHeader
@@ -41,6 +44,7 @@ export const Overview = ({
             <Button variant="ghost" onClick={() => setArchived(!archived)}>
               {archived ? "Hide archived" : "Show archived"}
             </Button>
+
             <Button variant="default" onClick={newTask}>
               <Plus size={13} />
               New task
@@ -48,9 +52,11 @@ export const Overview = ({
           </>
         }
       />
+
       {!!snapshot.attention?.length && (
         <ScheduledAttention snapshot={snapshot} refresh={refresh} open={open} />
       )}
+
       {!snapshot.tasks.length && (
         <EmptyState
           icon={<ListTodo size={26} />}
@@ -64,6 +70,7 @@ export const Overview = ({
           }
         />
       )}
+
       {groups
         .filter((g) => g.tasks.length)
         .map((group) => (
@@ -72,6 +79,7 @@ export const Overview = ({
               {group.name}
               <small>{group.tasks.length}</small>
             </h2>
+
             <div className="task-list">
               {group.tasks.map((task) => {
                 const repo = snapshot.repositories.find((r) => r.id === task.repo_id);

@@ -10,6 +10,7 @@ import {
   Clock3,
   MoreHorizontal,
 } from "lucide-react";
+
 import type { Detail, Repository, StageConfig } from "../../lib/types";
 import { defaultSettings } from "../../../backend/domain";
 import { configurationError } from "../../../backend/execution/providers/contracts";
@@ -54,12 +55,14 @@ const FutureStageSettings = ({
         config={config}
         onChange={setConfig}
       />
+
       <small>
         {detected?.connected === false
           ? "Connect the provider before execution."
           : detected?.accountLabel ||
             "Account and model availability must be confirmed by the official CLI at execution."}
       </small>
+
       <div className="actions">
         <Button
           size="sm"
@@ -72,9 +75,11 @@ const FutureStageSettings = ({
         >
           Save future stage
         </Button>
+
         <Button size="sm" disabled={busy} onClick={close}>
           Cancel
         </Button>
+
         <Button size="sm" variant="ghost" disabled={loading} onClick={() => void refresh()}>
           Refresh models
         </Button>
@@ -101,22 +106,28 @@ export const PipelineView = ({
   const [instructions, setInstructions] = useState<string[]>([]);
   const [summary, setSummary] = useState("");
   const startRequest = useRef({ signature: "", id: "" });
+
   const idle =
     !detail.active &&
     !detail.executing &&
     !activeStatuses.includes(task.status) &&
     task.status !== "queued";
+
   const config = task.execution_settings || defaultSettings;
   const [, tick] = useState(0);
+
   const running =
     ["preparing", "validating"].includes(task.status) ||
     detail.runs.some((run) => run.status === "running");
+
   useEffect(() => {
     if (!running) return;
     const timer = setInterval(() => tick((value) => value + 1), 1000);
     return () => clearInterval(timer);
   }, [running]);
+
   const verification = detailVerification(detail);
+
   const approvalStage = task.approval_gate
     ? {
         antigravity_plan: 1,
@@ -125,6 +136,7 @@ export const PipelineView = ({
         final_review: 5,
       }[task.approval_gate]
     : undefined;
+
   if (task.status === "preserved")
     return (
       <div className="engineering-panel">
@@ -147,6 +159,7 @@ export const PipelineView = ({
             <p className="subtle">
               Only selected messages and the summary below reach the workflow.
             </p>
+
             {detail.messages
               .filter(
                 (message) => message.purpose === "chat" && message.status === "chat_completed",
@@ -164,11 +177,13 @@ export const PipelineView = ({
                       )
                     }
                   />
+
                   <span>
                     {message.role === "user" ? "You" : "Agent"}: {message.content.slice(0, 240)}
                   </span>
                 </label>
               ))}
+
             <label>
               Reviewed summary or instructions
               <textarea
@@ -179,6 +194,7 @@ export const PipelineView = ({
               />
             </label>
           </details>
+
           <Button
             variant="default"
             disabled={!idle || busy}
@@ -187,8 +203,10 @@ export const PipelineView = ({
                 message_ids: instructions,
                 summary,
               });
+
               if (startRequest.current.signature !== signature)
                 startRequest.current = { signature, id: crypto.randomUUID() };
+
               void action("task.startWorkflow", {
                 id: task.id,
                 request_id: startRequest.current.id,
@@ -201,9 +219,11 @@ export const PipelineView = ({
           </Button>
         </section>
       )}
+
       {task.approval_gate && (
         <p className="warning">Approval required · {task.approval_gate.replaceAll("_", " ")}</p>
       )}
+
       <ol className="pipeline-stages">
         {stages.slice(0, 6).map((label, stage) => {
           const run = [...detail.runs]
@@ -218,6 +238,7 @@ export const PipelineView = ({
                   "Read-only conversation",
                 ].includes(run.purpose || ""),
             );
+
           const saved =
             task.stage_settings?.[stage as 1 | 2 | 3 | 5] ||
             (stage === 5
@@ -227,6 +248,7 @@ export const PipelineView = ({
                 : stage === 2
                   ? config?.codex_plan
                   : config?.codex_implementation);
+
           const status =
             task.status === "not_started"
               ? "not_started"
@@ -258,6 +280,7 @@ export const PipelineView = ({
                             : stage < task.stage
                               ? "unknown"
                               : "not_started";
+
           const tone =
             status === "completed"
               ? "success"
@@ -268,6 +291,7 @@ export const PipelineView = ({
                   : ["awaiting_approval", "blocked", "unknown"].includes(status)
                     ? "warning"
                     : "muted";
+
           const Icon =
             status === "completed"
               ? CheckCircle2
@@ -284,6 +308,7 @@ export const PipelineView = ({
                         : ["cancelled", "interrupted"].includes(status)
                           ? CircleSlash
                           : Circle;
+
           return (
             <li
               key={stage}
@@ -300,16 +325,19 @@ export const PipelineView = ({
               <span className={`pipeline-icon ${tone}`} aria-hidden="true">
                 <Icon size={18} className={status === "running" ? "spinning" : ""} />
               </span>
+
               <div className="pipeline-stage-heading">
                 <strong>
                   {stage === 4 && task.stage >= 4 && verification.outcome === "blocked"
                     ? "Verification incomplete"
                     : label}
                 </strong>
+
                 <small className={tone}>
                   {status === "unknown" ? "Evidence unavailable" : status.replaceAll("_", " ")}
                 </small>
               </div>
+
               {stage === 0 && (
                 <p>
                   Host ·{" "}
@@ -319,6 +347,7 @@ export const PipelineView = ({
                     : "Duration unavailable"}
                 </p>
               )}
+
               {[1, 2, 3, 5].includes(stage) && (
                 <p>
                   {run?.provider || ([1, 5].includes(stage) ? "Antigravity" : "Codex")} ·{" "}
@@ -329,6 +358,7 @@ export const PipelineView = ({
                     : " · saved stage configuration"}
                 </p>
               )}
+
               {stage === 5 && task.final_review_verdict && (
                 <p>
                   {
@@ -342,6 +372,7 @@ export const PipelineView = ({
                   }
                 </p>
               )}
+
               {stage === 4 && task.stage >= 4 && (
                 <p className="pipeline-current-action">
                   {
@@ -362,17 +393,21 @@ export const PipelineView = ({
                           test.command ===
                             JSON.stringify(["git", "diff", "--check", task.base_commit_sha, "--"]),
                       );
+
                     return host?.ended_at ? ` · ${duration(host.started_at, host.ended_at)}` : "";
                   })()}
                 </p>
               )}
+
               {run && status === "running" && (
                 <p className="pipeline-current-action">{runActivity(detail.events, run)}</p>
               )}
+
               <details className="pipeline-stage-actions">
                 <summary aria-label={`Actions for ${label}`}>
                   <MoreHorizontal size={15} />
                 </summary>
+
                 <div className="actions">
                   <Button
                     size="sm"
@@ -387,12 +422,14 @@ export const PipelineView = ({
                         updateTaskView(task.id, {
                           outputRun: run?.id || "preparation",
                         });
+
                         openWorkspaceTool(task.id, "run-details");
                       }
                     }}
                   >
                     Inspect
                   </Button>
+
                   {stage > 0 &&
                     stage <= Math.min(task.stage, 5) &&
                     status !== "awaiting_approval" && (
@@ -405,6 +442,7 @@ export const PipelineView = ({
                         {stage === 4 ? "Recheck saved evidence" : "Retry stage"}
                       </Button>
                     )}
+
                   {[1, 2, 3, 5].includes(stage) && !run && stage >= task.stage && (
                     <Button
                       size="sm"
@@ -417,6 +455,7 @@ export const PipelineView = ({
                   )}
                 </div>
               </details>
+
               {editing === stage && idle && !run && saved && (
                 <FutureStageSettings
                   stage={stage}
@@ -437,6 +476,7 @@ export const PipelineView = ({
           );
         })}
       </ol>
+
       {task.stage >= 4 &&
         (task.stage === 4 ||
           task.final_review_verdict === "changes_requested" ||
@@ -451,17 +491,20 @@ export const PipelineView = ({
             inspect={() => openWorkspaceTool(task.id, "tests")}
           />
         )}
+
       <p className="subtle">
         Stage settings were saved with this task. Completed runs show their effective model and
         effort. Composer model choices apply to the next explicit question or code-changing
         follow-up.
       </p>
+
       <div className="actions">
         {["ready_for_review", "completed"].includes(task.status) && (
           <Button disabled={!idle || busy} onClick={finalize}>
             Git Finalization
           </Button>
         )}
+
         {![
           "completed",
           "awaiting_approval",
@@ -475,6 +518,7 @@ export const PipelineView = ({
             Resume
           </Button>
         )}
+
         {task.status !== "not_started" && (
           <Button
             variant="ghost"
@@ -517,11 +561,13 @@ export const RunDetailsView = ({
           ))}
         </select>
       </label>
+
       {run && (
         <>
           <p>
             {run.provider} · {run.model || "Official CLI default"} · {run.effort}
           </p>
+
           <p>
             {run.status} · {duration(run.started_at, run.ended_at)} · exit{" "}
             {run.exit_code ?? "unreported"}
@@ -548,6 +594,7 @@ export const RunDetailsView = ({
           </details>
         </>
       )}
+
       <Button size="sm" onClick={prompts}>
         View sent prompts
       </Button>

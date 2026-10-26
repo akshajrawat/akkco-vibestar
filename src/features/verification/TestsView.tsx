@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Play, SquareTerminal } from "lucide-react";
+
 import type { Detail } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { parseArgv } from "./commands";
@@ -8,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { VerificationSummary } from "./VerificationSummary";
 import { BrowserEnvironment } from "./BrowserEnvironment";
 import { VerificationRecovery } from "./VerificationRecovery";
+
 export const TestsView = ({
   detail,
   onError,
@@ -22,9 +24,11 @@ export const TestsView = ({
   const [commandId, setCommandId] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const result = [...detail.artifacts].reverse().find((a) => a.stage === 3 && a.kind === "plan");
+
   const finalReview = [...detail.artifacts]
     .reverse()
     .find((a) => a.stage === 5 && a.kind === "plan");
+
   const review = finalReview ? (JSON.parse(finalReview.content) as Record<string, string[]>) : null;
   const report = result ? (JSON.parse(result.content) as Record<string, string[]>) : null;
   return (
@@ -37,9 +41,11 @@ export const TestsView = ({
         }}
         terminal={terminal}
       />
+
       {detail.task.stage >= 4 && (
         <VerificationRecovery detail={detail} onError={onError} disabled={busy} />
       )}
+
       <details
         open={advanced}
         onToggle={(event) => setAdvanced(event.currentTarget.open)}
@@ -51,11 +57,13 @@ export const TestsView = ({
           unavailable={busy || !!detail.active || !!detail.executing}
           onError={onError}
         />
+
         <div className="cwd-banner">
           <SquareTerminal size={14} />
           <span>All commands execute in</span>
           <code>{detail.task.worktree_path}</code>
         </div>
+
         {detail.task.runtime && (
           <details
             className="runtime-summary"
@@ -65,21 +73,25 @@ export const TestsView = ({
             <p>
               Python: <code>{detail.task.runtime.python || "System interpreter"}</code>
             </p>
+
             <p>
               Read-only source dependencies:{" "}
               {detail.task.runtime.dependencies.join(", ") || "None connected"}
             </p>
+
             {detail.task.runtime.warnings.map((warning) => (
               <p className="warning" key={warning}>
                 {warning}
               </p>
             ))}
+
             <p className="subtle">
               Skipped checks have not passed. Missing dependencies and blocked commands remain
               unverified.
             </p>
           </details>
         )}
+
         <details className="manual-command">
           <summary>Run a validation command</summary>
           <form
@@ -103,6 +115,7 @@ export const TestsView = ({
               Manual command · executable and argv JSON
               <input className="mono" value={argv} onChange={(e) => setArgv(e.target.value)} />
             </label>
+
             <Button type="submit" disabled={busy}>
               <Play size={12} />
               {busy ? "Running…" : "Run in worktree"}
@@ -124,6 +137,7 @@ export const TestsView = ({
                         : "Skipped"}{" "}
                     <small>provider reported</small>
                   </h3>
+
                   {report[key]?.length ? (
                     report[key].map((test, i) => <p key={i}>{test}</p>)
                   ) : (
@@ -133,6 +147,7 @@ export const TestsView = ({
               ))}
             </div>
           )}
+
           {review && (
             <div className="test-report">
               {(["testsRun", "testsNotRun"] as const).map((key) => (
@@ -141,6 +156,7 @@ export const TestsView = ({
                     Final review · {key === "testsRun" ? "Executed" : "Not run"}{" "}
                     <small>provider reported</small>
                   </h3>
+
                   {review[key]?.length ? (
                     review[key].map((test, i) => <p key={i}>{test}</p>)
                   ) : (

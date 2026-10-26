@@ -1,5 +1,7 @@
 import { expect, it } from "vitest";
+
 import { runInNewContext } from "node:vm";
+
 import { browserEnvironmentProbe } from "../../backend/execution/verification/browser/probe";
 import { BrowserEnvironmentReportSchema } from "../../backend/execution/verification/browser/contracts";
 import { verificationSummary } from "../../backend/execution/verification/verification";
@@ -19,6 +21,7 @@ const probe = async (
   let errorHandler = (error: Error) => {
     throw error;
   };
+
   const server = {
     listening: false,
     once: (_event: string, callback: typeof errorHandler) => {
@@ -38,6 +41,7 @@ const probe = async (
       callback();
     },
   };
+
   const playwright = {
     chromium: {
       launch: async () => {
@@ -57,6 +61,7 @@ const probe = async (
       },
     },
   };
+
   const modules = new Map<string, unknown>([
     [
       "node:fs/promises",
@@ -82,6 +87,7 @@ const probe = async (
             if (options.dns === false) throw new Error("getaddrinfo EAI_AGAIN registry.npmjs.org");
             return ["127.0.0.1"];
           };
+
           cancel = () => {};
         },
       },
@@ -90,6 +96,7 @@ const probe = async (
     ["node:url", await import("node:url")],
     ["/fixture/playwright-core", playwright],
   ]);
+
   const require = Object.assign(
     (name: string) => {
       if (!modules.has(name)) throw new Error(`Unexpected probe capability: ${name}`);
@@ -103,6 +110,7 @@ const probe = async (
       },
     },
   );
+
   await runInNewContext(browserEnvironmentProbe, {
     require,
     process: {
@@ -127,6 +135,7 @@ const probe = async (
     setTimeout,
     clearTimeout,
   });
+
   expect(stderr).toBe("");
   expect(server.listening).toBe(false);
   return BrowserEnvironmentReportSchema.parse(JSON.parse(stdout));
@@ -134,11 +143,13 @@ const probe = async (
 
 it("reuses available browser tooling and verifies direct-file/HTTP fixtures even when registry DNS is blocked", async () => {
   const report = await probe({ dns: false });
+
   expect(report).toMatchObject({
     dns: { outcome: "blocked" },
     direct_file: { outcome: "available" },
     http: { outcome: "available" },
   });
+
   expect(report.packages).toHaveLength(1);
   expect(report.note).toContain("does not verify the application");
 });
@@ -154,6 +165,7 @@ it("keeps direct-file capability independent of denied HTTP sockets", async () =
 it("reports absent packages, binaries and launch failures without any installation capability", async () => {
   expect((await probe({ package: false })).direct_file.outcome).toBe("unavailable");
   expect((await probe({ browser: false })).browsers).toEqual([]);
+
   expect((await probe({ launch: false })).direct_file).toMatchObject({
     outcome: "blocked",
     detail: expect.stringContaining("Executable doesn't exist"),
@@ -170,6 +182,7 @@ it("never promotes required or optional application checks based on a successful
     detail: "Not executed",
     prerequisite: "Browser",
   }));
+
   const result = verificationSummary({ verification: checks }, [
     {
       id: "probe",
@@ -178,6 +191,7 @@ it("never promotes required or optional application checks based on a successful
       exit_code: 0,
     },
   ]);
+
   expect(result).toMatchObject({ outcome: "blocked", canReview: false });
   expect(result.checks.filter((check) => check.outcome === "passed")).toEqual([]);
 });

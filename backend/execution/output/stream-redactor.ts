@@ -17,20 +17,31 @@ const fields = [
   "cookie",
   "set-cookie",
 ];
+
 const tokens = ["sk-", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_", "ya29."];
 const prefixes = [...fields, ...tokens];
 
 export class StreamRedactor {
   private input = "";
+
   private pending: { raw: string; value: string }[] = [];
+
   private mode: "plain" | "separator" | "value" | "token" | "opaque" = "plain";
+
   private field = "";
+
   private separated = false;
+
   private scheme = "";
+
   private firstWord = true;
+
   private afterScheme = false;
+
   private osc = false;
+
   private output = "";
+
   private previous = "";
 
   private consume = (raw: string, value: string) => {
@@ -38,6 +49,7 @@ export class StreamRedactor {
       if (!/^[\r\n]$/.test(value)) return;
       this.mode = "plain";
     }
+
     if (!value) {
       if (this.pending.length) {
         if (this.pending.length >= 64) {
@@ -48,10 +60,12 @@ export class StreamRedactor {
       } else this.output += raw;
       return;
     }
+
     if (this.mode === "token") {
       if (/^[a-z0-9_.-]$/i.test(value)) return;
       this.mode = "plain";
     }
+
     if (this.mode === "value") {
       if (this.afterScheme && /^[ \t]$/.test(value)) return;
       this.afterScheme = false;
@@ -67,12 +81,14 @@ export class StreamRedactor {
           this.afterScheme = true;
           return;
         }
+
         this.mode = "plain";
       } else {
         if (this.scheme.length < 16) this.scheme += value;
         return;
       }
     }
+
     if (this.mode === "separator") {
       if (/^[ \t"':=]$/.test(value)) {
         this.separated = true;
@@ -80,6 +96,7 @@ export class StreamRedactor {
         this.previous = value;
         return;
       }
+
       if (this.separated && !/^[\r\n,;}\]]$/.test(value)) {
         this.output += "[REDACTED]";
         this.mode = "value";
@@ -88,14 +105,17 @@ export class StreamRedactor {
         this.afterScheme = false;
         return;
       }
+
       this.mode = "plain";
     }
+
     this.pending.push({ raw, value });
     while (this.pending.length) {
       const text = this.pending
         .map((unit) => unit.value)
         .join("")
         .toLowerCase();
+
       const candidates = /[a-z0-9_]/i.test(this.previous) ? fields : prefixes;
       if (candidates.includes(text) && tokens.includes(text)) {
         this.output += "[REDACTED]";
@@ -103,6 +123,7 @@ export class StreamRedactor {
         this.mode = "token";
         return;
       }
+
       if (fields.includes(text)) {
         this.output += this.pending.map((unit) => unit.raw).join("");
         this.pending = [];
@@ -112,6 +133,7 @@ export class StreamRedactor {
         this.mode = "separator";
         return;
       }
+
       if (candidates.some((prefix) => prefix.startsWith(text))) return;
       const unit = this.pending.shift()!;
       this.output += unit.raw;
@@ -134,10 +156,12 @@ export class StreamRedactor {
           this.input = remaining.endsWith("\x1b") ? "\x1b" : "";
           break;
         }
+
         this.osc = false;
         offset += end + (remaining[end] === "\x07" ? 1 : 2);
         continue;
       }
+
       if (remaining[0] === "\x1b") {
         const ansi = remaining.match(/^\x1b\[[0-?]*[ -/]*[@-~]/)?.[0];
         if (ansi) {
@@ -145,42 +169,51 @@ export class StreamRedactor {
           offset += ansi.length;
           continue;
         }
+
         if (remaining.length < 256 && (remaining.length === 1 || remaining.startsWith("\x1b["))) {
           this.input = remaining;
           break;
         }
+
         offset += Math.min(remaining.length, remaining.startsWith("\x1b[") ? 256 : 2);
         continue;
       }
+
       if (remaining[0] === "\\") {
         const length = remaining[1] === "u" ? 6 : remaining[1] === "x" ? 4 : 2;
         if (remaining.length < length) {
           this.input = remaining;
           break;
         }
+
         const escaped = remaining.slice(0, length);
         if (/^\\u[\da-f]{4}$/i.test(escaped) || /^\\x[\da-f]{2}$/i.test(escaped)) {
           this.consume(escaped, String.fromCharCode(parseInt(escaped.slice(2), 16)));
           offset += length;
           continue;
         }
+
         if (length === 2) {
           const value =
             ({ n: "\n", r: "\r", t: "\t" } as Record<string, string>)[escaped[1]] || escaped[1];
+
           this.consume(escaped, value);
           offset += 2;
           continue;
         }
       }
+
       const point = text.codePointAt(offset)!;
       if (point >= 0xd800 && point <= 0xdbff && offset + 1 === text.length) {
         this.input = text[offset];
         break;
       }
+
       const value = String.fromCodePoint(point);
       this.consume(value, value);
       offset += value.length;
     }
+
     return this.output;
   };
 
@@ -191,6 +224,7 @@ export class StreamRedactor {
       : this.pending.length || this.input
         ? "[REDACTED]"
         : "";
+
     this.pending = [];
     this.input = "";
     this.mode = "plain";

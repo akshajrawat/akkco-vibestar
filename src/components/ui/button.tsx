@@ -2,7 +2,9 @@ import type { ComponentProps } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+
 import { cn } from "../../lib/utils";
+
 const variants = cva("button", {
   variants: {
     variant: {
@@ -16,6 +18,7 @@ const variants = cva("button", {
   },
   defaultVariants: { variant: "secondary", size: "default" },
 });
+
 export const Button = ({
   className,
   variant,
