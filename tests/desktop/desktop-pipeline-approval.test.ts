@@ -193,7 +193,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
       await page.locator(".secondary-content").getByText("remote CI", { exact: true }).waitFor();
       await page.screenshot({ path: join(evidence, "final-review.png") });
       await page.getByRole("button", { name: "Accept review", exact: true }).click();
-      await page.getByRole("button", { name: "Git Finalization" }).waitFor();
+      await page.getByRole("button", { name: "Git Changes" }).waitFor();
       await page.getByRole("tab", { name: "Changes", exact: true }).click();
       await page.getByRole("button", { name: "Open full diff review", exact: true }).click();
       await page.getByLabel("Task changes").getByText("A", { exact: true }).waitFor();

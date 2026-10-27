@@ -76,7 +76,7 @@ const safeKey = (key: string) =>
   /^(?:core\.(?:repositoryformatversion|bare|worktree|logallrefupdates|filemode|ignorecase|symlinks|precomposeunicode|protecthfs|protectntfs|quotepath|autocrlf|eol|safecrlf|checkstat|trustctime|untrackedcache|ignorestat|abbrev|bigfilethreshold|compression|loosecompression|packedgitlimit|packedgitwindowsize|deltabasecachelimit)|extensions\.(?:objectformat|worktreeconfig|refstorage|partialclone)|user\.(?:name|email)|init\.defaultbranch)$/.test(
     key,
   ) ||
-  /^branch\..+\.(?:remote|merge|rebase|description|vibestartask|vibestarrepair|vibestarfinalization)$/.test(
+  /^branch\..+\.(?:remote|merge|rebase|description|vscode-merge-base|vibestartask|vibestarrepair|vibestarfinalization)$/.test(
     key,
   ) ||
   /^remote\..+\.(?:url|pushurl|fetch|push|tagopt|promisor|partialclonefilter)$/.test(key) ||
@@ -125,6 +125,25 @@ const inspectConfiguration = async (request: GitRequest) => {
     for (const entry of result.stdout.split("\0").filter(Boolean)) {
       const key = entry.split("\n", 1)[0].toLowerCase();
       if (!safeKey(key)) throw refusal(key);
+
+      // VS Code stores a branch reference here. This is inert editor metadata,
+      // not permission to accept other branch options or executable Git settings.
+      if (/^branch\..+\.vscode-merge-base$/.test(key)) {
+        const separator = entry.indexOf("\n");
+        if (separator < 0) throw refusal(key);
+        const value = entry.slice(separator + 1);
+        if (value.length > 1024 || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(value)) throw refusal(key);
+
+        const reference = await execute({
+          program: "git",
+          args: ["check-ref-format", `refs/heads/${value}`],
+          cwd: request.cwd,
+          signal: request.signal,
+          gitEnvironment: true,
+        });
+
+        if (reference.code !== 0) throw refusal(key);
+      }
 
       partialClone ||=
         key === "extensions.partialclone" ||

@@ -68,7 +68,7 @@
 .workspace-tabs > button.selected,
 .dock-tabs > button.selected {
   color: var(--text-primary);
-  box-shadow: inset 0 -1px var(--accent-blue);
+  box-shadow: inset 0 -1px var(--text-secondary);
 }
 
 .workspace-tabs button small {

@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { parseLabelInput } from "./labels";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 
 export const LabelExclusions = ({
   repository,
@@ -75,7 +76,6 @@ export const LabelExclusions = ({
         Excluded labels
         <input
           aria-label="Excluded labels"
-          list="watch-label-catalog"
           value={input}
           placeholder="Label name or GitHub label link"
           onChange={(event) => setInput(event.target.value)}
@@ -87,6 +87,11 @@ export const LabelExclusions = ({
             }
           }}
           onKeyDown={(event) => {
+            if (event.key === "Backspace" && !input && labels.length) {
+              event.preventDefault();
+              change(labels.slice(0, -1));
+            }
+
             if (event.key === "Enter" || event.key === ",") {
               event.preventDefault();
               if (input.trim()) add(input);
@@ -95,11 +100,25 @@ export const LabelExclusions = ({
         />
       </label>
 
-      <datalist id="watch-label-catalog">
-        {(catalog.repository === repository ? catalog.labels : []).map((label) => (
-          <option key={label} value={label} />
-        ))}
-      </datalist>
+      {catalog.repository === repository && catalog.labels.length > 0 && (
+        <Select
+          label="GitHub label suggestions"
+          searchable
+          value=""
+          options={[
+            { value: "", label: "Choose a GitHub label" },
+            ...catalog.labels
+              .filter(
+                (label) =>
+                  !labels.some((selected) => selected.toLowerCase() === label.toLowerCase()),
+              )
+              .map((label) => ({ value: label, label })),
+          ]}
+          onChange={(label) => {
+            if (label) add(label);
+          }}
+        />
+      )}
 
       <div className="label-chips">
         {labels.map((label) => (
@@ -107,7 +126,7 @@ export const LabelExclusions = ({
             {label}
             <Button
               variant="ghost"
-              size="icon"
+              className="label-chip-remove"
               aria-label={`Remove label ${label}`}
               onClick={() => change(labels.filter((item) => item !== label))}
             >

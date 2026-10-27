@@ -6,6 +6,7 @@ import { detailVerification } from "../../lib/verification";
 import { verificationRecoveryChecks } from "../../../backend/execution/verification/verification-recovery";
 import type { Engine } from "../../../backend/execution/engine";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { containDialogFocus } from "../../lib/keyboard";
 import { BrowserEnvironment } from "./BrowserEnvironment";
@@ -288,16 +289,19 @@ const RecoveryDialog = ({
                 {pending.length > 0 && (
                   <label>
                     Saved instructions
-                    <select
+                    <Select
+                      label="Saved instructions"
                       value={instructions}
-                      onChange={(event) => setInstructions(event.target.value)}
-                    >
-                      <option value="">
-                        Choose what to do with {pending.length} saved instructions
-                      </option>
-                      <option value="keep_saved">Keep saved</option>
-                      <option value="include_next_stage">Include in independent review</option>
-                    </select>
+                      onChange={setInstructions}
+                      options={[
+                        {
+                          value: "",
+                          label: `Choose what to do with ${pending.length} saved instructions`,
+                        },
+                        { value: "keep_saved", label: "Keep saved" },
+                        { value: "include_next_stage", label: "Include in independent review" },
+                      ]}
+                    />
                   </label>
                 )}
 

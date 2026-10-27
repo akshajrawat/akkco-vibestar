@@ -89,6 +89,13 @@ const ignored = new Set([
   "build",
   "target",
   "vendor",
+  "coverage",
+  "test-results",
+  "playwright-report",
+  "tmp",
+  "temp",
+  "tests",
+  "__tests__",
   ".akkco-ade",
   ".akkco-vibestar",
 ]);
@@ -182,7 +189,7 @@ export class RepositoryIndex {
     };
   };
 
-  verifyLocal = async (input: z.infer<typeof LocalRepositoryInput>, allowManaged = false) => {
+  private resolveLocalPath = async (input: z.infer<typeof LocalRepositoryInput>) => {
     const p = LocalRepositoryInput.parse(input);
     let executionPath = p.path;
     if (p.environment === "windows") {
@@ -204,6 +211,17 @@ export class RepositoryIndex {
     const path = await realpath(discoveryRoot(executionPath));
     if (discoveryRoot(path) !== path)
       throw new AdeError("invalid_input", "Invalid repository location.");
+    return path;
+  };
+
+  locateLocal = async (input: z.infer<typeof LocalRepositoryInput>) => {
+    const path = await this.resolveLocalPath(input);
+    return this.db.repositories().find((repository) => repository.path === path) || null;
+  };
+
+  verifyLocal = async (input: z.infer<typeof LocalRepositoryInput>, allowManaged = false) => {
+    const p = LocalRepositoryInput.parse(input);
+    const path = await this.resolveLocalPath(p);
     const local = await this.inspect(path, undefined, allowManaged);
     if (local.path !== path)
       throw new AdeError("invalid_input", `Choose the repository root: ${local.path}`);
@@ -295,7 +313,18 @@ export class RepositoryIndex {
     allowManaged = false,
   ): Promise<LocalRepository> => {
     const top = await realpath(await gitChecked(["rev-parse", "--show-toplevel"], path, signal));
-    if (!allowManaged && (inside(this.root, top) || top === this.root))
+
+    const common = await realpath(
+      resolve(top, await gitChecked(["rev-parse", "--git-common-dir"], top, signal)),
+    );
+
+    if (
+      !allowManaged &&
+      (inside(this.root, top) ||
+        top === this.root ||
+        inside(this.root, common) ||
+        common === this.root)
+    )
       throw new AdeError("isolation", "Vibestar-managed directories cannot be imported.");
 
     const git = async (args: string[]) => {
@@ -387,7 +416,14 @@ export class RepositoryIndex {
 
     const roots = [
       ...new Set(
-        [...settings.roots, ...(settings.scan_home ? ["~"] : [])].map((r) => discoveryRoot(r)),
+        [
+          ...settings.roots,
+          ...this.db
+            .repositories()
+            .filter((r) => r.source === "imported")
+            .map((r) => r.path),
+          ...(settings.scan_home ? ["~"] : []),
+        ].map((r) => discoveryRoot(r)),
       ),
     ];
 
@@ -416,6 +452,9 @@ export class RepositoryIndex {
             row.isDirectory() &&
             !row.isSymbolicLink() &&
             !ignored.has(row.name) &&
+            !/^vibestar-(?:chat-workspace|gate-desktop|pr-repair-desktop|.*-fixture)-/.test(
+              row.name,
+            ) &&
             !row.name.startsWith(".")
           )
             await visit(join(actual, row.name), depth + 1);

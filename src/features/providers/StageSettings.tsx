@@ -3,6 +3,8 @@ import {
   supportedEfforts,
   configurationError,
 } from "../../../backend/execution/providers/contracts";
+import { Select } from "../../components/ui/Select";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
 
 export const AgentConfiguration = ({
   config,
@@ -28,15 +30,17 @@ export const AgentConfiguration = ({
   const error = detected?.models.length ? configurationError(detected, config) : null;
   return (
     <section className="config-block">
-      <h3>{label}</h3>
+      <h3>
+        <ProviderIcon provider={provider} size={20} /> {label}
+      </h3>
       <label>
         Model
-        <select
+        <Select
           id={`${id}-models`}
-          aria-label="Model"
+          label="Model"
+          searchable
           value={config.model}
-          onChange={(e) => {
-            const model = e.target.value;
+          onChange={(model) => {
             const available = supportedEfforts(detected, model);
 
             onChange({
@@ -47,43 +51,55 @@ export const AgentConfiguration = ({
                 : available[0] || config.effort,
             });
           }}
-        >
-          <option value="" disabled={!allowDefault}>
-            {allowDefault ? "Official CLI default" : "Select a discovered model"}
-          </option>
-
-          {config.model && !detected?.models.some((m) => m.id === config.model) && (
-            <option value={config.model}>{config.model} · availability not confirmed</option>
-          )}
-
-          {detected?.models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label || m.id}
-            </option>
-          ))}
-        </select>
+          options={[
+            {
+              value: "",
+              label: allowDefault ? "Official CLI default" : "Select a discovered model",
+              disabled: !allowDefault,
+            },
+            ...(config.model && !detected?.models.some((m) => m.id === config.model)
+              ? [
+                  {
+                    value: config.model,
+                    label: config.model,
+                    description: "Availability unconfirmed",
+                  },
+                ]
+              : []),
+            ...(detected?.models.map((m) => ({
+              value: m.id,
+              label: m.label || m.id,
+              icon: <ProviderIcon provider={provider} model={m.id} />,
+            })) || []),
+          ]}
+        />
       </label>
 
       <label>
         Reasoning / effort
-        <select
+        <Select
+          label="Reasoning / effort"
           value={config.effort}
-          onChange={(e) => onChange({ ...config, effort: e.target.value })}
-        >
-          {!efforts.includes(config.effort) && (
-            <option value={config.effort}>
-              {config.effort} {detected ? "(unsupported or unknown)" : "(models not loaded)"}
-            </option>
-          )}
-
-          {efforts.map((e) => (
-            <option key={e}>{e}</option>
-          ))}
-        </select>
+          onChange={(effort) => onChange({ ...config, effort })}
+          options={[
+            ...(!efforts.includes(config.effort)
+              ? [
+                  {
+                    value: config.effort,
+                    label: config.effort,
+                    description: detected ? "Unsupported or unknown" : "Models not loaded",
+                  },
+                ]
+              : []),
+            ...efforts.map((effort) => ({ value: effort, label: effort })),
+          ]}
+        />
       </label>
 
       <label>
-        Timeout (seconds)
+        <span>
+          Timeout <small>(seconds)</small>
+        </span>
         <input
           type="number"
           min={10}

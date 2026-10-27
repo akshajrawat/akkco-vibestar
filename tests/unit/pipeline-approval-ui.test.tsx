@@ -195,15 +195,17 @@ it("populates actual model selectors and supported efforts in New Task", async (
   });
 
   render(<NewTask close={vi.fn()} created={vi.fn()} />);
-  expect(await screen.findAllByText("Gemini fixture · Low")).toHaveLength(2);
+  await screen.findByText(/Models and efforts come from/);
+  fireEvent.click(screen.getByText("Agent configuration"));
 
   const models = screen
     .getAllByRole("combobox", { hidden: true })
     .filter((e) => e.id.endsWith("-models"));
 
   expect(models).toHaveLength(4);
-  fireEvent.change(models[0], { target: { value: "gemini-fixture-low" } });
-  expect((models[0] as HTMLSelectElement).value).toBe("gemini-fixture-low");
+  fireEvent.click(models[0]);
+  fireEvent.click(screen.getByRole("option", { name: "Gemini fixture · Low" }));
+  expect(models[0].textContent).toContain("Gemini fixture · Low");
   expect(screen.queryByText(/discovering/)).toBeNull();
   expect(screen.getByText(/discovery does not run AI/)).toBeTruthy();
 });

@@ -132,6 +132,14 @@ dependencies and recognized toolchains can be mounted read-only; they are not co
 or installed automatically. Read-only planning/review cannot modify source or Git.
 External editors operate under the user's own environment and do not share sandbox mounts.
 
+Repository discovery searches configured project folders and known imported sources.
+Home scanning is an explicit advanced option. Traversal skips temporary, generated,
+dependency and managed trees; an explicit location can still name a legitimate
+checkout under a temporary folder. Physical paths and Git common directories keep
+managed task worktrees out of external-import candidates.
+A read-only canonical-path lookup selects known registrations, including aliases,
+before the external-import flow; it grants no import or execution capability.
+
 ## Persistence and recovery
 
 `backend/storage/database.ts` owns SQLite with WAL, foreign keys and validated
@@ -202,11 +210,19 @@ Optional hook validation/execution lives in `finalization/hooks.ts`; mandatory h
 Unrelated source/task index entries survive. Subsets or changed content require a
 fresh review; ignored/unsafe/credential-bearing content remains unselectable.
 
-Publication separately verifies repository/fork identity, current permission,
+Publication separately verifies source repository or contribution-fork identity, current permission,
 review fingerprint, required verification, exact destination/ref and remote SHA.
 `backend/workspace/publication.ts` independently proves immutable fast-forward
-ancestry and applies an exact compare-and-swap ref lease. It refuses upstream or
-non-fast-forward publication. Ambiguous network outcomes require read-only reconciliation.
+ancestry and applies an exact compare-and-swap ref lease. Direct source publication
+requires fresh authenticated write permission; other destinations must prove their
+fork relationship. Non-fast-forward publication is refused. Ambiguous network outcomes
+require read-only reconciliation. A strictly validated destination preflight is read-only;
+combined commit/push still calls the existing approval, commit, prepare and publish guards.
+
+Managed destination configuration verifies current GitHub identity, write permission
+and source/fork relationship before changing local remotes under repository and task
+leases. The bridge negotiates this mutation separately. Imported checkouts instead
+select existing verified remotes; configuration never authorizes publication.
 
 Contributor Husky hooks are optional quality checks. Their installer preserves
 existing hook policies, refuses linked hook directories and skips linked worktrees. Application hooks run only through
@@ -216,10 +232,19 @@ the existing sandboxed policy; skipping them never skips mandatory host authoriz
 
 `src/app` owns composition and navigation. `src/features` groups tasks, chat,
 workflow, verification, repositories, pull requests/repair, Issue Watch, finalization,
-providers, settings and usage. Git Finalization uses a task-local controller hook and
-separate files, commit/publication and operation-output views without changing its DOM or authority. Shared primitives live in `components/ui`; shared
-workspace and diff controls live in `components/shared` and `components/diff`.
-Reusable hooks live in `src/hooks`; feature hooks stay with their owners.
+providers, settings and usage. Git Changes uses a task-local controller hook and
+separate views for selected-file review and commit/push operations. Review is
+accessible from Changes; the shared controller preserves literal path selection
+between views. Existing core review and publication guards remain authoritative.
+
+Issue Watch presents a saved-topic overview and dedicated results, with local sorting
+across classifications. Its compact availability display downgrades provisional or
+historical positive claims; opening and sorting remain read-only. Matching issues
+appear by default, with exclusions accessible through All results.
+
+Shared primitives live in `components/ui`; shared workspace and diff controls live
+in `components/shared` and `components/diff`. Reusable hooks live in `src/hooks`;
+feature hooks stay with their owners.
 
 `src/lib/api.ts` owns transport and error presentation. Display formatting lives in
 `lib/format.ts`; chat event decoding and verification argv parsing live in their
@@ -231,6 +256,10 @@ selected-code review contracts and history remain intact.
 fonts, controls, feature rules and later refinements preserve the original cascade,
 focus, responsive, motion and reduced-motion behavior. Font URLs resolve to bundled
 Geist assets; its OFL notice is copied from `public` into the production renderer.
+Shared controlled pickers provide search, keyboard selection, viewport containment
+and focus return. Neutral selection and focus tokens are independent of semantic
+status colors. Provider/model marks use local licensed assets with functional fallbacks;
+model vendor identity never replaces the identity of the actual connected CLI.
 
 ## Extension and verification discipline
 

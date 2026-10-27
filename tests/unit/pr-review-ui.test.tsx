@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { selectValue } from "../helpers/select";
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 
@@ -220,9 +221,7 @@ it("merges duplicate discoveries, filters saved metadata and retains rows after 
   fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
   expect(screen.getByRole("button", { name: discoveredPR.title })).toBeTruthy();
 
-  fireEvent.change(screen.getByLabelText("Filter by status"), {
-    target: { value: "MERGED" },
-  });
+  selectValue(screen.getByLabelText("Filter by status"), "MERGED");
 
   expect(screen.queryByRole("button", { name: discoveredPR.title })).toBeNull();
   expect(rpc).not.toHaveBeenCalled();

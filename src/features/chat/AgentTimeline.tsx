@@ -18,6 +18,7 @@ import { agentEntries, toolState } from "./output/activity";
 import { AgentResponse } from "./AgentResponse";
 import { RunError } from "./RunError";
 import { Button } from "../../components/ui/button";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
 
 export const AgentTimeline = ({
   events,
@@ -464,7 +465,7 @@ export const AgentTimeline = ({
           {run.id && (
             <div className="agent-turn-heading">
               <span className={`agent-avatar ${run.provider}`}>
-                {run.provider === "antigravity" ? "A" : "C"}
+                <ProviderIcon provider={run.provider} model={run.model} size={14} />
               </span>
               <strong>{run.provider === "antigravity" ? "Antigravity" : "Codex"}</strong>
               <span className="subtle">

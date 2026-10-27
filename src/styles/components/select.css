@@ -1,0 +1,126 @@
+.select-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  text-align: left;
+  color: var(--foreground);
+  background: var(--background-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-input);
+  transition:
+    background var(--motion-fast),
+    border-color var(--motion-fast);
+}
+
+.select-trigger:hover:not(:disabled) {
+  background: var(--background-elevated);
+}
+
+.select-value {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.select-value > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-popover {
+  position: fixed;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--background-elevated);
+  box-shadow: 0 12px 40px var(--shadow);
+  animation: surface-enter var(--motion-enter) ease-out;
+}
+
+.select-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 8px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.select-search input,
+.select-search input:focus {
+  border: 0;
+  padding: 5px 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.select-search:focus-within {
+  border-bottom-color: var(--focus-ring);
+}
+
+.select-options {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+}
+
+.select-options:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: -1px;
+  border-radius: var(--radius);
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  margin: 1px 0;
+  min-width: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.select-option.active {
+  background: var(--background-hover);
+}
+
+.select-option[aria-selected="true"] {
+  font-weight: 550;
+}
+
+.select-option[aria-disabled="true"] {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.select-empty {
+  padding: 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.logs-toolbar > .select-trigger,
+.output-controls > .select-trigger,
+.command-filters > .select-trigger,
+.command-log-heading > .select-trigger,
+.list-filters > .select-trigger {
+  width: auto;
+  min-width: 120px;
+  max-width: 280px;
+  padding: 5px 9px;
+  font-size: 12px;
+}

@@ -7,6 +7,7 @@ import type {
 } from "../../../backend/execution/verification/browser/contracts";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 
 export const BrowserEnvironment = ({
   task,
@@ -67,15 +68,16 @@ export const BrowserEnvironment = ({
 
       <label>
         Verification environment
-        <select
-          aria-label="Verification environment"
+        <Select
+          label="Verification environment"
           value={environment}
           disabled={!!busy || unavailable}
-          onChange={(event) => setEnvironment(event.target.value as VerificationEnvironment)}
-        >
-          <option value="isolated">Isolated task sandbox</option>
-          <option value="installed_browsers">Task sandbox with installed browsers</option>
-        </select>
+          onChange={(value) => setEnvironment(value as VerificationEnvironment)}
+          options={[
+            { value: "isolated", label: "Isolated task sandbox" },
+            { value: "installed_browsers", label: "Task sandbox with installed browsers" },
+          ]}
+        />
       </label>
 
       {environment === "installed_browsers" && (

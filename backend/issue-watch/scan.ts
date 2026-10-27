@@ -33,7 +33,11 @@ export class IssueWatchScanner {
     const watch = this.store.get(scan.watch_id);
     const revision = this.store.revision(watch.id, scan.revision);
     const { rules, limits } = revision.configuration;
-    const reader = new IssueSearch(this.client, signal, limits, this.pool);
+
+    const reader = new IssueSearch(this.client, signal, limits, this.pool, () =>
+      progress(scan.phase),
+    );
+
     const candidates: WatchCandidate[] = [];
     const sources = new Map<string, WatchSource>();
 
@@ -56,6 +60,7 @@ export class IssueWatchScanner {
     };
 
     try {
+      progress("Fetching GitHub issues");
       const repository = await reader.repository(watch.repository.full_name, watch.repository.id);
 
       const known = new Map(
@@ -102,7 +107,7 @@ export class IssueWatchScanner {
         );
       }
 
-      progress("Verifying current issue metadata");
+      progress("Checking issue metadata");
       for (const identity of [...identities.values()].slice(0, limits.max_candidates)) {
         try {
           const issue = await reader.issue(repository, identity.number);
@@ -122,7 +127,7 @@ export class IssueWatchScanner {
       }
 
       scan.coverage.excluded = candidates.filter((candidate) => !candidate.eligible).length;
-      progress("Verifying tracker exclusions");
+      progress("Checking exclusions");
       let exclusions: Set<string>;
       try {
         exclusions = await trackerExclusions(
@@ -174,7 +179,7 @@ export class IssueWatchScanner {
 
       scan.coverage.excluded = candidates.filter((candidate) => !candidate.eligible).length;
       const selected = candidates.filter((candidate) => candidate.eligible);
-      progress("Collecting claim, PR and contribution evidence");
+      progress("Inspecting claim and PR evidence");
 
       const policy = selected.length
         ? await contributionPolicy(reader, repository, save)
@@ -272,12 +277,12 @@ export class IssueWatchScanner {
       for (const candidate of semanticCandidates) candidate.semantic_state = "pending";
       scan.coverage.semantic_complete = semanticCandidates.length === 0;
       if (semanticCandidates.length) {
-        progress("Preparing semantic screening");
+        progress("Evaluating candidates");
         await this.screen(scan, revision, semanticCandidates, [...sources.values()], signal);
       }
 
       signal.throwIfAborted();
-      progress("Rechecking eligibility before saving");
+      progress("Preparing results · rechecking eligibility");
       for (const candidate of candidates.filter(
         (item) => item.eligible && item.source_keys.length,
       )) {

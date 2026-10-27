@@ -1,35 +1,16 @@
-import type { CandidateSummary } from "../../../backend/issue-watch/contracts";
+import { useState } from "react";
+import { Search } from "lucide-react";
 
-export const claimLabel = (state: CandidateSummary["claim_state"]) =>
-  ({
-    candidate_for_claim_request: "Candidate for claim request",
-    possibly_claimed: "Possibly claimed",
-    assigned: "Assigned",
-    competing_pr_detected: "Competing PR found",
-    maintainer_approval_needed: "Maintainer approval needed",
-    eligibility_uncertain: "Eligibility uncertain",
-    ineligible: "Ineligible",
-  })[state] || state;
+import type { CandidateSummary, WatchScan } from "../../../backend/issue-watch/contracts";
+import { Select } from "../../components/ui/Select";
+import { IssueGitHubLink } from "./IssueGitHubLink";
+import { availabilityState, claimLabel } from "./availability";
 
-const groups = [
-  ["Newly matching", ["new_issue", "newly_matching", "reentered", "criteria_changed"]],
-  ["Initial discoveries", ["initial_discovery"]],
-  ["Existing matches", ["existing_match"]],
-  ["Manual review needed", ["manual_review"]],
-  ["No longer eligible", ["no_longer_eligible"]],
-  ["Not rechecked / unknown", ["not_rechecked"]],
-  ["Excluded / did not match", ["excluded"]],
-] as const;
-
-const lineage: Partial<Record<CandidateSummary["classification"], string>> = {
-  new_issue: "Created after the previous complete scan",
-  newly_matching: "Newly matching existing issue",
-  reentered: "Reentered eligibility",
-  criteria_changed: "Matching after criteria changed",
-  initial_discovery: "Initial baseline discovery",
-  existing_match: "Previously matching",
-  not_rechecked: "Historical evidence · Not rechecked",
-};
+const sortOptions = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "updated", label: "Recently updated" },
+];
 
 export const ScanResults = ({
   candidates,
@@ -37,69 +18,150 @@ export const ScanResults = ({
   onSelect,
   provisional,
   showDismissed,
+  status,
+  onError,
 }: {
   candidates: CandidateSummary[];
   selected: string;
   onSelect: (id: string) => void;
   provisional: boolean;
   showDismissed: boolean;
+  status?: WatchScan["status"];
+  onError: (error: string) => void;
 }) => {
-  const visible = candidates.filter((candidate) => showDismissed || !candidate.dismissed_at);
-  return (
-    <div
-      className="watch-results-list"
-      role="listbox"
-      aria-label="Discovery results"
-      aria-activedescendant={selected ? `watch-result-${selected}` : undefined}
-      onKeyDown={(event) => {
-        if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+  const [filter, setFilter] = useState("matches");
+  const [query, setQuery] = useState("");
 
-        const rows = [
-          ...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[role=option]"),
-        ];
+  const [sort, setSort] = useState(() => {
+    const saved = localStorage.getItem("vibestar.issueWatch.sort");
+    return sortOptions.some((option) => option.value === saved) ? saved! : "newest";
+  });
 
-        const index = rows.indexOf(event.target as HTMLButtonElement);
-
-        const next =
-          event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? rows.length - 1
-              : Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)));
-
-        if (rows[next]) {
-          event.preventDefault();
-          rows[next].focus();
-          rows[next].click();
-        }
-      }}
-    >
-      {groups.map(([label, classifications]) => {
-        const rows = visible.filter((candidate) =>
-          (classifications as readonly string[]).includes(candidate.classification),
+  const visible = candidates
+    .filter((candidate) => {
+      if (
+        !`${candidate.issue.title} #${candidate.issue.number} ${candidate.issue.labels.join(" ")}`
+          .toLowerCase()
+          .includes(query.toLowerCase())
+      )
+        return false;
+      if (filter === "dismissed") return !!candidate.dismissed_at;
+      if (!showDismissed && candidate.dismissed_at) return false;
+      if (filter === "matches") return candidate.eligible;
+      if (filter === "new")
+        return ["new_issue", "newly_matching", "reentered", "criteria_changed"].includes(
+          candidate.classification,
         );
+      const claim = availabilityState(candidate, provisional);
+      if (filter === "available")
+        return candidate.eligible && claim === "candidate_for_claim_request";
+      if (filter === "review") return candidate.eligible && claim !== "candidate_for_claim_request";
+      if (filter === "seen")
+        return ["existing_match", "not_rechecked"].includes(candidate.classification);
+      return true;
+    })
+    .sort((a, b) => {
+      const field = sort === "updated" ? "updated_at" : "created_at";
+      const order = sort === "oldest" ? 1 : -1;
+      return (
+        order *
+        (Date.parse(a.issue[field]) - Date.parse(b.issue[field]) ||
+          a.issue.number - b.issue.number ||
+          a.issue.id.localeCompare(b.issue.id))
+      );
+    });
 
-        if (!rows.length) return null;
-        return (
-          <section role="group" aria-label={label} className="watch-result-group" key={label}>
-            <h3>
-              {label}
-              <span>{rows.length}</span>
-            </h3>
+  return (
+    <>
+      <div className="watch-results-controls">
+        <label className="search-field">
+          <Search size={14} />
+          <input
+            type="search"
+            aria-label="Search issues"
+            placeholder="Search issues…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        <Select
+          label="Filter results"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "matches", label: "Matching issues" },
+            { value: "all", label: "All results" },
+            { value: "new", label: "New since last completed scan" },
+            { value: "available", label: "Available to request" },
+            { value: "review", label: "Needs review" },
+            { value: "seen", label: "Previously seen" },
+            { value: "dismissed", label: "Dismissed" },
+          ]}
+        />
+        <Select
+          label="Sort issues"
+          value={sort}
+          options={sortOptions}
+          onChange={(value) => {
+            setSort(value);
+            localStorage.setItem("vibestar.issueWatch.sort", value);
+          }}
+        />
+      </div>
+      <div className="watch-results-caption">
+        <span>
+          {visible.length} {visible.length === 1 ? "issue" : "issues"}
+        </span>
+        <span>
+          {provisional
+            ? "Incomplete scan · availability needs rechecking"
+            : "Availability reflects the last check"}
+        </span>
+      </div>
+      <div
+        className="watch-results-list"
+        role="list"
+        aria-label="Discovery results"
+        onKeyDown={(event) => {
+          if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
 
-            {rows.map((candidate) => (
+          const rows = [
+            ...event.currentTarget.querySelectorAll<HTMLButtonElement>(".watch-result-select"),
+          ];
+
+          const index = rows.indexOf(event.target as HTMLButtonElement);
+          if (index < 0) return;
+
+          const next =
+            event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? rows.length - 1
+                : Math.max(
+                    0,
+                    Math.min(rows.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)),
+                  );
+
+          if (rows[next]) {
+            event.preventDefault();
+            rows[next].focus();
+            rows[next].click();
+          }
+        }}
+      >
+        {visible.map((candidate) => {
+          const claim = availabilityState(candidate, provisional);
+          return (
+            <article
+              role="listitem"
+              key={candidate.issue.id}
+              className={`watch-result ${candidate.issue.id === selected ? "selected" : ""}`}
+            >
               <button
-                key={candidate.issue.id}
                 id={`watch-result-${candidate.issue.id}`}
-                role="option"
-                aria-selected={candidate.issue.id === selected}
-                tabIndex={
-                  candidate.issue.id === selected ||
-                  (!selected && visible[0]?.issue.id === candidate.issue.id)
-                    ? 0
-                    : -1
-                }
-                className={`watch-result ${candidate.issue.id === selected ? "selected" : ""}`}
+                aria-label={`Select #${candidate.issue.number}: ${candidate.issue.title}`}
+                aria-pressed={candidate.issue.id === selected}
+                className="watch-result-select"
                 onClick={() => onSelect(candidate.issue.id)}
               >
                 <div className="watch-result-heading">
@@ -107,49 +169,46 @@ export const ScanResults = ({
                   <strong>{candidate.issue.title}</strong>
                   {candidate.dismissed_at && <small>Dismissed</small>}
                 </div>
-
                 <div className="watch-result-meta">
-                  <span className={`watch-claim ${candidate.claim_state}`}>
-                    {provisional && candidate.eligible ? "Provisional · " : ""}
-                    {claimLabel(candidate.claim_state)}
-                  </span>
-
-                  <span>
-                    {candidate.semantic_state === "completed"
-                      ? `${candidate.semantic?.difficulty || "unknown"} · ${candidate.semantic?.technical_area || "unspecified"}`
-                      : "GitHub evidence"}
+                  <span className={`watch-claim ${claim}`}>{claimLabel(claim)}</span>
+                  <time
+                    dateTime={candidate.issue.created_at}
+                    title={`Created ${new Date(candidate.issue.created_at).toLocaleString()}`}
+                  >
+                    Opened {new Date(candidate.issue.created_at).toLocaleDateString()}
+                  </time>
+                  <span title={new Date(candidate.checked_at).toLocaleString()}>
+                    Checked {new Date(candidate.checked_at).toLocaleDateString()}
                   </span>
                 </div>
-
-                <p>
-                  {candidate.semantic_state === "completed"
-                    ? candidate.semantic?.why_it_matches
-                    : candidate.reasons[0] ||
-                      candidate.uncertainty[0] ||
-                      "No competing work detected in the checked sources; recheck before requesting assignment."}
-                </p>
-
-                <small
-                  title={`Created ${candidate.issue.created_at} · Updated ${candidate.issue.updated_at}`}
-                >
-                  {lineage[candidate.classification] || candidate.reasons[0]} ·{" "}
-                  {candidate.evidence_count} evidence items
-                </small>
               </button>
-            ))}
-          </section>
-        );
-      })}
-
-      {!visible.length && (
-        <div className="watch-empty">
-          <h3>No newly matching issues found in the checked candidate set.</h3>
-          <p>
-            Results appear after an explicit scan. This does not imply that no suitable issue exists
-            in the repository.
-          </p>
-        </div>
-      )}
-    </div>
+              <IssueGitHubLink issue={candidate.issue} onError={onError} />
+            </article>
+          );
+        })}
+        {!visible.length && (
+          <div className="watch-empty">
+            <h3>
+              {!["all", "matches"].includes(filter) || query
+                ? "No issues match this filter"
+                : !status
+                  ? "Ready for your first scan"
+                  : ["running", "cancelling", "reserved"].includes(status)
+                    ? "Scan in progress"
+                    : status === "completed"
+                      ? "No matching issues in this scan"
+                      : `${status[0].toUpperCase()}${status.slice(1)} scan`}
+            </h3>
+            <p>
+              {!status
+                ? "Scan when you’re ready. The first completed scan establishes your baseline."
+                : status === "completed"
+                  ? "Try adjusting your criteria. Coverage details show what was checked."
+                  : "Results appear as evidence becomes available. Previous complete results are preserved."}
+            </p>
+          </div>
+        )}
+      </div>
+    </>
   );
 };

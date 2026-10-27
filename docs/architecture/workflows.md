@@ -7,6 +7,12 @@ evidence records. See [architecture](../../ARCHITECTURE.md) for module ownership
 
 ## Issue creation, chat and startup
 
+The repository picker searches connected repository names and shows environment/base
+branch information. Source paths and worktree ownership remain in Details. Selecting a
+connected GitHub repository reuses its registration instead of offering it for import.
+Discovery defaults to configured project folders, skips temporary/generated/managed
+subtrees, and allows explicit unusual paths. Broad home scans are an advanced opt-in.
+
 Creating a task writes an idle `not_started` record. It does not drain the queue,
 prepare a worktree or invoke a provider. Whole-issue scope and claimed partial scope
 retain their distinct meanings. Requests bind UUIDs to a canonical payload digest;
@@ -122,7 +128,11 @@ publication writers; editor actions resolve the exact owned repair assignment.
 ## Manual Issue Watch
 
 A saved watch has immutable criteria/configuration revisions. Local preview compiles
-hard filters deterministically; ambiguities require explicit interpretation. Label chips
+hard filters deterministically. The editor separates guaranteed GitHub filters from
+preferences requiring evidence inspection; saving records the latter as semantic
+preferences without promoting them into guarantees. A bare issue reference asks a
+concrete context/exclusion question. The core still validates every compiled rule,
+digest and ambiguity decision. Label chips
 accept plain labels and verified repository-matching GitHub links. Label discovery is
 an explicit bounded read, never a scan.
 
@@ -144,14 +154,20 @@ issues, eligibility reentry, criteria changes and not-rechecked uncertainty. Dis
 local overlay, not a rewritten scan or baseline advance. Tracker IDs survive renames and
 cannot be silently replaced by preference editing.
 
+Progress reports real collection phases, requests and checked/discovered/excluded
+counts without synthetic percentages. Previous complete results remain available during
+a scan. Each result has a visible GitHub action bound to its retrieved issue identity.
+Details open on selection and can be collapsed or resized. Incomplete attempts never
+display a successful empty-result state.
+
 Issue Watch uses supported Codex integration. The existing Antigravity adapter is not
 exposed as a supported watch provider. Saving, opening, changing models and restarting
 never authorize a scan. Task handoff only prefills the existing idle task form.
 
 ## Selected-file Git Finalization
 
-The dialog's Files → Commit → Publish → Confirm steps are presentation state; host
-contracts remain authoritative. Inspection proves task/worktree/branch identity and
+Git Changes presents selected files, an exact commit message and commit/push actions
+on one surface. Options hold presets and hook policy. Inspection proves task/worktree/branch identity and
 records exact content/index fingerprints. Bounded no-follow file inspection excludes
 unsafe aliases, credentials/private keys, unexpected binaries and generated/debug additions.
 Ignored files remain unselectable.
@@ -175,11 +191,26 @@ hooks execute in the existing read-only sandbox with exact message input and bou
 output. Unsupported/missing/mutating hooks fail explicitly. Skipping these hooks cannot
 waive host authorization, fingerprint, verification, ancestry or exact remote-SHA guards.
 
-Publication verifies actual fetch/push URLs, canonical contribution fork, viewer,
+Publication verifies actual fetch/push URLs, the writable source or canonical contribution fork, viewer,
 stable repository ID, permissions and exact remote object/absence. A different safe
 feature branch requires fresh preparation. Confirm Push binds destination, commit and
 SHA. Host ancestry proof plus an exact-ref lease permits only fast-forward updates or
-an explicitly absent feature branch. Upstream and non-fast-forward writes are refused.
+an explicitly absent feature branch. A source destination requires fresh write permission;
+an external contribution destination must be its verified fork. Non-fast-forward writes
+are refused. No writable destination is required for a local commit.
+
+Task options can connect a push repository for a managed clone. This explicit local
+configuration requires fresh write permission and matching source identity or fork
+parent ID/name. It observes repository locks, active tasks and terminal leases, and
+requires the helper's destination capability. Imported checkouts choose existing
+verified remotes without rewriting their Git configuration. Connecting a destination
+does not commit or push.
+
+Commit & Push first performs a read-only destination check. Confirmation shows the
+exact destination, branch, selected files, unchanged message and hook policy. The click
+then invokes the existing guarded approval/commit/prepare/publish operations in order.
+Any destination, viewer, repository-ID or remote-head drift stops publication and keeps
+the local commit. Saved presets never authorize execution or replay after restart.
 
 Startup interrupts local mutations and marks uncertain pushes for read-only reconciliation.
 Explicit resume applies only the original journaled local transition without duplicate

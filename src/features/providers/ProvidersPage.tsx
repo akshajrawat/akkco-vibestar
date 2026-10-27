@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { RefreshCw, CheckCircle2, Plug, Terminal, Github, Sparkles } from "lucide-react";
+import { RefreshCw, CheckCircle2 } from "lucide-react";
 
 import { useProviders } from "../../hooks/useWorkspace";
 import { AuthDialog } from "./AuthDialog";
 import { Button } from "../../components/ui/button";
 import { PageHeader, ListSkeleton } from "../../components/ui/PageHeader";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
 
 export const ProvidersPage = () => {
   const { providers, loading, error, refresh } = useProviders();
@@ -34,19 +35,10 @@ export const ProvidersPage = () => {
 
           const connected = p.connected;
 
-          const Icon =
-            p.provider === "github"
-              ? Github
-              : p.provider === "codex"
-                ? Terminal
-                : p.provider === "antigravity"
-                  ? Sparkles
-                  : Plug;
-
           return (
             <section className="provider-row" key={p.provider}>
               <div className="provider-icon">
-                <Icon size={20} />
+                <ProviderIcon provider={p.provider} size={20} />
               </div>
 
               <div className="provider-info">
@@ -56,13 +48,15 @@ export const ProvidersPage = () => {
                   {connected ? "Connected" : p.installed ? "Not connected" : "CLI not installed"}
                 </p>
                 {p.accountLabel && <p className="subtle">{p.accountLabel}</p>}
-                <p className="subtle">{p.version || "CLI not installed"}</p>
                 {p.error && <p className="warning">{p.error}</p>}
-                <p className="subtle">{p.capabilities.join(" · ") || "Capabilities unavailable"}</p>
                 <details>
                   <summary>
                     {p.models.length ? `${p.models.length} available models` : "Model availability"}
                   </summary>
+                  <p className="subtle">{p.version || "CLI not installed"}</p>
+                  <p className="subtle">
+                    {p.capabilities.join(" · ") || "Capabilities unavailable"}
+                  </p>
 
                   {p.models.length > 0 && (
                     <pre>

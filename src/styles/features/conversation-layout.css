@@ -38,13 +38,13 @@
   padding: 0 var(--chat-gutter);
 }
 
-.chat-actions > * {
+.chat-actions-content {
   max-width: var(--chat-reading-width);
   margin-left: auto;
   margin-right: auto;
 }
 
-.chat-actions > .button {
+.chat-actions-content > .button {
   margin-top: 5px;
   margin-bottom: 5px;
 }
@@ -59,9 +59,10 @@
   background: var(--background-elevated);
 }
 
-.chat-workspace .chat-input:focus-within {
+.chat-workspace .chat-input:has(textarea:focus) {
   border-color: var(--border-strong);
-  outline: 2px solid var(--accent-blue);
+  outline: none;
+  border-color: var(--focus-ring);
   outline-offset: 2px;
   box-shadow: none;
 }
@@ -69,6 +70,17 @@
 .chat-workspace .chat-input textarea:focus {
   outline: none;
   box-shadow: none;
+}
+
+.conversation-mode .select-trigger {
+  width: auto;
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.conversation-mode .select-value small {
+  display: none;
 }
 
 .chat-workspace .chat-input textarea {
@@ -170,7 +182,7 @@
   padding-top: 8px;
 }
 
-.instruction-choice select {
+.instruction-choice .select-trigger {
   max-width: 100%;
 }
 
@@ -282,8 +294,8 @@
 }
 
 .workspace-tool-tabs button[aria-selected="true"] {
-  color: var(--accent-blue);
-  background: var(--background-info);
+  color: var(--text-primary);
+  background: transparent;
 }
 
 .secondary-content {
@@ -336,12 +348,31 @@
 }
 
 .engineering-panel {
-  padding: 16px;
+  width: 100%;
+  padding: 28px clamp(20px, 3vw, 48px);
   min-width: 0;
+  max-width: 1120px;
+  margin-inline: auto;
+}
+
+.secondary-expanded .secondary-heading,
+.secondary-expanded .workspace-tool-tabs {
+  padding-inline: clamp(20px, 3vw, 48px);
+}
+
+.secondary-expanded .workspace-tool-tabs button {
+  border-radius: 0;
+}
+
+.secondary-expanded .workspace-tab-selection {
+  inset: auto 12px 0;
+  height: 1px;
+  border-radius: 0;
+  background: var(--text-secondary);
 }
 
 .engineering-panel > * + * {
-  margin-top: 12px;
+  margin-top: 22px;
 }
 
 .engineering-panel pre,

@@ -94,7 +94,7 @@ export const SettingsSchema = z
       .default({
         roots: ["~/projects", "~/repos", "~/src", "~/code", "~/workspace"],
         max_depth: 4,
-        scan_home: true,
+        scan_home: false,
       }),
   })
   .superRefine((settings, context) => {
@@ -160,7 +160,7 @@ export const defaultSettings: Settings = {
   repository_discovery: {
     roots: ["~/projects", "~/repos", "~/src", "~/code", "~/workspace"],
     max_depth: 4,
-    scan_home: true,
+    scan_home: false,
   },
 };
 

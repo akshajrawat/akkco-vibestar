@@ -333,16 +333,7 @@
 .sidebar-tools button.selected {
   background: var(--background-selected);
   color: var(--text-primary);
-}
-
-.nav-selection {
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent-blue);
+  font-weight: 550;
 }
 
 .sidebar-tools small {

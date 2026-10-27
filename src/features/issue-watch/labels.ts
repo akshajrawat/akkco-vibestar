@@ -35,7 +35,7 @@ export const parseLabelInput = (text: string, repository: string) => {
         throw new Error("This label URL is malformed.");
       }
 
-      const path = url.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/issues\/?$/);
+      const path = url.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/(?:issues\/?|labels\/(.+))$/);
       if (
         url.protocol !== "https:" ||
         url.hostname !== "github.com" ||
@@ -49,6 +49,11 @@ export const parseLabelInput = (text: string, repository: string) => {
         throw new Error(
           "This label link belongs to another repository. Choose a matching repository first.",
         );
+      if (path[3]) {
+        add(decodeURIComponent(path[3]));
+        continue;
+      }
+
       const query = url.searchParams.get("q") || "";
       const matches = [...query.matchAll(/(?:^|\s)label:(?:"([^"\n]+)"|([^\s"]+))/gi)];
       if (!matches.length) throw new Error("This GitHub link does not contain a label filter.");

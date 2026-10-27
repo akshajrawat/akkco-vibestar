@@ -1,28 +1,30 @@
 .watch-view-tabs {
   display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 10px;
-  min-height: 34px;
+  gap: 24px;
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 42px;
   flex-shrink: 0;
 }
 
 .watch-view-tabs > button {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   border: 0;
-  background: none;
-  font-size: 11px;
-  padding: 8px 11px;
-  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 12px;
+  padding: 10px 0;
+  border-radius: 0;
+  border-bottom: 1px solid transparent;
 }
 
 .watch-view-tabs > button.selected {
   color: var(--text-primary);
-  border-bottom-color: var(--accent-blue);
+  border-bottom-color: var(--text-secondary);
 }
 
 .watch-view-tabs > label {
-  margin-left: auto;
+  margin: 0 0 0 auto;
+  gap: 8px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -34,68 +36,94 @@
   overflow: auto;
 }
 
+.watch-results-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-block: 24px 16px;
+}
+
+.watch-results-controls .search-field {
+  min-width: 160px;
+}
+
+.watch-results-controls .select-trigger {
+  width: auto;
+  max-width: 250px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-color: var(--border-subtle);
+}
+
+.watch-results-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding-bottom: 16px;
+}
+
 .watch-results-list {
   flex: 1;
   overflow: auto;
-  padding: 4px 10px 12px;
-}
-
-.watch-result-group h3 {
-  margin: 0;
-  padding: 13px 6px 9px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  padding-bottom: 24px;
 }
 
 .watch-result {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   width: 100%;
-  text-align: left;
-  background: var(--background-panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-primary);
-  padding: 12px;
-  margin-bottom: 7px;
+  padding: 24px 12px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
+.watch-result:hover,
 .watch-result.selected {
-  border-color: var(--accent-blue);
-  background: var(--background-selected);
+  background: var(--background-panel);
+}
+
+.watch-result-select {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  padding: 0;
 }
 
 .watch-result-heading {
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 10px;
 }
 
 .watch-result-heading strong {
-  font-size: 12px;
-  line-height: 1.5;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
 }
 
 .watch-issue-number {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
-  flex-shrink: 0;
 }
 
 .watch-result-meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 7px 12px;
+  gap: 8px 16px;
   color: var(--text-muted);
-  font-size: 10px;
-  margin: 8px 0;
+  font-size: 11px;
+  margin-top: 10px;
 }
 
 .watch-claim {
   color: var(--accent-amber);
-  font-size: 10px;
+  font-size: 11px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -138,14 +166,6 @@
   line-height: 1.5;
 }
 
-.watch-scope-note {
-  padding: 9px 14px;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border);
-  font-size: 10px;
-  line-height: 1.6;
-}
-
 .watch-empty,
 .watch-update-required {
   padding: 28px;
@@ -158,32 +178,12 @@
   font-weight: 500;
 }
 
-.watch-welcome {
-  margin: auto;
-  text-align: center;
-  max-width: 520px;
-}
-
-.watch-welcome > svg {
-  color: var(--accent-blue);
-}
-
-.watch-welcome h2 {
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.watch-welcome small {
-  display: block;
-  margin-top: 15px;
-  color: var(--text-muted);
-}
-
 .watch-details-container {
   flex-shrink: 0;
   display: flex;
   min-height: 0;
-  background: var(--background-panel);
+  background: var(--background-app);
+  border-left: 1px solid var(--border-subtle);
 }
 
 .watch-candidate-details {
@@ -198,7 +198,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 17px;
+  padding: 24px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -223,9 +223,13 @@
 .watch-details-scroll {
   flex: 1;
   overflow: auto;
-  padding: 15px 17px;
+  padding: 24px;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.watch-availability > * + * {
+  margin-top: 12px;
 }
 
 .watch-details-scroll h3 {
@@ -322,22 +326,16 @@
 
 .watch-details-footer {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 13px 17px;
-  border-top: 1px solid var(--border-strong);
-}
-
-.watch-details-footer small {
-  color: var(--text-muted);
-  font-size: 10px;
-  text-align: center;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 24px;
+  background: transparent;
 }
 
 .watch-details-footer > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 5px;
+  display: contents;
 }
 
 .watch-coverage-details {
@@ -410,7 +408,7 @@
 }
 
 .watch-editor input:not([type="checkbox"]),
-.watch-editor select,
+.watch-editor .select-trigger,
 .watch-editor textarea {
   width: 100%;
   min-width: 0;
@@ -472,7 +470,7 @@
 
 .watch-checks input[type="checkbox"] {
   width: auto;
-  accent-color: var(--accent-blue);
+  accent-color: var(--text-secondary);
 }
 
 .watch-tracker-input {
@@ -493,11 +491,6 @@
   margin-top: 12px;
   font-size: 11px;
   line-height: 1.8;
-}
-
-.watch-rule-preview h4 {
-  margin: 0;
-  font-size: 12px;
 }
 
 .watch-ambiguity {
@@ -539,7 +532,7 @@
 
 .issue-watch-page input[type="checkbox"] {
   width: auto;
-  accent-color: var(--accent-blue);
+  accent-color: var(--text-secondary);
 }
 
 .watch-notifications > div {
@@ -569,11 +562,7 @@
   margin: 4px 0;
 }
 
-@media (max-width: 1200px) {
-  .watch-mobile-cancel {
-    display: inline-flex;
-  }
-
+@media (max-width: 1500px) {
   .watch-details-container {
     position: absolute;
     right: 0;
@@ -602,7 +591,18 @@
   }
 
   .watch-page-heading {
-    padding: 14px;
+    padding-block: 20px;
+  }
+
+  .watch-view-tabs {
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .watch-result {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .watch-page-heading p {

@@ -20,8 +20,11 @@ More previews: [task overview](docs/screenshots/overview.png),
   independent Antigravity review workflow, with human approval between stages.
 - Keeps each task's pinned base, files, conversation, command evidence and usage separate.
 - Discovers authored GitHub PRs and supports manual analysis and isolated review repairs.
-- Saves Issue Watch criteria and performs bounded scans only when requested.
-- Supports selected-file review, exact local commit messages and separately confirmed publication.
+- Saves Issue Watch topics in a full-width list. Open a topic for claim status,
+  one-click GitHub links, search, and newest/oldest/update sorting. Scans run only
+  when requested; incomplete evidence stays uncertain.
+- Reviews selected files from Changes and provides Git Changes for exact commits
+  and confirmed pushes to a verified writable repository or contribution fork.
 - Shows actual provider output, verification gaps and reported usage without inventing results.
 
 ## Architecture

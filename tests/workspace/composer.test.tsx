@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { selectValue } from "../helpers/select";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within, act } from "@testing-library/react";
 
@@ -263,9 +264,7 @@ it("reuses an idempotent save request after transport failure, keeps its draft a
   const approve = screen.getByRole("button", { name: "Approve → Implement" });
   expect(approve.hasAttribute("disabled")).toBe(true);
 
-  fireEvent.change(screen.getByLabelText("Saved instructions on approval"), {
-    target: { value: "include_next_stage" },
-  });
+  selectValue(screen.getByLabelText("Saved instructions on approval"), "include_next_stage");
 
   fireEvent.click(approve);
   fireEvent.click(approve);
@@ -375,9 +374,8 @@ it("edits an unstarted future stage independently of chat and completed runs", a
   fireEvent.click(screen.getAllByRole("button", { name: "Edit future model" })[0]);
   const editor = screen.getByLabelText("Future stage 3 settings");
 
-  fireEvent.change(within(editor).getByLabelText("Reasoning / effort"), {
-    target: { value: "high" },
-  });
+  fireEvent.click(within(editor).getByRole("combobox", { name: "Reasoning / effort" }));
+  fireEvent.click(screen.getByRole("option", { name: "high" }));
 
   fireEvent.click(within(editor).getByRole("button", { name: "Save future stage" }));
 

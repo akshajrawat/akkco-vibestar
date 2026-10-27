@@ -1,7 +1,29 @@
 .provider-list {
-  max-width: 900px;
+  width: 100%;
   display: grid;
   gap: 14px;
+}
+
+.brand-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  object-fit: contain;
+}
+
+.brand-openai {
+  padding: 2px;
+  border-radius: 4px;
+  background: #b4dccb;
+}
+
+.brand-github {
+  filter: invert(1);
+}
+
+.providers-page > * {
+  width: min(100%, 1100px);
+  margin-inline: auto;
 }
 
 .provider-row {

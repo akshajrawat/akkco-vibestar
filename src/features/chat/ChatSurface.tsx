@@ -52,7 +52,9 @@ export const ChatSurface = ({
       >
         {conversation}
       </div>
-      <div className="chat-actions">{actions}</div>
+      <div className="chat-actions">
+        <div className="chat-actions-content">{actions}</div>
+      </div>
       {composer}
     </div>
   );

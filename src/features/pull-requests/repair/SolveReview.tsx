@@ -5,6 +5,7 @@ import type { Repository, Settings } from "../../../../backend/domain";
 import type { RepairSession } from "../../../../backend/review/repair/contracts";
 import { rpc, errorMessage } from "../../../lib/api";
 import { Button } from "../../../components/ui/button";
+import { Select } from "../../../components/ui/Select";
 import { AgentResponse } from "../../chat/AgentResponse";
 import { ConnectLocalRepository } from "../../repositories/ConnectLocalRepository";
 import { useDialogFocus } from "../../../hooks/useDialogFocus";
@@ -109,18 +110,20 @@ export const SolveReview = ({
 
         <label>
           Local repository
-          <select
-            aria-label="Repair repository"
+          <Select
+            label="Repair repository"
             value={repository}
-            onChange={(e) => setRepository(e.target.value)}
-          >
-            <option value="">Select a connected {upstream} checkout</option>
-            {candidates.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.path} · {r.source === "imported" ? "Connected checkout" : "Managed clone"}
-              </option>
-            ))}
-          </select>
+            searchable
+            onChange={setRepository}
+            options={[
+              { value: "", label: `Select a connected ${upstream} checkout` },
+              ...candidates.map((r) => ({
+                value: r.id,
+                label: `${r.owner}/${r.name}`,
+                description: `${r.environment === "windows" ? "Windows" : "WSL"} · ${r.base_branch} · ${r.source === "imported" ? "Connected checkout" : "Managed clone"}`,
+              })),
+            ]}
+          />
         </label>
 
         {!candidates.length && (

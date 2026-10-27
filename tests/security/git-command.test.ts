@@ -12,6 +12,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it.each(["origin/develop", "origin/feature/editor-metadata", "develop"])(
+  "accepts inert VS Code merge-base metadata %s without editing source configuration",
+  async (reference) => {
+    const { source, task, marker } = await securityWorkspace();
+    await checked("git", ["config", "branch.develop.vscode-merge-base", reference], source);
+    const config = await readFile(join(source, ".git", "config"));
+
+    expect((await gitCapture(["status", "--porcelain"], task.worktree_path)).code).toBe(0);
+    expect(await readFile(join(source, ".git", "config"))).toEqual(config);
+    expect(await exists(marker)).toBe(false);
+  },
+);
+
+it.each([
+  "!sh hostile",
+  "origin/main\ninclude.path=hostile",
+  "-option",
+  "origin/../main",
+  "main.lock",
+])("rejects malformed VS Code merge-base metadata %s", async (reference) => {
+  const { source, marker } = await securityWorkspace();
+  await checked("git", ["config", "branch.develop.vscode-merge-base", reference], source);
+
+  await expect(gitCapture(["status", "--porcelain"], source)).rejects.toThrow("vscode-merge-base");
+  expect(await exists(marker)).toBe(false);
+});
+
 it("suppresses fsmonitor on actual workspace reads and leaves source files, index and configuration intact", async () => {
   const { source, task, marker, program, git } = await securityWorkspace();
   await checked("git", ["config", "core.fsmonitor", program], source);
@@ -75,6 +102,13 @@ it.each([
     expect(await readFile(join(metadata, "index"))).toEqual(index);
   },
 );
+
+it("rejects valueless editor metadata instead of interpreting the key as a branch reference", async () => {
+  const { source } = await securityWorkspace();
+  const path = join(source, ".git", "config");
+  await writeFile(path, `${await readFile(path, "utf8")}\n[branch "main"]\nvscode-merge-base\n`);
+  await expect(gitCapture(["status", "--porcelain"], source)).rejects.toThrow("vscode-merge-base");
+});
 
 it("blocks a configured merge driver before a conflicting merge can modify the worktree or index", async () => {
   const { source, task, program, marker } = await securityWorkspace();

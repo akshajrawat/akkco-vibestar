@@ -41,8 +41,7 @@ export const DiscoverySettings = ({
     <section className="discovery-settings">
       <h2>Local repository discovery</h2>
       <p className="subtle">
-        Find checkouts in the configured execution environment before cloning. Windows locations
-        must be explicitly added as /mnt/c/Users/… paths. WSL checkouts are preferred.
+        Search your project folders. Repositories stay disconnected until you choose one.
       </p>
 
       <div className="search-roots">
@@ -94,31 +93,45 @@ export const DiscoverySettings = ({
         </Button>
       </div>
 
-      <label>
-        Maximum depth
-        <input
-          type="number"
-          min={1}
-          max={8}
-          value={value.max_depth}
-          onChange={(e) => onChange({ ...value, max_depth: Number(e.target.value) })}
-        />
-      </label>
+      <details className="discovery-advanced">
+        <summary>Advanced discovery</summary>
+        <p className="subtle">
+          Explicit locations can include temporary folders. Windows locations use /mnt/c/… paths.
+        </p>
+        <label>
+          Maximum depth
+          <input
+            type="number"
+            min={1}
+            max={8}
+            value={value.max_depth}
+            onChange={(e) => onChange({ ...value, max_depth: Number(e.target.value) })}
+          />
+        </label>
 
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
-          checked={value.scan_home}
-          onChange={(e) => onChange({ ...value, scan_home: e.target.checked })}
-        />
-        Scan home directory with the same depth limit
-      </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={value.scan_home}
+            onChange={(e) => onChange({ ...value, scan_home: e.target.checked })}
+          />
+          Include home directory (broader search)
+        </label>
+      </details>
 
-      <Button disabled={busy} onClick={() => void scan()}>
+      <Button busy={busy} disabled={busy} onClick={() => void scan()}>
         {busy ? "Scanning…" : "Scan now"}
       </Button>
-      {error && <p className="error-box">{error}</p>}
-      <p>Repositories indexed: {index?.repositories.length || 0}</p>
+      {error && (
+        <p className="error-box" role="alert">
+          {error}
+        </p>
+      )}
+      <p role="status">
+        {busy
+          ? "Searching configured locations…"
+          : `${index?.repositories.length || 0} repositories found`}
+      </p>
       <p className="subtle">
         Last scan: {index?.last_scan ? new Date(index.last_scan).toLocaleString() : "Not scanned"} ·
         Scan duration:{" "}
@@ -133,17 +146,23 @@ export const DiscoverySettings = ({
         </p>
       ))}
 
-      {index?.repositories.map((repo) => (
-        <p className="indexed-repo" key={repo.path}>
-          <code>{repo.path}</code>
-          <small>
-            {repo.environment === "wsl"
-              ? "WSL checkout — Recommended"
-              : "Windows checkout — Available"}{" "}
-            · {repo.identities.join(", ")}
-          </small>
-        </p>
-      ))}
+      {!!index?.repositories.length && (
+        <details>
+          <summary>Discovered repositories · {index.repositories.length}</summary>
+          {index.repositories.map((repo) => (
+            <p className="indexed-repo" key={repo.path}>
+              <strong>{repo.identities[0] || repo.path.split("/").pop()}</strong>
+              <small>
+                {repo.environment === "wsl"
+                  ? "WSL checkout — Recommended"
+                  : "Windows checkout — Available"}{" "}
+                · {repo.identities.join(", ")}
+              </small>
+              <code>{repo.path}</code>
+            </p>
+          ))}
+        </details>
+      )}
     </section>
   );
 };

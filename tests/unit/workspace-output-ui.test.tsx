@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { selectValue } from "../helpers/select";
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 
@@ -243,9 +244,7 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
   const ui = render(<TestsView detail={props} onError={vi.fn()} />);
   expect(screen.getByLabelText("Selected command output").textContent).toContain("linting");
 
-  fireEvent.change(screen.getByLabelText("Command stage"), {
-    target: { value: "5" },
-  });
+  selectValue(screen.getByLabelText("Command stage"), "5");
 
   expect(screen.getByLabelText("Selected command output").textContent).toContain(
     "mobile assertion failed",
@@ -255,9 +254,7 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
   expect(within(screen.getByLabelText("Recorded commands")).getAllByRole("button")).toHaveLength(1);
   expect(ui.container.querySelector(".command-failed[aria-current='true']")).toBeTruthy();
 
-  fireEvent.change(screen.getByLabelText("Command stage"), {
-    target: { value: "all" },
-  });
+  selectValue(screen.getByLabelText("Command stage"), "all");
 
   fireEvent.click(within(screen.getByLabelText("Recorded commands")).getAllByRole("button")[0]);
   expect(screen.getByLabelText("Selected command output").textContent).toContain("desktop passed");

@@ -1,7 +1,58 @@
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
+:root {
+  color-scheme: dark;
+  --background-app: #141518;
+  --background-sidebar: #191a1e;
+  --background-panel: #1c1e23;
+  --background-elevated: #26282e;
+  --background-input: #191a1e;
+  --background-hover: #303239;
+  --background-selected: #303239;
+  --background-success: #22352a;
+  --background-warning: #362e22;
+  --background-error: #3d2528;
+  --background-info: #262e36;
+  --border-default: #35373e;
+  --border-strong: #50545e;
+  --border-subtle: #2a2c33;
+  --focus-ring: #a6adbb;
+  --text-primary: #eceef3;
+  --text-secondary: #bfc3ce;
+  --text-muted: #999fab;
+  --text-disabled: #6b6b6b;
+  --accent-blue: #75b6e7;
+  --accent-green: #8fc59b;
+  --accent-amber: #dab56b;
+  --accent-red: #e88b87;
+  --button-primary: #e0e3ea;
+  --button-primary-hover: #f1f3f7;
+  --button-primary-active: #c4cad6;
+  --text-on-accent: #202329;
+  --overlay: #0008;
+  --shadow: #0005;
+  --background: var(--background-app);
+  --foreground: var(--text-primary);
+  --panel: var(--background-panel);
+  --border: var(--border-default);
+  --muted: var(--text-muted);
+  --accent: var(--accent-blue);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius: 8px;
+  --radius-input: 10px;
+  --radius-panel: 12px;
+  --radius-composer: 18px;
+  --font-mono: "Geist Mono", Consolas, monospace;
+  --motion-fast: 140ms;
+  --motion-enter: 180ms;
+  font-family: "Geist Sans", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  font-synthesis: style;
+  color: var(--foreground);
+  background: var(--background);
 }

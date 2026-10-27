@@ -309,7 +309,7 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
       expect(
         await page
           .locator(".chat-actions")
-          .getByRole("button", { name: "Git Finalization", exact: true })
+          .getByRole("button", { name: "Git Changes", exact: true })
           .count(),
       ).toBe(0);
 

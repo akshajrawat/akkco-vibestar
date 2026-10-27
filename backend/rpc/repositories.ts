@@ -19,6 +19,8 @@ export const repositoriesMethods = [
   "github.clone.cancel",
   "github.clone.logs",
   "repository.verifyLocal",
+  "repository.locateLocal",
+  "repository.configureDestination",
   "repository.connectLocal",
   "repository.disconnect",
   "repository.reconnectManaged",
@@ -97,6 +99,12 @@ export const callRepositories = async (
 
     case "repository.verifyLocal":
       return e.verifyLocalRepository(LocalRepositoryInput.parse(input));
+
+    case "repository.locateLocal":
+      return e.repositoryIndex.locateLocal(LocalRepositoryInput.parse(input));
+
+    case "repository.configureDestination":
+      return services.github.configureDestination(input);
 
     case "repository.connectLocal":
       return e.connectLocalRepository(ConnectLocalInput.parse(input));

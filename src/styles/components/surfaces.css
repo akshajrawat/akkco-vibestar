@@ -325,25 +325,6 @@
   font-size: 12px;
 }
 
-.model-options {
-  display: flex;
-  flex-direction: column;
-  max-height: 240px;
-  overflow-y: auto;
-}
-
-.model-options button {
-  background: transparent;
-  border: 0;
-  text-align: left;
-  padding: 7px 8px;
-}
-
-.model-options button:hover,
-.model-options button[aria-selected="true"] {
-  background: var(--background-selected);
-}
-
 .effort-options {
   display: flex;
   flex-wrap: wrap;
@@ -358,8 +339,9 @@
 }
 
 .effort-options button[aria-pressed="true"] {
-  color: var(--accent-blue);
-  border-color: var(--accent-blue);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+  background: var(--background-selected);
 }
 
 .message-actions {

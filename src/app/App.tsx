@@ -86,6 +86,7 @@ export const App = () => {
   );
 
   const [newTask, setNewTask] = useState(false);
+  const [newTaskRepository, setNewTaskRepository] = useState<string>();
 
   const [taskPrefill, setTaskPrefill] = useState<{
     url: string;
@@ -195,7 +196,14 @@ export const App = () => {
     ) : page === "Providers" ? (
       <ProvidersPage />
     ) : page === "Repositories" && snapshot ? (
-      <RepositoryPage snapshot={snapshot} refresh={refresh} createTask={() => setNewTask(true)} />
+      <RepositoryPage
+        snapshot={snapshot}
+        refresh={refresh}
+        createTask={(id) => {
+          setNewTaskRepository(id);
+          setNewTask(true);
+        }}
+      />
     ) : repairId ? (
       <RepairWorkspace
         key={repairId}
@@ -339,18 +347,6 @@ export const App = () => {
                       aria-current={page === label ? "page" : undefined}
                       onClick={() => navigate(label)}
                     >
-                      {page === label && (
-                        <motion.span
-                          className="nav-selection"
-                          layoutId="navigation-selection"
-                          transition={{
-                            type: "spring",
-                            stiffness: 500,
-                            damping: 40,
-                          }}
-                          aria-hidden="true"
-                        />
-                      )}
                       <Icon size={14} />
                       {label === "Scheduled" ? "Pull Requests" : label}
                       {label === "Scheduled" && (
@@ -413,7 +409,7 @@ export const App = () => {
             </div>
           )}
 
-          {notifications.notices.length > 0 && (
+          {notifications.notices.length > 0 && page !== "Issue Watch" && (
             <div
               className="watch-notifications"
               role="log"
@@ -549,10 +545,12 @@ export const App = () => {
 
         {newTask && (
           <NewTask
+            initialRepositoryId={newTaskRepository}
             initialIssueUrl={taskPrefill?.url}
             initialNotes={taskPrefill?.notes}
             close={() => {
               setNewTask(false);
+              setNewTaskRepository(undefined);
               setTaskPrefill(undefined);
             }}
             created={async (id) => {

@@ -42,6 +42,10 @@ it.skipIf(process.platform === "win32")(
 
       await expect(bridge.request("git.preview", {})).rejects.toThrow("Git Finalization");
 
+      await expect(bridge.request("repository.configureDestination", {})).rejects.toThrow(
+        "configuring a push destination",
+      );
+
       const settings = {
         antigravity_review: {
           model: "review",

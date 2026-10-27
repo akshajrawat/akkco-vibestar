@@ -17,7 +17,7 @@ export const RepositoryPage = ({
 }: {
   snapshot: Snapshot;
   refresh: () => Promise<void>;
-  createTask?: () => void;
+  createTask?: (repositoryId?: string) => void;
 }) => {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState("");
@@ -163,7 +163,7 @@ export const RepositoryPage = ({
 
       <section aria-labelledby="active-repositories-title">
         <h2 id="active-repositories-title" className="repository-section-title">
-          Active repositories <small>{active.length}</small>
+          Connected repositories <small>{active.length}</small>
         </h2>
 
         {!active.length && (
@@ -337,6 +337,10 @@ export const RepositoryPage = ({
         )}
 
         {rows.map((r) => {
+          const connected = active.find(
+            (local) => `${local.owner}/${local.name}`.toLowerCase() === r.full_name.toLowerCase(),
+          );
+
           const managed = snapshot.repositories.find(
             (local) =>
               local.source !== "imported" &&
@@ -360,18 +364,22 @@ export const RepositoryPage = ({
                 size="sm"
                 disabled={!!busy || cloning}
                 onClick={() =>
-                  managed?.connected === false
-                    ? void action("repository.reconnectManaged", { id: managed.id }, managed.id)
-                    : void find(r.full_name)
+                  connected
+                    ? createTask?.(connected.id)
+                    : managed?.connected === false
+                      ? void action("repository.reconnectManaged", { id: managed.id }, managed.id)
+                      : void find(r.full_name)
                 }
               >
                 {cloning
                   ? "Cloning…"
                   : busy === r.full_name
                     ? "Finding…"
-                    : managed?.connected === false
-                      ? "Reconnect managed clone"
-                      : "Use repository"}
+                    : connected
+                      ? "Select connected repository"
+                      : managed?.connected === false
+                        ? "Reconnect managed clone"
+                        : "Use repository"}
               </Button>
             </div>
           );
@@ -390,6 +398,8 @@ export const RepositoryPage = ({
         <ConnectLocalRepository
           distro={snapshot.execution_environment?.distro || "Configured WSL distribution"}
           initialPath={connection.path}
+          repositories={snapshot.repositories}
+          selectRepository={createTask}
           close={() => setConnection(undefined)}
           connected={refresh}
         />

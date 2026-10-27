@@ -1,7 +1,6 @@
 button,
 input,
-textarea,
-select {
+textarea {
   font: inherit;
   border-radius: var(--radius);
 }
@@ -19,13 +18,12 @@ button:disabled {
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible {
-  outline: 2px solid var(--focus-ring);
+  outline: 1px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
 input,
-textarea,
-select {
+textarea {
   color: var(--foreground);
   background: var(--background-input);
   border: 1px solid var(--border-strong);
@@ -38,15 +36,20 @@ select {
 }
 
 input:focus,
-textarea:focus,
-select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 18%, transparent);
+textarea:focus {
+  border-color: var(--focus-ring);
+  outline: none;
+  box-shadow: none;
 }
 
 input,
 textarea {
   width: 100%;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--text-secondary);
 }
 
 textarea {
@@ -60,6 +63,20 @@ label {
   margin: 12px 0;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.checkbox-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-label input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--text-secondary);
 }
 
 h1,

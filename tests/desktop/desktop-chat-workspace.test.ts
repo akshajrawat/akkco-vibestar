@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { _electron } from "playwright-core";
 
 import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -61,7 +62,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       },
     });
 
-    const { repo } = await fixtureRepository(engine, dir);
+    const { repo, upstream } = await fixtureRepository(engine, dir);
     const emptyRoot = join(dir, "empty-core");
     const empty = await createFixtureEngine(emptyRoot);
 
@@ -164,6 +165,26 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       ]) {
         await page.getByRole("button", { name: navigation, exact: true }).click();
         await page.getByRole("heading", { name: heading, exact: true }).waitFor();
+        if (navigation === "Settings") {
+          const checkbox = page.getByRole("checkbox", {
+            name: "Use a separate review model",
+            exact: true,
+          });
+
+          expect((await checkbox.boundingBox())!.width).toBeLessThanOrEqual(16);
+
+          expect(
+            await page
+              .locator(".config-block h3")
+              .first()
+              .evaluate((node) => {
+                const heading = node.getBoundingClientRect();
+                const icon = node.firstElementChild!.getBoundingClientRect();
+                return Math.abs(icon.y + icon.height / 2 - (heading.y + heading.height / 2));
+              }),
+          ).toBeLessThan(2);
+        }
+
         await page.evaluate(() => document.fonts.ready);
         for (const [width, height] of [
           [1920, 1080],
@@ -186,6 +207,21 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
             animations: "disabled",
             path: join(evidence, `${file}-${width}x${height}.png`),
           });
+
+          if (navigation === "Settings") {
+            await page
+              .getByRole("checkbox", { name: "Use a separate review model", exact: true })
+              .scrollIntoViewIfNeeded();
+
+            await page.screenshot({
+              animations: "disabled",
+              path: join(evidence, `settings-review-${width}x${height}.png`),
+            });
+
+            await page
+              .getByRole("heading", { name: "Agent pipeline", exact: true })
+              .scrollIntoViewIfNeeded();
+          }
         }
 
         if (navigation === "Repositories") {
@@ -288,8 +324,14 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         expect(await draft.inputValue()).toContain("Keep this independent");
 
         await page
-          .getByLabel("Saved instructions on approval")
-          .selectOption(name.includes("refinement") ? "keep_saved" : "include_next_stage");
+          .getByRole("combobox", { name: "Saved instructions on approval", exact: true })
+          .click();
+
+        await page
+          .locator(
+            `[role="option"][data-value="${name.includes("refinement") ? "keep_saved" : "include_next_stage"}"]`,
+          )
+          .click();
 
         await page.screenshot({
           path: join(
@@ -566,11 +608,58 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       }
 
       expect(errors).toEqual([]);
+
       // V3 acceptance uses the real create/chat/start/disposal RPCs and provider
       // sandbox, with issue retrieval and provider executables confined to fixtures.
+      const longRepository = {
+        ...repo,
+        id: randomUUID(),
+        owner: "fixture-organization-with-a-long-name",
+        name: "repository-with-a-long-name-for-reviewing-picker-truncation-and-keyboard-navigation",
+      };
+
+      longRepository.path = join(engine.root, "repos", longRepository.id);
+      await engine.git.clone(upstream, longRepository.path);
+      engine.db.saveRepository(longRepository);
+      engine.changed();
       await page.getByRole("button", { name: "New task", exact: true }).first().click();
       const creation = page.getByRole("dialog", { name: "New task" });
-      await creation.getByLabel("Repository", { exact: true }).selectOption(repo.id);
+      await creation.getByRole("combobox", { name: "Repository", exact: true }).click();
+      await page.locator(`[role="option"][data-value="${longRepository.id}"]`).click();
+
+      for (const [width, height] of [
+        [1280, 720],
+        [1440, 900],
+        [1920, 1080],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, size) =>
+            BrowserWindow.getAllWindows()[0].setSize(...(size as [number, number])),
+          [width, height],
+        );
+
+        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+        expect(await creation.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+
+        await page.screenshot({
+          path: join(evidence, `new-task-long-repository-${width}x${height}.png`),
+          animations: "disabled",
+        });
+
+        await creation.getByRole("combobox", { name: "Repository", exact: true }).click();
+        const picker = page.locator(".select-popover");
+        expect(await picker.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+
+        await page.screenshot({
+          path: join(evidence, `repository-picker-${width}x${height}.png`),
+          animations: "disabled",
+        });
+
+        await page.keyboard.press("Escape");
+      }
+
+      await creation.getByRole("combobox", { name: "Repository", exact: true }).click();
+      await page.getByRole("option", { name: "fixture/fixture", exact: false }).first().click();
 
       await creation
         .getByLabel("Issue URL", { exact: true })
@@ -578,6 +667,30 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
 
       await creation.getByText("Discuss before workflow", { exact: true }).waitFor();
       await creation.getByLabel("Entire issue", { exact: true }).check();
+      for (const [width, height] of [
+        [1280, 720],
+        [1440, 900],
+        [1920, 1080],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, size) =>
+            BrowserWindow.getAllWindows()[0].setSize(...(size as [number, number])),
+          [width, height],
+        );
+
+        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+        expect(await creation.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+
+        expect(
+          await creation.getByRole("combobox", { name: "Repository", exact: true }).innerText(),
+        ).not.toContain(repo.path);
+
+        await page.screenshot({
+          animations: "disabled",
+          path: join(evidence, `new-task-${width}x${height}.png`),
+        });
+      }
+
       await creation.getByRole("button", { name: "Create task", exact: true }).click();
       await creation.waitFor({ state: "hidden" });
       const idle = engine.db.tasks().find((value) => value.issue_number === 8)!;
@@ -599,6 +712,20 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
 
       await expect.poll(() => engine.isActive(idle.id)).toBe(false);
       expect(engine.db.task(idle.id).status).toBe("not_started");
+      await page.getByRole("button", { name: "Choose chat model", exact: true }).click();
+      const picker = page.getByRole("dialog", { name: "Chat model configuration", exact: true });
+      await picker.getByRole("combobox", { name: "Task model", exact: true }).click();
+      await page.getByRole("option", { name: "next-model", exact: true }).click();
+      expect(await picker.isVisible()).toBe(true);
+      await picker.getByRole("button", { name: "Done", exact: true }).click();
+
+      expect(
+        await page
+          .locator(".brand-monochrome")
+          .first()
+          .evaluate((node) => getComputedStyle(node).maskImage),
+      ).not.toBe("none");
+
       await page.reload();
       await page.getByLabel("Task conversation").waitFor();
       expect(engine.db.detail(idle.id).runs).toHaveLength(1);

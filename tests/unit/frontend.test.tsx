@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { defaultSettings } from "../../backend/domain";
@@ -172,11 +172,12 @@ it("keeps implementation config independent of planning", () => {
   );
 
   const models = screen.getAllByRole("combobox").filter((e) => e.id.endsWith("-models"));
-  fireEvent.change(models[1], { target: { value: "requested-plan-model" } });
+  fireEvent.click(models[1]);
+  fireEvent.click(screen.getByRole("option", { name: "requested-plan-model" }));
   const settings = changed.mock.calls[0][0];
   expect(settings.codex_plan.model).toBe("requested-plan-model");
   expect(settings.codex_implementation.model).toBe("");
-  expect(screen.getAllByText(/models not loaded/)).toHaveLength(2);
+  expect(screen.getAllByText(/Models not loaded/)).toHaveLength(2);
 });
 
 it("shows both locally persisted plans", () => {
@@ -705,11 +706,11 @@ it("verifies a manually entered checkout before connecting and invalidates previ
     path: "/home/aksha/oppia",
   });
 
-  expect((screen.getByLabelText("Upstream repository") as HTMLSelectElement).value).toBe(
-    "upstream",
+  expect(screen.getByRole("combobox", { name: "Upstream repository" }).textContent).toContain(
+    "oppia/oppia",
   );
 
-  expect((screen.getByLabelText("Base branch") as HTMLSelectElement).value).toBe("develop");
+  expect(screen.getByRole("combobox", { name: "Base branch" }).textContent).toContain("develop");
   fireEvent.click(screen.getByRole("button", { name: "Connect repository" }));
   await vi.waitFor(() => expect(connected).toHaveBeenCalled());
 
@@ -722,6 +723,51 @@ it("verifies a manually entered checkout before connecting and invalidates previ
 
   fireEvent.change(screen.getByLabelText("Path"), {
     target: { value: "/home/aksha/other" },
+  });
+
+  expect(screen.queryByRole("button", { name: "Connect repository" })).toBeNull();
+});
+
+it("selects a managed repository found through a canonical lookup without re-importing it", async () => {
+  const { ConnectLocalRepository } =
+    await import("../../src/features/repositories/ConnectLocalRepository");
+
+  const existing = {
+    id: "managed",
+    owner: "fixture",
+    name: "project",
+    path: "/owned/repos/managed",
+    source: "managed",
+    connected: true,
+    base_branch: "main",
+  };
+
+  const rpc = vi.fn(async (method: string) => {
+    if (method === "repository.locateLocal") return existing;
+    throw new Error("A managed checkout must not be verified for external import");
+  });
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  const selected = vi.fn();
+
+  render(
+    <ConnectLocalRepository
+      distro="Linux"
+      initialPath="/checkout-alias"
+      close={vi.fn()}
+      connected={async () => {}}
+      selectRepository={selected}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Verify repository" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Select connected repository" }));
+  await vi.waitFor(() => expect(selected).toHaveBeenCalledWith("managed"));
+  expect(rpc).toHaveBeenCalledTimes(1);
+
+  expect(rpc).toHaveBeenCalledWith("repository.locateLocal", {
+    environment: "wsl",
+    path: "/checkout-alias",
   });
 
   expect(screen.queryByRole("button", { name: "Connect repository" })).toBeNull();
@@ -779,7 +825,7 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
   });
 
   render(<NewTask close={vi.fn()} created={vi.fn()} />);
-  await screen.findByText("facebook/react · /home/aksha/react");
+  await screen.findByText("facebook/react");
   expect(screen.queryByRole("option", { name: /old-checkout/ })).toBeNull();
 
   fireEvent.change(screen.getByLabelText("Issue URL"), {
@@ -787,16 +833,15 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
   });
 
   await screen.findByText("Oppia issue");
-  expect((screen.getByLabelText("Repository") as HTMLSelectElement).value).toBe(oppia.id);
+  expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain("oppia/oppia");
   expect(screen.getByText(/Matched from issue URL/)).toBeTruthy();
 
   expect(
     screen.getByText("/home/aksha/.akkco-vibestar/worktrees/oppia-local/26831-…"),
   ).toBeTruthy();
 
-  fireEvent.change(screen.getByLabelText("Repository"), {
-    target: { value: react.id },
-  });
+  fireEvent.click(screen.getByRole("combobox", { name: "Repository" }));
+  fireEvent.click(screen.getByRole("option", { name: /facebook\/react/ }));
 
   expect(await screen.findByText("Repository mismatch")).toBeTruthy();
 
@@ -810,7 +855,7 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
 
   expect(rpc).not.toHaveBeenCalledWith("task.create", expect.anything());
   fireEvent.click(screen.getByRole("button", { name: "Switch to oppia/oppia" }));
-  expect((screen.getByLabelText("Repository") as HTMLSelectElement).value).toBe(oppia.id);
+  expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain("oppia/oppia");
 });
 
 it("keeps finalization explicit and shows source/worktree metadata without moving the user's checkout", async () => {
@@ -894,17 +939,25 @@ it("keeps finalization explicit and shows source/worktree metadata without movin
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Git Finalization" }));
-  expect(screen.getByRole("dialog", { name: "Git Finalization" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Git Changes" }));
+  expect(screen.getByRole("dialog", { name: "Git Changes" })).toBeTruthy();
 
-  expect(
-    screen.getByText(/Select reviewed files, keep your exact message and confirm the destination/),
-  ).toBeTruthy();
+  expect(screen.getByText(/Select files, commit, then push when ready/)).toBeTruthy();
 
   expect(rpc).not.toHaveBeenCalledWith("task.complete", expect.anything());
   fireEvent.click(screen.getByRole("button", { name: "Keep local and close" }));
-  expect(screen.queryByRole("dialog", { name: "Git Finalization" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Git Finalization" }));
+  expect(screen.queryByRole("dialog", { name: "Git Changes" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Git Changes" }));
+
+  expect(
+    within(screen.getByRole("dialog", { name: "Git Changes" })).queryByRole("button", {
+      name: "Mark task complete",
+    }),
+  ).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Keep local and close" }));
+  fireEvent.click(screen.getByRole("button", { name: "Toggle secondary workspace" }));
+  fireEvent.click(screen.getByRole("tab", { name: "Workflow" }));
   fireEvent.click(screen.getByRole("button", { name: "Mark task complete" }));
 
   await vi.waitFor(() =>

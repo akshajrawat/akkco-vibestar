@@ -7,12 +7,18 @@ import { containDialogFocus } from "../../lib/keyboard";
 import { ConnectLocalRepository } from "../repositories/ConnectLocalRepository";
 import { FinalizationCommit } from "./FinalizationCommit";
 import { FinalizationFiles } from "./FinalizationFiles";
+import { SelectionReview } from "./SelectionReview";
 import { FinalizationOutput } from "./FinalizationOutput";
 import { useGitFinalization, type GitFinalizationProps } from "./useGitFinalization";
 
-/** Composes the existing Files, Commit, Publish and Confirm journey around one task-local controller. */
-export const GitFinalization = (props: GitFinalizationProps) => {
-  const { task, repository, close, complete } = props;
+/** Presents selected changes and explicit commit/push actions around the guarded core. */
+export const GitFinalization = (
+  props: GitFinalizationProps & {
+    mode?: "git" | "review";
+    onModeChange?: (mode: "git" | "review") => void;
+  },
+) => {
+  const { task, repository, close, mode = "git", onModeChange } = props;
   const controller = useGitFinalization(props);
 
   const {
@@ -26,15 +32,12 @@ export const GitFinalization = (props: GitFinalizationProps) => {
     taskView,
     snapshot,
     setError,
-    step,
-    record,
-    setStep,
-    setBusy,
   } = controller;
 
   if (connectingFork && repository)
     return (
       <ConnectLocalRepository
+        configureRemotes
         initialPath={repository.path}
         distro={repository.distro || "Linux"}
         close={() => setConnectingFork(false)}
@@ -60,17 +63,21 @@ export const GitFinalization = (props: GitFinalizationProps) => {
       >
         <header className="git-finalization-header">
           <div>
-            <span className="eyebrow">
-              <GitBranch size={14} /> TASK DELIVERY
-            </span>
-            <h2 id="git-finalization-title">Git Finalization</h2>
-            <p>Select reviewed files, keep your exact message and confirm the destination.</p>
+            <h2 id="git-finalization-title">
+              <GitBranch size={16} />{" "}
+              {mode === "review" ? "Selected changes review" : "Git Changes"}
+            </h2>
+            <p>
+              {mode === "review"
+                ? "Inspect and review the exact files you plan to commit."
+                : "Select files, commit, then push when ready."}
+            </p>
           </div>
 
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Close Git Finalization"
+            aria-label="Close Git Changes"
             disabled={locked}
             onClick={close}
           >
@@ -130,26 +137,18 @@ export const GitFinalization = (props: GitFinalizationProps) => {
         ) : (
           <>
             <div className="git-finalization-grid">
-              <nav className="git-journey" aria-label="Git Finalization steps">
-                {["Files", "Commit", "Publish", "Confirm"].map((label, index) => (
-                  <Button
-                    key={label}
-                    variant={step === index ? "secondary" : "ghost"}
-                    aria-current={step === index ? "step" : undefined}
-                    disabled={locked || (index > 0 && !record)}
-                    onClick={() => setStep(index)}
-                  >
-                    {index + 1}. {label}
-                  </Button>
-                ))}
-              </nav>
               <FinalizationFiles controller={controller} snapshot={snapshot} task={task} />
-              <FinalizationCommit
-                controller={controller}
-                snapshot={snapshot}
-                repository={repository}
-                task={task}
-              />
+              {mode === "review" ? (
+                <SelectionReview controller={controller} />
+              ) : (
+                <FinalizationCommit
+                  controller={controller}
+                  snapshot={snapshot}
+                  repository={repository}
+                  task={task}
+                  review={onModeChange ? () => onModeChange("review") : undefined}
+                />
+              )}
             </div>
             <FinalizationOutput controller={controller} snapshot={snapshot} task={task} />
           </>
@@ -161,25 +160,11 @@ export const GitFinalization = (props: GitFinalizationProps) => {
           </small>
 
           <div className="actions">
-            {task.status === "ready_for_review" && !record?.head && (
-              <Button
-                disabled={locked}
-                onClick={async () => {
-                  setBusy("Marking task complete…");
-                  try {
-                    await complete();
-                    close();
-                  } catch (error) {
-                    setError(errorMessage(error));
-                  } finally {
-                    setBusy("");
-                  }
-                }}
-              >
-                Mark task complete
+            {mode === "review" && onModeChange && (
+              <Button variant="default" disabled={locked} onClick={() => onModeChange("git")}>
+                Back to Git Changes
               </Button>
             )}
-
             <Button variant="secondary" disabled={locked} onClick={close}>
               Keep local and close
             </Button>

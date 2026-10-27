@@ -82,6 +82,7 @@ export class IssueSearch {
     readonly signal: AbortSignal,
     readonly limits: WatchLimits,
     private readonly pool: GitHubReadPool,
+    private readonly activity?: () => void,
   ) {}
 
   read = async (endpoint: string): Promise<unknown> => {
@@ -98,6 +99,7 @@ export class IssueSearch {
     if (this.requests >= this.limits.max_requests)
       throw new CollectionLimit("GitHub request budget exhausted.");
     this.requests++;
+    this.activity?.();
 
     const value = await this.pool.run(
       () => this.client.api<unknown>(endpoint, this.signal),
@@ -106,6 +108,7 @@ export class IssueSearch {
 
     this.signal.throwIfAborted();
     this.bytes += Buffer.byteLength(JSON.stringify(value));
+    this.activity?.();
     if (this.bytes > 20 * 1024 * 1024)
       throw new CollectionLimit("Collected GitHub data exceeded 20 MiB.");
     return value;

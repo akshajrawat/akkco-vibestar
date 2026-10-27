@@ -342,8 +342,15 @@
   flex-shrink: 0;
 }
 
-.chat-input:focus-within {
-  border-color: var(--accent-blue);
+.chat-input:has(textarea:focus) {
+  outline: none;
+  border-color: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.chat-input textarea:focus {
+  outline: none;
+  box-shadow: none;
 }
 
 .composer-context {
@@ -381,30 +388,6 @@
   gap: 3px;
   color: var(--text-muted);
   min-width: 0;
-}
-
-.composer-settings input,
-.composer-settings select {
-  background: transparent;
-  border: 0;
-  padding: 3px 5px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  height: 25px;
-}
-
-.composer-settings input {
-  width: 135px;
-  min-width: 70px;
-}
-
-.composer-settings select {
-  max-width: 110px;
-}
-
-.composer-settings input:focus,
-.composer-settings select:focus {
-  background: var(--border-default);
 }
 
 .composer-note {

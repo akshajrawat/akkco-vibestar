@@ -86,7 +86,7 @@
   margin: 0;
 }
 
-.repository-connect select {
+.repository-connect .select-trigger {
   width: 100%;
   min-width: 0;
 }
@@ -116,11 +116,6 @@
 .selected-repository-meta {
   margin-top: -4px;
   color: var(--text-secondary);
-}
-
-.selected-repository-meta small {
-  display: block;
-  margin-top: 4px;
 }
 
 .workspace-repository-context {

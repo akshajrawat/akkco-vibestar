@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, ArrowUpRight } from "lucide-react";
+import { X, ArrowUpRight, FolderGit2 } from "lucide-react";
 
 import { rpc, errorMessage } from "../../lib/api";
 import type { Repository, Task, Settings, Snapshot } from "../../lib/types";
@@ -7,6 +7,7 @@ import { parseIssue, repositoryMatchesIssue } from "../../../backend/domain";
 import { useProviders } from "../../hooks/useWorkspace";
 import { StageSettings } from "../providers/StageSettings";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 
 interface Preview {
   reference: { owner: string; repo: string; number: number };
@@ -24,11 +25,13 @@ export const NewTask = ({
   created,
   initialIssueUrl = "",
   initialNotes = "",
+  initialRepositoryId = "",
 }: {
   close: () => void;
   created: (id: string) => void;
   initialIssueUrl?: string;
   initialNotes?: string;
+  initialRepositoryId?: string;
 }) => {
   const models = useProviders();
   const [url, setUrl] = useState(initialIssueUrl);
@@ -53,11 +56,15 @@ export const NewTask = ({
         setSettings(s.settings);
         const active = s.repositories.filter((r) => r.connected !== false);
         setRepositories(active);
-        setRepositoryId(active[0]?.id || "");
+
+        setRepositoryId(
+          active.find((r) => r.id === initialRepositoryId)?.id || active[0]?.id || "",
+        );
+
         setRoot(s.root);
       })
       .catch((e) => setError(errorMessage(e)));
-  }, []);
+  }, [initialRepositoryId]);
 
   const selected = repositories.find((r) => r.id === repositoryId);
   let reference: ReturnType<typeof parseIssue> | undefined;
@@ -187,23 +194,24 @@ export const NewTask = ({
         >
           <label>
             Repository
-            <select
-              required
-              aria-label="Repository"
+            <Select
+              label="Repository"
               value={repositoryId}
-              onChange={(e) => {
-                setRepositoryId(e.target.value);
+              searchable
+              disabled={busy || !repositories.length}
+              placeholder="No connected repositories"
+              options={repositories.map((r) => ({
+                value: r.id,
+                label: `${r.owner}/${r.name}`,
+                description: `${r.environment === "windows" || r.path.startsWith("/mnt/") ? "Windows" : "WSL"} · ${r.base_branch}`,
+                icon: <FolderGit2 size={16} />,
+              }))}
+              onChange={(id) => {
+                setRepositoryId(id);
                 setManualSelection(true);
                 setMatched(false);
               }}
-            >
-              {!repositories.length && <option value="">No active repositories</option>}
-              {repositories.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.owner}/{r.name} · {r.path}
-                </option>
-              ))}
-            </select>
+            />
           </label>
 
           {!repositories.length && (
@@ -212,18 +220,7 @@ export const NewTask = ({
             </p>
           )}
 
-          {selected && (
-            <p className="selected-repository-meta">
-              <code>{selected.path}</code>
-              <small>
-                {selected.environment === "windows" || selected.path.startsWith("/mnt/")
-                  ? "Windows"
-                  : "WSL"}{" "}
-                · {selected.base_branch}
-                {matched ? " · ✓ Matched from issue URL" : ""}
-              </small>
-            </p>
-          )}
+          {matched && <small className="selected-repository-meta">Matched from issue URL</small>}
 
           <label>
             Issue URL
@@ -350,7 +347,7 @@ export const NewTask = ({
           </details>
 
           {selected && (
-            <details className="task-configuration" open>
+            <details className="task-configuration">
               <summary>Repository source &amp; task workspace</summary>
               <dl className="repository-facts">
                 <dt>Source</dt>
@@ -386,9 +383,7 @@ export const NewTask = ({
           )}
 
           <div className="modal-actions">
-            <small>
-              Review each plan → Implement → Review changes → Antigravity review & tests
-            </small>
+            <small>Starts idle. Chat or start the workflow when ready.</small>
 
             <Button
               variant="default"

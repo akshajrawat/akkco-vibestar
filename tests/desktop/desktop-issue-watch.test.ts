@@ -209,7 +209,8 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
           "Find open issues that are not triage needed, not listed in https://github.com/oppia/oppia/issues/27409, and not already actively claimed. Prefer issues for which I can reasonably request assignment.",
         );
 
-      await editor.getByLabel("Model", { exact: true }).selectOption("fixture-model");
+      await editor.getByRole("combobox", { name: "Model", exact: true }).click();
+      await page.getByRole("option", { name: "fixture-model", exact: true }).click();
 
       await page.evaluate(() => {
         const data = new DataTransfer();
@@ -236,25 +237,26 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
         .waitFor();
 
       await editor.getByText(/Open issues · Unassigned/).waitFor();
-      for (const select of await editor.locator("select[aria-label^='Interpret ']").all())
-        await select.selectOption("confirmed_controls");
+      expect(await editor.locator("select[aria-label^='Interpret ']").count()).toBe(0);
       await page.screenshot({ path: join(screenshots, "watch-editor.png") });
       expect(provider.calls).toBe(0);
       expect(fixture.api).not.toHaveBeenCalled();
       await editor.getByRole("button", { name: "Save watch", exact: true }).click();
       await editor.waitFor({ state: "hidden" });
-      await page.getByRole("button", { name: "Scan Now", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Scan now", exact: true }).waitFor();
       const watch = fixture.service.store.list()[0];
       expect(fixture.service.store.history(watch.id)).toEqual([]);
       expect(provider.calls).toBe(0);
-      await page.getByRole("button", { name: "Scan Now", exact: true }).click();
+      await page.getByRole("button", { name: "Scan now", exact: true }).click();
 
       await page
-        .getByText("Scan complete within the declared collection scope", {
+        .getByText("Scan complete", {
           exact: true,
         })
         .waitFor();
 
+      await page.getByRole("combobox", { name: "Filter results", exact: true }).click();
+      await page.getByRole("option", { name: "All results", exact: true }).click();
       const first = fixture.service.store.history(watch.id)[0];
 
       expect(first).toMatchObject({
@@ -275,17 +277,78 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
           .map((candidate) => candidate.issue.number),
       ).toEqual([1]);
 
-      await page.getByText("A focused testing improvement", { exact: true }).waitFor();
+      for (const [width, height] of [
+        [1280, 720],
+        [1440, 900],
+        [1920, 1080],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, size) =>
+            BrowserWindow.getAllWindows()[0].setSize(...(size as [number, number])),
+          [width, height],
+        );
+
+        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        ).toBe(true);
+
+        await page.screenshot({
+          path: join(screenshots, `watch-results-${width}x${height}.png`),
+          animations: "disabled",
+        });
+      }
+
+      await page.getByRole("button", { name: /Select #1:/ }).click();
+      await page.getByRole("complementary", { name: "Selected issue details" }).waitFor();
+
+      expect(await page.getByText("A focused testing improvement", { exact: true }).count()).toBe(
+        0,
+      );
+
+      expect(await page.getByText("Original issue description", { exact: true }).count()).toBe(0);
+
+      for (const [width, height] of [
+        [1280, 720],
+        [1440, 900],
+        [1920, 1080],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, size) =>
+            BrowserWindow.getAllWindows()[0].setSize(...(size as [number, number])),
+          [width, height],
+        );
+
+        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+        const footer = page.locator(".watch-details-footer");
+
+        expect(await footer.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(
+          "rgba(0, 0, 0, 0)",
+        );
+
+        const primary = await footer
+          .getByRole("button", { name: "Create task", exact: true })
+          .boundingBox();
+
+        const bounds = await footer.boundingBox();
+        expect(primary!.width).toBeLessThan(bounds!.width / 2);
+
+        await page.screenshot({
+          path: join(screenshots, `watch-details-${width}x${height}.png`),
+          animations: "disabled",
+        });
+      }
 
       await page.screenshot({
         path: join(screenshots, "initial-discoveries.png"),
       });
 
       const readsBeforeBrowse = fixture.api.mock.calls.length;
-      const rows = page.getByRole("listbox", { name: "Discovery results" });
-      await rows.getByRole("option").first().focus();
+      const rows = page.getByRole("list", { name: "Discovery results" });
+      await rows.locator(".watch-result-select").first().focus();
       await page.keyboard.press("ArrowDown");
-      expect(await rows.getByRole("option", { selected: true }).count()).toBe(1);
+      expect(await rows.getByRole("button", { pressed: true }).count()).toBe(1);
       await page.getByRole("tab", { name: "Coverage", exact: true }).click();
       await page.getByRole("heading", { name: "Declared scope and coverage" }).waitFor();
 
@@ -329,7 +392,8 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
           })
           .first()
           .click();
-      await page.getByRole("button", { name: "Edit", exact: true }).click();
+      await page.getByRole("button", { name: "Watch actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
       await page.getByRole("dialog", { name: "Edit Issue Watch" }).waitFor();
       await page.keyboard.press("Shift+Tab");
 
@@ -343,28 +407,23 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       await expect
         .poll(() =>
           page
-            .getByRole("button", { name: "Edit", exact: true })
+            .getByRole("button", { name: "Watch actions", exact: true })
             .evaluate((node) => node === document.activeElement),
         )
         .toBe(true);
 
-      const handle = page.getByRole("separator", {
-        name: "Saved watches width",
-        exact: true,
-      });
-
-      await handle.focus();
-      await page.keyboard.press("ArrowRight");
-
-      await page.waitForFunction(
-        () => localStorage.getItem("vibestar.issueWatch.watchWidth") === "242",
-      );
+      await page.getByRole("button", { name: "All watches", exact: true }).click();
+      await page.getByRole("heading", { name: "Issue Watch", exact: true }).waitFor();
+      expect(await page.getByRole("complementary", { name: "Saved watches" }).count()).toBe(0);
+      await page.screenshot({ path: join(screenshots, "watch-overview.png") });
+      await page.getByRole("button", { name: /Oppia contribution opportunities/ }).click();
+      await page.getByRole("button", { name: "Scan now", exact: true }).waitFor();
 
       fixture.issues.get(27409)!.body =
         "## Updated preparation scope\n\n#2 only. The workflow issue is no longer reserved.";
 
       fixture.issues.get(1)!.labels = [{ name: "triage needed" }];
-      await page.getByRole("button", { name: "Scan Now", exact: true }).click();
+      await page.getByRole("button", { name: "Scan now", exact: true }).click();
       await expect.poll(() => fixture.service.store.history(watch.id)[0]?.status).toBe("completed");
       const second = fixture.service.store.history(watch.id)[0];
       expect(second.id).not.toBe(first.id);
@@ -378,10 +437,16 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
         "no_longer_eligible",
       );
 
-      await page.getByText("Newly matching existing issue", { exact: false }).first().waitFor();
+      await page.getByRole("combobox", { name: "Filter results", exact: true }).click();
+
+      await page
+        .getByRole("option", { name: "New since last completed scan", exact: true })
+        .click();
+
+      await rows.getByRole("button", { name: /Clarify workflow test setup/ }).waitFor();
       await page.screenshot({ path: join(screenshots, "newly-matching.png") });
-      await rows.getByRole("option").filter({ hasText: "Clarify workflow test setup" }).click();
-      await page.getByRole("button", { name: "Start Vibestar Task", exact: true }).click();
+      await rows.getByRole("button", { name: /Clarify workflow test setup/ }).click();
+      await page.getByRole("button", { name: "Create task", exact: true }).click();
       const task = page.getByRole("dialog", { name: "New task", exact: true });
 
       expect(await task.getByLabel("Issue URL", { exact: true }).inputValue()).toBe(
@@ -398,18 +463,21 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       await task.getByRole("button", { name: "Close", exact: true }).click();
       await page.reload();
       await page.getByRole("button", { name: "Issue Watch", exact: true }).click();
-      await page.getByRole("button", { name: "Scan Now", exact: true }).waitFor();
+      await page.getByRole("button", { name: /Oppia contribution opportunities/ }).click();
+      await page.getByRole("button", { name: "Scan now", exact: true }).waitFor();
       expect(provider.calls).toBe(2);
-      await page.getByLabel("Scan history", { exact: true }).selectOption(first.id);
-      await page.getByText("Initial discoveries", { exact: false }).first().waitFor();
+      await page.getByRole("combobox", { name: "Scan history", exact: true }).click();
+      await page.locator(`[role="option"][data-value="${first.id}"]`).click();
+      await page.getByRole("button", { name: /Select #1:/ }).waitFor();
       expect(provider.calls).toBe(2);
-      await page.getByLabel("Scan history", { exact: true }).selectOption("");
+      await page.getByRole("combobox", { name: "Scan history", exact: true }).click();
+      await page.getByRole("option", { name: "Latest attempt", exact: true }).click();
 
       fixture.overrides.set("repos/oppia/oppia/issues/27409", () => {
         throw new Error("Fixture required tracker is rate limited; no stale exclusions accepted.");
       });
 
-      await page.getByRole("button", { name: "Scan Now", exact: true }).click();
+      await page.getByRole("button", { name: "Scan now", exact: true }).click();
       await expect.poll(() => fixture.service.store.history(watch.id)[0]?.status).toBe("blocked");
       await page.getByText("blocked · Coverage is incomplete", { exact: true }).waitFor();
       expect(fixture.service.store.get(watch.id).last_complete_scan_id).toBe(second.id);
@@ -435,13 +503,13 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
         }),
       );
 
-      await page.getByRole("button", { name: "Cancel active scan", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Cancel scan", exact: true }).waitFor();
 
       await page.screenshot({
         path: join(screenshots, "narrow-active-cancel.png"),
       });
 
-      await page.getByRole("button", { name: "Cancel active scan", exact: true }).click();
+      await page.getByRole("button", { name: "Cancel scan", exact: true }).click();
       await expect.poll(() => fixture.service.store.history(watch.id)[0]?.status).toBe("cancelled");
       expect(provider.calls).toBe(3);
       expect(fixture.service.store.get(watch.id).last_complete_scan_id).toBe(second.id);

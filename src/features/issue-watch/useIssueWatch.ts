@@ -156,6 +156,7 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
   }, [enabled, refresh, invalidate]);
 
   const select = (id: string) => {
+    if (id === watchId && !scanId) return;
     invalidate();
     setWatchId(id);
     setScanId("");

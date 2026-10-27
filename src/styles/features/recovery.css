@@ -45,8 +45,21 @@
 }
 
 .final-review-summary {
-  margin: 14px 0;
-  font-size: 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.final-review-summary > p {
+  margin-top: 10px;
+}
+
+.final-review-summary > .actions,
+.final-review-summary > .agent-response {
+  margin-top: 20px;
+}
+
+.secondary-expanded .verification-recovery {
+  margin-block: 24px;
 }
 
 .verification-blockers {
@@ -202,7 +215,7 @@
 }
 
 .secondary-workspace .command-filters input,
-.secondary-workspace .command-filters select {
+.secondary-workspace .command-filters .select-trigger {
   min-width: 0;
   max-width: 100%;
 }

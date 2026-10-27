@@ -1,5 +1,15 @@
+.tests-panel {
+  padding: 28px clamp(20px, 3vw, 48px);
+  max-width: 1120px;
+  margin-inline: auto;
+}
+
+.tests-panel > * + * {
+  margin-top: 24px;
+}
+
 .verification-summary {
-  padding: 12px;
+  padding: 0 0 24px;
   border-bottom: 1px solid var(--border);
   overflow-wrap: anywhere;
 }

@@ -10,6 +10,7 @@ import type { Detail, Repository, Diff, Message, Run } from "../../lib/types";
 import { activeStatuses } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 import { ComposerSettings, followupConfiguration } from "../chat/ComposerSettings";
 import { TaskTerminal } from "../../components/shared/TaskTerminal";
 import {
@@ -73,7 +74,7 @@ export const TaskWorkspace = ({
     disposition: "keep_saved" | "include_next_stage";
   }>();
 
-  const [finalizing, setFinalizing] = useState(false);
+  const [finalizing, setFinalizing] = useState<false | "git" | "review">(false);
   const [sent, setSent] = useState<Message[]>([]);
   const sending = useRef(false);
   const acting = useRef(false);
@@ -436,6 +437,8 @@ export const TaskWorkspace = ({
 
       {finalizing && (
         <GitFinalization
+          mode={finalizing}
+          onModeChange={setFinalizing}
           task={t}
           repository={repository}
           revision={revision}
@@ -794,25 +797,28 @@ export const TaskWorkspace = ({
 
                       <label>
                         Saved instructions on approval
-                        <select
-                          aria-label="Saved instructions on approval"
+                        <Select
+                          label="Saved instructions on approval"
                           value={chosenInstructions}
-                          onChange={(event) =>
+                          onChange={(value) =>
                             setInstructionChoice({
                               ids: pendingKey,
-                              disposition: event.target.value as
-                                "keep_saved" | "include_next_stage",
+                              disposition: value as "keep_saved" | "include_next_stage",
                             })
                           }
-                        >
-                          <option value="">Choose explicitly…</option>
-                          <option value="keep_saved">Keep saved · approve current artifact</option>
-                          {t.approval_gate !== "final_review" && (
-                            <option value="include_next_stage">
-                              Include in the next pipeline stage
-                            </option>
-                          )}
-                        </select>
+                          options={[
+                            { value: "", label: "Choose explicitly…" },
+                            { value: "keep_saved", label: "Keep saved · approve current artifact" },
+                            ...(t.approval_gate !== "final_review"
+                              ? [
+                                  {
+                                    value: "include_next_stage",
+                                    label: "Include in the next pipeline stage",
+                                  },
+                                ]
+                              : []),
+                          ]}
+                        />
                       </label>
 
                       <small>
@@ -844,13 +850,13 @@ export const TaskWorkspace = ({
                   Code review accepted · changes kept locally.{" "}
                   {verification.canReview
                     ? "Recheck evidence to request final verification review."
-                    : "Complete required verification before Git Finalization."}
+                    : "Complete required verification before Git Changes."}
                 </p>
               )}
 
               {["ready_for_review", "completed"].includes(t.status) && (
-                <Button size="sm" onClick={() => setFinalizing(true)}>
-                  Git Finalization
+                <Button size="sm" onClick={() => setFinalizing("git")}>
+                  Git Changes
                 </Button>
               )}
             </>
@@ -880,18 +886,27 @@ export const TaskWorkspace = ({
                 <>
                   <label className="conversation-mode">
                     <span className="sr-only">Message action</span>
-                    <select
-                      aria-label="Message action"
+                    <Select
+                      label="Message action"
                       value={conversationMode}
-                      onChange={(event) =>
-                        setConversationMode(event.target.value as "chat" | "changes")
-                      }
-                    >
-                      <option value="chat">Question · read-only</option>
-                      <option value="changes" disabled={t.status === "not_started"}>
-                        Request code changes
-                      </option>
-                    </select>
+                      onChange={(value) => setConversationMode(value as "chat" | "changes")}
+                      options={[
+                        {
+                          value: "chat",
+                          label: "Ask",
+                          description: "Discuss your task without changing files",
+                        },
+                        {
+                          value: "changes",
+                          label: "Work",
+                          description:
+                            t.status === "not_started"
+                              ? "Start the workflow to enable work"
+                              : "Send feedback or request changes",
+                          disabled: t.status === "not_started",
+                        },
+                      ]}
+                    />
                   </label>
                   <ComposerSettings task={t} />
                 </>
@@ -903,8 +918,8 @@ export const TaskWorkspace = ({
                   ? "History removed. Files and branch remain available in your editor."
                   : conversationMode === "chat"
                     ? occupied
-                      ? "Wait for the current operation before asking a read-only question."
-                      : "Questions inspect an isolated read-only workspace. Start workflow separately when ready."
+                      ? "Wait for the current operation to finish."
+                      : "Ask about your task. Start workflow when you’re ready to make changes."
                     : active
                       ? `Send queues feedback for ${feedbackStage} at the next safe boundary. Save for later starts no agent.`
                       : occupied
@@ -937,7 +952,7 @@ export const TaskWorkspace = ({
               detail={detail}
               busy={busy}
               action={action}
-              finalize={() => setFinalizing(true)}
+              finalize={() => setFinalizing("git")}
               onError={onError}
             />
           ) : view.secondarySection === "plans" ? (
@@ -952,13 +967,34 @@ export const TaskWorkspace = ({
               acceptDraft={setDraftRun}
             />
           ) : view.secondarySection === "changes" ? (
-            <ChangesView
-              task={t}
-              diff={diff}
-              revision={revision}
-              onError={onError}
-              compact={!view.expandedTool}
-            />
+            <>
+              {["ready_for_review", "completed"].includes(t.status) && (
+                <div className="changes-review-action">
+                  <Button
+                    size="sm"
+                    disabled={occupied || active}
+                    onClick={() => setFinalizing("review")}
+                  >
+                    Review selected files
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={occupied || active}
+                    onClick={() => setFinalizing("git")}
+                  >
+                    Git Changes
+                  </Button>
+                </div>
+              )}
+              <ChangesView
+                task={t}
+                diff={diff}
+                revision={revision}
+                onError={onError}
+                compact={!view.expandedTool}
+              />
+            </>
           ) : view.secondarySection === "tests" ? (
             <TestsView detail={detail} onError={onError} terminal={() => dock("Terminal")} />
           ) : view.secondarySection === "usage" ? (

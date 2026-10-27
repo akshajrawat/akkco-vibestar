@@ -66,7 +66,7 @@
   min-width: 110px;
 }
 
-.usage-filters select {
+.usage-filters .select-trigger {
   width: 100%;
   max-width: 260px;
 }
@@ -322,7 +322,7 @@
 }
 
 progress {
-  accent-color: var(--accent-blue);
+  accent-color: var(--text-secondary);
   appearance: none;
   border: 0;
   background: var(--border-strong);

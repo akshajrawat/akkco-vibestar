@@ -19,6 +19,8 @@ import { stages, activeStatuses } from "../../lib/types";
 import { duration } from "../../lib/format";
 import { useTaskView, updateTaskView, openWorkspaceTool } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
+import { Select } from "../../components/ui/Select";
 import { RunPrompt } from "../chat/RunPrompt";
 import { AgentConfiguration } from "../providers/StageSettings";
 import { runActivity } from "../chat/output/activity";
@@ -350,6 +352,11 @@ export const PipelineView = ({
 
               {[1, 2, 3, 5].includes(stage) && (
                 <p>
+                  <ProviderIcon
+                    provider={run?.provider || ([1, 5].includes(stage) ? "antigravity" : "codex")}
+                    model={run?.model || saved?.model}
+                    size={13}
+                  />{" "}
                   {run?.provider || ([1, 5].includes(stage) ? "Antigravity" : "Codex")} ·{" "}
                   {run?.model || saved?.model || "Official CLI default"} ·{" "}
                   {run?.effort || saved?.effort || "Unavailable"}
@@ -499,9 +506,14 @@ export const PipelineView = ({
       </p>
 
       <div className="actions">
+        {task.status === "ready_for_review" && (
+          <Button disabled={!idle || busy} onClick={() => void action("task.complete")}>
+            Mark task complete
+          </Button>
+        )}
         {["ready_for_review", "completed"].includes(task.status) && (
           <Button disabled={!idle || busy} onClick={finalize}>
-            Git Finalization
+            Git Changes
           </Button>
         )}
 
@@ -549,17 +561,15 @@ export const RunDetailsView = ({
     <div className="engineering-panel">
       <label>
         Selected run
-        <select
-          aria-label="Inspect run"
+        <Select
+          label="Inspect run"
           value={run?.id || ""}
-          onChange={(e) => updateTaskView(detail.task.id, { outputRun: e.target.value })}
-        >
-          {detail.runs.map((run) => (
-            <option key={run.id} value={run.id}>
-              {run.provider} · {run.purpose || `Stage ${run.stage}`} · {run.status}
-            </option>
-          ))}
-        </select>
+          onChange={(outputRun) => updateTaskView(detail.task.id, { outputRun })}
+          options={detail.runs.map((run) => ({
+            value: run.id,
+            label: `${run.provider} · ${run.purpose || `Stage ${run.stage}`} · ${run.status}`,
+          }))}
+        />
       </label>
 
       {run && (

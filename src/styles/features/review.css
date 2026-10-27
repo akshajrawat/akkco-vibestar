@@ -145,7 +145,14 @@
 }
 
 .final-review-panel {
-  padding: 14px 18px;
+  width: 100%;
+  padding: 28px clamp(20px, 3vw, 48px);
+  max-width: 1120px;
+  margin-inline: auto;
+}
+
+.final-review-panel > * + * {
+  margin-top: 20px;
 }
 
 .final-review-panel h3 {
@@ -333,7 +340,7 @@
 }
 
 .solve-review-dialog textarea,
-.solve-review-dialog select,
+.solve-review-dialog .select-trigger,
 .publication-dialog input {
   width: 100%;
   margin: 7px 0;

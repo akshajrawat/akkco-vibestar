@@ -8,6 +8,8 @@ import { useProviders } from "../../hooks/useWorkspace";
 import { Activity, Search } from "lucide-react";
 import { EmptyState, ListSkeleton, PageHeader } from "../../components/ui/PageHeader";
 import { UsageCharts } from "./UsageCharts";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
+import { Select } from "../../components/ui/Select";
 
 export const UsageView = ({
   taskId,
@@ -212,18 +214,19 @@ export const UsageView = ({
           {taskId && (
             <label className="usage-run-select">
               Run{" "}
-              <select
-                aria-label="Usage run"
+              <Select
+                label="Usage run"
                 value={selectedRun}
-                onChange={(e) => setSelectedRun(e.target.value)}
-              >
-                <option value="">All task runs</option>
-                {rows.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.purpose} · {r.provider} · {r.model || "CLI default"}
-                  </option>
-                ))}
-              </select>
+                searchable
+                onChange={setSelectedRun}
+                options={[
+                  { value: "", label: "All task runs" },
+                  ...rows.map((r) => ({
+                    value: r.id,
+                    label: `${r.purpose} · ${r.provider} · ${r.model || "CLI default"}`,
+                  })),
+                ]}
+              />
             </label>
           )}
 
@@ -252,21 +255,19 @@ export const UsageView = ({
                   (key) => (
                     <label key={key}>
                       {key === "task_id" ? "Task" : key}
-                      <select
-                        aria-label={`Usage ${key} filter`}
+                      <Select
+                        label={`Usage ${key} filter`}
                         value={filters[key] || ""}
-                        onChange={(e) => setFilters({ ...filters, [key]: e.target.value })}
-                      >
-                        <option value="">All</option>
-                        {[...new Set(rows.map((r) => String(r[key] || "")))]
-                          .filter(Boolean)
-                          .sort()
-                          .map((v) => (
-                            <option key={v} value={v}>
-                              {v}
-                            </option>
-                          ))}
-                      </select>
+                        searchable
+                        onChange={(value) => setFilters({ ...filters, [key]: value })}
+                        options={[
+                          { value: "", label: "All" },
+                          ...[...new Set(rows.map((r) => String(r[key] || "")))]
+                            .filter(Boolean)
+                            .sort()
+                            .map((value) => ({ value, label: value })),
+                        ]}
+                      />
                     </label>
                   ),
                 )}
@@ -472,6 +473,7 @@ export const UsageView = ({
                             onClick={() => setExpandedRun(expandedRun === row.id ? "" : row.id)}
                             aria-expanded={expandedRun === row.id}
                           >
+                            <ProviderIcon provider={row.provider} model={row.model} size={13} />{" "}
                             {row.provider}
                             <small>{row.model || "CLI default"}</small>
                           </button>
@@ -533,6 +535,7 @@ export const UsageView = ({
               .map((row) => (
                 <details className="usage-run" key={row.id} open={!scoped ? true : undefined}>
                   <summary>
+                    <ProviderIcon provider={row.provider} model={row.model} size={16} />
                     <div>
                       <strong>{row.purpose}</strong>
                       <small>

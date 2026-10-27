@@ -205,7 +205,9 @@ export class FinalizationService {
           name: "Standard",
           commit_hooks: "normal",
           push: "normal",
-          remote: this.engine.db.repository(task.repo_id).origin_remote || "origin",
+          remote: this.engine.db.repository(task.repo_id).origin_url
+            ? this.engine.db.repository(task.repo_id).origin_remote || "origin"
+            : this.engine.db.repository(task.repo_id).upstream_remote || "upstream",
           branch: task.branch_name,
         });
   };
@@ -752,12 +754,20 @@ export class FinalizationService {
     const task = this.engine.db.task(record.task_id);
     const repo = this.engine.db.repository(task.repo_id);
     const cwd = await this.workspaces.source(task);
-    if (!repo.origin_url)
+
+    const configured =
+      record.preset.remote === (repo.origin_remote || "origin") && repo.origin_url
+        ? repo.origin_url
+        : record.preset.remote === (repo.upstream_remote || "upstream")
+          ? repo.upstream_url
+          : null;
+
+    if (!configured)
       throw new AdeError(
         "destination",
-        "Connect a contribution fork before publishing. The local commit is preserved.",
+        "Configure a verified writable destination before pushing. The local commit is preserved.",
       );
-    const url = githubTransport(repo.origin_url);
+    const url = githubTransport(configured);
     for (const mode of [[], ["--push"]]) {
       const actual = await gitChecked(
         ["remote", "get-url", ...mode, "--all", record.preset.remote],
@@ -767,7 +777,7 @@ export class FinalizationService {
       if (actual.split("\n").length !== 1 || githubTransport(actual) !== url)
         throw new AdeError(
           "destination",
-          "The selected remote does not identify the configured contribution repository.",
+          "The selected remote does not identify the configured contribution or source repository.",
         );
     }
 
@@ -786,13 +796,12 @@ export class FinalizationService {
     const upstream = remoteIdentity(repo.upstream_url);
     const upstreamName = `${upstream.owner}/${upstream.name}`;
     if (
-      repository.toLowerCase() === upstreamName.toLowerCase() ||
-      !fresh.fork ||
-      fresh.parent?.full_name.toLowerCase() !== upstreamName.toLowerCase()
+      repository.toLowerCase() !== upstreamName.toLowerCase() &&
+      (!fresh.fork || fresh.parent?.full_name.toLowerCase() !== upstreamName.toLowerCase())
     )
       throw new AdeError(
         "destination",
-        "Publishing requires the configured contribution fork of this upstream; direct upstream publication is blocked.",
+        "The destination must be the verified writable source repository or its configured contribution fork.",
       );
     return {
       remote: record.preset.remote,
@@ -834,6 +843,26 @@ export class FinalizationService {
       throw new AdeError("remote_head", "Remote branch evidence is ambiguous.");
     return rows[0].split("\t")[0];
   };
+
+  checkDestination = (taskId: string, id: string, destination: z.infer<typeof destinationInput>) =>
+    this.exclusive(taskId, "Checking push destination", async (signal) => {
+      const saved = this.store.get(taskId, id);
+      if (
+        !["reviewed", "approved", "committed", "prepared", "not_published"].includes(saved.status)
+      )
+        throw new AdeError(
+          "review_required",
+          "Review the selected changes before checking publication.",
+        );
+      if (saved.head) await this.committed(saved, signal);
+      else await this.current(saved, signal);
+
+      // Preflight reads do not save a destination or authorize a later push.
+      return this.destination(
+        { ...saved, preset: { ...saved.preset, ...destinationInput.parse(destination) } },
+        signal,
+      );
+    });
 
   private committed = async (record: Finalization, signal: AbortSignal) => {
     const task = this.engine.db.task(record.task_id);
@@ -1190,6 +1219,15 @@ export class FinalizationService {
         .parse(input);
 
       return this.prepare(request.id, request.operation_id, request.destination);
+    }
+
+    if (method === "checkDestination") {
+      const request = operationInput
+        .extend({ destination: destinationInput })
+        .strict()
+        .parse(input);
+
+      return this.checkDestination(request.id, request.operation_id, request.destination);
     }
 
     if (method === "detail" || method === "output") {

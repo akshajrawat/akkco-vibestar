@@ -4,6 +4,8 @@ import { X, Check } from "lucide-react";
 import type { VerifiedLocalRepository } from "../../../backend/workspace/discovery";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
+import type { Repository } from "../../lib/types";
+import { Select } from "../../components/ui/Select";
 
 export const ConnectLocalRepository = ({
   distro,
@@ -11,12 +13,18 @@ export const ConnectLocalRepository = ({
   initialEnvironment = "wsl",
   close,
   connected,
+  repositories = [],
+  selectRepository,
+  configureRemotes = false,
 }: {
   distro: string;
   initialPath?: string;
   initialEnvironment?: "wsl" | "windows";
   close: () => void;
   connected: () => Promise<void>;
+  repositories?: Repository[];
+  selectRepository?: (id: string) => void;
+  configureRemotes?: boolean;
 }) => {
   const [environment, setEnvironment] = useState(initialEnvironment);
   const [path, setPath] = useState(initialPath);
@@ -26,12 +34,37 @@ export const ConnectLocalRepository = ({
   const [base, setBase] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [located, setLocated] = useState<Repository | null>(null);
+
+  const existing =
+    located ||
+    repositories.find((repo) =>
+      [repo.path, repo.windows_path].some(
+        (location) =>
+          location && location.replace(/[\\/]+$/, "") === path.trim().replace(/[\\/]+$/, ""),
+      ),
+    );
+
+  const useExisting =
+    existing &&
+    (!configureRemotes || existing.source !== "imported") &&
+    (existing.connected !== false || existing.source !== "imported");
 
   const verify = async () => {
     setBusy(true);
     setError("");
     setVerification(undefined);
     try {
+      const known = await rpc<Repository | null>("repository.locateLocal", { environment, path });
+      if (
+        known?.id &&
+        (!configureRemotes || known.source !== "imported") &&
+        (known.connected !== false || known.source !== "imported")
+      ) {
+        setLocated(known);
+        return;
+      }
+
       const result = await rpc<VerifiedLocalRepository>("repository.verifyLocal", {
         environment,
         path,
@@ -69,7 +102,7 @@ export const ConnectLocalRepository = ({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void verify();
+            if (!useExisting) void verify();
           }}
         >
           <fieldset className="scope-options">
@@ -85,6 +118,7 @@ export const ConnectLocalRepository = ({
                     setEnvironment(value);
                     setPath("");
                     setVerification(undefined);
+                    setLocated(null);
                     setError("");
                   }}
                 />
@@ -106,17 +140,53 @@ export const ConnectLocalRepository = ({
               onChange={(e) => {
                 setPath(e.target.value);
                 setVerification(undefined);
+                setLocated(null);
                 setError("");
               }}
             />
           </label>
 
-          <Button type="submit" disabled={busy || !path.trim()}>
-            {busy ? "Checking…" : "Verify repository"}
-          </Button>
+          {!useExisting && (
+            <Button type="submit" disabled={busy || !path.trim()}>
+              {busy ? "Checking…" : "Verify repository"}
+            </Button>
+          )}
         </form>
 
-        {verification && (
+        {useExisting && (
+          <div className="verified-repository">
+            <h3>
+              {existing.owner}/{existing.name}
+            </h3>
+            <p className="subtle">
+              {existing.source === "imported" ? "Already connected" : "Vibestar-managed clone"} ·{" "}
+              {existing.base_branch}
+            </p>
+            <Button
+              variant="default"
+              busy={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  if (existing.connected === false)
+                    await rpc("repository.reconnectManaged", { id: existing.id });
+                  await connected();
+                  selectRepository?.(existing.id);
+                  close();
+                } catch (e) {
+                  setError(errorMessage(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Select connected repository
+            </Button>
+          </div>
+        )}
+
+        {verification && !useExisting && (
           <div className="verified-repository">
             <h3 className="success">
               <Check size={14} /> Repository verified
@@ -154,57 +224,54 @@ export const ConnectLocalRepository = ({
 
             <label>
               Upstream repository
-              <select
-                required
+              <Select
+                label="Upstream repository"
                 value={upstream}
                 disabled={busy}
-                onChange={(e) => {
-                  const remote = verification.remotes.find((r) => r.name === e.target.value);
-                  setUpstream(e.target.value);
-                  if (origin === e.target.value) setOrigin("");
+                onChange={(name) => {
+                  const remote = verification.remotes.find((r) => r.name === name);
+                  setUpstream(name);
+                  if (origin === name) setOrigin("");
                   setBase(remote?.default_branch || "");
                 }}
-              >
-                <option value="">Select upstream explicitly…</option>
-                {verification.remotes
-                  .filter((r) => r.identity)
-                  .map((r) => (
-                    <option key={r.name} value={r.name}>
-                      {r.identity} · {r.name}
-                    </option>
-                  ))}
-              </select>
+                options={[
+                  { value: "", label: "Select upstream explicitly…" },
+                  ...verification.remotes
+                    .filter((r) => r.identity)
+                    .map((r) => ({ value: r.name, label: r.identity!, description: r.name })),
+                ]}
+              />
             </label>
 
             <label>
               Origin / fork
-              <select value={origin} disabled={busy} onChange={(e) => setOrigin(e.target.value)}>
-                <option value="">None</option>
-                {verification.remotes
-                  .filter((r) => r.identity && r.name !== upstream)
-                  .map((r) => (
-                    <option key={r.name} value={r.name}>
-                      {r.identity} · {r.name}
-                    </option>
-                  ))}
-              </select>
+              <Select
+                label="Origin / fork"
+                value={origin}
+                disabled={busy}
+                onChange={setOrigin}
+                options={[
+                  { value: "", label: "None" },
+                  ...verification.remotes
+                    .filter((r) => r.identity && r.name !== upstream)
+                    .map((r) => ({ value: r.name, label: r.identity!, description: r.name })),
+                ]}
+              />
             </label>
 
             <label>
               Base branch
-              <select
-                required
+              <Select
+                label="Base branch"
                 value={base}
                 disabled={busy}
-                onChange={(e) => setBase(e.target.value)}
-              >
-                <option value="">Select base explicitly…</option>
-                {verification.branches.map((branch) => (
-                  <option key={branch} value={branch}>
-                    {branch}
-                  </option>
-                ))}
-              </select>
+                onChange={setBase}
+                searchable
+                options={[
+                  { value: "", label: "Select base explicitly…" },
+                  ...verification.branches.map((branch) => ({ value: branch, label: branch })),
+                ]}
+              />
             </label>
 
             <p className="subtle">

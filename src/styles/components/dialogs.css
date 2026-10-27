@@ -108,7 +108,7 @@
 
 .scope-options input {
   width: auto;
-  accent-color: var(--accent-blue);
+  accent-color: var(--text-secondary);
 }
 
 .task-configuration {
@@ -121,10 +121,11 @@
 
 .task-composer .config-block {
   display: grid;
-  grid-template-columns: 1fr 1fr 90px;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.65fr) 130px;
+  gap: 12px;
   border: 0;
-  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 20px 0;
 }
 
 .task-composer .config-block h3 {

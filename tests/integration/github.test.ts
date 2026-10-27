@@ -225,6 +225,39 @@ it("uses proven fork parents and refuses a same-name unrelated fork", async () =
   }
 });
 
+it.each(["viewer/repo", "organization/repo"])(
+  "prefers the verified writable source %s instead of looking for a fork",
+  async (name) => {
+    const db = new Database(":memory:");
+    const engine = { root: "/tmp", db, changed: vi.fn() } as unknown as Engine;
+    const service = new GitHubService(engine, new Scheduler(engine));
+
+    vi.spyOn(service.client, "detect").mockResolvedValue({
+      installed: true,
+      connected: true,
+      username: "viewer",
+      version: "gh",
+      error: null,
+    });
+
+    const metadata = vi
+      .spyOn(service.client, "repository")
+      .mockResolvedValue({ ...repository(name), permissions: { push: true } });
+
+    try {
+      expect(await service.resolve(name)).toMatchObject({
+        upstream_url: `https://github.com/${name}.git`,
+        origin_url: null,
+      });
+
+      expect(metadata).toHaveBeenCalledTimes(1);
+    } finally {
+      await service.close();
+      db.close();
+    }
+  },
+);
+
 it("paginates repository catalogs instead of limiting them to 100", async () => {
   const client = new GitHubClient("/tmp");
 

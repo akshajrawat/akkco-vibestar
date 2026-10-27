@@ -24,6 +24,7 @@ export class RepositoryOperations {
       | "git"
       | "isActive"
       | "cleanupBlockers"
+      | "acquireTaskWorkspace"
     >,
     private readonly operation: <T>(operation: () => Promise<T>, label?: string) => Promise<T>,
     private readonly signal: AbortSignal,
@@ -385,7 +386,13 @@ export class RepositoryOperations {
     if (`${identity.owner}/${identity.name}`.toLowerCase() !== `${r.owner}/${r.name}`.toLowerCase())
       throw new AdeError("invalid_input", "Upstream must match the managed repository");
     if (configuration.origin_url) remoteIdentity(configuration.origin_url);
-    await gitChecked(["check-ref-format", "--branch", configuration.base_branch], this.host.root);
+
+    await gitChecked(
+      ["check-ref-format", "--branch", configuration.base_branch],
+      this.host.root,
+      this.signal,
+    );
+
     if (
       this.host.db
         .tasks()
@@ -399,28 +406,52 @@ export class RepositoryOperations {
         "busy",
         "Wait for this repository's active tasks before changing its remotes",
       );
-    const updated = { ...r, ...configuration };
 
-    await this.host.git.withLock(id, async () => {
-      if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
-        await gitChecked(["remote", "set-url", "upstream", updated.upstream_url], r.path);
-        const remotes = (await gitChecked(["remote"], r.path)).split("\n");
-        if (updated.origin_url)
+    const updated = {
+      ...r,
+      ...configuration,
+      ...(r.source !== "imported"
+        ? { origin_remote: configuration.origin_url ? "origin" : null }
+        : {}),
+    };
+
+    const releases: (() => void)[] = [];
+    try {
+      for (const task of this.host.db.tasks().filter((task) => task.repo_id === id))
+        releases.push(
+          this.host.acquireTaskWorkspace(task.id, "Repository destination configuration"),
+        );
+
+      await this.host.git.withLock(id, async () => {
+        if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
           await gitChecked(
-            [
-              "remote",
-              remotes.includes("origin") ? "set-url" : "add",
-              "origin",
-              updated.origin_url,
-            ],
+            ["remote", "set-url", "upstream", updated.upstream_url],
             r.path,
+            this.signal,
           );
-        else if (remotes.includes("origin"))
-          await gitChecked(["remote", "remove", "origin"], r.path);
-      }
 
-      this.host.db.saveRepository(updated);
-    });
+          const remotes = (await gitChecked(["remote"], r.path, this.signal)).split("\n");
+          if (updated.origin_url)
+            await gitChecked(
+              [
+                "remote",
+                remotes.includes("origin") ? "set-url" : "add",
+                "origin",
+                updated.origin_url,
+              ],
+              r.path,
+              this.signal,
+            );
+          else if (remotes.includes("origin"))
+            await gitChecked(["remote", "remove", "origin"], r.path, this.signal);
+        }
+
+        this.signal.throwIfAborted();
+        this.host.db.saveRepository(updated);
+      });
+    } finally {
+      for (const release of releases.reverse()) release();
+    }
 
     this.host.changed();
     return updated;

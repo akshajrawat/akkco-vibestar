@@ -3,11 +3,12 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { redact } from "../execution/runtime/process";
 import { z } from "zod";
-import { AdeError, now } from "../domain";
+import { AdeError, now, remoteIdentity } from "../domain";
 import type { Engine } from "../execution/engine";
 import type { Scheduler } from "../scheduled/scheduler";
 import { parsePullRequest } from "../scheduled/contracts";
 import { GitHubClient } from "./client";
+import { githubTransport } from "../workspace/git-command";
 import {
   GitHubRepositorySchema,
   GitHubPullRequestSchema,
@@ -297,7 +298,7 @@ export class GitHubService {
     const repository = await this.client.repository(name, signal);
     let fork: GitHubRepository | undefined;
     const status = this.status || (await this.client.detect(signal));
-    if (status.connected) {
+    if (status.connected && repository.permissions?.push !== true) {
       const candidates = this.catalog().filter(
         (r) => r.fork && r.owner.login === status.username && r.name === repository.name,
       );
@@ -335,6 +336,75 @@ export class GitHubService {
       origin_url: fork?.clone_url || null,
       base_branch: repository.default_branch,
     };
+  };
+
+  configureDestination = async (input: unknown) => {
+    const request = z
+      .object({
+        id: z.string().uuid(),
+        repository: z.string().trim().min(1).max(2000),
+        confirmed: z.literal(true),
+      })
+      .strict()
+      .parse(input);
+
+    this.engine.assertAvailable();
+    const repo = this.engine.db.repository(request.id);
+    if (repo.source === "imported")
+      throw new AdeError(
+        "ownership",
+        "Choose verified remotes from the local connection dialog. Vibestar does not rewrite user-owned checkout remotes.",
+      );
+
+    const url = githubTransport(
+      request.repository.includes(":")
+        ? request.repository
+        : `https://github.com/${request.repository}`,
+    );
+
+    const identity = remoteIdentity(url);
+    const name = `${identity.owner}/${identity.name}`;
+    const upstream = `${repo.owner}/${repo.name}`;
+    const signal = this.controller.signal;
+    const source = GitHubRepositorySchema.parse(await this.client.repository(upstream, signal));
+
+    const target =
+      name.toLowerCase() === upstream.toLowerCase()
+        ? source
+        : GitHubRepositorySchema.parse(await this.client.repository(name, signal));
+
+    if (
+      source.id <= 0 ||
+      target.id <= 0 ||
+      source.full_name.toLowerCase() !== upstream.toLowerCase() ||
+      target.full_name.toLowerCase() !== name.toLowerCase()
+    )
+      throw new AdeError(
+        "github_identity",
+        "The retrieved repository identity does not match this destination.",
+      );
+    if (!target.permissions?.push)
+      throw new AdeError(
+        "permission",
+        "The connected GitHub account cannot push to this repository.",
+      );
+    if (
+      target.id !== source.id &&
+      (!target.fork ||
+        target.parent?.id !== source.id ||
+        target.parent.full_name.toLowerCase() !== upstream.toLowerCase())
+    )
+      throw new AdeError(
+        "destination",
+        "Choose the writable source repository or a verified contribution fork of it.",
+      );
+
+    signal.throwIfAborted();
+    return this.engine.configureRepository(repo.id, {
+      upstream_url: repo.upstream_url,
+      origin_url: url,
+      base_branch: repo.base_branch,
+    });
   };
 
   useLocally = async (

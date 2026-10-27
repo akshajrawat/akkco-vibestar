@@ -80,6 +80,7 @@ const main = async () => {
             browser_verification_environment: true,
             exact_commit_messages: true,
             git_finalization: 1,
+            repository_destinations: 1,
             manual_pr_analysis: true,
             pr_repair: true,
             manual_issue_watch: true,

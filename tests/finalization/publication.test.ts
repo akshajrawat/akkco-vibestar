@@ -24,6 +24,162 @@ const committedFixture = async () => {
   return { ...fixture, record: committed };
 };
 
+it("preflights an exact destination without committing, preparing publication or bypassing strict RPC validation", async () => {
+  const f = await finalizationFixture();
+  try {
+    const record = await f.preview();
+    const destination = { remote: "origin", branch: f.task.branch_name };
+    const before = await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path);
+
+    const result = await f.service.call("checkDestination", {
+      id: f.task.id,
+      operation_id: record.id,
+      destination,
+    });
+
+    expect(result).toMatchObject({
+      repository: "contributor/fixture",
+      repository_id: "fork-42",
+      branch: f.task.branch_name,
+    });
+
+    expect(await checked("git", ["rev-parse", "HEAD"], f.task.worktree_path)).toBe(before);
+
+    expect(f.service.store.get(f.task.id, record.id)).toMatchObject({
+      status: "reviewed",
+      destination: null,
+      head: null,
+    });
+
+    await expect(
+      f.service.call("checkDestination", {
+        id: f.task.id,
+        operation_id: record.id,
+        destination,
+        shell: "hostile",
+      }),
+    ).rejects.toThrow();
+
+    await expect(f.service.publish(f.task.id, record.id, true)).rejects.toThrow(
+      "Prepare and explicitly confirm",
+    );
+  } finally {
+    await f.close();
+  }
+}, 30000);
+
+it.each(["owner", "collaborator"])(
+  "publishes to a verified writable source repository for an %s without requiring a fork",
+  async (role) => {
+    const f = await committedFixture();
+
+    const direct = {
+      id: "source-verified-42",
+      full_name: "fixture/fixture",
+      permissions: { push: true },
+      fork: false,
+      viewer: role === "owner" ? "fixture" : "collaborator",
+    };
+
+    const push = vi.fn(execute);
+
+    const service = new FinalizationService(
+      f.engine,
+      async () => direct,
+      (url) => {
+        expect(url).toBe(f.repo.upstream_url);
+        return f.fork;
+      },
+      push,
+    );
+
+    try {
+      f.repo.origin_url = null;
+      f.engine.db.saveRepository(f.repo);
+
+      const prepared = await service.prepare(f.task.id, f.record.id, {
+        remote: "upstream",
+        branch: f.task.branch_name,
+      });
+
+      expect(prepared.destination).toMatchObject({
+        repository: "fixture/fixture",
+        repository_id: direct.id,
+        viewer: direct.viewer,
+      });
+
+      expect(push).not.toHaveBeenCalled();
+
+      await expect(
+        service.call("publish", {
+          id: f.task.id,
+          operation_id: f.record.id,
+          skip_hooks: true,
+          confirmed: false,
+        }),
+      ).rejects.toThrow();
+
+      expect(push).not.toHaveBeenCalled();
+
+      expect(
+        await service.call("publish", {
+          id: f.task.id,
+          operation_id: f.record.id,
+          skip_hooks: true,
+          confirmed: true,
+        }),
+      ).toMatchObject({ status: "published" });
+
+      expect(push).toHaveBeenCalledOnce();
+
+      expect(await checked("git", ["rev-parse", `refs/heads/${f.task.branch_name}`], f.fork)).toBe(
+        f.record.head,
+      );
+    } finally {
+      await service.close();
+      await f.close();
+    }
+  },
+  30000,
+);
+
+it("keeps a local commit when neither a writable source nor a contribution fork is available", async () => {
+  const f = await committedFixture();
+  const push = vi.fn(execute);
+
+  const service = new FinalizationService(
+    f.engine,
+    async () => ({
+      id: "source-42",
+      full_name: "fixture/fixture",
+      permissions: { push: false },
+      fork: false,
+      viewer: "visitor",
+    }),
+    f.transport,
+    push,
+  );
+
+  try {
+    f.repo.origin_url = null;
+    f.engine.db.saveRepository(f.repo);
+
+    await expect(
+      service.prepare(f.task.id, f.record.id, { remote: "upstream", branch: f.task.branch_name }),
+    ).rejects.toThrow("cannot publish");
+
+    expect(service.store.get(f.task.id, f.record.id)).toMatchObject({
+      status: "committed",
+      head: f.record.head,
+    });
+
+    expect(push).not.toHaveBeenCalled();
+  } finally {
+    await service.close();
+    await f.close();
+  }
+}, 30000);
+
 it("binds normal hook configuration to the preview instead of silently changing it after approval", async () => {
   const f = await finalizationFixture();
   try {

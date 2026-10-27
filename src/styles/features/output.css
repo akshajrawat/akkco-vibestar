@@ -10,7 +10,7 @@
   flex-wrap: wrap;
 }
 
-.logs-toolbar select {
+.logs-toolbar .select-trigger {
   max-width: min(420px, 100%);
   font-size: 11px;
   padding: 4px;
@@ -70,8 +70,8 @@
   font-size: 12px;
 }
 
-.output-controls select,
-.usage-run-select select {
+.output-controls .select-trigger,
+.usage-run-select .select-trigger {
   padding: 4px 8px;
   font-size: 12px;
 }
@@ -194,7 +194,6 @@
 .tests-panel {
   flex: 1;
   min-width: 0;
-  padding: 12px 16px;
   overflow: auto;
 }
 

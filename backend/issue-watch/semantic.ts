@@ -210,6 +210,8 @@ export class IssueWatchSemantic {
       await writeFile(join(directory, "prompt.txt"), prompt, { mode: 0o600 });
       signal.throwIfAborted();
       this.store.reserveSemantic(scan, digest(context));
+      scan.phase = "Running semantic analysis";
+      this.store.saveScan(scan);
 
       this.engine.publish({
         event: "issue-watch.progress",

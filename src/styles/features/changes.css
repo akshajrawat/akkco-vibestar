@@ -81,7 +81,7 @@
 
 .change-content .cwd-banner input[type="checkbox"] {
   width: auto;
-  accent-color: var(--accent-blue);
+  accent-color: var(--text-secondary);
 }
 
 .change-patch {
@@ -431,11 +431,6 @@
   font-weight: 500;
 }
 
-.diff-toolbar select {
-  font-size: 11px;
-  padding: 3px 5px;
-}
-
 .diff-toolbar .button {
   font-size: 11px;
   padding: 3px 5px;
@@ -589,4 +584,21 @@
   align-items: center;
   gap: 8px;
   justify-content: space-between;
+}
+
+.changes-review-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px 24px 0;
+}
+
+.git-selection-panel {
+  padding: 24px;
+  min-width: 0;
+}
+
+.git-selection-panel > * + *,
+.git-review-required {
+  margin-top: 20px;
 }

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { selectValue } from "../helpers/select";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -60,9 +61,7 @@ it("requires an explicit environment choice before inspection and preserves an u
   fireEvent.click(screen.getByText("Browser verification environment"));
   expect(rpc).not.toHaveBeenCalled();
 
-  fireEvent.change(screen.getByLabelText("Verification environment"), {
-    target: { value: "installed_browsers" },
-  });
+  selectValue(screen.getByLabelText("Verification environment"), "installed_browsers");
 
   ui.rerender(
     <BrowserEnvironment
@@ -72,7 +71,7 @@ it("requires an explicit environment choice before inspection and preserves an u
     />,
   );
 
-  expect((screen.getByLabelText("Verification environment") as HTMLSelectElement).value).toBe(
+  expect(screen.getByLabelText("Verification environment").getAttribute("data-value")).toBe(
     "installed_browsers",
   );
 
@@ -230,8 +229,10 @@ it("retains dirty settings through background snapshots and separates utility mo
   expect(screen.getByText("Unsaved changes")).toBeTruthy();
   ui.rerender(<SettingsPage settings={{ ...defaultSettings }} refresh={refresh} />);
   expect((screen.getAllByLabelText("Timeout (seconds)")[0] as HTMLInputElement).value).toBe("1234");
-  expect(models).toHaveLength(4);
-  fireEvent.click(screen.getByRole("button", { name: "Models" }));
+  expect(models).toHaveLength(5);
+  expect(screen.queryByRole("button", { name: "Models" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Agents & Models" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "GitHub & PR Watch" })).toBeNull();
   expect(screen.getByRole("heading", { name: "Utility AI" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 

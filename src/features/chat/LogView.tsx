@@ -9,6 +9,7 @@ import { useAgentOutput } from "./output/useOutput";
 import { Status } from "../../components/shared/Status";
 import { AgentTimeline } from "./AgentTimeline";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 
 const OutputBody = ({
   taskId,
@@ -120,17 +121,15 @@ const OutputBody = ({
         />
 
         {!raw && view.outputView !== "prompt" && (
-          <select
-            aria-label="Output filter"
+          <Select
+            label="Output filter"
             value={view.outputFilter}
-            onChange={(e) => updateTaskView(taskId, { outputFilter: e.target.value })}
-          >
-            {["all", "messages", "commands", "files", "tests", "errors"].map((filter) => (
-              <option key={filter} value={filter}>
-                {filter === "all" ? "All activity" : filter}
-              </option>
-            ))}
-          </select>
+            onChange={(outputFilter) => updateTaskView(taskId, { outputFilter })}
+            options={["all", "messages", "commands", "files", "tests", "errors"].map((value) => ({
+              value,
+              label: value === "all" ? "All activity" : value,
+            }))}
+          />
         )}
 
         <Button
@@ -276,20 +275,23 @@ export const LogView = ({
       }}
     >
       <div className="logs-toolbar">
-        <select
-          aria-label="Select run"
+        <Select
+          label="Select run"
           value={preparation ? "preparation" : selection && run?.id === selection ? selection : ""}
-          onChange={(e) => updateTaskView(taskId, { outputRun: e.target.value })}
-        >
-          <option value="">Current / latest run</option>
-          {owner !== "issueWatch" && <option value="preparation">Repository preparation</option>}
-          {runs.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.provider} · {r.purpose || `stage ${r.stage}`} · {r.status} ·{" "}
-              {new Date(r.started_at).toLocaleString()}
-            </option>
-          ))}
-        </select>
+          searchable
+          onChange={(outputRun) => updateTaskView(taskId, { outputRun })}
+          options={[
+            { value: "", label: "Current / latest run" },
+            ...(owner !== "issueWatch"
+              ? [{ value: "preparation", label: "Repository preparation" }]
+              : []),
+            ...runs.map((r) => ({
+              value: r.id,
+              label: `${r.provider} · ${r.purpose || `stage ${r.stage}`} · ${r.status}`,
+              description: new Date(r.started_at).toLocaleString(),
+            })),
+          ]}
+        />
 
         {(["readable", "raw", "prompt"] as const).map((mode) => (
           <button
@@ -303,19 +305,20 @@ export const LogView = ({
         ))}
 
         {view.outputView === "raw" && (
-          <select
-            aria-label="Raw output stream"
+          <Select
+            label="Raw output stream"
             value={view.outputStream}
-            onChange={(e) =>
+            onChange={(stream) =>
               updateTaskView(taskId, {
-                outputStream: e.target.value as typeof view.outputStream,
+                outputStream: stream as typeof view.outputStream,
               })
             }
-          >
-            <option value="stdout">Raw stdout</option>
-            <option value="stderr">Raw stderr</option>
-            <option value="events">Structured events</option>
-          </select>
+            options={[
+              { value: "stdout", label: "Raw stdout" },
+              { value: "stderr", label: "Raw stderr" },
+              { value: "events", label: "Structured events" },
+            ]}
+          />
         )}
       </div>
 

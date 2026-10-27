@@ -4,6 +4,7 @@ import type { Detail } from "../../lib/types";
 import { duration } from "../../lib/format";
 import { parseArgv } from "./commands";
 import { Status } from "../../components/shared/Status";
+import { Select } from "../../components/ui/Select";
 import { commandVerification } from "../../../backend/execution/verification/verification";
 
 const displayCommand = (command: string) => {
@@ -74,25 +75,31 @@ export const CommandRuns = ({
           onChange={(e) => setQuery(e.target.value)}
         />
 
-        <select
-          aria-label="Command status"
+        <Select
+          label="Command status"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="all">All results</option>
-          {["running", "passed", "failed", "blocked", "unknown", "interrupted"].map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
+          onChange={setStatus}
+          options={[
+            { value: "all", label: "All results" },
+            ...["running", "passed", "failed", "blocked", "unknown", "interrupted"].map(
+              (value) => ({ value, label: value }),
+            ),
+          ]}
+        />
 
-        <select aria-label="Command stage" value={stage} onChange={(e) => setStage(e.target.value)}>
-          <option value="all">All stages</option>
-          <option value="1">Antigravity planning</option>
-          <option value="2">Codex refinement</option>
-          <option value="3">Implementation</option>
-          <option value="5">Final review</option>
-          <option value="manual">Manual / validation</option>
-        </select>
+        <Select
+          label="Command stage"
+          value={stage}
+          onChange={setStage}
+          options={[
+            { value: "all", label: "All stages" },
+            { value: "1", label: "Antigravity planning" },
+            { value: "2", label: "Codex refinement" },
+            { value: "3", label: "Implementation" },
+            { value: "5", label: "Final review" },
+            { value: "manual", label: "Manual / validation" },
+          ]}
+        />
       </div>
 
       <div className="command-browser">
@@ -137,17 +144,19 @@ export const CommandRuns = ({
                 {command.exit_code ?? (command.ended_at ? "unreported" : "pending")}
               </span>
               <span>{duration(command.started_at, command.ended_at)}</span>
-              <select
-                aria-label="Command output stream"
+              <Select
+                label="Command output stream"
                 value={stream}
-                onChange={(e) => setStream(e.target.value)}
-              >
-                <option value="all">
-                  {command.call_id ? "Provider output + stderr" : "stdout + stderr"}
-                </option>
-                <option value="stdout">{command.call_id ? "Provider output" : "stdout"}</option>
-                <option value="stderr">stderr</option>
-              </select>
+                onChange={setStream}
+                options={[
+                  {
+                    value: "all",
+                    label: command.call_id ? "Provider output + stderr" : "stdout + stderr",
+                  },
+                  { value: "stdout", label: command.call_id ? "Provider output" : "stdout" },
+                  { value: "stderr", label: "stderr" },
+                ]}
+              />
             </div>
 
             {evidence?.outcome !== command.status && (

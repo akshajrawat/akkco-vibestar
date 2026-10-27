@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { selectValue } from "../helpers/select";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -280,9 +281,7 @@ it("refreshes global usage on local events and filters provider/model/purpose/re
   listener({ event: "usage.changed" });
   expect(await screen.findByRole("cell", { name: "cancelled" })).toBeTruthy();
 
-  fireEvent.change(screen.getByLabelText("Usage provider filter"), {
-    target: { value: "codex" },
-  });
+  selectValue(screen.getByLabelText("Usage provider filter"), "codex");
 
   expect(screen.queryByRole("cell", { name: "cancelled" })).toBeNull();
   expect(ui.container.querySelectorAll(".usage-table tbody tr")).toHaveLength(1);

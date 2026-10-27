@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { selectValue } from "../helpers/select";
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within, act } from "@testing-library/react";
 
@@ -339,9 +340,7 @@ it("pages historical tools with completion context, searches saved events, filte
 
   expect(ui.container.querySelector(".tool-event[data-state=completed]")).toBeTruthy();
 
-  fireEvent.change(screen.getByLabelText("Output filter"), {
-    target: { value: "messages" },
-  });
+  selectValue(screen.getByLabelText("Output filter"), "messages");
 
   expect(ui.container.querySelector(".tool-event")).toBeNull();
   fireEvent.keyDown(search, { key: "Escape" });
@@ -389,9 +388,7 @@ it("keeps raw stdout/stderr distinct, follows streamed updates, rejects late dat
   ui.rerender(<LogView taskId="switch-b" runs={[{ ...run, id: "run-b" }]} events={[]} />);
   fireEvent.click(screen.getByRole("button", { name: "Raw" }));
 
-  fireEvent.change(screen.getByLabelText("Raw output stream"), {
-    target: { value: "stderr" },
-  });
+  selectValue(screen.getByLabelText("Raw output stream"), "stderr");
 
   expect(await screen.findByText("switch-b stderr")).toBeTruthy();
 
@@ -420,9 +417,9 @@ it("keeps raw stdout/stderr distinct, follows streamed updates, rejects late dat
   });
 
   ui.rerender(<LogView taskId="switch-a" runs={[run]} events={[]} />);
-  expect((screen.getByLabelText("Raw output stream") as HTMLSelectElement).value).toBe("stdout");
+  expect(screen.getByLabelText("Raw output stream").getAttribute("data-value")).toBe("stdout");
   ui.rerender(<LogView taskId="switch-b" runs={[{ ...run, id: "run-b" }]} events={[]} />);
-  expect((screen.getByLabelText("Raw output stream") as HTMLSelectElement).value).toBe("stderr");
+  expect(screen.getByLabelText("Raw output stream").getAttribute("data-value")).toBe("stderr");
 });
 
 it("continues capturing raw output while scrolling is paused and drains event bursts after run completion", async () => {
@@ -552,7 +549,7 @@ it("restores persisted layouts and contains prompt dialog focus while preserving
 
   render(<TaskWorkspace detail={detail(id)} revision={0} onError={vi.fn()} back={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Follow output" })).toBeTruthy();
-  expect((screen.getByLabelText("Raw output stream") as HTMLSelectElement).value).toBe("stderr");
+  expect(screen.getByLabelText("Raw output stream").getAttribute("data-value")).toBe("stderr");
   fireEvent.click(screen.getByRole("tab", { name: "Run details" }));
   const opener = screen.getByRole("button", { name: "View sent prompts" });
   opener.focus();

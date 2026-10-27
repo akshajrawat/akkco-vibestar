@@ -32,6 +32,8 @@ export class CoreBridge extends EventEmitter {
 
   private gitFinalizationAvailable = false;
 
+  private repositoryDestinationsAvailable = false;
+
   private manualPrAvailable = false;
 
   private repairAvailable = false;
@@ -161,6 +163,7 @@ export class CoreBridge extends EventEmitter {
         verification_policy?: boolean;
         exact_commit_messages?: boolean;
         git_finalization?: number;
+        repository_destinations?: number;
         manual_pr_analysis?: boolean;
         pr_repair?: boolean;
         manual_issue_watch?: boolean;
@@ -177,6 +180,7 @@ export class CoreBridge extends EventEmitter {
         this.verificationPolicyAvailable = info.verification_policy === true;
         this.exactCommitMessagesAvailable = info.exact_commit_messages === true;
         this.gitFinalizationAvailable = info.git_finalization === 1;
+        this.repositoryDestinationsAvailable = info.repository_destinations === 1;
         this.manualPrAvailable = info.manual_pr_analysis === true;
         this.repairAvailable = info.pr_repair === true;
 
@@ -216,6 +220,8 @@ export class CoreBridge extends EventEmitter {
       );
     if (!this.gitFinalizationAvailable && method.startsWith("git."))
       throw new Error("Update the execution helper before using Git Finalization.");
+    if (!this.repositoryDestinationsAvailable && method === "repository.configureDestination")
+      throw new Error("Update the execution helper before configuring a push destination.");
     if (!this.exactCommitMessagesAvailable && method === "repair.commit")
       throw new Error("Update the execution helper before committing exact multiline messages.");
     if (!this.browserVerificationAvailable && method.startsWith("task.browser."))

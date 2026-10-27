@@ -16,6 +16,8 @@ import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { containDialogFocus } from "../../lib/keyboard";
 import { AgentConfiguration } from "../providers/StageSettings";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
 import { LabelExclusions } from "./LabelExclusions";
 
 export const WatchEditor = ({
@@ -158,7 +160,10 @@ export const WatchEditor = ({
         preview_digest: preview.digest,
         ambiguity_decisions: preview.ambiguities.map((item) => ({
           id: item.id,
-          interpretation: decisions[item.id] as "semantic_preference" | "confirmed_controls",
+          interpretation:
+            item.id === "remaining-requirements"
+              ? "semantic_preference"
+              : (decisions[item.id] as "semantic_preference" | "confirmed_controls"),
         })),
         model,
         limits,
@@ -372,15 +377,16 @@ export const WatchEditor = ({
 
                 <label>
                   Reference scope
-                  <select
+                  <Select
+                    label={`Tracker ${index + 1} reference scope`}
                     value={tracker.comments}
-                    onChange={(event) => {
+                    onChange={(comments) => {
                       setTrackers(
                         trackers.map((item, i) =>
                           i === index
                             ? {
                                 ...item,
-                                comments: event.target.value as "none" | "all",
+                                comments: comments as "none" | "all",
                               }
                             : item,
                         ),
@@ -388,10 +394,11 @@ export const WatchEditor = ({
 
                       invalidate();
                     }}
-                  >
-                    <option value="none">Body only</option>
-                    <option value="all">Body + every comment</option>
-                  </select>
+                    options={[
+                      { value: "none", label: "Body only" },
+                      { value: "all", label: "Body + every comment" },
+                    ]}
+                  />
                 </label>
 
                 <Button
@@ -423,6 +430,7 @@ export const WatchEditor = ({
 
             {preview && (
               <div className="watch-rule-preview">
+                <h3>Guaranteed GitHub filters</h3>
                 <p>
                   Open issues ·{" "}
                   {preview.rules.unassigned_only ? "Unassigned" : "Review assignments"} · Exclude{" "}
@@ -441,36 +449,58 @@ export const WatchEditor = ({
                   </details>
                 )}
 
-                {preview.ambiguities.map((item) => (
-                  <label className="watch-ambiguity" key={item.id}>
-                    <strong>Confirm meaning</strong>
-                    <span>{item.text}</span>
-                    <small>{item.explanation}</small>
-                    <select
-                      aria-label={`Interpret ${item.id}`}
-                      value={decisions[item.id] || ""}
-                      onChange={(event) =>
-                        setDecisions({
-                          ...decisions,
-                          [item.id]: event.target.value as (typeof decisions)[string],
-                        })
-                      }
+                {preview.ambiguities
+                  .filter((item) => item.id !== "remaining-requirements")
+                  .map((item) => (
+                    <div
+                      className="watch-ambiguity"
+                      key={item.id}
+                      role="group"
+                      aria-label={`How to use ${item.text}`}
                     >
-                      <option value="">Choose interpretation…</option>
-                      <option value="semantic_preference">
-                        Treat remaining text as AI preferences
-                      </option>
+                      <strong>How should {item.text} be used?</strong>
+                      <div className="actions">
+                        <Button
+                          size="sm"
+                          variant={
+                            decisions[item.id] === "semantic_preference" ? "secondary" : "ghost"
+                          }
+                          aria-pressed={decisions[item.id] === "semantic_preference"}
+                          onClick={() =>
+                            setDecisions({ ...decisions, [item.id]: "semantic_preference" })
+                          }
+                        >
+                          Context for matching
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={
+                            decisions[item.id] === "confirmed_controls" ? "secondary" : "ghost"
+                          }
+                          aria-pressed={decisions[item.id] === "confirmed_controls"}
+                          onClick={() => {
+                            setBanned((value) =>
+                              [...value.split("\n").filter(Boolean), item.text]
+                                .filter((entry, index, all) => all.indexOf(entry) === index)
+                                .join("\n"),
+                            );
 
-                      <option value="confirmed_controls">
-                        The visible hard controls capture this requirement
-                      </option>
-                    </select>
-                  </label>
-                ))}
+                            setDecisions({ ...decisions, [item.id]: "confirmed_controls" });
+                          }}
+                        >
+                          Exclude this issue
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
 
+                <h3>Requires evidence inspection</h3>
                 <p className="subtle">
-                  AI preferences:{" "}
-                  {preview.preferences || "No additional semantic preferences detected."}
+                  Claims, competing PRs and contribution policy are inspected from current sources.
+                  {preview.preferences
+                    ? ` Additional matching preferences: ${preview.preferences}`
+                    : ""}{" "}
+                  These are not guaranteed GitHub filters. Missing evidence stays uncertain.
                 </p>
               </div>
             )}
@@ -480,21 +510,31 @@ export const WatchEditor = ({
             <h3>Subscription screening</h3>
             <label>
               Provider
-              <select
+              <Select
+                label="Provider"
                 value={model.provider}
-                onChange={(event) =>
+                onChange={(provider) =>
                   setModel({
                     ...model,
-                    provider: event.target.value as "codex" | "antigravity",
+                    provider: provider as "codex" | "antigravity",
                     model: "",
                   })
                 }
-              >
-                <option value="codex">Codex · official subscription CLI</option>
-                <option value="antigravity" disabled>
-                  Antigravity · unsupported for Issue Watch
-                </option>
-              </select>
+                options={[
+                  {
+                    value: "codex",
+                    label: "Codex",
+                    description: "Official subscription CLI",
+                    icon: <ProviderIcon provider="codex" />,
+                  },
+                  {
+                    value: "antigravity",
+                    label: "Antigravity",
+                    description: "Unsupported for Issue Watch",
+                    disabled: true,
+                  },
+                ]}
+              />
             </label>
 
             <p className="subtle">
@@ -582,7 +622,9 @@ export const WatchEditor = ({
               !preview ||
               !name.trim() ||
               !model.model ||
-              preview.ambiguities.some((item) => !decisions[item.id])
+              preview.ambiguities.some(
+                (item) => item.id !== "remaining-requirements" && !decisions[item.id],
+              )
             }
           >
             {busy ? "Saving / validating…" : initial ? "Save new revision" : "Save watch"}

@@ -11,6 +11,8 @@ import { DiscoverySettings } from "./DiscoverySettings";
 import { UsageView } from "../usage/UsageView";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { SettingsSchema } from "../../../backend/domain";
+import { Select } from "../../components/ui/Select";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
 
 export const SettingsPage = ({
   settings,
@@ -32,7 +34,7 @@ export const SettingsPage = ({
   const [busy, setBusy] = useState(false);
   const [installLog, setLog] = useState("");
   const [editors, setEditors] = useState<{ id: string; label: string }[]>([]);
-  const [section, setSection] = useState("Agents");
+  const [section, setSection] = useState("Agents & Models");
   const { providers } = useProviders();
 
   useEffect(() => {
@@ -149,60 +151,55 @@ export const SettingsPage = ({
       {notice && <div className="notice">{notice}</div>}
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
-          {[
-            "General",
-            "Agents",
-            "Models",
-            "GitHub & PR Watch",
-            "Repositories",
-            "Storage",
-            "Usage",
-            "Execution",
-          ].map((name) => (
-            <button
-              type="button"
-              key={name}
-              className={section === name ? "selected" : ""}
-              aria-current={section === name ? "page" : undefined}
-              onClick={() => {
-                setSection(name);
-                setNotice("");
-              }}
-            >
-              {name}
-            </button>
-          ))}
+          {["General", "Agents & Models", "Repositories", "Storage", "Usage", "Execution"].map(
+            (name) => (
+              <button
+                type="button"
+                key={name}
+                className={section === name ? "selected" : ""}
+                aria-current={section === name ? "page" : undefined}
+                onClick={() => {
+                  setSection(name);
+                  setNotice("");
+                }}
+              >
+                {name}
+              </button>
+            ),
+          )}
         </nav>
 
         <div className="settings-content">
           {section === "Execution" && (
-            <section className="settings-section">
+            <section className="settings-section execution-settings">
               <h2>Execution environment</h2>
               <div className="settings-fields">
                 <label>
                   WSL distribution
-                  <select
+                  <Select
+                    label="WSL distribution"
                     value={desktop?.config.distro || desktop?.distros[0] || ""}
                     disabled={!desktop?.native_windows}
-                    onChange={(e) =>
+                    onChange={(distro) =>
                       desktop &&
                       setDesktop({
                         ...desktop,
-                        config: { ...desktop.config, distro: e.target.value },
+                        config: { ...desktop.config, distro },
                       })
                     }
-                  >
-                    {desktop?.native_windows && <option value="">Select distribution</option>}
-                    {desktop?.distros.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      ...(desktop?.native_windows
+                        ? [{ value: "", label: "Select distribution" }]
+                        : []),
+                      ...(desktop?.distros.map((d) => ({ value: d, label: d })) || []),
+                    ]}
+                  />
                 </label>
 
                 <label>
-                  Linux data directory <span className="subtle">optional</span>
+                  <span>
+                    Linux data directory <small>optional</small>
+                  </span>
                   <input
                     value={desktop?.config.data_home || ""}
                     placeholder="Default: ~/.akkco-vibestar"
@@ -221,7 +218,9 @@ export const SettingsPage = ({
 
                 {desktop?.native_windows && (
                   <label>
-                    Existing helper path <span className="subtle">optional</span>
+                    <span>
+                      Existing helper path <small>optional</small>
+                    </span>
                     <input
                       value={desktop.config.helper_path}
                       placeholder="Use the installed bundled helper"
@@ -237,12 +236,17 @@ export const SettingsPage = ({
                     />
                   </label>
                 )}
-
-                <label>
-                  Current local data root
-                  <code>{root || "Execution core not connected"}</code>
-                </label>
               </div>
+
+              <details>
+                <summary>Execution details</summary>
+                <p className="subtle">
+                  Data root: <code>{root || "Execution core not connected"}</code>
+                </p>
+                <p className="subtle">
+                  Linux runs the core directly. Windows uses the selected WSL distribution.
+                </p>
+              </details>
 
               {desktop?.native_windows && (
                 <>
@@ -273,11 +277,6 @@ export const SettingsPage = ({
                   {installLog && <pre className="install-log">{installLog}</pre>}
                 </>
               )}
-
-              <p className="subtle">
-                Linux builds execute directly inside the current distro. Windows builds invoke the
-                chosen distro with structured argv and stdin.
-              </p>
             </section>
           )}
 
@@ -288,30 +287,29 @@ export const SettingsPage = ({
                   <h2>Editor</h2>
                   <label>
                     Default editor
-                    <select
-                      aria-label="Default editor"
+                    <Select
+                      label="Default editor"
                       value={value.default_editor}
-                      onChange={(e) =>
+                      onChange={(editor) =>
                         setValue({
                           ...value,
-                          default_editor: e.target.value as Settings["default_editor"],
+                          default_editor: editor as Settings["default_editor"],
                         })
                       }
-                    >
-                      <option value="">Choose when opening</option>
-                      {editors.map((editor) => (
-                        <option key={editor.id} value={editor.id}>
-                          {editor.label}
-                        </option>
-                      ))}
-
-                      {!!value.default_editor &&
-                        !editors.some((e) => e.id === value.default_editor) && (
-                          <option value={value.default_editor}>
-                            {value.default_editor} (unavailable)
-                          </option>
-                        )}
-                    </select>
+                      options={[
+                        { value: "", label: "Choose when opening" },
+                        ...editors.map((editor) => ({ value: editor.id, label: editor.label })),
+                        ...(value.default_editor &&
+                        !editors.some((e) => e.id === value.default_editor)
+                          ? [
+                              {
+                                value: value.default_editor,
+                                label: `${value.default_editor} (unavailable)`,
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
                   </label>
 
                   <p className="subtle">
@@ -321,24 +319,22 @@ export const SettingsPage = ({
                   <h2>Concurrency</h2>
                   <label>
                     Simultaneous tasks
-                    <select
-                      value={value.concurrency}
-                      onChange={(e) =>
+                    <Select
+                      label="Simultaneous tasks"
+                      value={String(value.concurrency)}
+                      onChange={(concurrency) =>
                         setValue({
                           ...value,
-                          concurrency: Number(e.target.value),
+                          concurrency: Number(concurrency),
                         })
                       }
-                    >
-                      {[1, 2, 3, 4].map((v) => (
-                        <option key={v}>{v}</option>
-                      ))}
-                    </select>
+                      options={[1, 2, 3, 4].map((v) => ({ value: String(v), label: String(v) }))}
+                    />
                   </label>
                 </section>
               )}
 
-              {section === "Agents" && (
+              {section === "Agents & Models" && (
                 <section className="settings-section">
                   <h2>Agent pipeline</h2>
                   <p className="pipeline-sequence">
@@ -353,7 +349,7 @@ export const SettingsPage = ({
                 </section>
               )}
 
-              {section === "Models" && (
+              {section === "Agents & Models" && (
                 <section className="settings-section">
                   <h2>Review / explain AI</h2>
                   <p className="subtle">
@@ -361,7 +357,7 @@ export const SettingsPage = ({
                     Usage.
                   </p>
 
-                  <label className="checkbox-row">
+                  <label className="checkbox-label">
                     <input
                       type="checkbox"
                       checked={!!value.review_ai}
@@ -379,22 +375,25 @@ export const SettingsPage = ({
                     <>
                       <label>
                         Review provider
-                        <select
+                        <Select
+                          label="Review provider"
                           value={value.review_ai.provider}
-                          onChange={(e) =>
+                          onChange={(provider) =>
                             setValue({
                               ...value,
                               review_ai: {
                                 ...value.review_ai!,
-                                provider: e.target.value as "codex" | "antigravity",
+                                provider: provider as "codex" | "antigravity",
                                 model: "",
                               },
                             })
                           }
-                        >
-                          <option value="antigravity">Antigravity</option>
-                          <option value="codex">Codex</option>
-                        </select>
+                          options={["antigravity", "codex"].map((provider) => ({
+                            value: provider,
+                            label: provider === "codex" ? "Codex" : "Antigravity",
+                            icon: <ProviderIcon provider={provider} />,
+                          }))}
+                        />
                       </label>
 
                       <AgentConfiguration
@@ -428,22 +427,25 @@ export const SettingsPage = ({
 
                   <label>
                     Utility provider
-                    <select
+                    <Select
+                      label="Utility provider"
                       value={value.utility_ai.provider}
-                      onChange={(e) =>
+                      onChange={(provider) =>
                         setValue({
                           ...value,
                           utility_ai: {
                             ...value.utility_ai,
-                            provider: e.target.value as Settings["utility_ai"]["provider"],
+                            provider: provider as Settings["utility_ai"]["provider"],
                             model: "",
                           },
                         })
                       }
-                    >
-                      <option value="antigravity">Antigravity</option>
-                      <option value="codex">Codex</option>
-                    </select>
+                      options={["antigravity", "codex"].map((provider) => ({
+                        value: provider,
+                        label: provider === "codex" ? "Codex" : "Antigravity",
+                        icon: <ProviderIcon provider={provider} />,
+                      }))}
+                    />
                   </label>
 
                   <AgentConfiguration
@@ -475,22 +477,6 @@ export const SettingsPage = ({
           )}
           {section === "Storage" && <StoragePage refresh={refresh} />}
           {section === "Usage" && <UsageView />}
-          {section === "GitHub & PR Watch" && (
-            <section className="settings-section">
-              <h2>GitHub & PR review</h2>
-              <p>
-                PR inspection is manual only. Refresh PR List reads GitHub metadata; opening a
-                discovered PR saves its workspace. Only Analyze PR can request semantic review
-                analysis.
-              </p>
-
-              <p className="subtle">
-                Automatic watches, recurring inspections and legacy optional second-model
-                verification are disabled. Existing PR history and usage are preserved. Configure
-                the analysis provider/model under Models → Utility AI.
-              </p>
-            </section>
-          )}
         </div>
       </div>
     </div>

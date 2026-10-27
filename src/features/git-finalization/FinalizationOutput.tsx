@@ -1,4 +1,5 @@
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 import { errorMessage, rpc } from "../../lib/api";
 import { duration } from "../../lib/format";
 import type { FinalizationController, GitFinalizationProps } from "./useGitFinalization";
@@ -24,8 +25,6 @@ export const FinalizationOutput = ({
     | "setSelection"
     | "setMessage"
     | "setPreset"
-    | "setConfirmPush"
-    | "setConfirmMessage"
     | "confirmRemoval"
     | "unresolved"
     | "setConfirmRemoval"
@@ -50,8 +49,6 @@ export const FinalizationOutput = ({
     setSelection,
     setMessage,
     setPreset,
-    setConfirmPush,
-    setConfirmMessage,
     confirmRemoval,
     unresolved,
     setConfirmRemoval,
@@ -63,8 +60,8 @@ export const FinalizationOutput = ({
 
   return (
     <section className="git-operation-panel" aria-label="Git operation output">
-      <header>
-        <h3>Operation output</h3>
+      <header hidden={!busy && !snapshot.active}>
+        <h3>Git activity</h3>
         {busy && (
           <span role="status">
             {busy}
@@ -145,32 +142,28 @@ export const FinalizationOutput = ({
         {!!snapshot.history.length && (
           <label>
             Saved operation history
-            <select
-              aria-label="Saved Git operation history"
+            <Select
+              label="Saved Git operation history"
               value={record?.id || ""}
               disabled={locked}
-              onChange={(event) => {
-                const item = snapshot.history.find((item) => item.id === event.target.value);
+              onChange={(id) => {
+                const item = snapshot.history.find((item) => item.id === id);
                 setRecord(item);
                 if (item) {
                   setSelection(item.paths);
                   setMessage(item.message || "");
                   setPreset(item.preset);
                 }
-
-                setConfirmPush(false);
-                setConfirmMessage(false);
               }}
-            >
-              <option value="">New selection</option>
-              {snapshot.history.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {new Date(item.created_at).toLocaleString()} ·{" "}
-                  {(item.id === record?.id ? record.status : item.status).replaceAll("_", " ")} ·{" "}
-                  {item.paths.length} paths
-                </option>
-              ))}
-            </select>
+              options={[
+                { value: "", label: "New selection" },
+                ...snapshot.history.map((item) => ({
+                  value: item.id,
+                  label: `${new Date(item.created_at).toLocaleString()} · ${(item.id === record?.id ? record.status : item.status).replaceAll("_", " ")}`,
+                  description: `${item.paths.length} files`,
+                })),
+              ]}
+            />
           </label>
         )}
 

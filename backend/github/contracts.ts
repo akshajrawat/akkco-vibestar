@@ -10,9 +10,11 @@ export const GitHubRepositorySchema = z
     default_branch: z.string(),
     private: z.boolean(),
     fork: z.boolean(),
+    permissions: z.object({ push: z.boolean() }).optional(),
     clone_url: z.string(),
     parent: z
       .object({
+        id: z.number().int().positive().optional(),
         full_name: z.string(),
         clone_url: z.string(),
         default_branch: z.string(),
@@ -49,8 +51,9 @@ export interface GitHubRepository {
   default_branch: string;
   private: boolean;
   fork: boolean;
+  permissions?: { push: boolean };
   clone_url: string;
-  parent?: { full_name: string; clone_url: string; default_branch: string };
+  parent?: { id?: number; full_name: string; clone_url: string; default_branch: string };
   updated_at: string;
 }
 

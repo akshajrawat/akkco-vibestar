@@ -54,7 +54,7 @@
 }
 
 .git-finalization.modal {
-  width: min(1120px, calc(100vw - 48px));
+  width: min(1040px, calc(100vw - 48px));
   max-width: 1120px;
   max-height: calc(100dvh - 48px);
   overflow: auto;
@@ -67,7 +67,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 22px 26px;
+  padding: 16px 22px;
   background: var(--background-elevated);
 }
 
@@ -80,15 +80,12 @@
   margin: 8px 0 0;
 }
 
-.git-finalization .eyebrow {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
 .git-finalization h2 {
-  margin: 8px 0 0;
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 17px;
   line-height: 1.4;
 }
 
@@ -106,31 +103,25 @@
 }
 
 .git-finalization-grid {
-  display: block;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
   min-width: 0;
 }
 
 .git-files-panel,
 .git-commit-panel {
-  padding: 24px 26px;
+  padding: 20px 22px;
   min-width: 0;
 }
 
 .git-files-panel {
-  border-right: 0;
-}
-
-.git-journey {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 16px 26px 0;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .git-files-panel,
 .git-commit-panel {
-  max-width: 860px;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
 }
 
 .task-disposal-choices {
@@ -183,6 +174,17 @@
 .label-chips .context-chip {
   max-width: 100%;
   overflow-wrap: anywhere;
+  padding: 3px 5px 3px 9px;
+  border: 0;
+  background: var(--background-elevated);
+  gap: 5px;
+}
+
+.label-chips .label-chip-remove {
+  min-height: 20px;
+  width: 20px;
+  padding: 2px;
+  border-radius: 4px;
 }
 
 .conversation-mode {
@@ -202,7 +204,7 @@
 .git-file-list {
   list-style: none;
   padding: 0;
-  max-height: 320px;
+  max-height: 260px;
   overflow: auto;
   margin: 18px 0;
 }
@@ -269,28 +271,48 @@
   line-height: 1.7;
 }
 
-.git-hook-options {
-  margin: 14px 0;
-}
-
-.git-hook-options > label:first-child {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
 .git-finalization textarea {
   font-family: var(--font-mono);
   margin-top: 8px;
-  min-height: 150px;
+  min-height: 100px;
+}
+
+.git-confirmation {
+  padding: 16px;
+  margin-top: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--background-elevated);
+}
+
+.git-confirmation ul {
+  max-height: 110px;
+  overflow: auto;
+  padding-left: 18px;
+}
+
+.git-destination-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+  margin-bottom: 12px;
+}
+
+.git-destination-label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.git-options {
+  margin-top: 16px;
 }
 
 .git-finalization label {
   margin-top: 12px;
 }
 
-.git-finalization select,
+.git-finalization .select-trigger,
 .git-finalization input:not([type="checkbox"]),
 .git-finalization textarea {
   max-width: 100%;
@@ -452,9 +474,9 @@
 
 .workspace-tab-selection {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--background-info);
+  inset: auto 8px 0;
+  height: 1px;
+  background: var(--text-secondary);
   pointer-events: none;
 }
 

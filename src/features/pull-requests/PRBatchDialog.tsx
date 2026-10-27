@@ -7,6 +7,8 @@ import { useProviders } from "../../hooks/useWorkspace";
 import { containDialogFocus } from "../../lib/keyboard";
 import { AgentConfiguration } from "../providers/StageSettings";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
 
 export const PRBatchDialog = ({
   rows,
@@ -145,10 +147,11 @@ export const PRBatchDialog = ({
         <fieldset disabled={busy}>
           <label>
             Scope
-            <select
+            <Select
+              label="Scope"
               value={scope}
-              onChange={(event) => {
-                const value = event.target.value as typeof scope;
+              onChange={(selection) => {
+                const value = selection as typeof scope;
                 setScope(value);
                 setPreview(undefined);
 
@@ -167,12 +170,13 @@ export const PRBatchDialog = ({
                     .map((row) => row.url),
                 );
               }}
-            >
-              <option value="open">Open</option>
-              <option value="attention">Needs attention</option>
-              <option value="stale">Stale</option>
-              <option value="selected">Selected</option>
-            </select>
+              options={[
+                { value: "open", label: "Open" },
+                { value: "attention", label: "Needs attention" },
+                { value: "stale", label: "Stale" },
+                { value: "selected", label: "Selected" },
+              ]}
+            />
           </label>
 
           <div className="batch-selection">
@@ -221,19 +225,22 @@ export const PRBatchDialog = ({
 
           <label>
             Utility provider
-            <select
+            <Select
+              label="Utility provider"
               value={model.provider}
-              onChange={(event) =>
+              onChange={(provider) =>
                 setModel({
                   ...model,
-                  provider: event.target.value as typeof model.provider,
+                  provider: provider as typeof model.provider,
                   model: "",
                 })
               }
-            >
-              <option value="codex">Codex</option>
-              <option value="antigravity">Antigravity</option>
-            </select>
+              options={["codex", "antigravity"].map((value) => ({
+                value,
+                label: value === "codex" ? "Codex" : "Antigravity",
+                icon: <ProviderIcon provider={value} />,
+              }))}
+            />
           </label>
 
           <AgentConfiguration

@@ -210,7 +210,8 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         .toContain('"step_update"');
 
       await page.screenshot({ path: join(evidence, "active-raw-stdout.png") });
-      await page.getByLabel("Raw output stream").selectOption("stderr");
+      await page.getByRole("combobox", { name: "Raw output stream", exact: true }).click();
+      await page.locator(`[role="option"][data-value=${JSON.stringify("stderr")}]`).click();
 
       await expect
         .poll(() => page.locator(".logs-panel .raw-log").innerText(), {
@@ -254,7 +255,8 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         path: join(evidence, "completed-and-interrupted-tools.png"),
       });
 
-      await page.getByLabel("Select run").selectOption(historic);
+      await page.getByRole("combobox", { name: "Select run", exact: true }).click();
+      await page.locator(`[role="option"][data-value=${JSON.stringify(historic)}]`).click();
 
       await page
         .locator(".logs-panel")
@@ -268,7 +270,8 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       );
 
       await page.getByRole("button", { name: "Raw", exact: true }).click();
-      await page.getByLabel("Raw output stream").selectOption("stdout");
+      await page.getByRole("combobox", { name: "Raw output stream", exact: true }).click();
+      await page.locator(`[role="option"][data-value=${JSON.stringify("stdout")}]`).click();
       await page.getByLabel("Agent output transcript").focus();
       await page.keyboard.press("Control+f");
       await page.keyboard.type("historical needle");
@@ -299,8 +302,19 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       await page.locator(".tree-task").first().waitFor();
       expect(await page.locator(".tree-task.selected").count()).toBe(1);
       await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
-      expect(await page.getByLabel("Select run").inputValue()).toBe(historic);
-      expect(await page.getByLabel("Raw output stream").inputValue()).toBe("stdout");
+
+      expect(
+        await page
+          .getByRole("combobox", { name: "Select run", exact: true })
+          .getAttribute("data-value"),
+      ).toBe(historic);
+
+      expect(
+        await page
+          .getByRole("combobox", { name: "Raw output stream", exact: true })
+          .getAttribute("data-value"),
+      ).toBe("stdout");
+
       await page.getByRole("button", { name: "Follow output", exact: true }).waitFor();
       expect(errors).toEqual([]);
       expect(engine.db.all("SELECT id FROM pr_analyses")).toEqual([]);

@@ -1,5 +1,65 @@
 > Historical evidence retained from before repository restructuring. Source paths and commands below may describe earlier revisions; use the current development/testing guides for execution.
 
+# Verification — October 27, 2026
+
+## UI spacing and Issue Watch navigation
+
+The uncommitted worktree at HEAD `79c1eed` passed `npm run verify`: formatting,
+ESLint, TypeScript, 375 unit/domain tests (one opt-in skipped), 112 integration
+tests, 132 security tests, three terminal tests, and the production build.
+
+The built Electron Issue Watch and Git finalization fixtures also passed under
+Xvfb. They use isolated roots, inert providers and local bare remotes. No live
+provider calls or GitHub writes were made. Screenshots and command logs are
+retained under ignored `test-results/ui-refresh/`.
+
+Desktop checks cover full-width watch navigation, preserved scan history and
+cancellation, concise availability details, task handoff, keyboard navigation,
+selected-file review separated from commit/push, and exact publication confirmation.
+Geometry checks verify equal Checks/Final review content bounds, aligned agent and
+execution fields, centered provider cards, discovery spacing, loaded logo assets,
+and search controls without focus glow. Captures cover 1280×720, 1440×900 and
+1920×1080; final layout captures also exercise reduced motion. Native Windows
+installation and DPI checks were not repeated.
+
+# Verification — October 26, 2026
+
+## Product polish and repository integration
+
+The uncommitted changes were checked against HEAD `79c1eed`. All automated
+execution used isolated roots, disposable Git repositories and inert providers.
+Publication fixtures wrote only to local bare remotes. No live model calls,
+GitHub writes, commits to this repository or releases were performed.
+
+| Check                                              | Observed result                                                                                                      |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `npm run verify`                                   | Passed formatting, lint, types, unit, integration, security, terminal suites and production build                    |
+| `npm run test:regression`                          | 88 files passed; 618 tests passed, 1 skipped                                                                         |
+| Built Electron fixtures                            | Workspace, Issue Watch, Git Changes, PR analysis, PR repair, agent output, pipeline approval and verification passed |
+| Final formatting/lint/types and `git diff --check` | Passed                                                                                                               |
+
+Built Electron screenshots were inspected at **1280×720, 1440×900 and
+1920×1080**. They cover the consolidated Settings with aligned provider marks
+and review checkbox, New Task, composer/model controls, Issue Watch results and
+details, long repository names in the searchable picker, and Git Changes. The collapsed-sidebar Git action is asserted to align
+with the composer within two pixels. Issue Watch's footer is transparent and its
+primary action keeps its natural width. Keyboard navigation, focus return,
+reduced motion and scroll containment are exercised by the fixtures.
+
+Regression coverage includes canonical managed-repository selection, temporary
+discovery exclusions and explicit unusual locations, benign VS Code metadata and
+hostile Git configuration, writable owned/collaborator repositories, verified
+forks, destination configuration/leases, exact messages, selected paths, explicit
+confirmation and remote drift. Issue Watch retains hard filters and stored
+baselines, reports pending GitHub requests, preserves earlier results during
+scans/cancellation, and validates issue links without automatic inference.
+
+Local review artifacts are retained under ignored
+`test-results/product-polish/`: screenshots, fixture results, acceptance metadata
+and command logs. Provider assets retain their upstream notice; incoming `temp/`
+assets were removed after integration. No dependencies changed. Native Windows,
+live-account and release/package checks were not run in this Linux fixture session.
+
 # Verification — October 25, 2026
 
 ## Workflow-first IDE V3

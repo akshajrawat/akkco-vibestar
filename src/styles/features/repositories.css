@@ -133,16 +133,6 @@
   width: 85px;
 }
 
-.checkbox-label {
-  flex-direction: row;
-  align-items: center;
-}
-
-.checkbox-label input {
-  width: auto;
-  accent-color: var(--accent-blue);
-}
-
 .inbox-footer {
   font-size: 11px;
   color: var(--text-muted);

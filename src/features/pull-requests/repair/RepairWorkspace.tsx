@@ -21,6 +21,7 @@ import { containDialogFocus } from "../../../lib/keyboard";
 import { useDialogFocus } from "../../../hooks/useDialogFocus";
 import type { Diff } from "../../../lib/types";
 import { Button } from "../../../components/ui/button";
+import { Select } from "../../../components/ui/Select";
 import { Status } from "../../../components/shared/Status";
 import { CurrentRun } from "../../chat/CurrentRun";
 import { AgentTimeline } from "../../chat/AgentTimeline";
@@ -789,17 +790,15 @@ export const RepairWorkspace = ({
             <div className="engineering-panel">
               <label>
                 Selected run
-                <select
-                  aria-label="Inspect run"
+                <Select
+                  label="Inspect run"
                   value={run?.id || ""}
-                  onChange={(e) => updateTaskView(id, { outputRun: e.target.value })}
-                >
-                  {detail.runs.map((run) => (
-                    <option key={run.id} value={run.id}>
-                      {run.provider} · {run.purpose} · {run.status}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(outputRun) => updateTaskView(id, { outputRun })}
+                  options={detail.runs.map((run) => ({
+                    value: run.id,
+                    label: `${run.provider} · ${run.purpose} · ${run.status}`,
+                  }))}
+                />
               </label>
               {run && (
                 <>

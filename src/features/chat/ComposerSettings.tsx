@@ -11,6 +11,8 @@ import { useTaskView, updateTaskView } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { containDialogFocus } from "../../lib/keyboard";
+import { ProviderIcon } from "../../components/ui/ProviderIcon";
+import { Select } from "../../components/ui/Select";
 
 export const followupConfiguration = (task: Task, view: ReturnType<typeof useTaskView>) => {
   const defaults = task.execution_settings || defaultSettings;
@@ -71,16 +73,16 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
         variant="ghost"
         size="sm"
         aria-label="Choose chat model"
-        title="Chat implementation model. Planning and final review use their saved stage settings."
+        title="Choose provider, model and reasoning"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
+        <ProviderIcon provider={provider} model={config.model} />
         {provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
         {detected?.models.find((m) => (config.model ? m.id === config.model : m.isDefault))
           ?.label ||
           config.model ||
-          "CLI default"}{" "}
-        · {config.effort.toUpperCase()}
+          "CLI default"}
       </Button>
 
       {open && (
@@ -92,9 +94,9 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
           aria-label="Chat model configuration"
           onKeyDown={containDialogFocus}
         >
-          <p>
-            Applies to explicit implementation follow-ups. Planning and final review retain their
-            pipeline models.
+          <h2>Conversation model</h2>
+          <p className="subtle">
+            Ask keeps the workspace read-only. Work follows the task’s approval gates.
           </p>
 
           <small
@@ -125,33 +127,31 @@ export const ComposerSettings = ({ task }: { task: Task }) => {
                   })
                 }
               >
+                <ProviderIcon provider={name} />
                 {name === "codex" ? "Codex" : "Antigravity"}
               </button>
             ))}
           </div>
           <strong>Model</strong>
-          <div className="model-options" role="listbox" aria-label="Task model">
-            <button
-              type="button"
-              role="option"
-              aria-selected={!config.model}
-              onClick={() => update({ model: "" })}
-            >
-              Official CLI default
-            </button>
-
-            {detected?.models.map((m) => (
-              <button
-                type="button"
-                role="option"
-                aria-selected={config.model === m.id}
-                key={m.id}
-                onClick={() => update({ model: m.id })}
-              >
-                {m.label || m.id}
-              </button>
-            ))}
-          </div>
+          <Select
+            label="Task model"
+            searchable
+            value={config.model}
+            options={[
+              { value: "", label: "Official CLI default" },
+              ...(config.model && !detected?.models.some((m) => m.id === config.model)
+                ? [
+                    {
+                      value: config.model,
+                      label: config.model,
+                      description: "Availability unconfirmed",
+                    },
+                  ]
+                : []),
+              ...(detected?.models.map((m) => ({ value: m.id, label: m.label || m.id })) || []),
+            ]}
+            onChange={(model) => update({ model })}
+          />
           <strong>Reasoning</strong>
           <div className="effort-options">
             {efforts.map((effort) => (

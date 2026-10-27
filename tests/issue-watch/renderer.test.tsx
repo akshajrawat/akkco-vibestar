@@ -8,7 +8,9 @@ import { IssueMarkdown } from "../../src/features/issue-watch/IssueMarkdown";
 import { NewTask } from "../../src/features/tasks/NewTask";
 import { useWatchNotifications } from "../../src/features/issue-watch/notifications";
 import type { CoreEvent, Snapshot } from "../../src/lib/types";
-import { watchFixture } from "./fixtures";
+import { githubIssue, watchFixture } from "./fixtures";
+import { ScanResults } from "../../src/features/issue-watch/ScanResults";
+import type { CandidateSummary } from "../../backend/issue-watch/contracts";
 
 vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({
@@ -117,9 +119,14 @@ it("loads older local history pages without GitHub reads or inference", async ()
   );
 
   const select = screen.getByLabelText("Scan history");
-  expect(within(select).getAllByRole("option")).toHaveLength(54);
-  fireEvent.change(select, { target: { value: first.id } });
-  await screen.findByText("Initial discoveries");
+  fireEvent.click(select);
+  expect(screen.getAllByRole("option")).toHaveLength(54);
+
+  fireEvent.click(
+    screen.getAllByRole("option").find((option) => option.getAttribute("data-value") === first.id)!,
+  );
+
+  await screen.findByRole("button", { name: /Select #1: Issue 1/ });
   expect(f.api).toHaveBeenCalledTimes(reads);
   expect(infer).not.toHaveBeenCalled();
 });
@@ -143,16 +150,15 @@ it("previews and saves a watch without inference or a scan, using an explicitly 
     target: { value: "Open issues" },
   });
 
-  fireEvent.change(within(dialog).getByLabelText("Model"), {
-    target: { value: "fixture-model" },
-  });
+  fireEvent.click(within(dialog).getByRole("combobox", { name: "Model" }));
+  fireEvent.click(screen.getByRole("option", { name: "Fixture model" }));
 
   expect(within(dialog).queryByRole("button", { name: "Preview hard filters" })).toBeNull();
   await within(dialog).findByText(/Open issues · Unassigned/);
   expect(f.api).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByRole("button", { name: "Save watch" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  await screen.findByRole("button", { name: "Scan Now" });
+  await screen.findByRole("button", { name: "Scan now" });
   expect(f.service.store.list()).toHaveLength(1);
   expect(f.service.store.history(f.service.store.list()[0].id)).toEqual([]);
   expect(f.api).toHaveBeenCalledTimes(1);
@@ -161,6 +167,90 @@ it("previews and saves a watch without inference or a scan, using an explicitly 
   await waitFor(() => expect(api).toHaveBeenCalledWith("issueWatch.detail", expect.anything()));
   expect(api.mock.calls.some(([method]) => method === "issueWatch.scan")).toBe(false);
   expect(infer).not.toHaveBeenCalled();
+});
+
+it("saves ordinary natural-language preferences without an interpretation dropdown or upgrading them to hard filters", async () => {
+  const { f, snapshot } = await setup();
+  const infer = vi.spyOn(f.engine.utility, "run");
+  render(<IssueWatchPage snapshot={snapshot} startTask={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "New watch" }));
+  const editor = screen.getByRole("dialog", { name: "New Issue Watch" });
+
+  fireEvent.change(within(editor).getByLabelText("Watch name"), {
+    target: { value: "Triaged contributions" },
+  });
+
+  fireEvent.change(within(editor).getByLabelText("GitHub repository"), {
+    target: { value: "oppia/oppia" },
+  });
+
+  fireEvent.change(within(editor).getByLabelText("Describe issues to find"), {
+    target: {
+      value: "Find open unassigned issues, only small triaged tasks without competing PRs.",
+    },
+  });
+
+  fireEvent.click(within(editor).getByRole("combobox", { name: "Model" }));
+  fireEvent.click(screen.getByRole("option", { name: "Fixture model" }));
+  await within(editor).findByText("Guaranteed GitHub filters");
+  expect(within(editor).getByText("Requires evidence inspection")).toBeTruthy();
+  expect(within(editor).queryByText("Treat remaining text as AI preferences")).toBeNull();
+  fireEvent.click(within(editor).getByRole("button", { name: "Save watch" }));
+  await screen.findByRole("button", { name: "Scan now" });
+  const watch = f.service.store.list()[0];
+  const config = f.service.store.revision(watch.id).configuration;
+
+  expect(config.rules).toMatchObject({
+    open_only: true,
+    unassigned_only: true,
+    excluded_labels: [],
+  });
+
+  expect(config.ambiguity_decisions).toContainEqual({
+    id: "remaining-requirements",
+    interpretation: "semantic_preference",
+  });
+
+  expect(f.service.store.history(watch.id)).toEqual([]);
+  expect(infer).not.toHaveBeenCalled();
+});
+
+it("keeps completed results visible during real pending GitHub activity and cancels without advancing the baseline", async () => {
+  const { f, snapshot, api } = await setup();
+  const { watch } = await f.create();
+  const first = await f.scan(watch.id);
+  let release = () => {};
+
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  f.overrides.set("repos/oppia/oppia", async () => {
+    await pending;
+    return {
+      node_id: "R_oppia",
+      full_name: "oppia/oppia",
+      html_url: "https://github.com/oppia/oppia",
+    };
+  });
+
+  try {
+    render(<IssueWatchPage snapshot={snapshot} initialWatchId={watch.id} startTask={vi.fn()} />);
+    await screen.findByRole("button", { name: /Select #1: Issue 1/ });
+    fireEvent.click(await screen.findByRole("button", { name: "Scan now" }));
+    await screen.findAllByText("Fetching GitHub issues");
+    expect(screen.getByRole("button", { name: /Select #1: Issue 1/ })).toBeTruthy();
+    await screen.findByText(/Showing previous complete results/);
+    expect(screen.queryByText("No matching issues in this scan")).toBeNull();
+    expect(screen.getByText(/1 GitHub requests/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel scan" }));
+    release();
+    await waitFor(() => expect(f.service.store.history(watch.id)[0].status).toBe("cancelled"));
+    expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(first.id);
+    expect(api.mock.calls.filter(([method]) => method === "issueWatch.scan")).toHaveLength(1);
+  } finally {
+    release();
+  }
 });
 
 it("opens saved results and the existing prefilled task form without queueing a task or claiming an issue", async () => {
@@ -190,12 +280,16 @@ it("opens saved results and the existing prefilled task form without queueing a 
   };
 
   render(<Handoff />);
-  fireEvent.click(await screen.findByRole("button", { name: "Scan Now" }));
-  await screen.findByText("Scan complete within the declared collection scope");
+  fireEvent.click(await screen.findByRole("button", { name: /Oppia opportunities/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Scan now" }));
+  await screen.findByText("Scan complete");
   expect(f.service.store.history(watch.id)).toHaveLength(1);
   expect(infer).not.toHaveBeenCalled();
-  await screen.findByText("Original issue 1");
-  fireEvent.click(screen.getByRole("button", { name: "Start Vibestar Task" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Select #1: Issue 1/ }));
+  await screen.findByRole("complementary", { name: "Selected issue details" });
+  expect(screen.queryByText("Original issue 1")).toBeNull();
+  expect(screen.queryByText("Original issue description")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
   const form = screen.getByRole("dialog", { name: "New task" });
 
   expect((within(form).getByLabelText("Issue URL") as HTMLInputElement).value).toBe(
@@ -285,4 +379,128 @@ it("requires a helper capability before any feature RPC and keeps completion not
   emit(event);
   expect(screen.queryByText(/2 initial discoveries/)).toBeNull();
   expect(api).not.toHaveBeenCalled();
+});
+
+it("opens a full-width watch list and returns to it without scanning", async () => {
+  const { f, snapshot, api } = await setup();
+  await f.create();
+  const infer = vi.spyOn(f.engine.utility, "run");
+  render(<IssueWatchPage snapshot={snapshot} startTask={vi.fn()} />);
+  const topic = await screen.findByRole("button", { name: /Oppia opportunities/ });
+  expect(screen.queryByRole("button", { name: "Scan now" })).toBeNull();
+  fireEvent.click(topic);
+  await screen.findByRole("button", { name: "Scan now" });
+  fireEvent.click(screen.getByRole("button", { name: "All watches" }));
+  await screen.findByRole("button", { name: /Oppia opportunities/ });
+  expect(screen.queryByRole("button", { name: "Scan now" })).toBeNull();
+
+  expect(api.mock.calls.some(([method]) => /issueWatch\.(scan|retry|continue)$/.test(method))).toBe(
+    false,
+  );
+
+  expect(infer).not.toHaveBeenCalled();
+});
+
+it("sorts globally by creation or update date, persists sorting and keeps provisional availability uncertain", async () => {
+  const { f } = await setup();
+
+  f.issues.set(3, {
+    ...githubIssue(3),
+    created_at: "2025-01-01T00:00:00Z",
+    updated_at: "2026-10-26T00:00:00Z",
+  });
+
+  f.issues.get(1)!.created_at = "2026-10-25T00:00:00Z";
+  const { watch } = await f.create();
+  const scan = await f.scan(watch.id);
+
+  const candidates: CandidateSummary[] = f.service.store
+    .candidates(watch.id, scan.id)
+    .filter((candidate) => [1, 3].includes(candidate.issue.number))
+    .map((candidate, index) => ({
+      ...candidate,
+      classification: index ? "existing_match" : "initial_discovery",
+      eligible: true,
+      uncertainty: [],
+      claim_state: "candidate_for_claim_request",
+      body_bytes: 0,
+      evidence_count: 0,
+      source_count: 0,
+    }));
+
+  const props = {
+    candidates,
+    selected: "",
+    onSelect: vi.fn(),
+    provisional: false,
+    showDismissed: false,
+    onError: vi.fn(),
+  };
+
+  const ui = render(<ScanResults {...props} />);
+
+  const numbers = () =>
+    screen
+      .getAllByRole("listitem")
+      .map((row) => row.querySelector(".watch-issue-number")!.textContent);
+
+  expect(numbers()).toEqual(["#1", "#3"]);
+  fireEvent.click(screen.getByRole("combobox", { name: "Sort issues" }));
+  fireEvent.click(screen.getByRole("option", { name: "Oldest first" }));
+  expect(numbers()).toEqual(["#3", "#1"]);
+  ui.unmount();
+  const restored = render(<ScanResults {...props} />);
+  expect(numbers()).toEqual(["#3", "#1"]);
+  fireEvent.click(screen.getByRole("combobox", { name: "Sort issues" }));
+  fireEvent.click(screen.getByRole("option", { name: "Recently updated" }));
+  expect(numbers()).toEqual(["#3", "#1"]);
+
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search issues" }), {
+    target: { value: "Issue 1" },
+  });
+
+  expect(numbers()).toEqual(["#1"]);
+  restored.rerender(<ScanResults {...props} provisional />);
+  expect(screen.queryByText("Available to request")).toBeNull();
+  expect(screen.getByText("Recheck needed")).toBeTruthy();
+  fireEvent.click(screen.getByRole("combobox", { name: "Filter results" }));
+  fireEvent.click(screen.getByRole("option", { name: "Available to request" }));
+  expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+});
+
+it("starts with matching issues and exposes exclusions through All results", async () => {
+  const { f } = await setup();
+  f.issues.set(3, { ...githubIssue(3), state: "closed" });
+  const { watch } = await f.create();
+  const scan = await f.scan(watch.id);
+
+  const candidates: CandidateSummary[] = f.service.store
+    .candidates(watch.id, scan.id)
+    .map((candidate) => ({
+      ...candidate,
+      body_bytes: 0,
+      evidence_count: candidate.evidence.length,
+      source_count: candidate.source_keys.length,
+    }));
+
+  expect(candidates.some((candidate) => !candidate.eligible)).toBe(true);
+
+  render(
+    <ScanResults
+      candidates={candidates}
+      selected=""
+      onSelect={vi.fn()}
+      provisional={false}
+      showDismissed={false}
+      onError={vi.fn()}
+    />,
+  );
+
+  expect(screen.getAllByRole("listitem")).toHaveLength(
+    candidates.filter((candidate) => candidate.eligible).length,
+  );
+
+  fireEvent.click(screen.getByRole("combobox", { name: "Filter results" }));
+  fireEvent.click(screen.getByRole("option", { name: "All results" }));
+  expect(screen.getAllByRole("listitem")).toHaveLength(candidates.length);
 });

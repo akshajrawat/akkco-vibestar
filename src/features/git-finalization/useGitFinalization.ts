@@ -19,12 +19,10 @@ export type GitFinalizationProps = {
   complete: () => Promise<unknown>;
 };
 
-/** Owns task-local finalization drafts, ordered loading and operation progress across wizard panels. */
+/** Owns task-local drafts, guarded operation sequencing and recoverable Git state. */
 export const useGitFinalization = ({ task, repository, revision }: GitFinalizationProps) => {
   const dialog = useDialogFocus();
   const taskView = useTaskView(task.id);
-  const step = taskView.gitStep;
-  const setStep = (gitStep: number) => updateTaskView(task.id, { gitStep });
   const [connectingFork, setConnectingFork] = useState(false);
   const initialized = useRef(false);
   const loadSequence = useRef(0);
@@ -36,7 +34,9 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
 
   const [preset, setPreset] = useState<GitPreset>({
     ...workflows[0],
-    remote: repository?.origin_remote || "origin",
+    remote: repository?.origin_url
+      ? repository.origin_remote || "origin"
+      : repository?.upstream_remote || "upstream",
     branch: task.branch_name,
   });
 
@@ -52,8 +52,6 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
 
   const [message, setMessage] = useState(taskView.gitMessageDraft);
   const [replaceStaged, setReplaceStaged] = useState(false);
-  const [confirmMessage, setConfirmMessage] = useState(false);
-  const [confirmPush, setConfirmPush] = useState(false);
   const [confirmRemoval, setConfirmRemoval] = useState(false);
   const [busy, setBusy] = useState("");
   const [executing, setExecuting] = useState(false);
@@ -162,15 +160,12 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
   const invalidate = () => {
     setRecord(undefined);
     setDetail(undefined);
-    setConfirmMessage(false);
-    setConfirmPush(false);
-    setNotice("Selection changed. Prepare and review the new staged preview.");
+    setNotice("Selection changed. The selected files will be checked before committing.");
   };
 
   const updateMessage = (value: string) => {
     setMessage(value);
     updateTaskView(task.id, { gitMessageDraft: value });
-    setConfirmMessage(false);
   };
 
   const perform = async (label: string, action: () => Promise<Finalization>) => {
@@ -185,7 +180,6 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
       setExecuting(false);
       executingRef.current = false;
       setRecord(value);
-      setConfirmPush(false);
       setBusy("Refreshing saved Git state…");
       await load();
       return value;
@@ -217,9 +211,6 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
 
   const committed = !!record?.head;
 
-  const destinationDirty =
-    !!record && (preset.remote !== record.preset.remote || preset.branch !== record.preset.branch);
-
   const unresolved = snapshot?.history.some(
     (item) =>
       ["pushing", "uncertain", "committing"].includes(item.status) ||
@@ -235,25 +226,16 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
     snapshot &&
     snapshot.fingerprint !== (record.committed_source_hash || record.source_hash);
 
-  const commit = () =>
-    perform(
-      preset.push === "none"
-        ? "Creating local commit…"
-        : "Creating commit and checking destination…",
-      async () => {
-        const value = await call("commit", {
-          message,
-          skip_hooks: preset.commit_hooks === "skip",
-          confirmed: true,
-        });
-
-        if (preset.push === "none") return value;
-        return rpc<Finalization>("git.prepare", {
-          id: task.id,
-          operation_id: value.id,
-          destination: { remote: preset.remote, branch: preset.branch },
-        });
-      },
+  const prepareSelection = () =>
+    perform("Checking selected changes…", () =>
+      rpc<Finalization>("git.preview", {
+        id: task.id,
+        request_id: crypto.randomUUID(),
+        expected_hash: snapshot!.fingerprint,
+        paths: selection.filter((path) => snapshot!.files.some((file) => file.path === path)),
+        replace_selected_staged: replaceStaged,
+        preset,
+      }),
     );
 
   return {
@@ -267,9 +249,7 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
     taskView,
     snapshot,
     setError,
-    step,
     record,
-    setStep,
     selection,
     fileSearch,
     setFileSearch,
@@ -287,17 +267,12 @@ export const useGitFinalization = ({ task, repository, revision }: GitFinalizati
     preset,
     committed,
     setPreset,
-    setConfirmPush,
     setBusy,
     setNotice,
     message,
     updateMessage,
-    confirmMessage,
-    setConfirmMessage,
     busy,
-    commit,
-    confirmPush,
-    destinationDirty,
+    prepareSelection,
     executing,
     operationStarted,
     setBeforeEvent,

@@ -5,6 +5,7 @@ import type { ScheduleJob } from "../../../backend/scheduled/contracts";
 import type { Snapshot } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/Select";
 import { PageHeader, EmptyState, ListSkeleton } from "../../components/ui/PageHeader";
 import { PrDetails, PrState, prTone } from "./PrDetails";
 import { PRBatchDialog } from "./PRBatchDialog";
@@ -367,42 +368,45 @@ export const ScheduledPage = ({
               />
             </label>
 
-            <select
-              aria-label="Filter by repository"
+            <Select
+              label="Filter by repository"
               value={repository}
-              onChange={(e) => setRepository(e.target.value)}
-            >
-              <option value="">All repositories</option>
-              {[...new Set(rows.map((row) => row.repository))].sort().map((name) => (
-                <option key={name}>{name}</option>
-              ))}
-            </select>
+              searchable
+              onChange={setRepository}
+              options={[
+                { value: "", label: "All repositories" },
+                ...[...new Set(rows.map((row) => row.repository))]
+                  .sort()
+                  .map((value) => ({ value, label: value })),
+              ]}
+            />
 
-            <select
-              aria-label="Filter by status"
+            <Select
+              label="Filter by status"
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="">All statuses</option>
-              <option value="OPEN">Open</option>
-              <option value="CLOSED">Closed</option>
-              <option value="MERGED">Merged</option>
-              <option value="ARCHIVED">Archived</option>
-              <option value="UNKNOWN">Unknown</option>
-            </select>
+              onChange={setStatus}
+              options={[
+                { value: "", label: "All statuses" },
+                ...["OPEN", "CLOSED", "MERGED", "ARCHIVED", "UNKNOWN"].map((value) => ({
+                  value,
+                  label: value[0] + value.slice(1).toLowerCase(),
+                })),
+              ]}
+            />
 
-            <select
-              aria-label="Filter by review"
+            <Select
+              label="Filter by review"
               value={review}
-              onChange={(e) => setReview(e.target.value)}
-            >
-              <option value="">All reviews</option>
-              <option value="attention">Need attention</option>
-              <option value="APPROVED">Approved</option>
-              <option value="CHANGES_REQUESTED">Changes requested</option>
-              <option value="REVIEW_REQUIRED">Review required</option>
-              <option value="UNKNOWN">Not inspected</option>
-            </select>
+              onChange={setReview}
+              options={[
+                { value: "", label: "All reviews" },
+                { value: "attention", label: "Need attention" },
+                { value: "APPROVED", label: "Approved" },
+                { value: "CHANGES_REQUESTED", label: "Changes requested" },
+                { value: "REVIEW_REQUIRED", label: "Review required" },
+                { value: "UNKNOWN", label: "Not inspected" },
+              ]}
+            />
           </div>
 
           <div className="list-caption">

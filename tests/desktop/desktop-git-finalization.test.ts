@@ -72,7 +72,12 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
 
       await page.exposeFunction("fixtureRpc", async (method: string, params: unknown) =>
         method === "providers.detect"
-          ? [await new FixtureProvider().detect()]
+          ? await Promise.all(
+              ["antigravity", "codex", "github"].map(async (provider) => ({
+                ...(await new FixtureProvider().detect()),
+                provider,
+              })),
+            )
           : rpc.call(method, params),
       );
 
@@ -107,14 +112,51 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await page.locator(".task-card").filter({ hasText: "Git delivery fixture" }).click();
 
+      const secondaryToggle = page.getByRole("button", {
+        name: "Toggle secondary workspace",
+        exact: true,
+      });
+
+      if ((await secondaryToggle.getAttribute("aria-expanded")) === "true")
+        await secondaryToggle.click();
+      for (const [width, height] of [
+        [1280, 720],
+        [1440, 900],
+        [1920, 1080],
+      ]) {
+        await app.evaluate(
+          ({ BrowserWindow }, size) =>
+            BrowserWindow.getAllWindows()[0].setSize(...(size as [number, number])),
+          [width, height],
+        );
+
+        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+
+        await expect
+          .poll(async () => {
+            const action = await page
+              .locator(".chat-actions")
+              .getByRole("button", { name: "Git Changes", exact: true })
+              .boundingBox();
+
+            const composer = await page.locator(".chat-input").boundingBox();
+            return Math.abs(action!.x - composer!.x);
+          })
+          .toBeLessThan(2);
+
+        await page.screenshot({
+          animations: "disabled",
+          path: join(screenshots, `git-action-collapsed-${width}x${height}.png`),
+        });
+      }
+
       await page
         .locator(".chat-actions")
-        .getByRole("button", { name: "Git Finalization", exact: true })
+        .getByRole("button", { name: "Git Changes", exact: true })
         .click();
 
       const dialog = page.getByRole("dialog", {
-        name: "Git Finalization",
-        exact: true,
+        name: /^(Git Changes|Selected changes review)$/,
       });
 
       await dialog.getByText("source.txt", { exact: true }).waitFor();
@@ -158,7 +200,12 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
         BrowserWindow.getAllWindows()[0].setSize(1440, 900),
       );
 
-      await dialog.getByRole("button", { name: "Prepare staged preview" }).click();
+      expect(await dialog.getByRole("button", { name: "View diff & review" }).count()).toBe(0);
+      expect(await dialog.getByRole("button", { name: "Mark task complete" }).count()).toBe(0);
+      await dialog.getByLabel("Exact Git commit message").fill("Review selected subset");
+      await dialog.getByRole("button", { name: "Commit", exact: true }).click();
+      await dialog.getByRole("button", { name: "Open selected changes review" }).click();
+      await dialog.getByRole("button", { name: "View diff & review" }).click();
       await dialog.getByRole("button", { name: "Review selection with Antigravity" }).click();
 
       await expect
@@ -183,45 +230,31 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
         })
         .toBe("approved");
 
+      await dialog.getByRole("button", { name: "Back to Git Changes" }).click();
       const message = "  Exact desktop contribution  \n\n# Literal message text  ";
-      await dialog.getByRole("button", { name: "Continue to commit", exact: true }).click();
       await dialog.getByLabel("Exact Git commit message").fill(message);
-      await page.screenshot({ path: join(screenshots, "git-commit-step.png") });
-      await dialog.getByRole("button", { name: "Continue to publish", exact: true }).click();
-
-      await page.screenshot({
-        path: join(screenshots, "git-publish-step.png"),
-      });
-
-      await dialog.getByRole("button", { name: "Review operation", exact: true }).click();
+      await dialog.getByRole("button", { name: "Commit", exact: true }).click();
 
       await dialog
-        .getByRole("checkbox", {
-          name: "I confirm this exact message and the approved selected files.",
-        })
+        .getByRole("checkbox", { name: "I confirm these files, exact message and local commit." })
         .check();
 
-      await page.screenshot({
-        path: join(screenshots, "git-exact-message.png"),
-      });
-
-      await dialog.getByRole("button", { name: "Commit and prepare push" }).click();
+      await page.screenshot({ path: join(screenshots, "git-exact-message.png") });
+      await dialog.getByRole("button", { name: "Confirm commit", exact: true }).click();
 
       await expect
-        .poll(() => f.service.store.list(f.task.id)[0]?.status, {
-          timeout: 30000,
-        })
-        .toBe("prepared");
+        .poll(() => f.service.store.list(f.task.id)[0]?.status, { timeout: 30000 })
+        .toBe("committed");
+
+      await dialog.getByRole("button", { name: "Push", exact: true }).click();
 
       await dialog
-        .locator("dd")
-        .filter({ hasText: /^contributor\/fixture$/ })
+        .getByRole("region", { name: "Confirm Git operation" })
+        .getByText("contributor/fixture", { exact: true })
         .waitFor();
 
       await dialog
-        .getByRole("checkbox", {
-          name: "Publish this exact commit to the repository and branch shown above.",
-        })
+        .getByRole("checkbox", { name: "I confirm these files, exact message and destination." })
         .scrollIntoViewIfNeeded();
 
       await expect
@@ -247,7 +280,7 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
 
       await dialog
         .getByRole("checkbox", {
-          name: "Publish this exact commit to the repository and branch shown above.",
+          name: "I confirm these files, exact message and destination.",
         })
         .check();
 
@@ -277,12 +310,15 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
 
       await page
         .locator(".chat-actions")
-        .getByRole("button", { name: "Git Finalization", exact: true })
+        .getByRole("button", { name: "Git Changes", exact: true })
         .click();
 
       await dialog.getByText("Push verified against the remote branch.").waitFor();
       await dialog.getByText("Saved operation log and recovery", { exact: true }).click();
-      expect(await dialog.getByLabel("Saved Git operation history").inputValue()).toBe(record.id);
+
+      expect(
+        await dialog.getByLabel("Saved Git operation history").getAttribute("data-value"),
+      ).toBe(record.id);
 
       expect(
         f.engine.db.all("SELECT id FROM agent_runs WHERE purpose='git-finalization-review'"),
@@ -290,6 +326,113 @@ it.skipIf(process.env.VIBESTAR_GIT_DESKTOP_TEST !== "1")(
 
       expect(await readFile(join(f.repo.path, ".git", "index"))).toEqual(sourceIndex);
       expect(await readFile(join(f.repo.path, "source.txt"))).toEqual(sourceBytes);
+      await dialog.getByRole("button", { name: "Keep local and close" }).click();
+      if ((await secondaryToggle.getAttribute("aria-expanded")) !== "true")
+        await secondaryToggle.click();
+      await page.getByRole("button", { name: "Expand workspace tool", exact: true }).click();
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      const panelBounds: { x: number; width: number }[] = [];
+
+      for (const tab of ["Checks", "Final review"]) {
+        await page.getByRole("tab", { name: tab, exact: true }).click();
+        const panel = page.locator(tab === "Checks" ? ".tests-panel" : ".final-review-panel");
+        await panel.waitFor();
+
+        const bounds = await panel.boundingBox();
+        panelBounds.push({ x: bounds!.x, width: bounds!.width });
+
+        const spacing = await panel.evaluate((node) => ({
+          left: parseFloat(getComputedStyle(node).paddingLeft),
+          top: parseFloat(getComputedStyle(node).paddingTop),
+          overflow: node.scrollWidth > node.clientWidth,
+        }));
+
+        expect(spacing.left).toBeGreaterThanOrEqual(20);
+        expect(spacing.top).toBeGreaterThanOrEqual(24);
+        expect(spacing.overflow).toBe(false);
+
+        await page.screenshot({
+          path: join(screenshots, `aligned-${tab.replaceAll(" ", "-")}.png`),
+        });
+      }
+
+      expect(Math.abs(panelBounds[0].x - panelBounds[1].x)).toBeLessThan(2);
+      expect(Math.abs(panelBounds[0].width - panelBounds[1].width)).toBeLessThan(2);
+      await page.getByRole("button", { name: "New task", exact: true }).click();
+      const newTask = page.getByRole("dialog", { name: "New task", exact: true });
+      await newTask.getByRole("combobox", { name: "Repository", exact: true }).click();
+      const search = page.locator(".select-search input");
+      await search.waitFor();
+
+      expect(
+        await search.evaluate((node) => ({
+          outline: getComputedStyle(node).outlineStyle,
+          shadow: getComputedStyle(node).boxShadow,
+        })),
+      ).toEqual({ outline: "none", shadow: "none" });
+
+      await page.screenshot({ path: join(screenshots, "repository-picker.png") });
+      await page.keyboard.press("Escape");
+      await newTask.getByText("Agent configuration", { exact: true }).click();
+
+      const alignment = await newTask
+        .locator(".config-block")
+        .first()
+        .locator("label")
+        .evaluateAll((labels) =>
+          labels.map((label) => label.querySelector("input, button")!.getBoundingClientRect().y),
+        );
+
+      expect(Math.max(...alignment) - Math.min(...alignment)).toBeLessThan(2);
+      expect(await newTask.locator(".config-block h3 img").count()).toBe(4);
+      await page.screenshot({ path: join(screenshots, "agent-configuration.png") });
+      await newTask.getByRole("combobox", { name: "Model", exact: true }).first().click();
+      await page.locator(".select-search input").fill("next");
+      await page.keyboard.press("ArrowDown");
+      await page.screenshot({ path: join(screenshots, "model-picker.png") });
+      await page.keyboard.press("Escape");
+      await newTask.getByRole("button", { name: "Close", exact: true }).click();
+      await page.getByRole("button", { name: "Providers", exact: true }).click();
+      await page.locator(".provider-row").first().waitFor();
+
+      const centered = await page.locator(".provider-list").evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        const parent = node.parentElement!.getBoundingClientRect();
+        return Math.abs(bounds.x - parent.x - (parent.right - bounds.right));
+      });
+
+      expect(centered).toBeLessThan(2);
+      expect(await page.locator(".provider-icon img").count()).toBe(3);
+      await page.screenshot({ path: join(screenshots, "providers-centered.png") });
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      const settingsNav = page.getByRole("navigation", { name: "Settings sections" });
+      await settingsNav.getByRole("button", { name: "Agents & Models", exact: true }).click();
+      await page.screenshot({ path: join(screenshots, "settings-agents.png") });
+      await settingsNav.getByRole("button", { name: "Execution", exact: true }).click();
+      const fields = page.locator(".settings-fields");
+
+      const positions = await fields
+        .locator("label")
+        .evaluateAll((labels) =>
+          labels
+            .slice(0, 2)
+            .map((label) => label.querySelector("input, button")!.getBoundingClientRect().y),
+        );
+
+      expect(Math.abs(positions[0] - positions[1])).toBeLessThan(2);
+      await page.screenshot({ path: join(screenshots, "settings-execution.png") });
+      await settingsNav.getByRole("button", { name: "Repositories", exact: true }).click();
+      const advanced = page.locator(".discovery-advanced");
+
+      expect(
+        await advanced.evaluate((node) => parseFloat(getComputedStyle(node).marginTop)),
+      ).toBeGreaterThanOrEqual(20);
+
+      expect(
+        await advanced.evaluate((node) => parseFloat(getComputedStyle(node).marginBottom)),
+      ).toBeGreaterThanOrEqual(20);
+
+      await page.screenshot({ path: join(screenshots, "settings-discovery.png") });
       expect(errors).toEqual([]);
 
       await writeFile(

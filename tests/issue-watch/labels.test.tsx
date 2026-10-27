@@ -15,6 +15,11 @@ const link = "https://github.com/oppia/oppia/issues?q=state%3Aopen%20label%3A%22
 
 it("decodes exact labels from Markdown, encoded GitHub search, plain names and multiple URL lines", () => {
   expect(parseLabelInput(`[triage needed](${link})`, "oppia/oppia")).toEqual(["triage needed"]);
+
+  expect(
+    parseLabelInput("https://github.com/oppia/oppia/labels/triage%20needed", "oppia/oppia"),
+  ).toEqual(["triage needed"]);
+
   expect(parseLabelInput("area: tests", "oppia/oppia")).toEqual(["area: tests"]);
   expect(() => parseLabelInput(link + "%ZZ", "oppia/oppia")).toThrow("malformed");
   expect(() => parseLabelInput("www.example.com/label", "oppia/oppia")).toThrow();
@@ -69,9 +74,11 @@ it("supports pasted and URI-dropped links as removable text chips and loads offi
   expect(rpc).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Find GitHub labels" }));
 
-  await vi.waitFor(() =>
-    expect(document.querySelector('option[value="help wanted"]')).toBeTruthy(),
-  );
+  fireEvent.click(await screen.findByRole("combobox", { name: "GitHub label suggestions" }));
+  fireEvent.click(screen.getByRole("option", { name: "help wanted" }));
+  expect(screen.getByRole("button", { name: "Remove label help wanted" })).toBeTruthy();
+  fireEvent.keyDown(screen.getByLabelText("Excluded labels"), { key: "Backspace" });
+  expect(screen.queryByRole("button", { name: "Remove label help wanted" })).toBeNull();
 
   expect(rpc).toHaveBeenCalledExactlyOnceWith("issueWatch.labels", {
     repository: "oppia/oppia",
