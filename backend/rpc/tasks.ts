@@ -4,7 +4,7 @@ import {
   AdeError,
   FollowupConfigSchema,
   SettingsSchema,
-  StageConfigSchema,
+  PipelineStageConfigSchema,
   now,
   parseIssue,
 } from "../domain";
@@ -133,7 +133,7 @@ export const callTasks = async (
       const p = idInput
         .extend({
           stage: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(5)]),
-          config: StageConfigSchema.strict(),
+          config: PipelineStageConfigSchema.strict(),
         })
         .strict()
         .parse(input);
@@ -352,7 +352,7 @@ export const callTasks = async (
 
     case "task.verification.fix": {
       const p = idInput.extend({ request_id: z.string().uuid() }).strict().parse(input);
-      return e.fixWithCodex(p.id, p.request_id);
+      return e.fixVerification(p.id, p.request_id);
     }
 
     case "task.verification.reviewPreview":
@@ -428,7 +428,7 @@ export const callTasks = async (
       )
         throw new AdeError(
           "stale_review",
-          "The worktree changed or its final review uses an older integrity method. Retry Antigravity review before completing.",
+          "The worktree changed or its final review uses an older integrity method. Retry the final review before completing.",
         );
       const verification = taskVerification(e.db, t.id);
       if (!verification.canReview) throw new AdeError("verification_blocked", verification.summary);

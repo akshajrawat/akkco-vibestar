@@ -43,7 +43,7 @@ class WorkspaceV3Provider extends ValidationBlockerProvider {
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
-  "exercises the workspace validation blocker and safe recovery using built Electron and fixture-only providers",
+  "exercises agent check evidence and workspace tools using built Electron and fixture-only providers",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-chat-workspace-"));
     const evidence = join(dir, "screenshots");
@@ -115,14 +115,16 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       const detection = await new FixtureProvider().detect();
 
       await page.exposeFunction("fixtureRpc", async (method: string, params: unknown) =>
-        method === "providers.detect"
-          ? ["antigravity", "codex", "github"].map((provider) => ({
-              ...detection,
-              provider,
-              accountLabel: `${provider} fixture account`,
-              models: provider === "github" ? [] : detection.models,
-            }))
-          : rpc.call(method, params),
+        method === "pr.watch.start"
+          ? null
+          : method === "providers.detect"
+            ? ["antigravity", "codex", "github"].map((provider) => ({
+                ...detection,
+                provider,
+                accountLabel: `${provider} fixture account`,
+                models: provider === "github" ? [] : detection.models,
+              }))
+            : rpc.call(method, params),
       );
 
       await app.evaluate(({ ipcMain, BrowserWindow }) => {
@@ -284,7 +286,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
 
       await page
         .getByRole("button", {
-          name: "Approve → Codex refinement",
+          name: "Approve → Plan refinement",
           exact: true,
         })
         .waitFor();
@@ -309,16 +311,15 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
 
       await page.getByRole("button", { name: "Attach context", exact: true }).click();
       await page.getByText("Text note", { exact: true }).waitFor();
-      for (const name of ["Approve → Codex refinement", "Approve → Implement"]) {
+      for (const name of ["Approve → Plan refinement", "Approve → Implement"]) {
         await page.getByRole("button", { name, exact: true }).waitFor();
         expect(await page.getByRole("dialog", { name: "Stage review required" }).count()).toBe(0);
         await page.getByRole("button", { name: "View plan", exact: true }).click();
 
         await page
-          .getByText(
-            name.includes("refinement") ? "Antigravity original plan" : "Codex refined plan",
-            { exact: true },
-          )
+          .getByText(name.includes("refinement") ? "Original plan" : "Refined plan", {
+            exact: true,
+          })
           .waitFor();
 
         expect(await draft.inputValue()).toContain("Keep this independent");
@@ -352,16 +353,13 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
 
       await expect
         .poll(() => engine.db.task(task.id).status, { timeout: 30000 })
-        .toBe("verification_blocked");
+        .toBe("awaiting_approval");
 
-      await expect
-        .poll(() => page.locator(".validation-turn").innerText())
-        .toContain("Tooling setup interrupted");
-
-      expect(await page.locator(".validation-turn .success").count()).toBe(0);
+      expect(await page.locator(".validation-turn").count()).toBe(0);
+      await page.getByRole("button", { name: "Approve → Review", exact: true }).waitFor();
       expect(engine.db.detail(task.id).messages[0].status).toBe("delivered");
       expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain("SAVED_HELPER_INSTRUCTION");
-      await page.locator(".validation-turn button").click();
+      await page.getByRole("button", { name: "View tests", exact: true }).click();
       await page.getByRole("region", { name: "Verification evidence" }).waitFor();
 
       const setupRow = page
@@ -388,17 +386,6 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         path: join(evidence, "interrupted-setup-command.png"),
       });
 
-      await page
-        .locator(".secondary-content .verification-recovery")
-        .getByText("More options", { exact: true })
-        .click();
-
-      await page
-        .locator(".secondary-content")
-        .getByRole("button", { name: "Recheck saved evidence" })
-        .click();
-
-      await expect.poll(() => engine.db.detail(task.id).tests.length).toBe(6);
       expect(engine.db.detail(task.id).runs).toHaveLength(3);
       await page.locator(".browser-environment > summary").click();
 
@@ -410,7 +397,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         .click();
 
       await page.getByLabel("Observed browser capabilities").waitFor();
-      expect(engine.db.task(task.id).status).toBe("verification_blocked");
+      expect(engine.db.task(task.id).status).toBe("awaiting_approval");
       expect(engine.db.detail(task.id).runs).toHaveLength(3);
 
       await page.screenshot({
@@ -473,8 +460,10 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await page.getByLabel("Return to chat").click();
       await page.getByRole("tab", { name: "Checks", exact: true }).click();
       await page.getByText("Advanced evidence and tools", { exact: true }).click();
+      vi.stubEnv("HOME", home);
+      vi.stubEnv("SHELL", "/bin/bash");
+      vi.stubEnv("GIT_CONFIG_GLOBAL", "/dev/null");
       await page.getByLabel("Toggle utility dock").click();
-      await page.getByRole("button", { name: "Start task terminal", exact: true }).click();
       await page.getByRole("button", { name: "Close shell", exact: true }).waitFor();
       const before = await rpc.call("terminal.status", { id: task.id });
       await page.getByLabel("Hide utility dock").click();
@@ -507,7 +496,17 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       expect(await page.locator(".sidebar").count()).toBe(1);
       await page.keyboard.press("Control+`");
       expect(await page.locator(".bottom-dock").isVisible()).toBe(true);
-      expect(await draft.evaluate((element) => document.activeElement === element)).toBe(true);
+      await page.getByRole("button", { name: "Close shell", exact: true }).waitFor();
+
+      await expect
+        .poll(() =>
+          page
+            .locator(".terminal-surface textarea")
+            .evaluate((element) => document.activeElement === element),
+        )
+        .toBe(true);
+
+      await page.getByRole("button", { name: "Close shell", exact: true }).click();
       await page.keyboard.press("Control+j");
       expect(await page.locator(".bottom-dock").isVisible()).toBe(false);
       await page.keyboard.press("Control+Shift+P");
@@ -719,12 +718,14 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       expect(await picker.isVisible()).toBe(true);
       await picker.getByRole("button", { name: "Done", exact: true }).click();
 
-      expect(
-        await page
-          .locator(".brand-monochrome")
-          .first()
-          .evaluate((node) => getComputedStyle(node).maskImage),
-      ).not.toBe("none");
+      await expect
+        .poll(() =>
+          page
+            .getByRole("button", { name: "Choose chat model", exact: true })
+            .locator("img.brand-icon")
+            .evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0),
+        )
+        .toBe(true);
 
       await page.reload();
       await page.getByLabel("Task conversation").waitFor();
@@ -849,6 +850,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
     } finally {
       if (forward) engine.off("event", forward);
       await app.close();
+      vi.unstubAllEnvs();
       await rpc.close();
       await engine.close();
     }

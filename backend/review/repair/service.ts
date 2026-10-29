@@ -2,9 +2,9 @@ import { gitCapture } from "../../workspace/git-command";
 import { z } from "zod";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AdeError, now, type WorkspaceAssignment } from "../../domain";
+import { AdeError, now, pipelineConfiguration, type WorkspaceAssignment } from "../../domain";
 import type { Engine } from "../../execution/engine";
-import { execute, redact } from "../../execution/runtime/process";
+import { redact } from "../../execution/runtime/process";
 import { taskRuntime } from "../../workspace/runtime";
 import { managedPath, safeFile } from "../../workspace/paths";
 import { GitHubClient } from "../../github/client";
@@ -14,12 +14,11 @@ import { PRIdentityReader } from "./identity";
 import { RepairStore } from "./store";
 import { RepairWorkspaces, repairAssignment } from "./workspace";
 import { repairPrompt } from "./prompt";
-import { RepairPublisher, PublicationSchema } from "./publication";
+import { HistoricalRepairPublicationSchema } from "../../storage/git-history";
 import {
   RepairImplementationSchema,
   RepairVerificationSchema,
   type RepairSession,
-  type PRIdentity,
 } from "./contracts";
 
 const createInput = z
@@ -41,8 +40,6 @@ export class RepairService {
   readonly store: RepairStore;
 
   readonly workspaces: RepairWorkspaces;
-
-  readonly publisher: RepairPublisher;
 
   private readonly active = new Map<
     string,
@@ -66,20 +63,9 @@ export class RepairService {
     readonly engine: Engine,
     private readonly readIdentity = new PRIdentityReader(new GitHubClient(engine.root)).read,
     workspaces = new RepairWorkspaces(engine.root, engine.git),
-    publicationTransport?: (identity: PRIdentity) => string,
-    publicationPush = execute,
   ) {
     this.store = new RepairStore(engine.db);
     this.workspaces = workspaces;
-
-    this.publisher = new RepairPublisher(
-      engine,
-      this.store,
-      workspaces,
-      this.readIdentity,
-      publicationTransport,
-      publicationPush,
-    );
 
     this.ready = this.recover();
   }
@@ -148,7 +134,7 @@ export class RepairService {
           source: publication.data,
           identity: "id",
         },
-        PublicationSchema.parse,
+        HistoricalRepairPublicationSchema.parse,
       );
 
       if (!data) {
@@ -166,7 +152,8 @@ export class RepairService {
         JSON.stringify({
           ...data,
           outcome: "uncertain",
-          error: "Publication was interrupted. Reconcile the remote read-only before any new push.",
+          error:
+            "Publication was interrupted. Inspect the remote manually in the terminal before any new push.",
         }),
         now(),
         publication.id,
@@ -222,7 +209,7 @@ export class RepairService {
           source: row.data,
           identity: "id",
         },
-        PublicationSchema.parse,
+        HistoricalRepairPublicationSchema.parse,
       );
     const controller = new AbortController();
     let releaseActivity = () => {};
@@ -463,8 +450,8 @@ export class RepairService {
         actions,
         instructions: request.instructions,
         configuration: {
-          codex: settings.codex_implementation,
-          antigravity: settings.antigravity_review || settings.antigravity,
+          codex: pipelineConfiguration(settings, 3),
+          antigravity: pipelineConfiguration(settings, 5),
         },
         workspace: {
           branch_name: `akkco/pr-${identity.number}-${request.request_id}`,
@@ -678,9 +665,10 @@ export class RepairService {
       const result = RepairImplementationSchema.parse(
         await this.engine.runRepair(
           repairAssignment(session),
-          "codex",
+          3,
+          session.configuration.codex.provider || "codex",
           session.configuration.codex,
-          repairPrompt(session, context, "codex"),
+          repairPrompt(session, context, "implementation"),
           RepairImplementationSchema,
           [context],
           signal,
@@ -706,9 +694,10 @@ export class RepairService {
     const review = RepairVerificationSchema.parse(
       await this.engine.runRepair(
         repairAssignment(session),
-        "antigravity",
+        5,
+        session.configuration.antigravity.provider || "antigravity",
         session.configuration.antigravity,
-        repairPrompt(session, context, "antigravity"),
+        repairPrompt(session, context, "review"),
         RepairVerificationSchema,
         [context],
         signal,
@@ -772,72 +761,6 @@ export class RepairService {
         id,
       ),
     };
-  };
-
-  approve = async (id: string, expectedHash: string) => {
-    await this.ready;
-    return this.exclusive(
-      id,
-      "Preparing manually approved PR publication",
-      async (session, signal) => {
-        await this.publisher.approve(session, expectedHash);
-        return this.publisher.prepare(session, signal);
-      },
-    );
-  };
-
-  approveLocal = async (id: string, expectedHash: string) => {
-    await this.ready;
-    return this.exclusive(id, "Approving reviewed local PR commit", async (session) => {
-      await this.publisher.approve(session, expectedHash);
-
-      this.store.activity(session, "local_only_approval", {
-        timestamp: now(),
-      });
-
-      return session;
-    });
-  };
-
-  commit = async (id: string, expectedHash: string, message: string) => {
-    await this.ready;
-    return this.exclusive(id, "Creating reviewed local PR commit", (session, signal) =>
-      this.publisher.commit(session, expectedHash, message, signal),
-    );
-  };
-
-  preparePublication = async (id: string) => {
-    await this.ready;
-    return this.exclusive(id, "Preparing exact PR publication operation", (session, signal) =>
-      this.publisher.prepare(session, signal),
-    );
-  };
-
-  publish = async (id: string, publicationId: string) => {
-    await this.ready;
-    return this.exclusive(id, "Publishing explicitly confirmed PR repair", (session, signal) =>
-      this.publisher.pushConfirmed(session, publicationId, signal),
-    );
-  };
-
-  reconcilePublication = async (id: string, publicationId: string) => {
-    await this.ready;
-    return this.exclusive(id, "Reconciling PR publication read-only", (session) =>
-      this.publisher.reconcile(session, publicationId),
-    );
-  };
-
-  keepLocal = async (id: string) => {
-    await this.ready;
-    return this.exclusive(id, "Keeping PR repair local", async (session) => {
-      if (session.status === "ready_to_publish") {
-        session.approved_hash = null;
-        this.transition(session, "awaiting_manual_review");
-      }
-
-      this.store.activity(session, "kept_local", { timestamp: now() });
-      return session;
-    });
   };
 
   assignment = (id: string): WorkspaceAssignment => repairAssignment(this.store.get(id));

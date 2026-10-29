@@ -1,8 +1,9 @@
-import { gitCapture } from "./git-command";
+import { gitCapture, gitExecute } from "./git-command";
 import { lstat, mkdir, readFile, readdir, realpath } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { inside } from "./paths";
+import { AdeError } from "../domain";
 
 // Reuse installed, ignored dependencies without exposing the source checkout.
 export const taskRuntime = async (source: string, worktree: string, connect = false) => {
@@ -11,11 +12,36 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
   const mounts: { source: string; target: string }[] = [];
   const dependencies: string[] = [];
   const warnings: string[] = [];
-  for (const name of ["node_modules", "third_party", ".venv", "venv"]) {
+  const dependencyNames = ["node_modules", "third_party", ".venv", "venv"];
+  const candidates = new Set(dependencyNames);
+
+  const ignoredDirectories = await gitExecute({
+    program: "git",
+    args: ["ls-files", "--others", "--ignored", "--directory", "--exclude-standard", "-z"],
+    cwd: source,
+    rawStdoutForIntegrity: true,
+  });
+
+  if (ignoredDirectories.code !== 0)
+    throw new AdeError("runtime", "Cannot inspect existing repository dependencies.");
+
+  for (const path of ignoredDirectories.stdout.split("\0")) {
+    if (!path.endsWith("/")) continue;
+    const name = path.slice(0, -1);
+    if (dependencyNames.includes(basename(name))) candidates.add(name);
+  }
+
+  for (const name of candidates) {
     const path = join(source, name);
     const target = join(worktree, name);
     const installed = await realpath(path).catch(() => null);
-    if (!installed || !inside(source, installed) || !(await lstat(installed)).isDirectory())
+    if (
+      installed !== path ||
+      !inside(source, installed) ||
+      !inside(worktree, target) ||
+      !(await lstat(installed)).isDirectory() ||
+      (await realpath(dirname(target)).catch(() => null)) !== dirname(target)
+    )
       continue;
     const tracked = await gitCapture(["ls-files", "--", name], worktree);
     const sourceTracked = await gitCapture(["ls-files", "--", name], source);
@@ -70,18 +96,18 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
     warnings.push(
       "Invalid .python-version selection was ignored; no arbitrary environment path was mounted.",
     );
-  const candidates = [join(worktree, ".venv"), join(worktree, "venv")];
+  const pythonCandidates = [join(worktree, ".venv"), join(worktree, "venv")];
   for (const name of [".venv", "venv"])
-    if (dependencies.includes(name)) candidates.push(join(source, name));
+    if (dependencies.includes(name)) pythonCandidates.push(join(source, name));
   if (
     version &&
     version.length <= 200 &&
     /^[\w.-]+$/.test(version) &&
     ![".", ".."].includes(version)
   )
-    candidates.unshift(join(homedir(), ".pyenv", "versions", version));
+    pythonCandidates.unshift(join(homedir(), ".pyenv", "versions", version));
   const versions = await realpath(join(homedir(), ".pyenv", "versions")).catch(() => null);
-  for (const candidate of candidates) {
+  for (const candidate of pythonCandidates) {
     const prefix = await realpath(candidate).catch(() => null);
     if (
       !prefix ||

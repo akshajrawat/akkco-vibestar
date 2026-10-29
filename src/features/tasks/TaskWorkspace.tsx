@@ -1,11 +1,10 @@
 import { RunPrompt } from "../chat/RunPrompt";
-import { GitFinalization } from "../git-finalization/GitFinalization";
 import { ChangesView } from "../../components/shared/ChangesView";
 import { CurrentRun } from "../chat/CurrentRun";
 import { OpenInEditor } from "../../components/shared/OpenInEditor";
 import { containDialogFocus } from "../../lib/keyboard";
 import { useState, useRef, useEffect } from "react";
-import { GitBranch, Square, Check, PanelBottom, ChevronRight, PanelRight } from "lucide-react";
+import { GitBranch, Square, PanelBottom, ChevronRight, PanelRight } from "lucide-react";
 import type { Detail, Repository, Diff, Message, Run } from "../../lib/types";
 import { activeStatuses } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
@@ -35,7 +34,6 @@ import { ChatSurface } from "../chat/ChatSurface";
 import { SecondaryWorkspace } from "../workflow/SecondaryWorkspace";
 import { BottomDock } from "../workflow/BottomDock";
 import { PipelineView, RunDetailsView } from "../workflow/TaskEngineering";
-import { VerificationRecovery } from "../verification/VerificationRecovery";
 import { FinalReviewSummary } from "../verification/FinalReviewSummary";
 
 export const TaskWorkspace = ({
@@ -74,7 +72,6 @@ export const TaskWorkspace = ({
     disposition: "keep_saved" | "include_next_stage";
   }>();
 
-  const [finalizing, setFinalizing] = useState<false | "git" | "review">(false);
   const [sent, setSent] = useState<Message[]>([]);
   const sending = useRef(false);
   const acting = useRef(false);
@@ -86,13 +83,17 @@ export const TaskWorkspace = ({
   const watchChanges = active || occupied;
 
   const feedbackStage =
-    t.stage <= 1
-      ? "Antigravity planning"
-      : t.stage === 2
-        ? "Codex plan refinement"
-        : "implementation";
+    t.stage <= 1 ? "planning" : t.stage === 2 ? "plan refinement" : "implementation";
 
   const verification = detailVerification(detail);
+
+  const approvalGate =
+    t.approval_gate ||
+    (t.stage === 4 &&
+    !active &&
+    ["verification_blocked", "failed", "interrupted", "cancelled"].includes(t.status)
+      ? "implementation"
+      : undefined);
 
   const messages = [
     ...detail.messages,
@@ -108,16 +109,22 @@ export const TaskWorkspace = ({
       (artifact) =>
         artifact.kind === "plan" &&
         artifact.stage ===
-          (t.approval_gate === "antigravity_plan"
+          (approvalGate === "antigravity_plan"
             ? 1
-            : t.approval_gate === "codex_plan"
+            : approvalGate === "codex_plan"
               ? 2
-              : t.approval_gate === "implementation"
+              : approvalGate === "implementation"
                 ? 3
                 : 5),
     );
 
-  const pendingKey = `${t.approval_gate}:${approvalArtifact?.id}:${pendingIds.join(",")}`;
+  const pendingKey = `${approvalGate}:${approvalArtifact?.id}:${pendingIds.join(",")}`;
+  const approvalNotice = approvalGate ? `${approvalGate}:${approvalArtifact?.id || ""}` : null;
+
+  useEffect(() => {
+    if (approvalNotice && view.shownApproval !== approvalNotice)
+      updateTaskView(t.id, { secondaryOpen: true, shownApproval: approvalNotice });
+  }, [approvalNotice, view.shownApproval, t.id]);
 
   const chosenInstructions =
     instructionChoice?.ids === pendingKey ? instructionChoice.disposition : "";
@@ -306,6 +313,177 @@ export const TaskWorkspace = ({
     }
   };
 
+  const workflowActions = (
+    <>
+      {approvalGate && (
+        <ActionTray
+          label="Pipeline review required"
+          title={
+            approvalGate === "antigravity_plan"
+              ? "Plan is ready"
+              : approvalGate === "codex_plan"
+                ? "Refined plan is ready"
+                : approvalGate === "implementation"
+                  ? "Implementation is ready to review"
+                  : "Review is ready"
+          }
+          detail={
+            approvalGate.endsWith("plan")
+              ? "Review the saved plan or send feedback before continuing."
+              : approvalGate === "implementation"
+                ? "Inspect changes and tests, then authorize the independent final review."
+                : "Inspect findings and tests not run. Final acceptance starts no agent."
+          }
+        >
+          <Button
+            size="sm"
+            onClick={() => {
+              if (approvalGate?.endsWith("plan")) {
+                updateTaskView(t.id, {
+                  planStage: approvalGate === "codex_plan" ? 2 : 1,
+                });
+
+                openWorkspaceTool(t.id, "plans");
+              } else if (approvalGate === "implementation") inspect("Tests");
+              else inspect("Final review");
+            }}
+          >
+            View{" "}
+            {approvalGate.endsWith("plan")
+              ? "plan"
+              : approvalGate === "implementation"
+                ? "tests"
+                : "review"}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setConversationMode("changes");
+
+              updateTaskView(t.id, {
+                expandedTool: false,
+                secondaryOpen: !shell.current?.querySelector(".secondary-drawer"),
+              });
+
+              requestAnimationFrame(() => shell.current?.querySelector("textarea")?.focus());
+            }}
+          >
+            Request changes
+          </Button>
+
+          <Button
+            size="sm"
+            variant="default"
+            disabled={
+              busy ||
+              (pending.length > 0 && !chosenInstructions) ||
+              occupied ||
+              (approvalGate === "final_review" &&
+                (verification.outcome === "failed" ||
+                  t.final_review_verdict === "changes_requested" ||
+                  JSON.parse(
+                    [...detail.artifacts].reverse().find((a) => a.stage === 5 && a.kind === "plan")
+                      ?.content || "{}",
+                  ).approval !== "approved"))
+            }
+            onClick={() =>
+              void action("task.approve", {
+                id: t.id,
+                ...(approvalArtifact ? { artifact_id: approvalArtifact.id } : {}),
+                ...(pending.length
+                  ? {
+                      instructions: {
+                        disposition: chosenInstructions,
+                        message_ids: pendingIds,
+                      },
+                    }
+                  : {}),
+              }).then((success) => {
+                if (success)
+                  setNotice(
+                    approvalGate === "final_review"
+                      ? "Review accepted · no agent started"
+                      : "Approved · next pipeline stage authorized",
+                  );
+              })
+            }
+          >
+            {approvalGate === "antigravity_plan"
+              ? "Approve → Plan refinement"
+              : approvalGate === "codex_plan"
+                ? "Approve → Implement"
+                : approvalGate === "implementation"
+                  ? "Approve → Review"
+                  : "Accept review"}
+          </Button>
+
+          {pending.length > 0 && (
+            <div className="instruction-choice">
+              <details>
+                <summary>
+                  {pending.length} saved pending{" "}
+                  {pending.length === 1 ? "instruction" : "instructions"}
+                </summary>
+
+                {pending.map((message) => (
+                  <pre key={message.id}>{message.content}</pre>
+                ))}
+              </details>
+
+              <label>
+                Saved instructions on approval
+                <Select
+                  label="Saved instructions on approval"
+                  value={chosenInstructions}
+                  onChange={(value) =>
+                    setInstructionChoice({
+                      ids: pendingKey,
+                      disposition: value as "keep_saved" | "include_next_stage",
+                    })
+                  }
+                  options={[
+                    { value: "", label: "Choose explicitly…" },
+                    { value: "keep_saved", label: "Keep saved · approve current artifact" },
+                    ...(approvalGate !== "final_review"
+                      ? [
+                          {
+                            value: "include_next_stage",
+                            label: "Include in the next pipeline stage",
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              </label>
+
+              <small>
+                Your unsent composer draft stays independent. Including saved instructions keeps the
+                next stage's configured provider and model.
+              </small>
+            </div>
+          )}
+        </ActionTray>
+      )}
+
+      {t.status === "reviewed_with_gaps" && (
+        <p className="warning">
+          Code review accepted · changes kept locally.{" "}
+          {verification.canReview
+            ? "Recheck evidence to request final verification review."
+            : "Complete the required verification checks."}
+        </p>
+      )}
+
+      {["ready_for_review", "completed"].includes(t.status) && (
+        <Button size="sm" onClick={() => dock("Terminal")}>
+          Open terminal
+        </Button>
+      )}
+    </>
+  );
+
   return (
     <div
       ref={shell}
@@ -433,18 +611,6 @@ export const TaskWorkspace = ({
             </div>
           </section>
         </div>
-      )}
-
-      {finalizing && (
-        <GitFinalization
-          mode={finalizing}
-          onModeChange={setFinalizing}
-          task={t}
-          repository={repository}
-          revision={revision}
-          close={() => setFinalizing(false)}
-          complete={() => action("task.complete")}
-        />
       )}
 
       <div className="workspace-content">
@@ -617,248 +783,6 @@ export const TaskWorkspace = ({
                   ))}
                 </details>
               )}
-
-              {detail.tests.length > 0 && (
-                <section className="validation-turn">
-                  <button onClick={() => inspect("Tests")}>
-                    {verification.outcome === "passed"
-                      ? "Implementation verification"
-                      : verification.outcome === "failed"
-                        ? "Implementation needs changes"
-                        : "Implementation verification incomplete"}{" "}
-                    <span
-                      className={
-                        verification.outcome === "passed"
-                          ? "success"
-                          : verification.outcome === "failed"
-                            ? "failure"
-                            : "warning"
-                      }
-                    >
-                      {
-                        verification.checks.filter(
-                          (check) => check.kind === "check" && check.outcome === "passed",
-                        ).length
-                      }{" "}
-                      checks passed
-                      {verification.blockers.length > 0
-                        ? ` · ${verification.blockers.map((blocker) => blocker.title).join("; ")}`
-                        : verification.outcome === "passed"
-                          ? " · Required verification complete"
-                          : " · Inspect outstanding requirements"}
-                    </span>
-                  </button>
-
-                  {t.stage >= 4 && (
-                    <details>
-                      <summary>Host validation details</summary>
-                      <p>{verification.summary}</p>
-                      <small>
-                        Host validation launches no provider process. Inspect the recorded command
-                        for its actual exit and output.
-                      </small>
-                    </details>
-                  )}
-                </section>
-              )}
-
-              {t.status === "ready_for_review" && (
-                <p className="ready-review">
-                  <Check size={14} />
-                  Ready for review
-                  <span className="spacer" />
-                  {diff?.files.length || 0} {diff?.files.length === 1 ? "file" : "files"}
-                  <ChevronRight size={14} />
-                </p>
-              )}
-
-              {t.final_review_verdict && (
-                <FinalReviewSummary
-                  detail={detail}
-                  changes={() => inspect("Changes")}
-                  tests={() => inspect("Tests")}
-                />
-              )}
-            </>
-          }
-          actions={
-            <>
-              {t.status === "awaiting_approval" && t.approval_gate && (
-                <ActionTray
-                  id={t.id}
-                  label="Pipeline review required"
-                  title={
-                    t.approval_gate === "antigravity_plan"
-                      ? "Antigravity plan is ready"
-                      : t.approval_gate === "codex_plan"
-                        ? "Refined Codex plan is ready"
-                        : t.approval_gate === "implementation"
-                          ? "Implementation is ready to review"
-                          : "Antigravity review & tests are ready"
-                  }
-                  detail={
-                    t.approval_gate.endsWith("plan")
-                      ? "Review the saved plan or send feedback before continuing."
-                      : t.approval_gate === "implementation"
-                        ? "Inspect changes and tests, then authorize Antigravity's final review."
-                        : "Inspect findings and tests not run. Final acceptance starts no agent."
-                  }
-                >
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      if (t.approval_gate?.endsWith("plan")) {
-                        updateTaskView(t.id, {
-                          planStage: t.approval_gate === "codex_plan" ? 2 : 1,
-                        });
-
-                        openWorkspaceTool(t.id, "plans");
-                      } else if (t.approval_gate === "implementation") inspect("Tests");
-                      else inspect("Final review");
-                    }}
-                  >
-                    View{" "}
-                    {t.approval_gate.endsWith("plan")
-                      ? "plan"
-                      : t.approval_gate === "implementation"
-                        ? "tests"
-                        : "review"}
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      shell.current?.querySelector("textarea")?.focus();
-                    }}
-                  >
-                    Request changes
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="default"
-                    disabled={
-                      busy ||
-                      (pending.length > 0 && !chosenInstructions) ||
-                      occupied ||
-                      (t.approval_gate === "final_review" &&
-                        (verification.outcome === "failed" ||
-                          t.final_review_verdict === "changes_requested" ||
-                          JSON.parse(
-                            [...detail.artifacts]
-                              .reverse()
-                              .find((a) => a.stage === 5 && a.kind === "plan")?.content || "{}",
-                          ).approval !== "approved"))
-                    }
-                    onClick={() =>
-                      void action("task.approve", {
-                        id: t.id,
-                        ...(approvalArtifact ? { artifact_id: approvalArtifact.id } : {}),
-                        ...(pending.length
-                          ? {
-                              instructions: {
-                                disposition: chosenInstructions,
-                                message_ids: pendingIds,
-                              },
-                            }
-                          : {}),
-                      }).then((success) => {
-                        if (success)
-                          setNotice(
-                            t.approval_gate === "final_review"
-                              ? "Review accepted · no agent started"
-                              : "Approved · next pipeline stage authorized",
-                          );
-                      })
-                    }
-                  >
-                    {t.approval_gate === "antigravity_plan"
-                      ? "Approve → Codex refinement"
-                      : t.approval_gate === "codex_plan"
-                        ? "Approve → Implement"
-                        : t.approval_gate === "implementation"
-                          ? "Approve → Antigravity review & tests"
-                          : "Accept review"}
-                  </Button>
-
-                  {pending.length > 0 && (
-                    <div className="instruction-choice">
-                      <details>
-                        <summary>
-                          {pending.length} saved pending{" "}
-                          {pending.length === 1 ? "instruction" : "instructions"}
-                        </summary>
-
-                        {pending.map((message) => (
-                          <pre key={message.id}>{message.content}</pre>
-                        ))}
-                      </details>
-
-                      <label>
-                        Saved instructions on approval
-                        <Select
-                          label="Saved instructions on approval"
-                          value={chosenInstructions}
-                          onChange={(value) =>
-                            setInstructionChoice({
-                              ids: pendingKey,
-                              disposition: value as "keep_saved" | "include_next_stage",
-                            })
-                          }
-                          options={[
-                            { value: "", label: "Choose explicitly…" },
-                            { value: "keep_saved", label: "Keep saved · approve current artifact" },
-                            ...(t.approval_gate !== "final_review"
-                              ? [
-                                  {
-                                    value: "include_next_stage",
-                                    label: "Include in the next pipeline stage",
-                                  },
-                                ]
-                              : []),
-                          ]}
-                        />
-                      </label>
-
-                      <small>
-                        Your unsent composer draft stays independent. Including saved instructions
-                        keeps the next stage's configured provider and model.
-                      </small>
-                    </div>
-                  )}
-                </ActionTray>
-              )}
-
-              {t.stage >= 4 &&
-                (t.stage === 4 ||
-                  t.final_review_verdict === "changes_requested" ||
-                  t.final_review_verdict === "blocked" ||
-                  t.status === "reviewed_with_gaps" ||
-                  !verification.canReview) &&
-                !active && (
-                  <VerificationRecovery
-                    detail={detail}
-                    onError={onError}
-                    disabled={busy}
-                    inspect={() => inspect("Tests")}
-                  />
-                )}
-
-              {t.status === "reviewed_with_gaps" && (
-                <p className="warning">
-                  Code review accepted · changes kept locally.{" "}
-                  {verification.canReview
-                    ? "Recheck evidence to request final verification review."
-                    : "Complete required verification before Git Changes."}
-                </p>
-              )}
-
-              {["ready_for_review", "completed"].includes(t.status) && (
-                <Button size="sm" onClick={() => setFinalizing("git")}>
-                  Git Changes
-                </Button>
-              )}
             </>
           }
           composer={
@@ -946,13 +870,13 @@ export const TaskWorkspace = ({
           }
         />
 
-        <SecondaryWorkspace id={t.id}>
+        <SecondaryWorkspace id={t.id} actions={workflowActions}>
           {view.secondarySection === "pipeline" ? (
             <PipelineView
               detail={detail}
               busy={busy}
               action={action}
-              finalize={() => setFinalizing("git")}
+              terminal={() => dock("Terminal")}
               onError={onError}
             />
           ) : view.secondarySection === "plans" ? (
@@ -968,25 +892,6 @@ export const TaskWorkspace = ({
             />
           ) : view.secondarySection === "changes" ? (
             <>
-              {["ready_for_review", "completed"].includes(t.status) && (
-                <div className="changes-review-action">
-                  <Button
-                    size="sm"
-                    disabled={occupied || active}
-                    onClick={() => setFinalizing("review")}
-                  >
-                    Review selected files
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={occupied || active}
-                    onClick={() => setFinalizing("git")}
-                  >
-                    Git Changes
-                  </Button>
-                </div>
-              )}
               <ChangesView
                 task={t}
                 diff={diff}
@@ -1020,17 +925,6 @@ export const TaskWorkspace = ({
                 tests={() => inspect("Tests")}
               />
 
-              {t.stage >= 4 && (
-                <VerificationRecovery detail={detail} onError={onError} disabled={busy} />
-              )}
-
-              <OpenInEditor
-                id={t.id}
-                kind="task"
-                path={t.worktree_path}
-                disabled={!t.worktree_path}
-              />
-
               {detail.runs
                 .filter((run) => run.stage === 5)
                 .map((run) => (
@@ -1043,7 +937,9 @@ export const TaskWorkspace = ({
 
       <BottomDock
         id={t.id}
-        terminal={<TaskTerminal task={t} onError={onError} />}
+        terminal={(active, focusRequest) => (
+          <TaskTerminal task={t} onError={onError} active={active} focusRequest={focusRequest} />
+        )}
         problems={
           <div className="problems-panel">
             {t.error ? (

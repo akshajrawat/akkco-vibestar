@@ -49,7 +49,7 @@ export class ValidationBlockerProvider extends FixtureProvider {
             const syntax = await execute('syntax', [process.execPath, '--check', 'script.js']);
             const table = await execute('table', [process.execPath, '-e', "const fs=require('node:fs/promises');fs.readFile('script.js','utf8').then(s=>{const result=require('node:vm').runInNewContext(s+'multiply(7)');require('node:assert/strict').equal(JSON.stringify(result),JSON.stringify([7,14,21,28,35,42,49,56,63,70]));console.log('Generated table verified');})"]);
             const source = await execute('structure', [process.execPath, '-e', "require('node:fs/promises').readFile('index.html','utf8').then(s=>{require('node:assert/strict').ok(s.includes('lang=')&&s.includes('<main>')&&s.includes('script.js'));console.log('Source structure verified');})"]);
-            const setup = ${request.prompt.includes("One Codex iteration is authorized") ? "JSON.stringify([installer, 'install', '--no-save', 'playwright'])" : "await execute('setup', [installer, 'install', '--no-save', 'playwright'])"};
+            const setup = ${request.prompt.includes("One implementation iteration is authorized") ? "JSON.stringify([installer, 'install', '--no-save', 'playwright'])" : "await execute('setup', [installer, 'install', '--no-save', 'playwright'])"};
             ${this.environment === "dns_socket" ? `const socket = await execute('socket', [process.execPath, '-e', "process.stderr.write('listen EPERM 127.0.0.1:8000');process.exit(1)"]);` : ""}
             const check = (name, command, kind, outcome, detail, prerequisite = null) => ({ name, command, kind, outcome, required: true, detail, prerequisite, scope: 'repository' });
             const result = {

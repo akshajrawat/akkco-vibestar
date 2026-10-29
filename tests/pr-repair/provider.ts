@@ -34,7 +34,7 @@ export class RepairFixtureProvider implements AgentProvider {
 
   invocation = (request: AgentRunRequest) => {
     const context = request.prompt.match(/context directory ([^\n]+?)\. It contains/)?.[1];
-    const implementation = this.name === "codex";
+    const implementation = request.stage === 3;
     const testFile = `const {test}=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs/promises');const {selectors,hasDraft}=require('./utilities.cjs');test('selectors live in utilities',()=>assert.deepEqual(selectors,['draft','publish']));test('original exploration is retained',async()=>assert.ok((await fs.readFile('spec.ts','utf8')).includes(require('./legacy-puppeteer.cjs').exploration)));test('draft assertion rejects an empty list',()=>{assert.equal(hasDraft([]),false);assert.equal(hasDraft(['draft']),true)});`;
 
     const action = implementation

@@ -11,8 +11,8 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 
-import type { Detail, Repository, StageConfig } from "../../lib/types";
-import { defaultSettings } from "../../../backend/domain";
+import type { Detail, Repository, PipelineStageConfig } from "../../lib/types";
+import { defaultSettings, pipelineConfiguration } from "../../../backend/domain";
 import { configurationError } from "../../../backend/execution/providers/contracts";
 import { useProviders } from "../../hooks/useWorkspace";
 import { stages, activeStatuses } from "../../lib/types";
@@ -22,37 +22,33 @@ import { Button } from "../../components/ui/button";
 import { ProviderIcon } from "../../components/ui/ProviderIcon";
 import { Select } from "../../components/ui/Select";
 import { RunPrompt } from "../chat/RunPrompt";
-import { AgentConfiguration } from "../providers/StageSettings";
+import { PipelineConfiguration } from "../providers/StageSettings";
 import { runActivity } from "../chat/output/activity";
 import { detailVerification } from "../../lib/verification";
-import { VerificationRecovery } from "../verification/VerificationRecovery";
 
 const FutureStageSettings = ({
   stage,
-  provider,
   config: initial,
   busy,
   save,
   close,
 }: {
   stage: number;
-  provider: string;
-  config: StageConfig;
+  config: PipelineStageConfig & { provider: "codex" | "antigravity" };
   busy: boolean;
-  save: (config: StageConfig) => Promise<unknown>;
+  save: (config: PipelineStageConfig) => Promise<unknown>;
   close: () => void;
 }) => {
   const [config, setConfig] = useState(initial);
   const { providers, loading, refresh } = useProviders();
-  const detected = providers.find((item) => item.provider === provider);
+  const detected = providers.find((item) => item.provider === config.provider);
   const invalid = detected?.models.length ? configurationError(detected, config) : null;
   return (
     <div className="future-stage-settings" aria-label={`Future stage ${stage} settings`}>
-      <p>{provider} remains this stage's provider. Saving changes starts no agent.</p>
-      <AgentConfiguration
+      <p>Choose the provider, model and effort for this stage. Saving starts no agent.</p>
+      <PipelineConfiguration
         id={`future-${stage}`}
-        label="Future stage model"
-        provider={provider}
+        label="Future stage configuration"
         providers={providers}
         config={config}
         onChange={setConfig}
@@ -94,13 +90,11 @@ export const PipelineView = ({
   detail,
   busy,
   action,
-  finalize,
-  onError = () => {},
 }: {
   detail: Detail;
   busy: boolean;
   action: (method: string, params?: unknown) => Promise<unknown>;
-  finalize: () => void;
+  terminal: () => void;
   onError?: (message: string) => void;
 }) => {
   const task = detail.task;
@@ -151,7 +145,6 @@ export const PipelineView = ({
     );
   return (
     <div className="engineering-panel">
-      <p className="eyebrow">{task.status.replaceAll("_", " ")}</p>
       {task.status === "not_started" && (
         <section className="workflow-start">
           <h2>Workflow not started</h2>
@@ -222,48 +215,36 @@ export const PipelineView = ({
         </section>
       )}
 
-      {task.approval_gate && (
-        <p className="warning">Approval required · {task.approval_gate.replaceAll("_", " ")}</p>
-      )}
-
       <ol className="pipeline-stages">
-        {stages.slice(0, 6).map((label, stage) => {
-          const run = [...detail.runs]
-            .reverse()
-            .find(
-              (run) =>
-                run.stage === stage &&
-                ![
-                  "scheduled",
-                  "Code Review Ask AI",
-                  "git-finalization-review",
-                  "Read-only conversation",
-                ].includes(run.purpose || ""),
-            );
+        {stages
+          .slice(0, 6)
+          .map((label, stage) => ({ label, stage }))
+          .filter(({ stage }) => stage !== 4)
+          .map(({ label, stage }) => {
+            const run = [...detail.runs]
+              .reverse()
+              .find(
+                (run) =>
+                  run.stage === stage &&
+                  ![
+                    "scheduled",
+                    "Code Review Ask AI",
+                    "git-finalization-review",
+                    "Read-only conversation",
+                  ].includes(run.purpose || ""),
+              );
 
-          const saved =
-            task.stage_settings?.[stage as 1 | 2 | 3 | 5] ||
-            (stage === 5
-              ? config?.antigravity_review || config?.antigravity
-              : stage === 1
-                ? config?.antigravity
-                : stage === 2
-                  ? config?.codex_plan
-                  : config?.codex_implementation);
+            const saved = [1, 2, 3, 5].includes(stage)
+              ? pipelineConfiguration(config || defaultSettings, stage, task.stage_settings)
+              : undefined;
 
-          const status =
-            task.status === "not_started"
-              ? "not_started"
-              : stage === 5 && task.final_review_verdict === "changes_requested"
-                ? "changes_requested"
-                : task.status === "awaiting_approval" && stage === approvalStage
-                  ? "awaiting_approval"
-                  : stage === 4 && task.stage >= 4
-                    ? task.status === "validating"
-                      ? "running"
-                      : verification.outcome === "passed"
-                        ? "completed"
-                        : verification.outcome
+            const status =
+              task.status === "not_started"
+                ? "not_started"
+                : stage === 5 && task.final_review_verdict === "changes_requested"
+                  ? "changes_requested"
+                  : task.status === "awaiting_approval" && stage === approvalStage
+                    ? "awaiting_approval"
                     : run
                       ? run.status === "completed" && run.exit_code !== 0
                         ? "unknown"
@@ -283,237 +264,196 @@ export const PipelineView = ({
                               ? "unknown"
                               : "not_started";
 
-          const tone =
-            status === "completed"
-              ? "success"
-              : ["failed", "changes_requested"].includes(status)
-                ? "failure"
-                : status === "running"
-                  ? "running"
-                  : ["awaiting_approval", "blocked", "unknown"].includes(status)
-                    ? "warning"
-                    : "muted";
-
-          const Icon =
-            status === "completed"
-              ? CheckCircle2
-              : status === "running"
-                ? LoaderCircle
+            const tone =
+              status === "completed"
+                ? "success"
                 : ["failed", "changes_requested"].includes(status)
-                  ? XCircle
-                  : status === "awaiting_approval"
-                    ? Clock3
-                    : status === "blocked"
-                      ? AlertTriangle
-                      : status === "unknown"
-                        ? CircleHelp
-                        : ["cancelled", "interrupted"].includes(status)
-                          ? CircleSlash
-                          : Circle;
+                  ? "failure"
+                  : status === "running"
+                    ? "running"
+                    : ["awaiting_approval", "blocked", "unknown"].includes(status)
+                      ? "warning"
+                      : "muted";
 
-          return (
-            <li
-              key={stage}
-              className={`pipeline-step ${status}`}
-              aria-current={
-                status === "running" ||
-                status === "awaiting_approval" ||
-                (task.status === "awaiting_approval" && stage === approvalStage) ||
-                (stage === task.stage && status === "blocked")
-                  ? "step"
-                  : undefined
-              }
-            >
-              <span className={`pipeline-icon ${tone}`} aria-hidden="true">
-                <Icon size={18} className={status === "running" ? "spinning" : ""} />
-              </span>
+            const Icon =
+              status === "completed"
+                ? CheckCircle2
+                : status === "running"
+                  ? LoaderCircle
+                  : ["failed", "changes_requested"].includes(status)
+                    ? XCircle
+                    : status === "awaiting_approval"
+                      ? Clock3
+                      : status === "blocked"
+                        ? AlertTriangle
+                        : status === "unknown"
+                          ? CircleHelp
+                          : ["cancelled", "interrupted"].includes(status)
+                            ? CircleSlash
+                            : Circle;
 
-              <div className="pipeline-stage-heading">
-                <strong>
-                  {stage === 4 && task.stage >= 4 && verification.outcome === "blocked"
-                    ? "Verification incomplete"
-                    : label}
-                </strong>
+            return (
+              <li
+                key={stage}
+                className={`pipeline-step ${status}`}
+                aria-current={
+                  status === "running" ||
+                  status === "awaiting_approval" ||
+                  (task.status === "awaiting_approval" && stage === approvalStage) ||
+                  (stage === task.stage && status === "blocked")
+                    ? "step"
+                    : undefined
+                }
+              >
+                <span className={`pipeline-icon ${tone}`} aria-hidden="true">
+                  <Icon size={18} className={status === "running" ? "spinning" : ""} />
+                </span>
 
-                <small className={tone}>
-                  {status === "unknown" ? "Evidence unavailable" : status.replaceAll("_", " ")}
-                </small>
-              </div>
+                <div className="pipeline-stage-heading">
+                  <strong>{label}</strong>
 
-              {stage === 0 && (
-                <p>
-                  Host ·{" "}
-                  {task.preparation_timing &&
-                  (task.preparation_timing.ended_at || task.status === "preparing")
-                    ? duration(task.preparation_timing.started_at, task.preparation_timing.ended_at)
-                    : "Duration unavailable"}
-                </p>
-              )}
+                  <small className={tone}>
+                    {status === "unknown" ? "Evidence unavailable" : status.replaceAll("_", " ")}
+                  </small>
+                </div>
 
-              {[1, 2, 3, 5].includes(stage) && (
-                <p>
-                  <ProviderIcon
-                    provider={run?.provider || ([1, 5].includes(stage) ? "antigravity" : "codex")}
-                    model={run?.model || saved?.model}
-                    size={13}
-                  />{" "}
-                  {run?.provider || ([1, 5].includes(stage) ? "Antigravity" : "Codex")} ·{" "}
-                  {run?.model || saved?.model || "Official CLI default"} ·{" "}
-                  {run?.effort || saved?.effort || "Unavailable"}
-                  {run
-                    ? ` · ${run.ended_at || run.status === "running" ? duration(run.started_at, run.ended_at) : "Duration unavailable"}`
-                    : " · saved stage configuration"}
-                </p>
-              )}
+                {stage === 0 && (
+                  <p>
+                    Host ·{" "}
+                    {task.preparation_timing &&
+                    (task.preparation_timing.ended_at || task.status === "preparing")
+                      ? duration(
+                          task.preparation_timing.started_at,
+                          task.preparation_timing.ended_at,
+                        )
+                      : "Duration unavailable"}
+                  </p>
+                )}
 
-              {stage === 5 && task.final_review_verdict && (
-                <p>
-                  {
+                {[1, 2, 3, 5].includes(stage) && (
+                  <p>
+                    <ProviderIcon
+                      provider={run?.provider || saved?.provider || ""}
+                      model={run?.model || saved?.model}
+                      size={13}
+                    />{" "}
+                    {run?.provider || saved?.provider || "Unavailable"} ·{" "}
+                    {run?.model || saved?.model || "Official CLI default"} ·{" "}
+                    {run?.effort || saved?.effort || "Unavailable"}
+                    {run
+                      ? ` · ${run.ended_at || run.status === "running" ? duration(run.started_at, run.ended_at) : "Duration unavailable"}`
+                      : ""}
+                  </p>
+                )}
+
+                {stage === 5 && task.final_review_verdict && (
+                  <p>
                     {
-                      verified: "Code approved · verification complete",
-                      code_approved_incomplete: "Code approved · verification incomplete",
-                      changes_requested:
-                        "Changes requested · inspect findings and request Codex fixes",
-                      blocked: "Review blocked · inspect missing evidence",
-                    }[task.final_review_verdict]
-                  }
-                </p>
-              )}
+                      {
+                        verified: "Code approved · verification complete",
+                        code_approved_incomplete: "Code approved · verification incomplete",
+                        changes_requested: "Changes requested · inspect findings and request fixes",
+                        blocked: "Review blocked · inspect missing evidence",
+                      }[task.final_review_verdict]
+                    }
+                  </p>
+                )}
 
-              {stage === 4 && task.stage >= 4 && (
-                <p className="pipeline-current-action">
-                  {
-                    verification.checks.filter(
-                      (check) => check.kind === "check" && check.outcome === "passed",
-                    ).length
-                  }{" "}
-                  checks passed
-                  {verification.blockers.length > 0
-                    ? ` · ${verification.blockers.map((blocker) => blocker.title).join("; ")}`
-                    : ""}
-                  {(() => {
-                    const host = [...detail.tests]
-                      .reverse()
-                      .find(
-                        (test) =>
-                          !test.run_id &&
-                          test.command ===
-                            JSON.stringify(["git", "diff", "--check", task.base_commit_sha, "--"]),
-                      );
+                {run && status === "running" && (
+                  <p className="pipeline-current-action">{runActivity(detail.events, run)}</p>
+                )}
 
-                    return host?.ended_at ? ` · ${duration(host.started_at, host.ended_at)}` : "";
-                  })()}
-                </p>
-              )}
+                <details className="pipeline-stage-actions">
+                  <summary aria-label={`Actions for ${label}`}>
+                    <MoreHorizontal size={15} />
+                  </summary>
 
-              {run && status === "running" && (
-                <p className="pipeline-current-action">{runActivity(detail.events, run)}</p>
-              )}
+                  <div className="actions">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (stage === 1 || stage === 2) {
+                          updateTaskView(task.id, { planStage: stage });
+                          openWorkspaceTool(task.id, "plans");
+                        } else if (stage === 5) openWorkspaceTool(task.id, "final-review");
+                        else {
+                          updateTaskView(task.id, {
+                            outputRun: run?.id || "preparation",
+                          });
 
-              <details className="pipeline-stage-actions">
-                <summary aria-label={`Actions for ${label}`}>
-                  <MoreHorizontal size={15} />
-                </summary>
+                          openWorkspaceTool(task.id, "run-details");
+                        }
+                      }}
+                    >
+                      Inspect
+                    </Button>
 
-                <div className="actions">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      if (stage === 1 || stage === 2) {
-                        updateTaskView(task.id, { planStage: stage });
-                        openWorkspaceTool(task.id, "plans");
-                      } else if (stage === 5) openWorkspaceTool(task.id, "final-review");
-                      else if (stage === 4) openWorkspaceTool(task.id, "tests");
-                      else {
-                        updateTaskView(task.id, {
-                          outputRun: run?.id || "preparation",
-                        });
+                    {stage > 0 &&
+                      stage <= Math.min(task.stage, 5) &&
+                      status !== "awaiting_approval" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!idle || busy}
+                          onClick={() => void action("task.retry", { id: task.id, stage })}
+                        >
+                          Retry stage
+                        </Button>
+                      )}
 
-                        openWorkspaceTool(task.id, "run-details");
-                      }
-                    }}
-                  >
-                    Inspect
-                  </Button>
-
-                  {stage > 0 &&
-                    stage <= Math.min(task.stage, 5) &&
-                    status !== "awaiting_approval" && (
+                    {[1, 2, 3, 5].includes(stage) && !run && stage >= task.stage && (
                       <Button
                         size="sm"
                         variant="ghost"
                         disabled={!idle || busy}
-                        onClick={() => void action("task.retry", { id: task.id, stage })}
+                        onClick={() => setEditing(stage)}
                       >
-                        {stage === 4 ? "Recheck saved evidence" : "Retry stage"}
+                        Edit future stage
                       </Button>
                     )}
+                  </div>
+                </details>
 
-                  {[1, 2, 3, 5].includes(stage) && !run && stage >= task.stage && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={!idle || busy}
-                      onClick={() => setEditing(stage)}
-                    >
-                      Edit future model
-                    </Button>
-                  )}
-                </div>
-              </details>
-
-              {editing === stage && idle && !run && saved && (
-                <FutureStageSettings
-                  stage={stage}
-                  provider={[1, 5].includes(stage) ? "antigravity" : "codex"}
-                  config={saved}
-                  busy={busy}
-                  save={(config) =>
-                    action("task.configureStage", {
-                      id: task.id,
-                      stage,
-                      config,
-                    })
-                  }
-                  close={() => setEditing(undefined)}
-                />
-              )}
-            </li>
-          );
-        })}
+                {editing === stage && idle && !run && saved && (
+                  <FutureStageSettings
+                    stage={stage}
+                    config={saved}
+                    busy={busy}
+                    save={(config) =>
+                      action("task.configureStage", {
+                        id: task.id,
+                        stage,
+                        config,
+                      })
+                    }
+                    close={() => setEditing(undefined)}
+                  />
+                )}
+              </li>
+            );
+          })}
       </ol>
 
-      {task.stage >= 4 &&
-        (task.stage === 4 ||
-          task.final_review_verdict === "changes_requested" ||
-          task.final_review_verdict === "blocked" ||
-          task.status === "reviewed_with_gaps" ||
-          !verification.canReview) &&
-        idle && (
-          <VerificationRecovery
-            detail={detail}
-            onError={onError}
-            disabled={busy}
-            inspect={() => openWorkspaceTool(task.id, "tests")}
-          />
-        )}
-
-      <p className="subtle">
-        Stage settings were saved with this task. Completed runs show their effective model and
-        effort. Composer model choices apply to the next explicit question or code-changing
-        follow-up.
-      </p>
+      {detail.artifacts.some((artifact) => artifact.stage === 3 && artifact.kind === "plan") && (
+        <section className="workflow-checks" aria-label="Agent checks">
+          <h3>Agent checks</h3>
+          <p>Implementation and review run the required tests, lint and formatting.</p>
+          <Button size="sm" variant="ghost" onClick={() => openWorkspaceTool(task.id, "tests")}>
+            {
+              verification.checks.filter(
+                (check) => check.kind === "check" && check.outcome === "passed",
+              ).length
+            }{" "}
+            passed · View check results
+          </Button>
+        </section>
+      )}
 
       <div className="actions">
         {task.status === "ready_for_review" && (
           <Button disabled={!idle || busy} onClick={() => void action("task.complete")}>
             Mark task complete
-          </Button>
-        )}
-        {["ready_for_review", "completed"].includes(task.status) && (
-          <Button disabled={!idle || busy} onClick={finalize}>
-            Git Changes
           </Button>
         )}
 
@@ -558,7 +498,7 @@ export const RunDetailsView = ({
   const view = useTaskView(detail.task.id);
   const run = detail.runs.find((run) => run.id === view.outputRun) || detail.runs.at(-1);
   return (
-    <div className="engineering-panel">
+    <div className="engineering-panel run-details-panel">
       <label>
         Selected run
         <Select
@@ -574,14 +514,16 @@ export const RunDetailsView = ({
 
       {run && (
         <>
-          <p>
-            {run.provider} · {run.model || "Official CLI default"} · {run.effort}
-          </p>
+          <section className="run-summary">
+            <p>
+              {run.provider} · {run.model || "Official CLI default"} · {run.effort}
+            </p>
 
-          <p>
-            {run.status} · {duration(run.started_at, run.ended_at)} · exit{" "}
-            {run.exit_code ?? "unreported"}
-          </p>
+            <p>
+              {run.status} · {duration(run.started_at, run.ended_at)}
+              {run.status !== "running" && ` · exit ${run.exit_code ?? "unreported"}`}
+            </p>
+          </section>
           <RunPrompt run={run} />
           <details>
             <summary>Execution metadata</summary>

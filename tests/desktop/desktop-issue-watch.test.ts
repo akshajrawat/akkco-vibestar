@@ -152,12 +152,14 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       const detection = await provider.detect();
 
       await page.exposeFunction("fixtureRpc", (method: string, params: unknown) =>
-        method === "providers.detect"
-          ? ["codex", "antigravity"].map((name) => ({
-              ...detection,
-              provider: name,
-            }))
-          : rpc.call(method, params),
+        method === "pr.watch.start"
+          ? null
+          : method === "providers.detect"
+            ? ["codex", "antigravity"].map((name) => ({
+                ...detection,
+                provider: name,
+              }))
+            : rpc.call(method, params),
       );
 
       await app.evaluate(({ ipcMain, BrowserWindow }) => {

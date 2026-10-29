@@ -137,7 +137,7 @@ export const TaskCleanup = ({
             <p>{preview.unpublished_commits} unique commits not known in local remote refs</p>
             <p>Active operation: {preview.active_operation || "None"}</p>
             <p>
-              Dependencies: {preview.dependencies.finalizations} Git Finalization ·{" "}
+              Dependencies: {preview.dependencies.finalizations} retained Git history ·{" "}
               {preview.dependencies.repairs} PR repair
             </p>
 
@@ -181,8 +181,7 @@ export const TaskCleanup = ({
 
             {dependencies && (
               <p className="error-box">
-                Remove dependent finalization previews and repair sessions explicitly before
-                discarding.
+                Retained Git history and repair sessions must be resolved before discarding.
               </p>
             )}
           </>

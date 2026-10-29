@@ -22,6 +22,25 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
     vi.spyOn(monitor, "inspect").mockResolvedValue(structuredClone(prSnapshot));
     const rpc = new Rpc(engine, monitor);
 
+    const refreshMetadata = vi
+      .spyOn(rpc.github, "refreshPullRequests")
+      .mockImplementation(async () => ({ ...rpc.github.snapshot(), error: null }));
+
+    vi.spyOn(rpc.prWatch.reader, "read").mockImplementation(async (url) => ({
+      url,
+      title: "Review fixture",
+      body: "Migrate tests",
+      lifecycle: "OPEN",
+      updated_at: "2026-10-23T12:00:00Z",
+      head: "a".repeat(40),
+      viewer: "contributor",
+      review_decision: null,
+      requested_reviewers: 0,
+      issues: [],
+      sources: [],
+      complete: true,
+    }));
+
     engine.db.run(
       "INSERT INTO github_pull_requests VALUES(?,?,?)",
       "https://github.com/upstream/project/pull/1",
@@ -38,6 +57,30 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
       }),
       "2026-10-23T12:00:00Z",
     );
+
+    for (const [number, state, title] of [
+      [2, "MERGED", "Merged fixture"],
+      [3, "CLOSED", "Closed fixture"],
+    ] as const) {
+      const url = `https://github.com/upstream/project/pull/${number}`;
+
+      engine.db.run(
+        "INSERT INTO github_pull_requests VALUES(?,?,?)",
+        url,
+        JSON.stringify({
+          url,
+          repository: "upstream/project",
+          number,
+          title,
+          state,
+          head_branch: "completed-contribution",
+          head_repository: "contributor/project",
+          updated_at: "2026-10-22T12:00:00Z",
+          task_id: null,
+        }),
+        "2026-10-22T12:00:00Z",
+      );
+    }
 
     const emptyRoot = join(dir, "empty-core");
     const empty = await createFixtureEngine(emptyRoot);
@@ -75,9 +118,11 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
 
       await page.exposeFunction("fixtureRpc", async (method: string, params: unknown) =>
-        method === "providers.detect"
-          ? [await new PRFixtureProvider().detect()]
-          : rpc.call(method, params),
+        method === "pr.watch.start" && (params as { trigger: string }).trigger === "open"
+          ? null
+          : method === "providers.detect"
+            ? [await new PRFixtureProvider().detect()]
+            : rpc.call(method, params),
       );
 
       await app.evaluate(({ ipcMain, BrowserWindow }) => {
@@ -111,16 +156,51 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await page.getByRole("button", { name: "Pull Requests", exact: true }).click();
       await page.getByRole("heading", { name: "Pull requests", exact: true }).waitFor();
+
+      expect(await page.getByRole("button", { name: "Merged fixture", exact: true }).count()).toBe(
+        0,
+      );
+
+      await page.screenshot({ animations: "disabled", path: join(dir, "open-pr-inbox.png") });
+      await page.getByRole("combobox", { name: "Filter by status" }).click();
+      await page.getByRole("option", { name: /^Merged/ }).click();
+      await page.getByRole("button", { name: "Merged fixture", exact: true }).waitFor();
+      expect(await page.locator(".pr-list").innerText()).not.toMatch(/awaiting|not checked/i);
+      await page.screenshot({ animations: "disabled", path: join(dir, "merged-pr-history.png") });
+      await page.getByRole("combobox", { name: "Filter by status" }).click();
+      await page.getByRole("option", { name: /^Closed/ }).click();
+      await page.getByRole("button", { name: "Closed fixture", exact: true }).waitFor();
+      await page.screenshot({ animations: "disabled", path: join(dir, "closed-pr-history.png") });
+      await page.getByRole("combobox", { name: "Filter by status" }).click();
+      await page.keyboard.press("Home");
+      await page.keyboard.press("Enter");
+      await page.getByRole("button", { name: "Review fixture", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Choose PR review model", exact: true }).click();
+      await page.getByRole("dialog", { name: "PR review model", exact: true }).waitFor();
+
+      await page.screenshot({
+        animations: "disabled",
+        path: join(dir, "compact-review-model.png"),
+      });
+
+      await page.keyboard.press("Escape");
+
+      expect(
+        await page
+          .getByRole("button", { name: "Choose PR review model" })
+          .evaluate((element) => element === document.activeElement),
+      ).toBe(true);
+
       expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
       expect(engine.db.all("SELECT * FROM scheduled_jobs")).toEqual([]);
       expect(await page.getByLabel("PR URL").count()).toBe(0);
       await page.getByRole("button", { name: "Review fixture", exact: true }).click();
       await page.getByRole("dialog", { name: "Pull request details" }).waitFor();
       await page.getByRole("button", { name: "Close PR details" }).click();
-      await page.getByRole("button", { name: "Analyze PR", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Analyze review", exact: true }).waitFor();
       expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
       expect(vi.mocked(monitor.inspect)).not.toHaveBeenCalled();
-      await page.getByRole("button", { name: "Analyze PR", exact: true }).click();
+      await page.getByRole("button", { name: "Analyze review", exact: true }).click();
 
       await page
         .getByRole("heading", {
@@ -167,40 +247,112 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
         .toBe("reused");
 
       expect(engine.db.all("SELECT * FROM scheduled_agent_runs")).toHaveLength(1);
-      await page.screenshot({ path: join(dir, "manual-pr-report.png") });
+      await page.screenshot({ animations: "disabled", path: join(dir, "manual-pr-report.png") });
       await page.getByRole("button", { name: "Close PR details" }).click();
 
-      const analyzeAll = page.getByRole("button", {
-        name: "Analyze All",
-        exact: true,
-      });
-
-      await analyzeAll.focus();
+      const checkAll = page.getByRole("button", { name: "Recheck open PRs", exact: true });
+      await checkAll.focus();
       await page.keyboard.press("Enter");
-
-      const batchDialog = page.getByRole("dialog", {
-        name: "Analyze All",
-        exact: true,
-      });
-
-      await batchDialog.getByLabel("Maximum AI analyses authorized").fill("0");
-      await batchDialog.getByRole("button", { name: "Inspect selection · no AI" }).click();
-      await batchDialog.getByText(/1 unchanged reports reusable/).waitFor();
-      await page.screenshot({ path: join(dir, "v3-batch-preview.png") });
-      await batchDialog.getByRole("button", { name: "Start Analyze All" }).click();
-      await batchDialog.waitFor({ state: "hidden" });
-      await expect.poll(() => rpc.prBatches.list()[0]?.status).toBe("completed");
-
-      expect(rpc.prBatches.list()[0]).toMatchObject({
-        max_analyses: 0,
-        analyses_used: 0,
-        items: [{ status: "completed" }],
-      });
+      expect(await page.getByRole("dialog", { name: "Analyze All" }).count()).toBe(0);
+      await expect.poll(() => rpc.prWatch.snapshot()?.status).toBe("completed");
+      expect(rpc.prWatch.snapshot()?.items[0].status).toBe("clear");
 
       expect(engine.db.all("SELECT * FROM scheduled_agent_runs")).toHaveLength(1);
-      await page.getByRole("region", { name: "PR batch progress" }).waitFor();
-      await page.screenshot({ path: join(dir, "v3-batch-complete.png") });
+      await page.getByRole("status", { name: "PR watch progress" }).waitFor();
+      await page.screenshot({ animations: "disabled", path: join(dir, "v3-batch-complete.png") });
+
+      vi.mocked(rpc.prWatch.reader.read).mockImplementationOnce(async (_url, signal) => {
+        return new Promise<never>((_resolve, reject) =>
+          signal.addEventListener(
+            "abort",
+            () => {
+              setTimeout(() => reject(new Error("Cancelled fixture retrieval")), 250);
+            },
+            { once: true },
+          ),
+        );
+      });
+
+      await page.getByRole("button", { name: "Recheck open PRs", exact: true }).click();
+      await page.getByText("Checking open PRs", { exact: true }).waitFor();
+
+      await page
+        .getByText(/Reading 1 PR conversations concurrently/)
+        .first()
+        .waitFor();
+
+      expect(await page.getByRole("button", { name: "Stop PR check" }).count()).toBe(1);
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+
+      const spinner = page
+        .getByRole("status", { name: "PR watch progress" })
+        .locator("svg.spinning");
+
+      const animationTime = await spinner.evaluate((element) =>
+        Number(element.getAnimations()[0]?.currentTime || 0),
+      );
+
+      await expect
+        .poll(() =>
+          spinner.evaluate((element) => Number(element.getAnimations()[0]?.currentTime || 0)),
+        )
+        .toBeGreaterThan(animationTime + 50);
+
+      expect(await page.getByRole("button", { name: "Analyze review", exact: true }).count()).toBe(
+        0,
+      );
+
+      expect(await page.getByRole("button", { name: "Cancel analysis", exact: true }).count()).toBe(
+        0,
+      );
+
+      await page.screenshot({ animations: "disabled", path: join(dir, "live-check-progress.png") });
+      await page.getByRole("button", { name: "Stop PR check" }).click();
+      await page.getByText("Stopping PR check…", { exact: true }).waitFor();
+      await page.screenshot({ animations: "disabled", path: join(dir, "stopping-check.png") });
+      await expect.poll(() => rpc.prWatch.snapshot()?.status).toBe("cancelled");
+      refreshMetadata.mockRestore();
+
+      const runsBeforeRefresh = engine.db.all("SELECT id FROM scheduled_agent_runs").length;
+      const inspectionsBeforeRefresh = vi.mocked(monitor.inspect).mock.calls.length;
+
+      vi.spyOn(rpc.github.client, "detect").mockResolvedValue({
+        installed: true,
+        connected: true,
+        username: "contributor",
+        version: "fixture",
+        error: null,
+      });
+
+      const metadata = vi
+        .spyOn(rpc.github.client, "authored")
+        .mockResolvedValue(
+          rpc.github.prs().map((pr) => ({ ...pr, state: pr.number === 1 ? "MERGED" : pr.state })),
+        );
+
+      const catalog = vi
+        .spyOn(rpc.github.client, "pages")
+        .mockRejectedValue(new Error("PR refresh must not load the repository catalog"));
+
+      await page.getByRole("button", { name: "Refresh PR List", exact: true }).click();
+      await expect.poll(() => rpc.github.prs().find((pr) => pr.number === 1)?.state).toBe("MERGED");
+      await page.getByRole("button", { name: "Refresh PR List", exact: true }).waitFor();
+      await page.getByRole("combobox", { name: "Filter by status" }).click();
+      await page.getByRole("option", { name: /^Merged/ }).click();
+      await page.getByRole("button", { name: "Review fixture", exact: true }).waitFor();
+      expect(metadata).toHaveBeenCalledOnce();
+      expect(catalog).not.toHaveBeenCalled();
+      expect(engine.db.all("SELECT id FROM scheduled_agent_runs")).toHaveLength(runsBeforeRefresh);
+      expect(vi.mocked(monitor.inspect)).toHaveBeenCalledTimes(inspectionsBeforeRefresh);
+      expect(await page.locator(".pr-list").innerText()).not.toMatch(/awaiting|not checked/i);
+
+      await page.screenshot({
+        animations: "disabled",
+        path: join(dir, "bulk-metadata-refreshed.png"),
+      });
+
       expect(errors).toEqual([]);
+      process.stdout.write(`PR Electron evidence: ${dir}\n`);
     } finally {
       if (forward) engine.off("event", forward);
       await app.close();

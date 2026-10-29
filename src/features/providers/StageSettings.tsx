@@ -1,4 +1,5 @@
-import type { Detection, Settings, StageConfig } from "../../lib/types";
+import type { Detection, Settings, StageConfig, PipelineStageConfig } from "../../lib/types";
+import { pipelineConfiguration, pipelineStages } from "../../../backend/domain";
 import {
   supportedEfforts,
   configurationError,
@@ -15,6 +16,7 @@ export const AgentConfiguration = ({
   id,
   allowDefault = true,
   maxTimeout = 86400,
+  onProviderChange,
 }: {
   config: StageConfig;
   provider: string;
@@ -24,15 +26,34 @@ export const AgentConfiguration = ({
   id: string;
   allowDefault?: boolean;
   maxTimeout?: number;
+  onProviderChange?: (provider: "codex" | "antigravity") => void;
 }) => {
   const detected = providers.find((p) => p.provider === provider);
   const efforts = supportedEfforts(detected, config.model);
   const error = detected?.models.length ? configurationError(detected, config) : null;
   return (
-    <section className="config-block">
-      <h3>
+    <section
+      className={`config-block${onProviderChange ? " pipeline-config" : ""}`}
+      aria-labelledby={`${id}-title`}
+    >
+      <h3 id={`${id}-title`}>
         <ProviderIcon provider={provider} size={20} /> {label}
       </h3>
+      {onProviderChange && (
+        <label>
+          Provider
+          <Select
+            label="Provider"
+            value={provider}
+            onChange={(value) => onProviderChange(value as "codex" | "antigravity")}
+            options={(["codex", "antigravity"] as const).map((value) => ({
+              value,
+              label: value === "codex" ? "Codex" : "Antigravity",
+              icon: <ProviderIcon provider={value} />,
+            }))}
+          />
+        </label>
+      )}
       <label>
         Model
         <Select
@@ -113,6 +134,40 @@ export const AgentConfiguration = ({
   );
 };
 
+export const PipelineConfiguration = ({
+  config,
+  providers,
+  onChange,
+  ...props
+}: {
+  config: PipelineStageConfig & { provider: "codex" | "antigravity" };
+  providers: Detection[];
+  onChange: (value: PipelineStageConfig & { provider: "codex" | "antigravity" }) => void;
+  id: string;
+  label: string;
+}) => (
+  <AgentConfiguration
+    {...props}
+    config={config}
+    provider={config.provider}
+    providers={providers}
+    onChange={(value) => onChange({ ...value, provider: config.provider })}
+    onProviderChange={(provider) => {
+      const efforts = supportedEfforts(
+        providers.find((entry) => entry.provider === provider),
+        "",
+      );
+
+      onChange({
+        ...config,
+        provider,
+        model: "",
+        effort: efforts.includes(config.effort) ? config.effort : efforts[0] || "medium",
+      });
+    }}
+  />
+);
+
 export const StageSettings = ({
   settings,
   onChange,
@@ -123,22 +178,22 @@ export const StageSettings = ({
   providers?: Detection[];
 }) => (
   <div className="stage-settings">
-    {(
-      [
-        ["antigravity", "1 · Antigravity plan", "antigravity"],
-        ["codex_plan", "2 · Codex refinement", "codex"],
-        ["codex_implementation", "3 · Codex implementation", "codex"],
-        ["antigravity_review", "4 · Antigravity final review", "antigravity"],
-      ] as const
-    ).map(([key, label, provider]) => (
-      <AgentConfiguration
+    {pipelineStages.map(({ stage, key, label }, index) => (
+      <PipelineConfiguration
         key={key}
         id={key}
-        label={label}
-        provider={provider}
+        label={`${index + 1} · ${label}`}
         providers={providers}
-        config={settings[key] || settings.antigravity}
-        onChange={(config) => onChange({ ...settings, [key]: config })}
+        config={pipelineConfiguration(settings, stage)}
+        onChange={(config) =>
+          onChange({
+            ...settings,
+            ...Object.fromEntries(
+              pipelineStages.map((role) => [role.key, pipelineConfiguration(settings, role.stage)]),
+            ),
+            [key]: config,
+          })
+        }
       />
     ))}
   </div>

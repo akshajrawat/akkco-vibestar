@@ -1,6 +1,11 @@
 import { GitHubClient } from "../github/client";
 import { AdeError, now, parseIssue } from "../domain";
-import { parsePullRequest, type PullRequestState, type DiscussionEntry } from "./contracts";
+import {
+  parsePullRequest,
+  PullRequestStateSchema,
+  type PullRequestState,
+  type DiscussionEntry,
+} from "./contracts";
 import { object } from "../execution/providers/contracts";
 
 export class GitHubMonitor {
@@ -35,8 +40,13 @@ export class GitHubMonitor {
     ) as { number: number; title: string; url: string; headRefName: string }[];
   };
 
-  inspect = async (url: string, signal: AbortSignal): Promise<PullRequestState> => {
+  inspect = async (
+    url: string,
+    signal: AbortSignal,
+    progress?: (phase: string) => void,
+  ): Promise<PullRequestState> => {
     const ref = parsePullRequest(url);
+    progress?.("Reading PR details");
 
     const pr = object(
       JSON.parse(
@@ -55,8 +65,10 @@ export class GitHubMonitor {
 
     const client = this.client;
 
-    const pages = (endpoint: string) =>
-      client.pages<Record<string, unknown>>(endpoint, signal, 100);
+    const pages = (endpoint: string, label: string) =>
+      client.pages<Record<string, unknown>>(endpoint, signal, 100, undefined, (page, loaded) =>
+        progress?.(`${label} · page ${page} · ${loaded} loaded`),
+      );
 
     const coverage = {
       complete: true,
@@ -81,6 +93,7 @@ export class GitHubMonitor {
     };
 
     const base = `repos/${ref.owner}/${ref.repo}`;
+    progress?.("Reading PR identity");
 
     const metadata = await optional(
       "PR identity",
@@ -95,9 +108,9 @@ export class GitHubMonitor {
       linkedUrls.add(match[0]);
 
     const [comments, reviews, inline, viewer] = await Promise.all([
-      pages(`${base}/issues/${ref.number}/comments`),
-      pages(`${base}/pulls/${ref.number}/reviews`),
-      pages(`${base}/pulls/${ref.number}/comments`),
+      pages(`${base}/issues/${ref.number}/comments`, "Reading conversation"),
+      pages(`${base}/pulls/${ref.number}/reviews`, "Reading reviews"),
+      pages(`${base}/pulls/${ref.number}/comments`, "Reading inline comments"),
       client.api<{ login: string }>("user", signal),
     ]);
 
@@ -108,6 +121,7 @@ export class GitHubMonitor {
     do {
       if (++threadPages > 100)
         throw new AdeError("github", "Review thread pagination exceeded its safety limit");
+      progress?.(`Reading review threads · page ${threadPages}`);
       const query = `query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefOid closingIssuesReferences(first:100){nodes{url} pageInfo{hasNextPage endCursor}} reviewThreads(first:100,after:$cursor){nodes{id isResolved isOutdated path line startLine comments(first:100){nodes{id body author{login} createdAt updatedAt url} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}`;
 
       const result = JSON.parse(
@@ -174,6 +188,7 @@ export class GitHubMonitor {
             );
           if (++count > 100)
             throw new AdeError("github", "Thread history exceeds the inspection safety limit");
+          progress?.(`Reading thread replies · page ${count + 1}`);
 
           const part = JSON.parse(
             await this.gh(
@@ -348,10 +363,19 @@ export class GitHubMonitor {
       baseInfo = object(metadata.base);
 
     const headSha = String(head.sha || pr.headRefOid);
+    progress?.("Reading changed files, commits and CI");
 
     const [files, commits, checks, statuses] = await Promise.all([
-      optional("changed-file patches", () => pages(`${base}/pulls/${ref.number}/files`), []),
-      optional("commit history", () => pages(`${base}/pulls/${ref.number}/commits`), []),
+      optional(
+        "changed-file patches",
+        () => pages(`${base}/pulls/${ref.number}/files`, "Reading changed files"),
+        [],
+      ),
+      optional(
+        "commit history",
+        () => pages(`${base}/pulls/${ref.number}/commits`, "Reading commits"),
+        [],
+      ),
       optional(
         "check runs",
         () =>
@@ -363,7 +387,11 @@ export class GitHubMonitor {
           ),
         [],
       ),
-      optional("commit statuses", () => pages(`${base}/commits/${headSha}/statuses`), []),
+      optional(
+        "commit statuses",
+        () => pages(`${base}/commits/${headSha}/statuses`, "Reading CI statuses"),
+        [],
+      ),
     ]);
 
     for (const [name, expected, actual] of [
@@ -387,6 +415,10 @@ export class GitHubMonitor {
       );
     const linkedIssues: Record<string, unknown>[] = [];
     for (const url of [...linkedUrls].slice(0, 20)) {
+      progress?.(
+        `Reading linked issue ${linkedIssues.length + 1} of ${Math.min(linkedUrls.size, 20)}`,
+      );
+
       const issue = parseIssue(url);
       const endpoint = `repos/${issue.owner}/${issue.repo}/issues/${issue.number}`;
 
@@ -394,7 +426,7 @@ export class GitHubMonitor {
         `linked issue ${url}`,
         async () => ({
           ...(await client.api<Record<string, unknown>>(endpoint, signal)),
-          comments: await pages(`${endpoint}/comments`),
+          comments: await pages(`${endpoint}/comments`, "Reading linked issue comments"),
         }),
         null as Record<string, unknown> | null,
       );
@@ -410,6 +442,8 @@ export class GitHubMonitor {
         "Only 20 linked issue bodies retrieved; remaining references require another inspection.",
       );
     }
+
+    progress?.("Rechecking PR identity");
 
     const fresh = await optional(
       "final PR identity check",
@@ -461,7 +495,7 @@ export class GitHubMonitor {
       ).values(),
     ];
 
-    return {
+    return PullRequestStateSchema.parse({
       fetchedAt: now(),
       coverage,
       identity: {
@@ -527,6 +561,6 @@ export class GitHubMonitor {
               startedAt: String(c.startedAt || ""),
             }))
             .sort((a, b) => a.name.localeCompare(b.name)),
-    };
+    });
   };
 }

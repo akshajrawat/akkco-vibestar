@@ -127,7 +127,51 @@ export const analysisResult = (snapshot = prSnapshot) => ({
 });
 
 export class PRFixtureProvider extends FixtureProvider {
+  constructor(
+    private readonly watchResponses?: Record<
+      string,
+      {
+        needs_review: boolean;
+        reason: string;
+        source_ids: string[];
+      }
+    >,
+  ) {
+    super();
+  }
+
   invocation = (request: AgentRunRequest) => {
+    if (
+      "results" in object(request.schema.properties) &&
+      request.prompt.includes("PR_WATCH_CONTEXT_JSON")
+    ) {
+      const contexts = JSON.parse(request.prompt.split("\nPR_WATCH_CONTEXT_JSON\n")[1]) as {
+        key: string;
+        url: string;
+        sources: { id: string }[];
+      }[];
+
+      const result = {
+        results: contexts.map((context) => ({
+          key: context.key,
+          ...(this.watchResponses?.[context.url] || {
+            needs_review: true,
+            reason: "A reviewer requested a test update.",
+            source_ids: [context.sources[0].id],
+          }),
+        })),
+      };
+
+      return {
+        program: process.execPath,
+        input: "",
+        args: [
+          "-e",
+          `console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:${JSON.stringify(JSON.stringify(result))}}}));console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:50,output_tokens:10}}));`,
+        ],
+      };
+    }
+
     if (!("observations" in object(request.schema.properties)))
       return new FixtureProvider().invocation(request);
     return {
@@ -135,7 +179,7 @@ export class PRFixtureProvider extends FixtureProvider {
       input: "",
       args: [
         "-e",
-        `(async()=>{const fs=require('node:fs/promises');const path=require('node:path');const manifestPath=${JSON.stringify(request.prompt.match(/analysis-[\w-]+\/manifest\.json/)?.[0])};const manifest=JSON.parse(await fs.readFile(manifestPath,'utf8'));for(const source of manifest.sources)for(const segment of source.segments)await fs.readFile(path.join(path.dirname(manifestPath),segment.path),'utf8');for(const context of manifest.contextPaths)await fs.readFile(path.join(path.dirname(manifestPath),context),'utf8');console.log(JSON.stringify({type:'thread.started',thread_id:'pr-fixture-session'}));console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:${JSON.stringify(JSON.stringify(analysisResult()))}}}));console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:50,output_tokens:10}}));})().catch(e=>{console.error(e);process.exit(1);});`,
+        `(async()=>{const fs=require('node:fs/promises');const path=require('node:path');const inline=${JSON.stringify(request.prompt.includes("\nPR_REVIEW_CONTEXT_JSON\n") ? request.prompt.split("\nPR_REVIEW_CONTEXT_JSON\n")[1] : null)};if(inline){const data=JSON.parse(inline);if(!data.sourceSegments?.length||!data.snapshot)throw new Error('Missing inline review evidence');}else{const manifestPath=${JSON.stringify(request.prompt.match(/analysis-[\w-]+\/manifest\.json/)?.[0])};const manifest=JSON.parse(await fs.readFile(manifestPath,'utf8'));for(const source of manifest.sources)for(const segment of source.segments)await fs.readFile(path.join(path.dirname(manifestPath),segment.path),'utf8');for(const context of manifest.contextPaths)await fs.readFile(path.join(path.dirname(manifestPath),context),'utf8');}console.log(JSON.stringify({type:'thread.started',thread_id:'pr-fixture-session'}));console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:${JSON.stringify(JSON.stringify(analysisResult()))}}}));console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:50,output_tokens:10}}));})().catch(e=>{console.error(e);process.exit(1);});`,
       ],
     };
   };

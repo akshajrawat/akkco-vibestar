@@ -5,7 +5,7 @@ import { GitHubClient } from "../../backend/github/client";
 import { GitHubService } from "../../backend/github/service";
 import { Scheduler } from "../../backend/scheduled/scheduler";
 import { GitHubMonitor } from "../../backend/scheduled/github";
-import type { GitHubRepository } from "../../backend/github/contracts";
+import type { GitHubRepository, GitHubPullRequest } from "../../backend/github/contracts";
 import type { Engine } from "../../backend/execution/engine";
 
 const repository = (full_name: string, parent?: string): GitHubRepository => ({
@@ -30,18 +30,31 @@ const repository = (full_name: string, parent?: string): GitHubRepository => ({
     : {}),
 });
 
-it("syncs authored upstream PRs, keeps catalog separate from clones, preserves pauses and archives confirmed closures", async () => {
-  vi.useFakeTimers();
+const contribution = (number: number, state = "OPEN"): GitHubPullRequest => ({
+  url: `https://github.com/upstream/repo/pull/${number}`,
+  repository: "upstream/repo",
+  number,
+  title: `Contribution ${number}`,
+  state,
+  draft: false,
+  head_sha: "a".repeat(40),
+  head_branch: "feature",
+  head_repository: "viewer/repo",
+  updated_at: "2026-10-25T00:00:00Z",
+  task_id: null,
+});
+
+it("refreshes all PR lifecycles in bulk without repository reads or inference, and confirms missing identities", async () => {
   const db = new Database(":memory:");
 
   const engine = {
     root: "/tmp",
-    assertAvailable: vi.fn(),
-    trackActivity: vi.fn(() => vi.fn()),
-    isExecuting: vi.fn(() => false),
     db,
+    assertAvailable: vi.fn(),
     changed: vi.fn(),
     publish: vi.fn(),
+    trackActivity: vi.fn(() => vi.fn()),
+    isExecuting: () => false,
     isActive: () => false,
     cancel: vi.fn(),
   } as unknown as Engine;
@@ -57,100 +70,51 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
     error: null,
   });
 
-  vi.spyOn(service.client, "pages").mockResolvedValue([repository("viewer/repo", "upstream/repo")]);
+  const pages = vi.spyOn(service.client, "pages").mockResolvedValue([repository("viewer/repo")]);
 
-  const authored = vi.spyOn(service.client, "authored").mockResolvedValue([
-    {
-      html_url: "https://github.com/upstream/repo/pull/42",
-      number: 42,
-      title: "OSS contribution",
-      updated_at: "now",
-    },
-  ]);
+  const api = vi
+    .spyOn(service.client, "api")
+    .mockRejectedValue(new Error("Unexpected per-PR REST call"));
 
-  const api = vi.spyOn(service.client, "api").mockResolvedValue({
-    head: { ref: "branch", repo: { full_name: "viewer/repo" } },
-    state: "open",
-    merged: false,
-  });
+  const found = Array.from({ length: 24 }, (_, index) =>
+    contribution(index + 1, ["OPEN", "MERGED", "CLOSED"][index % 3]),
+  );
 
+  const authored = vi.spyOn(service.client, "authored").mockResolvedValue(found);
+  const known = vi.spyOn(service.client, "pullRequests").mockResolvedValue([]);
   try {
-    await service.sync();
-    expect(service.prs()[0].repository).toBe("upstream/repo");
-    expect(service.catalog()).toHaveLength(1);
+    await service.refreshPullRequests();
+    expect(service.prs()).toHaveLength(24);
+    expect(service.prs().filter((pr) => pr.state === "OPEN")).toHaveLength(8);
+    expect(service.prs().filter((pr) => pr.state === "MERGED")).toHaveLength(8);
+    expect(service.prs().filter((pr) => pr.state === "CLOSED")).toHaveLength(8);
+    expect(authored).toHaveBeenCalledTimes(1);
+    expect(pages).not.toHaveBeenCalled();
+    expect(api).not.toHaveBeenCalled();
+    expect(known).not.toHaveBeenCalled();
     expect(db.repositories()).toEqual([]);
-    expect(scheduler.jobs()).toHaveLength(1);
-
-    scheduler.add({
-      url: service.prs()[0].url,
-      task_id: null,
-      interval_minutes: 60,
-    });
-
-    expect(scheduler.jobs()[0].enabled).toBe(false);
-    scheduler.setEnabled(scheduler.jobs()[0].id, false);
+    expect(service.prs()[0].refreshed_at).toBeTruthy();
+    expect(scheduler.jobs()).toHaveLength(24);
+    expect(scheduler.jobs().every((job) => !job.enabled)).toBe(true);
     await service.sync();
-    expect(scheduler.jobs()).toHaveLength(1);
-    expect(scheduler.jobs()[0].enabled).toBe(false);
-    authored.mockResolvedValue([]);
-    api.mockResolvedValue({ state: "closed", merged: true });
-    await service.sync();
-    expect(service.prs()[0].state).toBe("MERGED");
-    expect(scheduler.jobs()[0].archived).toBe(true);
-
-    authored.mockResolvedValue([
-      {
-        html_url: "https://github.com/upstream/repo/pull/42",
-        number: 42,
-        title: "Reopened",
-        updated_at: "later",
-      },
-    ]);
-
-    api.mockResolvedValue({
-      head: { ref: "branch", repo: { full_name: "viewer/repo" } },
-      state: "open",
-      merged: false,
-    });
-
-    await service.sync();
-
-    expect(scheduler.jobs()[0]).toMatchObject({
-      archived: false,
-      enabled: false,
-    });
-
+    expect(service.catalog()).toHaveLength(1);
+    authored.mockResolvedValue(found.slice(1));
+    known.mockResolvedValue([contribution(1, "MERGED")]);
+    await service.refreshPullRequests();
+    expect(known).toHaveBeenCalledWith([found[0].url], expect.any(AbortSignal));
+    expect(service.prs().find((pr) => pr.number === 1)?.state).toBe("MERGED");
+    expect(scheduler.jobs().find((job) => job.url === found[0].url)?.archived).toBe(true);
+    authored.mockResolvedValue(found);
+    await service.refreshPullRequests();
+    expect(scheduler.jobs().find((job) => job.url === found[0].url)?.archived).toBe(false);
     const before = service.snapshot();
-    vi.mocked(service.client.pages).mockResolvedValue([]);
+    authored.mockResolvedValue(found.slice(1));
+    known.mockRejectedValue(new Error("GitHub rate limit reached"));
+    await service.refreshPullRequests();
 
-    authored.mockResolvedValue([
-      {
-        html_url: "https://github.com/upstream/repo/pull/43",
-        number: 43,
-        title: "New",
-        updated_at: "later",
-      },
-      {
-        html_url: "https://github.com/upstream/repo/pull/44",
-        number: 44,
-        title: "Unavailable",
-        updated_at: "later",
-      },
-    ]);
-
-    api
-      .mockResolvedValueOnce({
-        head: { ref: "new", repo: { full_name: "viewer/repo" } },
-        state: "closed",
-        merged: true,
-      })
-      .mockRejectedValueOnce(new Error("GitHub rate limit reached"));
-
-    await service.sync();
-    expect(service.prs()).toEqual(expect.arrayContaining(before.pull_requests));
-
-    expect(service.prs().find((pr) => pr.number === 44)).toMatchObject({
+    expect(service.prs().find((pr) => pr.number === 1)).toMatchObject({
       state: "UNKNOWN",
+      last_known_state: "OPEN",
       access_error: "GitHub rate limit reached",
     });
 
@@ -170,13 +134,12 @@ it("syncs authored upstream PRs, keeps catalog separate from clones, preserves p
     });
 
     await reopened.close();
-    expect(scheduler.jobs()).toHaveLength(2);
     expect(db.all("SELECT * FROM ai_usage")).toEqual([]);
   } finally {
     await service.close();
     await scheduler.close();
     db.close();
-    vi.useRealTimers();
+    vi.restoreAllMocks();
   }
 });
 
@@ -270,136 +233,83 @@ it("paginates repository catalogs instead of limiting them to 100", async () => 
   expect(api.mock.calls[1][0]).toContain("page=2");
 });
 
-it("refuses truncated or duplicate authored PR pages instead of advancing partial discovery", async () => {
-  const client = new GitHubClient("/tmp");
-
-  const items = Array.from({ length: 100 }, (_, i) => ({
-    html_url: `https://github.com/upstream/repo/pull/${i + 1}`,
-    number: i + 1,
-    title: "Contribution",
-    updated_at: "now",
-  }));
-
-  const api = vi
-    .spyOn(client, "api")
-    .mockResolvedValueOnce({
-      total_count: 101,
-      incomplete_results: false,
-      items,
-    })
-    .mockResolvedValueOnce({
-      total_count: 101,
-      incomplete_results: false,
-      items: [items[0]],
-    });
-
-  await expect(client.authored("viewer")).rejects.toThrow(/truncated/);
-  expect(api.mock.calls[1][0]).toContain("page=2");
-
-  api
-    .mockResolvedValueOnce({
-      total_count: 101,
-      incomplete_results: false,
-      items,
-    })
-    .mockResolvedValueOnce({
-      total_count: 101,
-      incomplete_results: false,
-      items: [
-        {
-          ...items[0],
-          html_url: "https://github.com/upstream/repo/pull/101",
-          number: 101,
-        },
-      ],
-    });
-
-  expect(await client.authored("viewer")).toHaveLength(101);
+const node = (number: number) => ({
+  url: `https://github.com/upstream/repo/pull/${number}`,
+  number,
+  title: "Contribution",
+  state: "OPEN",
+  isDraft: false,
+  updatedAt: "2026-10-25T00:00:00Z",
+  headRefName: "feature",
+  headRefOid: "a".repeat(40),
+  headRepository: { nameWithOwner: "viewer/repo" },
+  repository: { nameWithOwner: "upstream/repo" },
 });
 
-it("advances persisted bounded PR detail pages and preserves authoritative unknown state without inference", async () => {
-  const db = new Database(":memory:");
-
-  const engine = {
-    root: "/tmp",
-    db,
-    assertAvailable: vi.fn(),
-    changed: vi.fn(),
-    publish: vi.fn(),
-    trackActivity: vi.fn(() => vi.fn()),
-    isExecuting: () => false,
-    isActive: () => false,
-    cancel: vi.fn(),
-  } as unknown as Engine;
-
-  const scheduler = new Scheduler(engine);
-  let service = new GitHubService(engine, scheduler);
-
-  const found = Array.from({ length: 501 }, (_, i) => ({
-    html_url: "https://github.com/upstream/repo/pull/" + (i + 1),
-    number: i + 1,
-    title: "Contribution " + (i + 1),
-    updated_at: "2026-10-25T00:00:00Z",
-  }));
-
-  const configure = () => {
-    vi.spyOn(service.client, "detect").mockResolvedValue({
-      installed: true,
-      connected: true,
-      username: "viewer",
-      version: "fixture",
-      error: null,
-    });
-
-    vi.spyOn(service.client, "pages").mockResolvedValue([]);
-    const authored = vi.spyOn(service.client, "authored").mockResolvedValue(found);
-
-    const api = vi.spyOn(service.client, "api").mockImplementation(async () => ({
-      state: "open",
-      merged: false,
-      head: {
-        ref: "feature",
-        sha: "a".repeat(40),
-        repo: { full_name: "viewer/repo" },
+const page = (nodes: ReturnType<typeof node>[], count: number, cursor: string | null = null) =>
+  JSON.stringify({
+    data: {
+      search: {
+        issueCount: count,
+        nodes,
+        pageInfo: { hasNextPage: cursor !== null, endCursor: cursor },
       },
-    }));
+    },
+  });
 
-    return { authored, api };
-  };
+it("retrieves 501 PR statuses in six metadata pages without per-PR detail requests", async () => {
+  const client = new GitHubClient("/tmp");
+  const gh = vi.spyOn(client, "gh");
+  const nodes = Array.from({ length: 501 }, (_, i) => node(i + 1));
+  for (let offset = 0; offset < nodes.length; offset += 100)
+    gh.mockResolvedValueOnce(
+      page(nodes.slice(offset, offset + 100), 501, offset < 500 ? `cursor-${offset}` : null),
+    );
+  expect(await client.authored("viewer")).toHaveLength(501);
+  expect(gh).toHaveBeenCalledTimes(6);
+  expect(gh.mock.calls.every(([args]) => args.includes("graphql"))).toBe(true);
+  expect(gh.mock.calls[1][0]).toContain("cursor=cursor-0");
+});
 
-  try {
-    configure();
-    await service.sync();
-    expect(service.prs()).toHaveLength(500);
+it("refuses truncated, duplicate or stalled authored PR pages", async () => {
+  const client = new GitHubClient("/tmp");
+  const gh = vi.spyOn(client, "gh");
+  const nodes = Array.from({ length: 100 }, (_, i) => node(i + 1));
+  gh.mockResolvedValueOnce(page(nodes, 101, "next")).mockResolvedValueOnce(page([nodes[0]], 101));
+  await expect(client.authored("viewer")).rejects.toThrow(/truncated or duplicated/);
 
-    expect(service.snapshot()).toMatchObject({
-      last_sync: null,
-      error: expect.stringContaining("Partial refresh"),
-    });
+  gh.mockResolvedValueOnce(page(nodes, 101, "next")).mockResolvedValueOnce(
+    page([node(101)], 101, "next"),
+  );
 
-    await service.close();
-    service = new GitHubService(engine, scheduler);
-    const { authored, api } = configure();
-    await service.sync();
-    expect(api).toHaveBeenCalledTimes(1);
-    expect(service.prs()).toHaveLength(501);
-    const saved = service.prs()[0];
-    authored.mockResolvedValue([]);
-    api.mockRejectedValueOnce(new Error("Not accessible"));
-    await service.sync();
+  await expect(client.authored("viewer")).rejects.toThrow(/did not advance/);
+  gh.mockResolvedValueOnce(page(nodes, 101));
+  await expect(client.authored("viewer")).rejects.toThrow(/truncated/);
+});
 
-    expect(service.prs().find((pr) => pr.url === saved.url)).toMatchObject({
-      state: "UNKNOWN",
-      last_known_state: "OPEN",
-      access_error: "Not accessible",
-    });
+it("batches known missing PR identities and refuses inaccessible or mismatched results", async () => {
+  const client = new GitHubClient("/tmp");
+  const gh = vi.spyOn(client, "gh");
+  const urls = Array.from({ length: 26 }, (_, i) => node(i + 1).url);
 
-    expect(scheduler.jobs()).toHaveLength(501);
-    expect(db.all("SELECT * FROM ai_usage")).toEqual([]);
-  } finally {
-    await service.close();
-    await scheduler.close();
-    db.close();
-    vi.restoreAllMocks();
-  }
+  gh.mockResolvedValueOnce(
+    JSON.stringify({
+      data: Object.fromEntries(
+        urls.slice(0, 25).map((_, i) => [`p${i}`, { pullRequest: node(i + 1) }]),
+      ),
+    }),
+  );
+
+  gh.mockResolvedValueOnce(
+    JSON.stringify({ data: { p0: { pullRequest: { ...node(26), state: "MERGED" } } } }),
+  );
+
+  const found = await client.pullRequests(urls);
+  expect(found).toHaveLength(26);
+  expect(found[25].state).toBe("MERGED");
+  expect(gh).toHaveBeenCalledTimes(2);
+  gh.mockResolvedValueOnce(JSON.stringify({ data: { p0: null } }));
+  await expect(client.pullRequests([urls[0]])).rejects.toThrow(/lifecycle is unknown/);
+  gh.mockResolvedValueOnce(JSON.stringify({ data: { p0: { pullRequest: node(2) } } }));
+  await expect(client.pullRequests([urls[0]])).rejects.toThrow(/different PR/);
 });

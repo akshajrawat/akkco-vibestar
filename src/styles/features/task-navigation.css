@@ -53,77 +53,6 @@
   border-bottom: 1px solid var(--border-default);
 }
 
-.git-finalization.modal {
-  width: min(1040px, calc(100vw - 48px));
-  max-width: 1120px;
-  max-height: calc(100dvh - 48px);
-  overflow: auto;
-  padding: 0;
-}
-
-.git-finalization-header,
-.git-finalization-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 22px;
-  background: var(--background-elevated);
-}
-
-.git-finalization-header {
-  border-bottom: 1px solid var(--border);
-}
-
-.git-finalization-header p {
-  color: var(--text-secondary);
-  margin: 8px 0 0;
-}
-
-.git-finalization h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.4;
-}
-
-.git-finalization h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 14px;
-}
-
-.git-finalization h4 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.git-finalization-grid {
-  display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  min-width: 0;
-}
-
-.git-files-panel,
-.git-commit-panel {
-  padding: 20px 22px;
-  min-width: 0;
-}
-
-.git-files-panel {
-  border-right: 1px solid var(--border-subtle);
-}
-
-.git-files-panel,
-.git-commit-panel {
-  width: 100%;
-  margin: 0;
-}
-
 .task-disposal-choices {
   padding: 12px 0;
 }
@@ -145,16 +74,10 @@
   background: rgb(0 0 0 / 30%);
 }
 
-.task-disposal-choices small,
-.batch-selection small {
+.task-disposal-choices small {
   display: block;
   color: var(--text-secondary);
   margin-top: 4px;
-}
-
-.batch-selection {
-  max-height: 240px;
-  overflow: auto;
 }
 
 .pr-batch-progress {
@@ -192,222 +115,25 @@
 }
 
 .workflow-start {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   padding-bottom: 18px;
 }
 
-.git-finalization .muted {
+.workflow-start > p {
   color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.6;
 }
 
-.git-file-list {
-  list-style: none;
-  padding: 0;
-  max-height: 260px;
-  overflow: auto;
-  margin: 18px 0;
-}
-
-.git-file-list li {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.git-file-list label {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 0;
-}
-
-.git-file-list label > span {
-  min-width: 0;
-}
-
-.git-file-list code {
-  overflow-wrap: anywhere;
-  white-space: normal;
-  font-size: 12px;
-}
-
-.git-file-list small {
-  display: block;
-  margin-top: 5px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-}
-
-.git-file-list .excluded {
-  opacity: 0.75;
-}
-
-.git-finalization .inline-check {
-  display: flex;
-  flex-direction: row;
-  gap: 9px;
-  align-items: flex-start;
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 14px 0;
-}
-
-.git-finalization input[type="checkbox"] {
-  flex: 0 0 auto;
-  margin-top: 2px;
-  width: 14px;
-  height: 14px;
-}
-
-.git-selection-review {
-  margin-top: 22px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.git-selection-review p {
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.git-finalization textarea {
-  font-family: var(--font-mono);
-  margin-top: 8px;
-  min-height: 100px;
-}
-
-.git-confirmation {
-  padding: 16px;
-  margin-top: 18px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-panel);
-  background: var(--background-elevated);
-}
-
-.git-confirmation ul {
-  max-height: 110px;
-  overflow: auto;
-  padding-left: 18px;
-}
-
-.git-destination-label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-wrap: anywhere;
-  margin-bottom: 12px;
-}
-
-.git-destination-label span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.git-options {
-  margin-top: 16px;
-}
-
-.git-finalization label {
-  margin-top: 12px;
-}
-
-.git-finalization .select-trigger,
-.git-finalization input:not([type="checkbox"]),
-.git-finalization textarea {
-  max-width: 100%;
+.workflow-start > details {
   width: 100%;
-}
-
-.git-publish-panel {
-  border-top: 1px solid var(--border);
-  margin-top: 24px;
-  padding-top: 20px;
-}
-
-.git-finalization .repository-facts {
-  grid-template-columns: minmax(100px, auto) minmax(0, 1fr);
-  font-size: 12px;
-}
-
-.git-finalization .repository-facts dd {
-  overflow-wrap: anywhere;
-}
-
-.git-commit-success {
-  display: flex;
-  gap: 8px;
-  color: var(--accent-green);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.git-commit-success svg {
-  flex-shrink: 0;
-}
-
-.git-staged-diff,
-.git-exact-message,
-.git-operation-panel pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 340px;
-  overflow: auto;
   font-size: 11px;
-  line-height: 1.7;
-  padding: 14px;
-  background: var(--background-input);
-  border: 1px solid var(--border);
-  border-radius: 8px;
 }
 
-.git-operation-panel {
-  border-top: 1px solid var(--border);
-  padding: 20px 26px;
-}
-
-.git-operation-panel > header {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.git-operation-panel header h3 {
-  margin: 0 auto 0 0;
-}
-
-.git-operation-panel ol {
-  max-height: 160px;
-  overflow: auto;
-  font-size: 12px;
-  line-height: 1.9;
-  padding-left: 18px;
-}
-
-.git-operation-panel ol small {
-  color: var(--text-secondary);
-}
-
-.git-finalization-footer {
-  position: sticky;
-  bottom: 0;
-  border-top: 1px solid var(--border);
-}
-
-.git-finalization-footer small {
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-
-.git-finalization > .error-box,
-.git-finalization > .notice {
-  margin: 16px 26px 0;
-}
-
-.git-workspace-details {
-  margin: 16px 26px;
+.workflow-start > details > summary {
+  cursor: pointer;
 }
 
 .token-channel-track {
@@ -463,43 +189,6 @@
     border-color var(--motion-fast);
 }
 
-.workspace-tool-tabs button {
-  position: relative;
-  overflow: hidden;
-}
-
 .workspace-tool-tabs button[aria-selected="true"] {
-  background: transparent;
-}
-
-.workspace-tab-selection {
-  position: absolute;
-  inset: auto 8px 0;
-  height: 1px;
-  background: var(--text-secondary);
-  pointer-events: none;
-}
-
-.workspace-tab-label {
-  position: relative;
-}
-
-.git-file-list .error-text {
-  color: var(--accent-amber);
-}
-
-@media (max-width: 900px) {
-  .git-finalization-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .git-files-panel {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .git-finalization-footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+  background: var(--background-selected);
 }

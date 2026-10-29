@@ -3,6 +3,7 @@ import { detailVerification } from "../../lib/verification";
 import { AgentResponse } from "../chat/AgentResponse";
 import { Button } from "../../components/ui/button";
 import { planSchemas } from "../../../backend/execution/providers/contracts";
+import { ClipboardCheck, LoaderCircle } from "lucide-react";
 
 export const FinalReviewSummary = ({
   detail,
@@ -27,10 +28,33 @@ export const FinalReviewSummary = ({
   }
 
   const parsed = planSchemas[5].safeParse(value);
-  if (!parsed.success)
+  if (!parsed.success) {
+    const running = detail.runs.some((run) => run.stage === 5 && run.status === "running");
+    const attempted = detail.runs.some((run) => run.stage === 5);
     return (
-      <p className="subtle">Antigravity final review has not completed with a valid report.</p>
+      <section className="workspace-empty">
+        {running ? <LoaderCircle size={24} className="spinning" /> : <ClipboardCheck size={24} />}
+        <h2>
+          {running
+            ? "Independent review in progress"
+            : attempted
+              ? "Review needs attention"
+              : "Independent review"}
+        </h2>
+        <p>
+          {running
+            ? "The reviewer is inspecting the changes and running checks. Its report will appear here."
+            : attempted
+              ? "The last review did not produce a complete report. Inspect the run details before retrying."
+              : "After implementation, approve the review from Workflow. The reviewer will inspect the changes and independently run the applicable checks."}
+        </p>
+        <Button size="sm" variant="ghost" onClick={changes}>
+          Inspect changes
+        </Button>
+      </section>
     );
+  }
+
   const review = parsed.data;
   const verification = detailVerification(detail);
 
@@ -94,7 +118,7 @@ export const FinalReviewSummary = ({
           ? verification.canReview
             ? detail.task.approval_gate
               ? "Manual review and acceptance"
-              : "Review changes / Git Finalization"
+              : "Review changes / open terminal"
             : "Keep reviewed changes locally / additional verification"
           : "Inspect findings and request fixes"}
       </p>

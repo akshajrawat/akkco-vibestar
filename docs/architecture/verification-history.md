@@ -1031,3 +1031,137 @@ The actual `release/linux-unpacked/akkco-vibestar` executable launched under Xvf
 Actual Codex/Antigravity repair semantics and allowance snapshots, live GitHub fork permissions/publication, the real Oppia dependency/browser matrix and native Windows installation/update/DPI/editor launch were not exercised. No milestone feature is intentionally left deferred; these are environment/live verification limits. Signing is not configured. External editors/Git operations do not participate in Vibestar's leases, so subsequent changes require fresh review/fingerprint checks. Existing provider auth/session mounts retain their documented trusted-provider boundary.
 
 See [README.md](../../README.md) for operation and [ARCHITECTURE.md](../../ARCHITECTURE.md) for persistence, execution and authentication boundaries.
+
+## 2026-10-27: terminals, pipeline providers and PR review
+
+Removed application commit/push dialogs and executors. Explicit user terminals use the
+normal Linux/WSL shell and Git configuration; agent and verification commands retain
+their sandbox. Historical migrations and Git journals remain protected. Pipeline roles
+now select providers independently, including implementation and review in PR repairs.
+
+The PR inbox defaults to open contributions, with a status dropdown and one explicit
+check for the full open list. The saved review model takes precedence over the utility
+fallback, with a compact temporary override. Retrieval phases, elapsed time and a single
+Stop control distinguish active work from cancellation. Canonical snapshot contracts now
+retain CI context identifiers and thread comment metadata, fixing rejected saved records
+that froze the displayed scan phase. A read-only inspection confirmed the affected saved
+analysis JSON validates without rewriting its contents. Underlined tab indicators were
+removed throughout the UI; shared workflow padding was restored and checked geometrically.
+
+`npm run verify` passed: 339 regular tests, 118 integration tests, 130 security tests and
+4 terminal tests, with one existing regular test skipped. Formatting, lint, types and the
+production build passed. Built Electron fixtures under Xvfb passed for PR review, pipeline
+provider selection, workflow spacing, PR repair and Issue Watch. The repair fixture commits
+and pushes manually through the terminal to a disposable local remote while preserving
+the source checkout and shell session across keyboard hide/reopen. The PR fixture exercises progress
+and cancellation, and the pipeline fixture checks wide/narrow settings and keyboard flows.
+All inference and remote transports in these fixtures were inert or local; no live-provider
+or GitHub-write test was run. Native Windows installation and input were not rerun.
+
+## 2026-10-27: bulk PR metadata refresh and review latency
+
+The PR inbox now refreshes lifecycle metadata through a dedicated bounded GraphQL path,
+without loading the repository catalog or requesting per-PR REST details. Authored search
+pages contain the required metadata; known identities absent from search use batched lookups.
+Observation timestamps keep saved analysis from overriding fresher lifecycle evidence.
+Discovery still starts no inference, and inaccessible or incomplete results retain uncertainty.
+
+Read-only inspection of the reported failed analysis confirmed the saved 120-second utility
+configuration and 22 file-read operations before timeout. Its complete staged context becomes
+an 85,952-byte direct payload, within the new 96,000-byte inline budget. Larger contexts retain
+complete source packets; coverage validation and explicit retry policy remain unchanged.
+The model picker exposes a temporary time-limit override. PR spinners use the existing animation
+class, respecting reduced-motion preferences.
+
+`npm run verify` passed: 339 regular tests, 121 integration tests, 130 security tests and
+4 terminal tests, with one existing regular test skipped. Formatting, lint, types and the
+production build passed. The built Electron PR fixture passed under Xvfb, checking advancing
+animation time, a single Stop control, keyboard filtering/focus and metadata-only lifecycle
+updates without additional inspection or inference. The first desktop launch used the preceding
+renderer while the build was still completing; the rerun used the completed build and passed.
+
+Screenshots in `~/tmp/vibestar-pr-desktop-Bc9VFF/` were visually inspected:
+`compact-review-model.png`, `live-check-progress.png` and `bulk-metadata-refreshed.png`.
+API transports and inference in tests were inert; actual GitHub response times, live model
+latency and native Windows behavior were not benchmarked. Saved user data was only read for
+diagnosis, and no live inference or GitHub write was performed.
+
+## 2026-10-28: lightweight automatic PR attention watch
+
+Replaced the inbox's engineering-analysis batch action with a separate conversation
+watch. A negotiated startup request runs once per core/app launch; renderer remounts,
+navigation and focus cannot repeat it. The explicit button now requests recheck. Existing
+detailed reports and repair preparation remain explicit. Interrupted, cancelled and failed
+watch operations require explicit recheck rather than automatic replay.
+
+Metadata discovery remains bulk/API-only. Up to four PR conversations load concurrently,
+including bodies, reviews, inline threads, comment timestamps/reply links and linked issue
+bodies. Active review requests and unresolved current reviewer threads are flagged before
+inference. The authenticated viewer's own comments do not create work. Other complete
+conversations share a small classification request with validated PR keys and source IDs.
+Diffs, commit history and filesystem reads are excluded from the watch prompt. Incomplete,
+oversized, unavailable or invalid evidence stays uncertain. Successful unchanged results
+are reused; configuration hashing uses canonical field order so the explicit picker does
+not accidentally invalidate the startup result.
+
+`npm run verify` passed on the final implementation: 340 regular tests, 132 integration
+tests, 130 security tests and 4 terminal tests, with one existing regular test skipped.
+Formatting, lint, type checking and the production build passed. The integration suite
+checks concurrent retrieval, a single five-PR inference call, own-comment exclusion,
+immediate active-review flags, negative decisions, cache reuse, edited context, invalid
+coverage/evidence, timeout retention, immediate cancellation and restart refusal.
+
+Both built Electron PR fixtures passed under Xvfb. The automatic-watch fixture starts
+before opening the PR page, processes five contributions with one inert-provider run,
+and verifies that keyboard recheck and subsequent navigation/focus spend no additional
+inference on unchanged data. Concurrent Stop, moving spinners, status filtering and the
+existing explicit engineering report remain covered. The repair Electron fixture also
+passed, including its manual terminal workflow against disposable local remotes.
+
+Visually inspected `automatic-watch-results.png` and `concurrent-watch-progress.png` in
+`~/tmp/vibestar-pr-watch-desktop-yE4wPF/`. Additional PR evidence is in
+`~/tmp/vibestar-pr-desktop-XVmPMl/`; repair evidence is in
+`~/tmp/vibestar-pr-repair-desktop-0eFHnH/screenshots/`. Tests used isolated data, inert
+providers and mocked GitHub transports. Actual provider/API response times and native
+Windows behavior were not benchmarked. No live-provider or GitHub-write test was run.
+
+## 2026-10-28: answered PR conversations and terminal startup
+
+Read-only inspection of saved watch results confirmed that pending reviewer assignments
+and formal change-request decisions were bypassing conversation classification. Those
+markers no longer establish work owed by the authenticated viewer. Complete comment
+history, author replies and newer reviewer follow-ups now reach the compact classifier.
+Answered requests can wait for the reviewer even while GitHub retains an old decision
+or unresolved thread marker. Missing reviewer text stays uncertain. Policy-versioned
+fingerprints invalidate results produced by the previous rule. The detail drawer shows
+the latest quick check while retaining cancelled engineering attempts in Analysis History.
+
+Opening Terminal now starts and focuses the normal user shell in the owned worktree.
+Repeated opens share one PTY; hiding/reopening and maximizing retain the session and
+output. Closing the shell keeps keyboard focus on the terminal surface. The compact
+toolbar shows the shell, worktree and branch, with icon controls and a seamless output
+background. Managed clones receive a missing `origin` alias from the registered fork or
+repository URL after ownership validation under the repository lock. Existing origins
+and imported checkout configuration are preserved. No commit or push RPC was restored.
+
+`npm run verify` passed: 341 regular tests, 136 integration tests, 130 security tests
+and 6 terminal tests, with one existing regular test skipped. Formatting, lint, types
+and the production build passed. A final close-focus ordering adjustment was checked
+with formatting, lint, types, another production build and the built Electron fixtures.
+
+Five built Electron fixtures passed under Xvfb: pipeline approvals, workspace chat,
+PR repair, PR analysis and automatic PR watch. They cover first-click shell startup,
+immediate typing, keyboard hide/reopen, close-focus behavior, session retention,
+worktree/remote identity and manual Git against disposable local remotes. The broader
+workspace fixture's stale provider-specific labels and obsolete icon-mask assertion
+were updated to current UI contracts. Its keyboard check caught the disappearing
+close-button focus issue, which was fixed before the successful rerun.
+
+Visually inspected `terminal-open-focused.png` in
+`~/tmp/vibestar-gate-desktop-yAQt3P/screenshots/`, `manual-terminal-git.png` in
+`~/tmp/vibestar-pr-repair-desktop-kSOxdH/screenshots/`, and `answered-review-detail.png`
+in `~/tmp/vibestar-pr-watch-desktop-aTTY9e/`. The final repair fixture also passed in
+`~/tmp/vibestar-pr-repair-desktop-ldXt3z/screenshots/`. Tests used isolated data roots,
+inert providers and mocked GitHub transports. Live model/API latency and native Windows
+behavior were not measured. User application data was only read for diagnosis; no
+live-provider or GitHub-write test was run.

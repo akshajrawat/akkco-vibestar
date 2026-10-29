@@ -21,7 +21,6 @@ export interface ContextAttachment {
 
 interface TaskView {
   draft: string;
-  gitMessageDraft: string;
   draftContext: ContextAttachment[];
   messageRequest: { id: string; signature: string } | null;
   savedInstruction: { id: string; content: string } | null;
@@ -33,12 +32,14 @@ interface TaskView {
   planStage: 1 | 2;
   expandedTool: boolean;
   terminalDock: boolean;
+  terminalFocus: number;
   dockMaximized: boolean;
   dockTab: "Terminal" | "Problems";
   bottomHeight: number;
   chatScroll: number;
   chatFollow: boolean;
   approvalCompact: boolean;
+  shownApproval: string | null;
   diffMode: "unified" | "side";
   diffTree: "tree" | "flat";
   diffLayer: "original" | "upstream" | "repair";
@@ -54,7 +55,7 @@ interface TaskView {
   outputFilter: string;
   outputSearch: string;
   outputFollow: boolean;
-  followupProvider: "codex" | "antigravity";
+  followupProvider: "codex" | "antigravity" | null;
   followupModel: string | null;
   followupEffort: string | null;
   persistenceError: string | null;
@@ -108,7 +109,6 @@ const savedLayout = (id: string): Partial<TaskView> => {
       legacySection(saved.tab) || (saved.terminalDock ? legacySection(saved.dockTab) : null);
 
     return {
-      gitMessageDraft: typeof saved.gitMessageDraft === "string" ? saved.gitMessageDraft : "",
       savedInstruction:
         saved.savedInstruction &&
         typeof saved.savedInstruction === "object" &&
@@ -184,6 +184,10 @@ const savedLayout = (id: string): Partial<TaskView> => {
       chatScroll: bounded(saved.chatScroll, 0, 0, Number.MAX_SAFE_INTEGER),
       chatFollow: saved.chatFollow !== false,
       approvalCompact: saved.approvalCompact === true,
+      shownApproval:
+        typeof saved.shownApproval === "string" && saved.shownApproval.length <= 200
+          ? saved.shownApproval
+          : null,
       diffPath: typeof saved.diffPath === "string" ? saved.diffPath : "",
       diffMode: saved.diffMode === "unified" ? ("unified" as const) : ("side" as const),
       diffTree: saved.diffTree === "flat" ? ("flat" as const) : ("tree" as const),
@@ -218,7 +222,9 @@ const savedLayout = (id: string): Partial<TaskView> => {
       outputSearch: typeof saved.outputSearch === "string" ? saved.outputSearch.slice(0, 256) : "",
       outputFollow: saved.outputFollow !== false,
       followupProvider:
-        saved.followupProvider === "antigravity" ? ("antigravity" as const) : ("codex" as const),
+        saved.followupProvider === "antigravity" || saved.followupProvider === "codex"
+          ? saved.followupProvider
+          : null,
       followupModel: typeof saved.followupModel === "string" ? saved.followupModel : null,
       followupEffort: typeof saved.followupEffort === "string" ? saved.followupEffort : null,
     };
@@ -232,7 +238,6 @@ const state = (id: string) => {
   if (!value) {
     value = {
       draft: read(`vibestar.draft.${id}`) || "",
-      gitMessageDraft: "",
       draftContext: [],
       messageRequest: null,
       savedInstruction: null,
@@ -244,12 +249,14 @@ const state = (id: string) => {
       planStage: 1,
       expandedTool: false,
       terminalDock: false,
+      terminalFocus: 0,
       dockMaximized: false,
       dockTab: "Terminal",
       bottomHeight: 260,
       chatScroll: 0,
       chatFollow: true,
       approvalCompact: false,
+      shownApproval: null,
       diffMode: "side",
       diffTree: "tree",
       diffLayer: "repair",
@@ -265,7 +272,7 @@ const state = (id: string) => {
       outputFilter: "all",
       outputSearch: "",
       outputFollow: true,
-      followupProvider: "codex",
+      followupProvider: null,
       followupModel: null,
       followupEffort: null,
       persistenceError: null,
@@ -279,9 +286,16 @@ const state = (id: string) => {
 };
 
 export const updateTaskView = (id: string, update: Partial<TaskView>) => {
+  const previous = state(id);
+
+  const focusTerminal =
+    (update.terminalDock === true && (update.dockTab || previous.dockTab) === "Terminal") ||
+    (update.dockTab === "Terminal" && (update.terminalDock ?? previous.terminalDock));
+
   const value = {
-    ...state(id),
+    ...previous,
     ...update,
+    terminalFocus: previous.terminalFocus + (focusTerminal ? 1 : 0),
     persistenceError: null as string | null,
   };
 
@@ -296,6 +310,7 @@ export const updateTaskView = (id: string, update: Partial<TaskView>) => {
       draft: undefined,
       persistenceError: undefined,
       diffSelections: undefined,
+      terminalFocus: undefined,
     };
 
     localStorage.setItem(`vibestar.layout.${id}`, JSON.stringify({ version: 2, ...layout }));

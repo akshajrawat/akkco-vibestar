@@ -1,7 +1,7 @@
 # Akkco Vibestar
 
 A local desktop workspace for open-source contribution tasks and pull-request repairs.
-Vibestar uses isolated Git worktrees, official provider CLIs, explicit review gates,
+Vibestar uses isolated Git worktrees, official provider CLIs, per-stage provider choices, explicit review gates,
 and recorded verification evidence. It does not automatically publish work.
 
 This project is pre-stable. This repository preparation milestone is not an official release.
@@ -16,16 +16,26 @@ More previews: [task overview](docs/screenshots/overview.png),
 ## What it does
 
 - Creates idle issue tasks with optional read-only repository conversations.
-- Runs an explicitly started Antigravity → Codex planning → Codex implementation →
-  independent Antigravity review workflow, with human approval between stages.
+- Runs an explicitly started Plan → Plan refinement → Implementation → Review
+  workflow, with a provider choice for each stage and human approval between stages.
 - Keeps each task's pinned base, files, conversation, command evidence and usage separate.
-- Discovers authored GitHub PRs and supports manual analysis and isolated review repairs.
+- Checks open PR conversations once when the app opens, flagging unanswered change
+  requests from other people and distinguishing replies waiting on a reviewer.
+  Conversations load concurrently and share a compact model check. Recheck open PRs
+  runs another pass with optional model/time-limit overrides.
+- Refresh PR List updates lifecycle metadata in bulk without running AI. Merged and closed
+  history stay available through the status filter; detailed engineering analysis stays explicit.
 - Saves Issue Watch topics in a full-width list. Open a topic for claim status,
   one-click GitHub links, search, and newest/oldest/update sorting. Scans run only
   when requested; incomplete evidence stays uncertain.
-- Reviews selected files from Changes and provides Git Changes for exact commits
-  and confirmed pushes to a verified writable repository or contribution fork.
+- Provides a built-in terminal in task and PR repair workspaces for manual Git
+  commands, commits and pushes using your normal Linux/WSL shell and authentication.
+  Opening the terminal starts and focuses the shell in the task's worktree.
 - Shows actual provider output, verification gaps and reported usage without inventing results.
+- Implementation and independent review run the applicable tests, lint and formatting;
+  sidebar approvals move between stages without a separate validation workflow.
+- Agents reuse installed dependencies and toolchains; they report missing prerequisites
+  instead of installing packages or browsers.
 
 ## Architecture
 
@@ -34,7 +44,7 @@ and events to a Node execution core over standard input/output. Linux runs the c
 directly; native Windows runs it inside WSL. SQLite stores local state.
 
 The core owns processes, provider invocation, filesystem access, Git operations and
-publication authorization. See [ARCHITECTURE.md](ARCHITECTURE.md) for module ownership
+workspace ownership. See [ARCHITECTURE.md](ARCHITECTURE.md) for module ownership
 and [the security guide](docs/security.md) for trust boundaries.
 
 ## Prerequisites
@@ -82,7 +92,6 @@ backend/                 Node execution core and trusted domain services
   github/                Official gh client and repository/PR discovery
   issue-watch/           Manual bounded discovery and saved scan history
   review/                File review, PR analysis and isolated repair workflows
-  finalization/          Selected-file review, exact commits and publication journals
   workspace/             Git, ownership, paths, runtimes and editor integration
   storage/               SQLite, migrations, backup and owned cleanup
   rpc/                   Domain request validation and dispatch
@@ -117,7 +126,7 @@ suite boundaries, desktop fixtures and opt-in tests. CI reports eight separate c
 ## Contributing
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), then read the relevant architecture
-contracts before changing execution, persistence, ownership or publishing code.
+contracts before changing execution, persistence, ownership or Git code.
 Changes should preserve saved data, explicit authorization and existing behavior.
 
 Live-provider tests consume subscription allowance. Live GitHub fixtures can write

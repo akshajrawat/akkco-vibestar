@@ -35,6 +35,7 @@ import {
 } from "../lib/taskView";
 import { rpc, errorMessage } from "../lib/api";
 import { ScheduledPage } from "../features/pull-requests/ScheduledPage";
+import { usePRWatch } from "../features/pull-requests/usePRWatch";
 import { TitleBar } from "./TitleBar";
 import { DataMigration } from "./DataMigration";
 import { RepairWorkspace } from "../features/pull-requests/repair/RepairWorkspace";
@@ -73,6 +74,7 @@ const NavigationPane = ({ width, children }: { width: number; children: ReactNod
 
 export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
+  usePRWatch(snapshot?.capabilities?.pr_quick_watch === true);
   const [page, setPage] = useState<Page>("Tasks");
 
   const [taskId, setTaskId] = useState<string | null>(() =>
@@ -151,7 +153,19 @@ export const App = () => {
     localStorage.setItem("vibestar.activeRepair", id);
   };
 
-  const count = snapshot?.attention?.length || 0;
+  const watchItems = snapshot?.pr_watch?.items || [];
+
+  const count =
+    watchItems.filter(
+      (item) => item.lifecycle === "OPEN" && ["review", "unknown"].includes(item.status),
+    ).length +
+    (snapshot?.attention || []).filter(
+      (attention) =>
+        !watchItems.some(
+          (item) =>
+            item.url === snapshot?.scheduled?.find((job) => job.id === attention.job_id)?.url,
+        ),
+    ).length;
 
   const content =
     page === "Scheduled" && snapshot ? (

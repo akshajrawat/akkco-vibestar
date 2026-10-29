@@ -30,7 +30,10 @@ export const systemMethods = [
 
 /** Validates and dispatches system requests through their existing domain services. */
 export const callSystem = async (
-  services: Pick<RpcServices, "engine" | "repairs" | "scheduler" | "prBatches" | "github" | "auth">,
+  services: Pick<
+    RpcServices,
+    "engine" | "repairs" | "scheduler" | "prBatches" | "prWatch" | "github" | "auth"
+  >,
   method: string,
   input: unknown,
 ) => {
@@ -54,7 +57,7 @@ export const callSystem = async (
     case "usage.info":
       return {
         root: e.root,
-        capabilities: { manual_issue_watch: true, issue_watch_contract: 1 },
+        capabilities: { manual_issue_watch: true, issue_watch_contract: 1, pr_quick_watch: true },
         database: join(e.root, "state", "vibestar.sqlite"),
         schema: e.db.all("SELECT max(version) version FROM schema_migrations")[0],
         runs: e.db.all("SELECT count(*) count FROM ai_usage")[0],
@@ -66,7 +69,7 @@ export const callSystem = async (
         tasks: e.db.tasks(),
         settings: e.db.displaySettings(),
         root: e.root,
-        capabilities: { manual_issue_watch: true, issue_watch_contract: 1 },
+        capabilities: { manual_issue_watch: true, issue_watch_contract: 1, pr_quick_watch: true },
         execution_environment: {
           distro: process.env.WSL_DISTRO_NAME || "Linux",
         },
@@ -77,6 +80,7 @@ export const callSystem = async (
           .map((t) => t.id),
         scheduled: services.scheduler.jobs(),
         pr_batches: services.prBatches.list(),
+        pr_watch: services.prWatch.snapshot(),
         repairs: services.repairs.store.list(),
         pr_reports: services.scheduler.jobs().map((job) => {
           const history = services.scheduler.analysis.history(job.id);
@@ -93,6 +97,8 @@ export const callSystem = async (
 
           return {
             job_id: job.id,
+            phase: latest?.phase,
+            started_at: latest?.started_at,
             action_state:
               latest &&
               !latest.report &&

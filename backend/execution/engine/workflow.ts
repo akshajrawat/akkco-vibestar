@@ -17,7 +17,6 @@ import { exists } from "../../workspace/paths";
 import { taskRuntime } from "../../workspace/runtime";
 import type { AgentRunner } from "../agents/agent-runner";
 import { redact } from "../runtime/process";
-import { taskVerification } from "../verification/task-verification";
 import { ChatResponseSchema, StartWorkflowSchema, TaskChatSchema, chatPrompt } from "../workflow";
 import type { Engine } from "../engine";
 import type { EngineScheduling } from "./scheduling";
@@ -344,6 +343,24 @@ export class WorkflowOrchestrator {
   pipeline = async (t: Task, signal: AbortSignal) => {
     for (; t.stage < 6; t.stage++) {
       if (signal.aborted) throw new AdeError("cancelled", "Task cancelled");
+      // Stage 4 is retained only for saved tasks and explicit legacy rechecks.
+      // Testing belongs to the implementation and independent review runs.
+      if (t.stage === 4) {
+        this.host.db.artifact(t.id, 3);
+
+        this.host.db.saveTask({
+          ...t,
+          stage: 5,
+          status: "awaiting_approval",
+          approval_gate: "implementation",
+          error: null,
+          updated_at: now(),
+        });
+
+        this.host.changed(t.id);
+        return;
+      }
+
       t.status = stageStatus(t.stage);
       t.updated_at = now();
       t.error = null;
@@ -355,24 +372,6 @@ export class WorkflowOrchestrator {
         if (t.preparation_timing) t.preparation_timing.ended_at = now();
         this.host.db.saveTask(t);
       } else if (t.stage <= 3 || t.stage === 5) {
-        if (t.stage === 5) {
-          const verification = taskVerification(this.host.db, t.id);
-          if (
-            !verification.canReview &&
-            !(
-              verification.canReviewWithGaps &&
-              t.review_gap_acknowledgment &&
-              t.review_gap_acknowledgment.evidence_hash ===
-                this.operations.verificationEvidenceHash(t.id) &&
-              t.review_gap_acknowledgment.fingerprint === (await this.host.git.fingerprint(t))
-            )
-          )
-            throw new AdeError(
-              "verification_blocked",
-              "Review requires verified checks or a current explicit acknowledgment of environmental gaps.",
-            );
-        }
-
         const runtime = await taskRuntime(
           this.host.db.repository(t.repo_id).path,
           t.worktree_path,
@@ -393,22 +392,6 @@ export class WorkflowOrchestrator {
         }
 
         await this.runner.run(t, t.execution_settings ?? this.host.db.settings(), signal);
-      } else {
-        const output = await this.host.manual(
-          t.id,
-          ["git", "diff", "--check", t.base_commit_sha, "--"],
-          signal,
-          true,
-        );
-
-        if (output.code !== 0)
-          throw new AdeError("validation", "git diff --check failed. Inspect Tests.");
-        const verification = taskVerification(this.host.db, t.id);
-        if (!verification.canReview)
-          throw new AdeError(
-            verification.outcome === "failed" ? "validation" : "verification_blocked",
-            verification.summary,
-          );
       }
 
       if (t.stage === 5) {
@@ -458,7 +441,7 @@ export class WorkflowOrchestrator {
         }
       }
 
-      const nextStage = t.stage + 1;
+      const nextStage = t.stage === 3 ? 5 : t.stage + 1;
 
       const approvalGate = queued.length
         ? undefined
@@ -466,7 +449,7 @@ export class WorkflowOrchestrator {
           ? "antigravity_plan"
           : t.stage === 2
             ? "codex_plan"
-            : t.stage === 4
+            : t.stage === 3
               ? "implementation"
               : t.stage === 5
                 ? "final_review"

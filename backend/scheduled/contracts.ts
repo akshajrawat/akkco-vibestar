@@ -75,7 +75,14 @@ export interface PullRequestState {
     path: string;
     body: string;
     commentIds?: string[];
-    comments?: { id: string; body: string }[];
+    comments?: {
+      id: string;
+      body: string;
+      author?: { login: string } | null;
+      createdAt?: string;
+      updatedAt?: string;
+      url?: string;
+    }[];
     outdated?: boolean;
     line?: number | null;
     startLine?: number | null;
@@ -95,6 +102,7 @@ export interface PullRequestState {
     completedAt?: string;
     startedAt?: string;
     id?: string;
+    contextKey?: string;
   }[];
 }
 
@@ -160,6 +168,7 @@ export const PullRequestStateSchema = z
           completedAt: z.string().optional(),
           startedAt: z.string().optional(),
           id: z.string().optional(),
+          contextKey: z.string().optional(),
         })
         .strict(),
     ),
@@ -198,7 +207,20 @@ export const PullRequestStateSchema = z
             path: z.string(),
             body: z.string(),
             commentIds: z.array(z.string()).optional(),
-            comments: z.array(z.object({ id: z.string(), body: z.string() }).strict()).optional(),
+            comments: z
+              .array(
+                z
+                  .object({
+                    id: z.string(),
+                    body: z.string(),
+                    author: z.object({ login: z.string() }).strict().nullable().optional(),
+                    createdAt: z.string().optional(),
+                    updatedAt: z.string().optional(),
+                    url: z.string().optional(),
+                  })
+                  .strict(),
+              )
+              .optional(),
             outdated: z.boolean().optional(),
             line: z.number().nullable().optional(),
             startLine: z.number().nullable().optional(),

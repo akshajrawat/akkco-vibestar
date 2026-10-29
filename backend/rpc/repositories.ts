@@ -12,6 +12,7 @@ import { idInput } from "./validation";
 export const repositoriesMethods = [
   "github.status",
   "github.sync",
+  "github.pullRequests.refresh",
   "github.configure",
   "github.resolve",
   "github.use",
@@ -20,7 +21,6 @@ export const repositoriesMethods = [
   "github.clone.logs",
   "repository.verifyLocal",
   "repository.locateLocal",
-  "repository.configureDestination",
   "repository.connectLocal",
   "repository.disconnect",
   "repository.reconnectManaged",
@@ -47,6 +47,10 @@ export const callRepositories = async (
 
     case "github.sync":
       return services.github.sync();
+
+    case "github.pullRequests.refresh":
+      z.object({}).strict().parse(input);
+      return services.github.refreshPullRequests();
 
     case "github.configure":
       return services.github.configure(input);
@@ -102,9 +106,6 @@ export const callRepositories = async (
 
     case "repository.locateLocal":
       return e.repositoryIndex.locateLocal(LocalRepositoryInput.parse(input));
-
-    case "repository.configureDestination":
-      return services.github.configureDestination(input);
 
     case "repository.connectLocal":
       return e.connectLocalRepository(ConnectLocalInput.parse(input));

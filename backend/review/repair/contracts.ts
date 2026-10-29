@@ -1,6 +1,6 @@
 import { PullRequestStateSchema } from "../../scheduled/contracts";
 import { z } from "zod";
-import { StageConfigSchema } from "../../domain";
+import { StageConfigSchema, PipelineStageConfigSchema } from "../../domain";
 import type { PRAnalysisSession, ReviewAction } from "../pr/contracts";
 import { ReviewActionSchema } from "../pr/contracts";
 import { ReviewAnalysisSchema } from "../pr/contracts";
@@ -149,8 +149,8 @@ export interface RepairSession {
   actions: ReviewAction[];
   instructions: string;
   configuration: {
-    codex: z.infer<typeof StageConfigSchema>;
-    antigravity: z.infer<typeof StageConfigSchema>;
+    codex: z.infer<typeof PipelineStageConfigSchema>;
+    antigravity: z.infer<typeof PipelineStageConfigSchema>;
   };
   workspace: RepairWorkspace;
   status: (typeof repairStatuses)[number];
@@ -203,8 +203,8 @@ export const RepairSessionSchema = z
     instructions: z.string(),
     configuration: z
       .object({
-        codex: StageConfigSchema.strict(),
-        antigravity: StageConfigSchema.strict(),
+        codex: PipelineStageConfigSchema.strict(),
+        antigravity: PipelineStageConfigSchema.strict(),
       })
       .strict(),
     workspace: RepairWorkspaceSchema,

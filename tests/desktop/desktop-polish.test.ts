@@ -127,8 +127,8 @@ it.skipIf(process.env.VIBESTAR_UX_TEST !== "1")(
 
       expect(await page.locator(".pr-state").allTextContents()).toEqual(
         expect.arrayContaining([
-          expect.stringContaining("WAITING FOR REVIEW"),
-          expect.stringContaining("ACTION REQUIRED"),
+          expect.stringContaining("Waiting for review"),
+          expect.stringContaining("Work needed"),
           expect.stringContaining("APPROVED"),
         ]),
       );

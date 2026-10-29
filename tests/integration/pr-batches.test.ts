@@ -59,6 +59,147 @@ const finished = async (id: string) => {
   return batches.list().find((batch) => batch.id === id)!;
 };
 
+it("keeps live CI and thread snapshots readable during analysis and exposes a cancelling state", async () => {
+  const live = structuredClone(prSnapshot);
+
+  live.checks = [
+    {
+      contextKey: "check:1:ci",
+      id: "1",
+      name: "CI",
+      state: "SUCCESS",
+      url: "https://github.com/upstream/project/actions/runs/1",
+    },
+  ];
+
+  live.threads = [
+    {
+      id: "thread-1",
+      resolved: false,
+      path: "spec.ts",
+      body: "Review concern",
+      comments: [
+        {
+          id: "comment-1",
+          body: "Review concern",
+          author: { login: "reviewer" },
+          createdAt: "2026-10-01T10:00:00Z",
+          updatedAt: "2026-10-01T10:00:00Z",
+          url: "https://github.com/upstream/project/pull/1#discussion_r1",
+        },
+      ],
+    },
+  ];
+
+  vi.mocked(monitor.inspect).mockImplementation(async (url, signal, progress) => {
+    expect(url).toContain("/pull/");
+    signal.throwIfAborted();
+    progress?.("Reading reviews · page 1 · 10 loaded");
+    return live;
+  });
+
+  const infer = vi.spyOn(engine.utility, "run").mockImplementation(async (request) => {
+    await new Promise<void>((_resolve, reject) =>
+      request.signal?.addEventListener(
+        "abort",
+        () => {
+          setTimeout(() => reject(new Error("Cancelled fixture analysis")), 20);
+        },
+        { once: true },
+      ),
+    );
+
+    return analysisResult();
+  });
+
+  const [job] = jobs();
+
+  const batch = batches.start({
+    job_ids: [job.id],
+    scope: "open",
+    request_id: randomUUID(),
+    configuration,
+    max_analyses: 1,
+    confirmed: true,
+  });
+
+  await vi.waitFor(() => expect(infer).toHaveBeenCalledOnce());
+  expect(scheduler.jobs().find((row) => row.id === job.id)?.status).toBe("analyzing");
+  expect(scheduler.analysis.history(job.id)[0].phase).toBe("Analyzing reviewer observations");
+  expect(engine.db.records.diagnostics()).toEqual([]);
+  const stop = batches.cancel(batch.id);
+  expect(batches.list()[0].status).toBe("cancelling");
+  await stop;
+  expect(batches.list()[0].status).toBe("cancelled");
+  expect(scheduler.analysis.history(job.id)[0].snapshot?.checks[0].contextKey).toBe("check:1:ci");
+  expect(engine.db.records.diagnostics()).toEqual([]);
+});
+
+it("checks all selected open PRs beyond the old twenty-item limit", async () => {
+  const infer = vi.spyOn(engine.utility, "run").mockResolvedValue(analysisResult());
+
+  const selected = Array.from({ length: 24 }, (_, index) =>
+    scheduler.add({
+      url: `https://github.com/upstream/project/pull/${index + 1}`,
+      task_id: null,
+      interval_minutes: 60,
+      verify_codex: false,
+    }),
+  );
+
+  const batch = batches.start({
+    job_ids: selected.map((job) => job.id),
+    scope: "open",
+    request_id: randomUUID(),
+    configuration,
+    max_analyses: selected.length,
+    confirmed: true,
+  });
+
+  const result = await finished(batch.id);
+  expect(result.items).toHaveLength(24);
+  expect(result.items.every((item) => item.status === "completed")).toBe(true);
+  expect(infer).toHaveBeenCalledTimes(24);
+  expect(result.analyses_used).toBe(24);
+});
+
+it("records a newly merged PR without spending an analysis invocation", async () => {
+  vi.mocked(monitor.inspect).mockResolvedValue({ ...structuredClone(prSnapshot), state: "MERGED" });
+  const infer = vi.spyOn(engine.utility, "run").mockResolvedValue(analysisResult());
+  const [job] = jobs();
+
+  const batch = batches.start({
+    job_ids: [job.id],
+    scope: "open",
+    request_id: randomUUID(),
+    configuration,
+    max_analyses: 1,
+    confirmed: true,
+  });
+
+  const result = await finished(batch.id);
+  expect(result.items[0].status).toBe("completed");
+  expect(result.analyses_used).toBe(0);
+  expect(infer).not.toHaveBeenCalled();
+  expect(reviewActionState(scheduler.analysis.history(job.id)[0])).toBe("Merged");
+});
+
+it("uses the saved review model before the utility fallback for an individual check", async () => {
+  const review = {
+    provider: "codex" as const,
+    model: "review-specific",
+    effort: "low",
+    timeout_secs: 30,
+  };
+
+  engine.db.saveSettings({ ...engine.db.settings(), review_ai: review });
+  const infer = vi.spyOn(engine.utility, "run").mockResolvedValue(analysisResult());
+  const [job] = jobs();
+  scheduler.analyze(job.id, randomUUID());
+  await vi.waitFor(() => expect(scheduler.analysis.history(job.id)[0]?.status).toBe("completed"));
+  expect(infer).toHaveBeenCalledWith(expect.objectContaining({ configuration: review }));
+});
+
 it("previews without AI, enforces the persisted invocation cap and retains partial per-PR evidence", async () => {
   const infer = vi.spyOn(engine.utility, "run").mockResolvedValue(analysisResult());
   const selected = jobs();

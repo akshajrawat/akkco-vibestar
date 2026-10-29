@@ -139,6 +139,16 @@ export class FixtureProvider extends CodexProvider {
     let action = "";
     if (r.stage === 3)
       action = `await require('node:fs/promises').writeFile('source.txt',${JSON.stringify(r.prompt.includes("Task A") ? "A\n" : "B\n")});`;
+    if (r.stage === 3 || r.stage === 5)
+      action += `
+        const fs = require('node:fs/promises');
+        const path = require('node:path');
+        const temporary = '/tmp/vibestar-fixture-check'; await fs.mkdir(temporary, {recursive:true});
+        const test = path.join(temporary, 'source.test.cjs');
+        await fs.writeFile(test, "const assert=require('node:assert/strict');const fs=require('node:fs');assert.match(fs.readFileSync("+JSON.stringify(path.resolve('source.txt'))+",'utf8'),/\\\\n$/);");
+        const output = require('node:child_process').execFileSync(process.execPath, ['--test', test], {encoding: 'utf8'});
+        console.log(JSON.stringify({type:'item.completed',item:{type:'command_execution',id:'fixture-check',command:JSON.stringify(['node','--test',test]),exit_code:0,aggregated_output:output}}));
+      `;
     if (r.stage === 2 && this.failOnce?.value) {
       this.failOnce.value = false;
       return {

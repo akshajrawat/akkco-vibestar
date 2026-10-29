@@ -79,9 +79,11 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
 
       await page.exposeFunction("fixtureRpc", async (method: string, params: unknown) =>
-        method === "providers.detect"
-          ? [await new FixtureProvider().detect()]
-          : rpc.call(method, params),
+        method === "pr.watch.start"
+          ? null
+          : method === "providers.detect"
+            ? [await new FixtureProvider().detect()]
+            : rpc.call(method, params),
       );
 
       await app.evaluate(({ ipcMain, BrowserWindow }) => {
@@ -123,17 +125,11 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
       );
 
       await page.locator(".tree-task").first().click();
-      await page.getByRole("button", { name: "Approve → Codex refinement" }).click();
+      await page.getByRole("button", { name: "Approve → Plan refinement" }).click();
       await page.getByRole("button", { name: "Approve → Implement" }).click();
-      await expect.poll(() => engine.db.task(task.id).status).toBe("verification_blocked");
-      await page.locator(".chat-actions").getByText("More options", { exact: true }).click();
-
-      await page
-        .locator(".chat-actions")
-        .getByRole("button", { name: "Continue to independent review" })
-        .waitFor();
-
-      await page.locator(".chat-actions").getByText("More options", { exact: true }).click();
+      await expect.poll(() => engine.db.task(task.id).status).toBe("awaiting_approval");
+      await page.getByRole("button", { name: "Approve → Review", exact: true }).waitFor();
+      expect(await page.locator(".chat-main .approval-tray, .validation-turn").count()).toBe(0);
       await expect.poll(() => page.locator('.tool-event[data-state="failed"]').count()).toBe(0);
 
       expect(engine.db.detail(task.id).tests.filter((test) => test.exit_code === 1)).toHaveLength(
@@ -144,10 +140,8 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
         await page.getByLabel("Toggle secondary workspace").click();
       await page.getByRole("tab", { name: "Workflow", exact: true }).click();
 
-      await page
-        .locator(".pipeline-stages")
-        .getByText("Verification incomplete", { exact: true })
-        .waitFor();
+      await page.getByRole("region", { name: "Agent checks" }).waitFor();
+      expect(await page.locator(".pipeline-step").count()).toBe(5);
 
       for (const [width, height] of [
         [1920, 1080],
@@ -210,82 +204,9 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
       await row.click({ button: "right" });
       await page.getByRole("menu", { name: "Task #9 actions" }).waitFor();
       await page.keyboard.press("Escape");
-      const runsBeforePreparation = engine.db.detail(task.id).runs.length;
-      const commandsBeforePreparation = engine.db.detail(task.id).tests.length;
-
-      await page
-        .locator(".chat-actions")
-        .getByRole("button", { name: "Prepare missing checks" })
-        .click();
-
-      const preparation = page.getByRole("dialog", {
-        name: "Prepare missing checks",
-      });
-
-      await preparation.getByText(/No executable command was saved/).waitFor();
-      await preparation.getByText(/Waiting for prerequisites/).waitFor();
-      for (const [width, height] of [
-        [1920, 1080],
-        [1440, 900],
-        [1280, 720],
-      ]) {
-        await app.evaluate(
-          ({ BrowserWindow }, size) =>
-            BrowserWindow.getAllWindows()[0].setSize(...(size as [number, number])),
-          [width, height],
-        );
-
-        await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
-
-        expect(await preparation.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(
-          true,
-        );
-
-        await page.screenshot({
-          path: join(evidence, `prepare-checks-${width}x${height}.png`),
-        });
-      }
-
-      await preparation.getByRole("button", { name: "Prepare runnable checks with Codex" }).click();
-
-      const prepareAuthorization = page.getByRole("dialog", {
-        name: "Fix with Codex",
-      });
-
-      await prepareAuthorization.getByRole("button", { name: "Authorize one Codex fix" }).waitFor();
-      expect(engine.db.detail(task.id).runs.length).toBe(runsBeforePreparation);
-      expect(engine.db.detail(task.id).tests.length).toBe(commandsBeforePreparation);
-      await prepareAuthorization.getByRole("button", { name: "Close", exact: true }).click();
-      await page.locator(".chat-actions").getByText("More options", { exact: true }).click();
-
-      await app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0].setSize(1440, 900),
-      );
-
-      await page
-        .locator(".chat-actions")
-        .getByRole("button", { name: "Continue to independent review" })
-        .click();
-
-      const approval = page.getByRole("dialog", {
-        name: "Review with verification gaps",
-      });
-
-      await approval.getByRole("button", { name: "Inspect current gaps" }).click();
-      await approval.getByText("Browser rendering and accessibility", { exact: true }).waitFor();
-
-      const start = approval.getByRole("button", {
-        name: "Approve implementation & start independent review",
-      });
-
-      expect(await start.isDisabled()).toBe(true);
-
-      await page.screenshot({
-        path: join(evidence, "explicit-gap-approval.png"),
-      });
-
-      await approval.getByRole("checkbox").check();
-      await start.click();
+      if (!(await page.getByRole("tab", { name: "Workflow", exact: true }).count()))
+        await page.getByLabel("Toggle secondary workspace").click();
+      await page.getByRole("button", { name: "Approve → Review", exact: true }).click();
       await page.getByRole("button", { name: "Accept review", exact: true }).waitFor();
       await page.getByRole("button", { name: "View review", exact: true }).click();
 
@@ -301,8 +222,6 @@ it.skipIf(process.env.VIBESTAR_VERIFICATION_DESKTOP_TEST !== "1")(
         path: join(evidence, "independent-review-gaps.png"),
       });
 
-      if (await page.getByLabel("Collapse secondary workspace").count())
-        await page.getByLabel("Collapse secondary workspace").click();
       await page.getByRole("button", { name: "Accept review", exact: true }).click();
       await expect.poll(() => engine.db.task(task.id).status).toBe("reviewed_with_gaps");
 

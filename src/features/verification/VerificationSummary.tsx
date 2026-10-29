@@ -16,6 +16,25 @@ export const VerificationSummary = ({
   const verification = detailVerification(detail);
   const roots = verificationRoots(detail);
 
+  const implemented = detail.artifacts.some(
+    (artifact) => artifact.stage === 3 && artifact.kind === "plan",
+  );
+
+  if (!implemented && detail.task.stage <= 3)
+    return (
+      <section className="workspace-empty" aria-label="Agent check results">
+        <h2>
+          {detail.runs.some((run) => run.stage === 3 && run.status === "running")
+            ? "Implementation checks in progress"
+            : "Checks run with your agents"}
+        </h2>
+        <p>
+          Implementation runs the required tests, lint and formatting. Independent review checks the
+          final changes again. Results appear here as commands finish.
+        </p>
+      </section>
+    );
+
   const observed = verification.checks.filter(
     (check) =>
       check.kind === "check" && check.outcome === "passed" && check.source !== "provider_reported",
@@ -54,7 +73,7 @@ export const VerificationSummary = ({
           ? "Verification complete"
           : failures
             ? "Checks failed"
-            : "Verification incomplete"}
+            : "Some checks could not run"}
       </h2>
 
       <p>
@@ -88,12 +107,8 @@ export const VerificationSummary = ({
         </p>
 
         <small className="subtle">
-          Required blocked, interrupted, not-run and unknown checks remain unverified.{" "}
-          {verification.canReview
-            ? "Required checks are satisfied. Optional unexecuted checks remain recorded below."
-            : verification.canReviewWithGaps
-              ? "Independent review can start after explicit approval and acknowledgment of environmental gaps."
-              : "Resolve failures and ambiguous evidence before independent review."}
+          Required blocked, interrupted, not-run and unknown checks remain unverified. Independent
+          review receives these results and runs the applicable checks again.
         </small>
 
         <details>

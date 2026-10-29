@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import type { z } from "zod";
 
-import { AdeError, type StageConfig, type Task, type WorkspaceAssignment } from "../../domain";
+import { AdeError, type StageConfig, type WorkspaceAssignment } from "../../domain";
 import { managedPath } from "../../workspace/paths";
 import type { AgentRunner } from "../agents/agent-runner";
 import { type UtilityRequest } from "../agents/utility-ai";
@@ -12,7 +12,7 @@ import type { Engine } from "../engine";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 
-/** Shares the existing runner and execution slots across repair, utility and finalization invocations. */
+/** Shares the existing runner and execution slots across repair and utility invocations. */
 export class AgentOperations {
   constructor(
     private readonly host: Pick<Engine, "db" | "isActive" | "root" | "changed" | "drain">,
@@ -23,6 +23,7 @@ export class AgentOperations {
 
   runRepair = (
     assignment: WorkspaceAssignment,
+    stage: 3 | 5,
     provider: "codex" | "antigravity",
     config: StageConfig,
     prompt: string,
@@ -31,20 +32,15 @@ export class AgentOperations {
     signal: AbortSignal,
   ) =>
     this.operations.withExecutionSlot(`repair:${assignment.id}`, "PR repair", signal, (combined) =>
-      this.runner.run(
-        { id: assignment.id, stage: provider === "codex" ? 3 : 5 },
-        this.host.db.settings(),
-        combined,
-        {
-          repair: assignment,
-          prompt,
-          purpose: provider === "codex" ? "PR Repair Implementation" : "PR Repair Verification",
-          provider,
-          config,
-          schema,
-          contextPaths,
-        },
-      ),
+      this.runner.run({ id: assignment.id, stage }, this.host.db.settings(), combined, {
+        repair: assignment,
+        prompt,
+        purpose: stage === 3 ? "PR Repair Implementation" : "PR Repair Verification",
+        provider,
+        config,
+        schema,
+        contextPaths,
+      }),
     );
 
   runUtility = async (
@@ -119,19 +115,4 @@ export class AgentOperations {
 
     return completed;
   };
-
-  reviewFinalization = (task: Task, prompt: string, signal: AbortSignal) =>
-    this.operations.withExecutionSlot(
-      `git-review:${task.id}`,
-      "Selected-file review",
-      signal,
-      (combined) =>
-        this.runner.run(
-          { ...task, stage: 5 },
-          task.execution_settings ?? this.host.db.settings(),
-          combined,
-          { prompt, purpose: "git-finalization-review" },
-        ),
-      task.id,
-    );
 }

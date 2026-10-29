@@ -2,7 +2,7 @@ import type { Task as CoreTask } from "../../backend/domain";
 import type { DiffFile as CoreDiffFile } from "../../backend/workspace/git";
 import type { Repository, Settings } from "../../backend/domain";
 
-export type { Repository, Settings, StageConfig } from "../../backend/domain";
+export type { Repository, Settings, StageConfig, PipelineStageConfig } from "../../backend/domain";
 export type Detection = import("../../backend/execution/providers/contracts").ProviderDetection;
 
 /** Renderer projection retains sparse historical records and uses canonical task field contracts. */
@@ -48,7 +48,9 @@ export interface Task
 
 export interface Snapshot {
   pr_batches?: import("../../backend/review/pr/batches").PRBatch[];
+  pr_watch?: import("../../backend/review/pr/watch-contracts").PRWatchState | null;
   capabilities?: {
+    pr_quick_watch?: boolean;
     manual_issue_watch: boolean;
     issue_watch_contract: number | null;
   };
@@ -56,6 +58,8 @@ export interface Snapshot {
   repairs?: import("../../backend/review/repair/contracts").RepairSession[];
   pr_reports?: {
     job_id: string;
+    phase?: string;
+    started_at?: string;
     action_state?: string;
     analyzed_head?: string | null;
     analyzed_at?: string | null;
@@ -185,11 +189,11 @@ export type Page =
 
 export const stages = [
   "Prepare workspace",
-  "Antigravity plan",
-  "Codex refine plan",
-  "Codex implementation",
+  "Plan",
+  "Plan refinement",
+  "Implementation",
   "Validation",
-  "Antigravity review & tests",
+  "Review",
   "Ready for review",
 ];
 

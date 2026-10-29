@@ -42,7 +42,7 @@ against older helpers while preserving available reads and cancellation.
 `backend/rpc.ts` constructs the existing domain services and owns their shutdown.
 An explicit method registry delegates to `backend/rpc/` handlers for tasks,
 repositories, storage, terminals, repair, review, PR analysis, output and system
-operations. Git Finalization and Issue Watch retain their own service dispatchers.
+operations. Issue Watch retains its own service dispatcher.
 
 Handlers keep runtime Zod validation, confirmation literals and owner checks next
 to the operation they authorize. A transport UUID is correlation, not permission.
@@ -69,7 +69,7 @@ Its internal collaborators are grouped under `backend/execution/engine/`:
 | `approvals.ts`    | Review gates, retries, draft recovery and explicit follow-ups            |
 | `verification.ts` | Evidence rechecks, policy transitions and content-bound gap review       |
 | `commands.ts`     | Sandboxed manual argv execution and observed command records             |
-| `agents.ts`       | Existing runner coordination for utility, repair and finalization work   |
+| `agents.ts`       | Existing runner coordination for utility and repair work                 |
 
 Collaborators share state rather than keeping independent concurrency counters.
 They receive only the Engine methods and internal capabilities they need. Their
@@ -78,6 +78,9 @@ Repository operations and workflow startup settle before shutdown closes SQLite.
 
 `execution/agents` owns AgentRunner, prompts, continuations, streamed plans and UtilityAI.
 `execution/providers` adapts official Codex and Antigravity CLI capabilities and output.
+Antigravity sends one JSON user message through the documented streamed stdin protocol
+and reads its schema from the mounted artifact file, keeping large issue context out of
+process argv. The runner closes stdin after that message, completing one authorized turn.
 `execution/runtime` owns process execution and the outer sandbox. `execution/output`
 owns bounded output, streaming redaction and reported usage. `execution/terminals`
 separates ephemeral login PTYs from owned task/repair shells. `execution/verification`
@@ -91,15 +94,15 @@ flowchart TD
   Create --> Start[Explicit start workflow]
   Chat --> Start
   Start --> Prepare[Prepare owned worktree]
-  Prepare --> Plan[Antigravity plan]
+  Prepare --> Plan[Plan]
   Plan --> Gate1[Human approval]
-  Gate1 --> Refine[Codex refinement]
+  Gate1 --> Refine[Plan refinement]
   Refine --> Gate2[Human approval]
-  Gate2 --> Implement[Codex implementation and host validation]
+  Gate2 --> Implement[Implementation and agent-run checks]
   Implement --> Gate3[Human approval]
-  Gate3 --> Review[Independent read-only Antigravity review]
+  Gate3 --> Review[Independent read-only review]
   Review --> Gate4[Human acceptance]
-  Gate4 --> Ready[Ready for local finalization]
+  Gate4 --> Ready[Ready for manual Git commands]
 ```
 
 Creation persists `not_started`; it starts no provider or worktree preparation.
@@ -107,6 +110,13 @@ Explicit startup binds request identity, provider settings and selected complete
 conversation messages or a reviewed summary. Historical authorized queue entries
 keep their saved semantics. Idle chat uses a read-only stage-1 sandbox and never
 creates a plan artifact or advances pipeline authority.
+
+Each stage saves its own provider, model, effort and timeout. Codex and Antigravity
+can fill any role; sandbox permissions follow the stage, independently of the chosen
+provider. PR repair uses the saved implementation and review providers. Changing a
+future stage starts no process and cannot rewrite a completed run. Legacy settings
+and stage/gate identifiers retain their historical defaults and persisted spelling.
+The bridge requires the per-stage-provider capability before workflow mutations.
 
 Plans and implementation results pause durably. Feedback, retries and recovered
 drafts retain their original stage boundaries. A saved pending instruction requires
@@ -127,10 +137,15 @@ roots fail closed. Imported source checkouts are a separate explicit boundary.
 Common-directory locks and branch/workspace/destination leases serialize writers.
 Creation/removal checkpoints include process-start identity for crash recovery.
 
-Agents and terminals see only their assigned source/runtime boundary. Ignored source
-dependencies and recognized toolchains can be mounted read-only; they are not copied
-or installed automatically. Read-only planning/review cannot modify source or Git.
-External editors operate under the user's own environment and do not share sandbox mounts.
+Agents see only their assigned source/runtime boundary. Ignored source
+dependencies, including nested package directories, and recognized toolchains can be
+mounted read-only; they are not copied or installed automatically. Nested mounts require
+canonical directories, ignored/untracked dependency contents and an empty owned destination;
+aliases, tracked dependencies and populated task directories are not overlaid.
+Agent prompts prohibit dependency/browser/toolchain installation and package auto-fetch.
+Sandbox package runners default to offline npm and no-index pip operation.
+Read-only planning/review cannot modify source or Git.
+External editors and explicit manual terminals operate under the user's own environment.
 
 Repository discovery searches configured project folders and known imported sources.
 Home scanning is an explicit advanced option. Traversal skips temporary, generated,
@@ -164,30 +179,64 @@ prerequisites retain separate provenance. A model claim does not prove a check p
 Unknown exits, skipped commands and missing evidence remain unverified.
 
 Verification recovery can recheck saved evidence, run supported recorded argv, or
-perform one explicitly authorized Codex repair iteration. It does not silently
+perform one explicitly authorized iteration with the saved implementation provider. It does not silently
 install tools or reinterpret shell programs. Browser capability diagnostics are
 separate from application-check results and require explicit selection/execution.
 
-Environmental gaps can reach independent review only through a content/evidence-bound
-acknowledgment. Genuine application failures cannot use that route. Code approved
-with gaps remains local and cannot satisfy Git publication requirements. Historical
-required checks and unresolved failures survive later implementation attempts.
+Implementation runs the required tests, lint, formatting and project-specific platform or
+stress checks. Its result pauses for approval directly before independent review; there is
+no separate validation stage or prerequisite checklist blocking that approval. Review runs
+the applicable checks independently and receives unresolved implementation evidence.
+Missing checks remain unverified, real test failures prevent final acceptance, and code
+approved with gaps retains incomplete verification. Historical requirements and failures
+survive later attempts. Legacy stage-4 tasks can enter implementation approval explicitly
+without replaying implementation. Saved stage IDs and recovery RPCs remain compatible.
+
+Codex implementation commands have network access for test servers within the mandatory
+filesystem sandbox; it does not authorize dependency installation. Planning and review retain their
+read-only provider mode and source/Git mounts; unavailable independent checks remain visible.
 
 ## GitHub, PR analysis and repair
 
 `backend/github` uses official `gh` authentication and bounded API reads. Repository
 metadata and authored PR discovery are independent of local clones. Refresh is explicit;
 search absence never proves closure. Partial retrieval preserves prior complete state.
+The PR inbox refresh calls `github.pullRequests.refresh`: GraphQL search includes lifecycle,
+head and title metadata for up to 100 PRs per page, with batched identity lookups for
+known PRs absent from search. It skips the repository catalog and has a 30-second
+overall deadline. Repository catalog sync remains a separate action. Metadata observation
+timestamps keep older analysis snapshots from overriding freshly observed lifecycle.
 
-`backend/scheduled` is a legacy-named manual coordinator, not an inference timer.
-`backend/review/pr` owns complete-context analysis, source-linked observations,
-report reuse and bounded explicit batches. Opening/tracking/refreshing a PR starts
-no analysis. Reused/deterministic reports consume no semantic invocation.
+`backend/review/pr/watch.ts` owns the lightweight, once-per-app-launch PR attention
+check and explicit **Recheck open PRs**. The app calls the capability-negotiated watch
+endpoint once after startup; renderer remounts/focus are deduplicated by the core.
+It refreshes metadata, reads up to four PR conversations concurrently through GraphQL,
+and retrieves PR bodies, review requests, comments/threads and linked issue bodies.
+Reviewer assignments and unresolved thread markers alone do not mean the viewer owes
+work. Complete conversations are checked for unanswered requests and later follow-ups;
+substantive author replies can mean waiting for the reviewer even if an older formal
+changes-requested decision remains. The authenticated viewer's own requests are excluded.
+Conversations share a compact classification
+prompt, using the saved review model or utility fallback. No diffs, commits, CI history
+or filesystem tool turns are requested. Large/incomplete data stays uncertain; it cannot
+become a clear result. Source IDs are validated, unchanged successful results are reused,
+and Stop aborts concurrent reads and inference without automatic retries. The latest
+bounded watch state is stored through the existing settings/record-recovery boundary;
+run prompts, reported usage and redacted logs use the existing UtilityAI runner and slots.
+Interrupted/cancelled/failed watches require explicit recheck instead of startup replay.
+
+`backend/scheduled` remains the legacy-named coordinator for explicit engineering
+analysis. `backend/review/pr/analysis.ts` owns complete-context reports, source-linked
+observations and report reuse for repair preparation. Opening a report, filtering or
+refreshing metadata does not start detailed analysis. Legacy batch history remains readable.
+Detailed analysis includes source packets and coverage validation; moderate contexts are
+supplied directly and large contexts remain in complete packets. Both quick watch and
+explicit analysis honor the saved model timeout and temporary picker overrides.
 
 `backend/review/repair` owns immutable PR identity, selected observations, isolated
-head/base preparation, upstream integration, conflict recovery and publication.
-Codex implementation followed by independent Antigravity review stops at manual
-review. Local commit and remote publication remain separate explicit operations.
+head/base preparation, upstream integration and conflict recovery.
+Implementation followed by independent read-only review stops at manual
+review. Users commit and push manually in the built-in terminal.
 Repair history, usage, commands and three diff baselines remain distinguishable.
 
 ## Issue Watch
@@ -202,40 +251,37 @@ complete baseline. Missing coverage stays uncertain. A final metadata recheck
 prevents stale provider conclusions from overriding host facts. Issue Watch uses
 the existing GitHub client, AgentRunner, usage and output services without cloning.
 
-## Git finalization and publication
+## Manual terminals and Git
 
-`backend/finalization` owns selected literal paths, isolated preview worktrees/indexes,
-content review, exact local commit objects, presets, journals and reconciliation.
-Optional hook validation/execution lives in `finalization/hooks.ts`; mandatory host authorization remains in the service and independent publisher.
-Unrelated source/task index entries survive. Subsets or changed content require a
-fresh review; ignored/unsafe/credential-bearing content remains unselectable.
+Task and PR repair workspaces expose an explicit built-in terminal backed by a PTY
+in the Linux/WSL core. The core verifies worktree ownership before starting the user's
+configured interactive shell in that worktree. Like an editor's integrated terminal,
+this user-operated shell inherits the normal environment, Git configuration and CLI
+authentication; it runs outside the agent sandbox. It can run Git hooks and arbitrary
+commands with the user's own authority. Provider and manual verification commands
+continue through the mandatory sandbox and restricted Git executor.
 
-Publication separately verifies source repository or contribution-fork identity, current permission,
-review fingerprint, required verification, exact destination/ref and remote SHA.
-`backend/workspace/publication.ts` independently proves immutable fast-forward
-ancestry and applies an exact compare-and-swap ref lease. Direct source publication
-requires fresh authenticated write permission; other destinations must prove their
-fork relationship. Non-fast-forward publication is refused. Ambiguous network outcomes
-require read-only reconciliation. A strictly validated destination preflight is read-only;
-combined commit/push still calls the existing approval, commit, prepare and publish guards.
+Showing Terminal starts and focuses the shell, taking the existing task or repair
+lease; close the shell before running an agent in the same workspace. Repeated opens
+share one session, and hiding the dock retains it. Sessions survive renderer
+reattachment, use bounded redacted output and stop on core shutdown. Before startup,
+the core adds a missing `origin` alias in managed clones using the registered fork URL
+or upstream URL. Existing remotes and imported checkout configuration stay untouched.
+The bridge negotiates manual terminal support separately from legacy sandboxed PTYs.
 
-Managed destination configuration verifies current GitHub identity, write permission
-and source/fork relationship before changing local remotes under repository and task
-leases. The bridge negotiates this mutation separately. Imported checkouts instead
-select existing verified remotes; configuration never authorizes publication.
-
-Contributor Husky hooks are optional quality checks. Their installer preserves
-existing hook policies, refuses linked hook directories and skips linked worktrees. Application hooks run only through
-the existing sandboxed policy; skipping them never skips mandatory host authorization.
+The application has no commit/push dialogs, selected-file finalization, publication
+RPCs, presets or destination configuration workflow. Users stage, commit, configure
+remotes and push through terminal commands. Historical SQLite migrations and Git
+journals remain for restart safety and conservative storage protection; they never
+replay operations or grant permission for a new write. Contributor Husky hooks remain
+optional quality checks installed without overwriting existing private hook policies.
 
 ## Renderer and styles
 
 `src/app` owns composition and navigation. `src/features` groups tasks, chat,
-workflow, verification, repositories, pull requests/repair, Issue Watch, finalization,
-providers, settings and usage. Git Changes uses a task-local controller hook and
-separate views for selected-file review and commit/push operations. Review is
-accessible from Changes; the shared controller preserves literal path selection
-between views. Existing core review and publication guards remain authoritative.
+workflow, verification, repositories, pull requests/repair, Issue Watch,
+providers, settings and usage. Task completion and repair review provide direct
+access to the shared terminal dock for manual commands.
 
 Issue Watch presents a saved-topic overview and dedicated results, with local sorting
 across classifications. Its compact availability display downgrades provisional or
@@ -245,6 +291,11 @@ appear by default, with exclusions accessible through All results.
 Shared primitives live in `components/ui`; shared workspace and diff controls live
 in `components/shared` and `components/diff`. Reusable hooks live in `src/hooks`;
 feature hooks stay with their owners.
+
+Task approval controls and check summaries live in the secondary workspace. Approval
+opens that sidebar once and keeps its actions available while inspecting other tool tabs;
+the conversation contains agent output and the composer. Expanded tool content aligns
+with the tool heading, and repository rows separate identity, metadata and actions.
 
 `src/lib/api.ts` owns transport and error presentation. Display formatting lives in
 `lib/format.ts`; chat event decoding and verification argv parsing live in their

@@ -103,6 +103,14 @@ it("implements selected manual PR feedback through Codex then a read-only Antigr
       ["antigravity", "repair-model", "high", null],
     ]);
 
+    for (const run of engine.db.all<{ prompt: string }>(
+      "SELECT prompt FROM agent_runs WHERE repair_id=?",
+      session.id,
+    )) {
+      expect(run.prompt).toContain("Do not install, upgrade, download or bootstrap dependencies");
+      expect(run.prompt).toContain("npx --offline --no-install");
+    }
+
     const tests = engine.db.all<{
       status: string;
       exit_code: number;

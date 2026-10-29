@@ -93,7 +93,7 @@ export class CodexProvider implements AgentProvider {
       "-c",
       "analytics.enabled=false",
       "-c",
-      "sandbox_workspace_write.network_access=false",
+      `sandbox_workspace_write.network_access=${r.stage === 3}`,
       "--output-schema",
       r.schemaPath,
       ...(r.config.model ? ["--model", r.config.model] : []),

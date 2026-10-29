@@ -158,7 +158,7 @@ it("keeps completed runs without exit evidence neutral and represents cancellati
   ];
 
   const ui = render(
-    <PipelineView detail={detail} busy={false} action={vi.fn()} finalize={vi.fn()} />,
+    <PipelineView detail={detail} busy={false} action={vi.fn()} terminal={vi.fn()} />,
   );
 
   const implementation = screen.getByText(/fixture-model/).closest("li");
@@ -174,7 +174,7 @@ it("keeps completed runs without exit evidence neutral and represents cancellati
       }}
       busy={false}
       action={vi.fn()}
-      finalize={vi.fn()}
+      terminal={vi.fn()}
     />,
   );
 
@@ -240,7 +240,11 @@ it("retains dirty settings through background snapshots and separates utility mo
     expect(rpc).toHaveBeenCalledWith(
       "settings.save",
       expect.objectContaining({
-        antigravity: { ...defaultSettings.antigravity, timeout_secs: 1234 },
+        antigravity: {
+          ...defaultSettings.antigravity,
+          provider: "antigravity",
+          timeout_secs: 1234,
+        },
       }),
     ),
   );

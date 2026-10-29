@@ -1,14 +1,28 @@
-import { useState } from "react";
-import { RefreshCw, ExternalLink, GitPullRequest, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  RefreshCw,
+  ExternalLink,
+  GitPullRequest,
+  GitMerge,
+  GitPullRequestClosed,
+  Search,
+  CheckCheck,
+  LoaderCircle,
+  Square,
+} from "lucide-react";
 
 import type { ScheduleJob } from "../../../backend/scheduled/contracts";
+import type { Settings } from "../../../backend/domain";
 import type { Snapshot } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/Select";
 import { PageHeader, EmptyState, ListSkeleton } from "../../components/ui/PageHeader";
-import { PrDetails, PrState, prTone } from "./PrDetails";
-import { PRBatchDialog } from "./PRBatchDialog";
+import { PrDetails } from "./PrDetails";
+import { ReviewModelPicker } from "./ReviewModelPicker";
+import { prReviewStatus, prWatchStatus } from "./status";
+import { WatchProgress } from "./WatchProgress";
+import { duration } from "../../lib/format";
 
 export const ScheduledAttention = ({
   snapshot,
@@ -75,7 +89,10 @@ export const ScheduledAttention = ({
       {selected && snapshot.scheduled?.find((j) => j.id === selected) && (
         <PrDetails
           job={snapshot.scheduled.find((j) => j.id === selected)!}
-          configuration={snapshot.settings.utility_ai}
+          configuration={snapshot.settings.review_ai || snapshot.settings.utility_ai}
+          watch={snapshot.pr_watch?.items.find(
+            (item) => item.url === snapshot.scheduled?.find((job) => job.id === selected)?.url,
+          )}
           close={() => setSelected(undefined)}
           repositories={snapshot.repositories}
           settings={snapshot.settings}
@@ -102,17 +119,21 @@ export const ScheduledPage = ({
   connectGitHub?: () => void;
 }) => {
   const [selected, setSelected] = useState<string>();
-  const [batchOpen, setBatchOpen] = useState(false);
+  const [modelOverride, setModelOverride] = useState<Settings["utility_ai"]>();
+  const checking = useRef(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [repository, setRepository] = useState("");
   const [errorOperation, setErrorOperation] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("OPEN");
   const [review, setReview] = useState("");
   const jobs = snapshot.scheduled || [];
   const github = snapshot.github;
-  const configuration = snapshot.settings.utility_ai;
+
+  const configuration =
+    modelOverride || snapshot.settings.review_ai || snapshot.settings.utility_ai;
+
   const discovered = github?.pull_requests || [];
 
   const rows = [
@@ -128,22 +149,64 @@ export const ScheduledPage = ({
     .map(({ pr, job, url }) => {
       const saved = job?.pending_snapshot || job?.last_snapshot;
       const report = snapshot.pr_reports?.find((report) => report.job_id === job?.id);
+
+      const savedIsNewer =
+        saved &&
+        !pr?.access_error &&
+        (!pr ||
+          (!!job?.last_checked_at &&
+            Date.parse(job.last_checked_at) >= Date.parse(pr.refreshed_at || pr.updated_at)));
+
+      const savedWatchItem = snapshot.pr_watch?.items.find(
+        (item) => item.url.toLowerCase() === url.toLowerCase(),
+      );
+
+      const watchStale =
+        savedWatchItem?.checked_at &&
+        pr &&
+        (pr.access_error ||
+          Date.parse(pr.updated_at) > Date.parse(savedWatchItem.checked_at) ||
+          (savedWatchItem.head_sha && pr.head_sha && savedWatchItem.head_sha !== pr.head_sha));
+
+      const watchItem =
+        savedWatchItem && watchStale
+          ? {
+              ...savedWatchItem,
+              status: "unknown" as const,
+              reason: "PR changed or became unavailable; recheck its conversation.",
+            }
+          : savedWatchItem;
+
+      const watchIsNewer =
+        watchItem?.checked_at &&
+        (!pr || Date.parse(watchItem.checked_at) >= Date.parse(pr.refreshed_at || pr.updated_at));
+
+      const lifecycle =
+        (watchIsNewer ? watchItem.lifecycle : undefined) ||
+        (savedIsNewer ? saved.state.toUpperCase() : pr?.state) ||
+        saved?.state?.toUpperCase() ||
+        (job?.archived ? "ARCHIVED" : "UNKNOWN");
+
       return {
         pr,
         job,
+        watchItem,
         url,
         repository: pr?.repository || url.replace("https://github.com/", "").split("/pull/")[0],
         number: pr?.number || url.split("/").at(-1),
         title: pr?.title || job?.title || saved?.title || "Pull request",
-        state: pr?.state || saved?.state?.toUpperCase() || (job?.archived ? "ARCHIVED" : "UNKNOWN"),
+        state: lifecycle,
         updated: pr?.updated_at || job?.last_checked_at,
         decision: saved?.reviewDecision || "UNKNOWN",
         outstanding: report?.outstanding ?? job?.action?.outstandingRequests.length ?? 0,
         questions: report?.unanswered_questions || 0,
         attention:
-          !!job?.action?.manualActionRequired ||
-          !!report?.outstanding ||
-          !!report?.unanswered_questions,
+          lifecycle === "OPEN" &&
+          (watchItem
+            ? ["review", "unknown"].includes(watchItem.status)
+            : !!job?.action?.manualActionRequired ||
+              !!report?.outstanding ||
+              !!report?.unanswered_questions),
         failedCI: saved?.checks.some((check) =>
           ["FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "CANCELLED"].includes(
             check.state.toUpperCase(),
@@ -152,6 +215,8 @@ export const ScheduledPage = ({
         checksKnown: !!saved?.checks.length,
         actionState: report?.action_state || "Not analyzed",
         analyzedHead: report?.analyzed_head,
+        phase: report?.phase,
+        startedAt: report?.started_at,
       };
     })
     .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
@@ -166,6 +231,20 @@ export const ScheduledPage = ({
       (!status || row.state === status) &&
       (!review || (review === "attention" ? row.attention : row.decision === review)),
   );
+
+  const watch = snapshot.pr_watch;
+  const activeBatch = watch && ["running", "cancelling"].includes(watch.status) ? watch : undefined;
+
+  const runningChecks =
+    !!activeBatch || jobs.some((job) => ["analyzing", "polling"].includes(job.status));
+
+  const [clock, setClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!runningChecks) return;
+    const timer = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [runningChecks]);
 
   const updating = busy === "refresh" || !!github?.phase;
 
@@ -202,6 +281,14 @@ export const ScheduledPage = ({
         await rpc("scheduled.analyze", {
           id: job.id,
           request_id: crypto.randomUUID(),
+          configuration: {
+            provider: configuration.provider,
+            config: {
+              model: configuration.model,
+              effort: configuration.effort,
+              timeout_secs: configuration.timeout_secs,
+            },
+          },
         });
 
         await refresh();
@@ -217,15 +304,44 @@ export const ScheduledPage = ({
   const resetFilters = () => {
     setQuery("");
     setRepository("");
-    setStatus("");
+    setStatus("OPEN");
     setReview("");
+  };
+
+  const checkOpen = async () => {
+    if (checking.current || activeBatch) return;
+    checking.current = true;
+    setBusy("check-open");
+    setError("");
+    try {
+      await rpc("pr.watch.start", {
+        request_id: crypto.randomUUID(),
+        trigger: "recheck",
+        configuration: {
+          provider: configuration.provider,
+          config: {
+            model: configuration.model,
+            effort: configuration.effort,
+            timeout_secs: configuration.timeout_secs,
+          },
+        },
+      });
+
+      await refresh();
+    } catch (failure) {
+      setErrorOperation("analysis");
+      setError(errorMessage(failure));
+    } finally {
+      checking.current = false;
+      setBusy("");
+    }
   };
 
   const refreshButton = (
     <Button
       busy={updating}
       disabled={!!busy}
-      onClick={() => void action("github.sync", {}, "refresh")}
+      onClick={() => void action("github.pullRequests.refresh", {}, "refresh")}
     >
       {!updating && <RefreshCw size={14} />}
       {updating ? "Refreshing…" : "Refresh PR List"}
@@ -236,72 +352,38 @@ export const ScheduledPage = ({
     <div className="page pr-inbox">
       <PageHeader
         title="Pull requests"
-        description="Your contributions and review conversations, together in one workspace."
+        description="Review conversations and keep your contributions moving."
         actions={
           <>
+            <ReviewModelPicker
+              value={configuration}
+              onChange={setModelOverride}
+              reset={() => setModelOverride(undefined)}
+            />
             {refreshButton}
-            <Button
-              variant="default"
-              disabled={
-                !rows.length ||
-                !!busy ||
-                snapshot.pr_batches?.some((batch) => batch.status === "running")
-              }
-              onClick={() => setBatchOpen(true)}
-            >
-              Analyze All
-            </Button>
+            {!activeBatch && (
+              <Button
+                variant="default"
+                busy={busy === "check-open" || !!activeBatch}
+                disabled={!!busy || !!activeBatch}
+                onClick={() => void checkOpen()}
+              >
+                {!activeBatch && busy !== "check-open" && <CheckCheck size={15} />}
+                {activeBatch ? "Checking open PRs…" : "Recheck open PRs"}
+              </Button>
+            )}
           </>
         }
       />
 
-      {batchOpen && (
-        <PRBatchDialog
-          rows={rows.map((row) => ({
-            url: row.url,
-            title: row.title,
-            state: row.state,
-            jobId: row.job?.id,
-            attention: row.attention,
-            stale: row.actionState === "Analysis stale",
-          }))}
-          configuration={configuration}
-          close={() => setBatchOpen(false)}
-          refresh={refresh}
+      {watch && (
+        <WatchProgress
+          watch={watch}
+          clock={clock}
+          stopping={watch.status === "cancelling" || busy === "stop-watch"}
+          stop={() => void action("pr.watch.cancel", {}, "stop-watch")}
         />
       )}
-
-      {snapshot.pr_batches?.slice(0, 3).map((batch) => (
-        <section className="pr-batch-progress" key={batch.id} aria-label="PR batch progress">
-          <strong>Analyze All · {batch.status}</strong>
-          <p>
-            {batch.items.filter((item) => item.status === "completed").length} completed of{" "}
-            {batch.items.length} · {batch.analyses_used} of {batch.max_analyses} AI attempts used
-          </p>
-
-          {batch.status === "running" && (
-            <Button
-              size="sm"
-              onClick={() => void action("scheduled.batch.cancel", { id: batch.id }, batch.id)}
-            >
-              Cancel batch
-            </Button>
-          )}
-
-          <details>
-            <summary>Per-PR progress</summary>
-            {batch.items.map((item) => (
-              <p key={item.job_id}>
-                {jobs.find((job) => job.id === item.job_id)?.title ||
-                  jobs.find((job) => job.id === item.job_id)?.url ||
-                  item.job_id}{" "}
-                · {item.status}
-                {item.error ? ` · ${item.error}` : ""}
-              </p>
-            ))}
-          </details>
-        </section>
-      ))}
 
       {(error || github?.error) && (
         <div className="error-box page-error" role="alert">
@@ -322,7 +404,7 @@ export const ScheduledPage = ({
               variant="outline"
               busy={updating}
               disabled={!!busy}
-              onClick={() => void action("github.sync", {}, "refresh")}
+              onClick={() => void action("github.pullRequests.refresh", {}, "refresh")}
             >
               Retry refresh
             </Button>
@@ -338,25 +420,6 @@ export const ScheduledPage = ({
 
       {!!rows.length && (
         <>
-          <div className="metric-grid pr-overview" aria-label="Pull request overview">
-            {[
-              ["Open", rows.filter((row) => row.state === "OPEN").length],
-              ["Need attention", rows.filter((row) => row.attention).length],
-              ["Known drafts", rows.filter((row) => row.pr?.draft === true).length],
-              [
-                "Updated in 24 hours",
-                rows.filter((row) => row.updated && Date.now() - Date.parse(row.updated) < 86400000)
-                  .length,
-              ],
-              ["Known failed CI", rows.filter((row) => row.failedCI).length],
-            ].map(([label, value]) => (
-              <div className="metric" key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-            ))}
-          </div>
-
           <div className="list-filters" aria-label="Pull request filters">
             <label className="search-field">
               <Search size={15} />
@@ -386,11 +449,15 @@ export const ScheduledPage = ({
               value={status}
               onChange={setStatus}
               options={[
-                { value: "", label: "All statuses" },
-                ...["OPEN", "CLOSED", "MERGED", "ARCHIVED", "UNKNOWN"].map((value) => ({
+                ...[
+                  ["OPEN", "Open"],
+                  ["MERGED", "Merged"],
+                  ["CLOSED", "Closed"],
+                ].map(([value, label]) => ({
                   value,
-                  label: value[0] + value.slice(1).toLowerCase(),
+                  label: `${label} (${rows.filter((row) => row.state === value).length})`,
                 })),
+                { value: "", label: `All statuses (${rows.length})` },
               ]}
             />
 
@@ -452,7 +519,7 @@ export const ScheduledPage = ({
                 variant="default"
                 busy={updating}
                 disabled={!!busy}
-                onClick={() => void action("github.sync", {}, "refresh")}
+                onClick={() => void action("github.pullRequests.refresh", {}, "refresh")}
               >
                 Discover pull requests
               </Button>
@@ -462,93 +529,110 @@ export const ScheduledPage = ({
       ) : !filtered.length ? (
         <EmptyState
           icon={<Search size={26} />}
-          title="No matching pull requests"
-          description="Try another search or clear your filters to see all saved contributions."
-          action={<Button onClick={resetFilters}>Clear filters</Button>}
+          title={
+            status === "OPEN" && !query && !repository && !review
+              ? "No open pull requests"
+              : "No matching pull requests"
+          }
+          description={
+            status === "OPEN" && !query && !repository && !review
+              ? "Use the status filter to view merged and closed contributions."
+              : "Try another search or clear your filters."
+          }
+          action={
+            status === "OPEN" && !query && !repository && !review ? (
+              <Button onClick={() => setStatus("")}>View all pull requests</Button>
+            ) : (
+              <Button onClick={resetFilters}>Clear filters</Button>
+            )
+          }
         />
       ) : (
         <section className="pr-list" aria-label="Pull requests">
           {filtered.map((row) => {
             const job = row.job;
-            const running = !!job && ["polling", "analyzing"].includes(job.status);
-            return (
-              <article className={`pr-inbox-row pr-${job ? prTone(job) : "neutral"}`} key={row.url}>
-                <div
-                  className={`pr-list-icon ${row.state === "MERGED" ? "merged" : row.state === "CLOSED" ? "muted" : "success"}`}
-                >
-                  <GitPullRequest size={19} />
-                </div>
 
+            const running =
+              row.watchItem?.status === "checking" ||
+              (!!job && ["polling", "analyzing"].includes(job.status));
+
+            const terminalState = ["CLOSED", "MERGED", "ARCHIVED"].includes(row.state);
+            const watchItem = row.watchItem;
+
+            const state =
+              !terminalState && watchItem
+                ? prWatchStatus(watchItem)
+                : prReviewStatus(job, row.state, row.actionState);
+
+            const Icon =
+              row.state === "MERGED"
+                ? GitMerge
+                : row.state === "CLOSED"
+                  ? GitPullRequestClosed
+                  : GitPullRequest;
+
+            return (
+              <article className={`pr-inbox-row pr-${state.tone}`} key={row.url}>
+                <div className={`pr-list-icon ${row.state.toLowerCase()}`}>
+                  <Icon size={18} />
+                </div>
                 <div className="pr-row-content">
                   <div className="pr-row-top">
-                    <span className="pr-reference">
-                      {row.repository} <span className="muted">#{row.number}</span>
-                    </span>
-
-                    <span className="pr-state">
-                      {row.pr?.draft ? "Draft · " : ""}
-                      {row.state === "UNKNOWN" ? "Status not retrieved" : row.state.toLowerCase()}
-                    </span>
-                    {job && <PrState job={job} />}
+                    <button
+                      className="pr-title pr-details-link"
+                      disabled={!!busy}
+                      onClick={() => void openDiscovered(row)}
+                    >
+                      {row.title}
+                    </button>
+                    {row.pr?.draft && <span className="pr-draft">Draft</span>}
                   </div>
-
-                  <button
-                    className="pr-title pr-details-link"
-                    disabled={!!busy}
-                    onClick={() => void openDiscovered(row)}
-                  >
-                    {row.title}
-                  </button>
-
-                  <p className="pr-one-line">
-                    {running
-                      ? job.status === "analyzing"
-                        ? "Assessing the review conversation."
-                        : "Retrieving complete GitHub context."
-                      : job?.action?.summary ||
-                        "Open the review workspace to inspect or analyze this contribution."}
-                  </p>
-
                   <div className="pr-metadata">
-                    {row.pr?.head_branch && <span className="mono">{row.pr.head_branch}</span>}
-                    <span>{row.actionState}</span>
-                    <span className={row.failedCI ? "failure" : ""}>
-                      {row.failedCI
-                        ? "CI needs attention"
-                        : row.checksKnown
-                          ? "Saved CI available"
-                          : "CI not inspected"}
+                    <span className="pr-reference">
+                      {row.repository} #{row.number}
                     </span>
-                    {row.updated && <span>Updated {new Date(row.updated).toLocaleString()}</span>}
+                    {row.pr?.head_branch && (
+                      <span className="mono pr-branch">{row.pr.head_branch}</span>
+                    )}
+                    {row.updated && (
+                      <span>Updated {new Date(row.updated).toLocaleDateString()}</span>
+                    )}
                   </div>
-
-                  {job && (
-                    <div className="pr-metadata">
-                      <span>{row.outstanding} observations to consider</span>
-                      <span>{row.questions} unanswered questions</span>
-                      {row.analyzedHead && (
-                        <span>
-                          Analyzed head <code>{row.analyzedHead.slice(0, 12)}</code>
-                        </span>
-                      )}
-
+                  <div className="pr-review-line">
+                    <span className={`pr-review-state ${state.tone}`}>
+                      {running && <LoaderCircle size={12} className="spinning" />}
+                      {running
+                        ? watchItem?.status === "checking"
+                          ? watchItem.reason
+                          : row.phase || state.label
+                        : state.label}
+                    </span>
+                    {running && row.startedAt && (
+                      <span>{duration(row.startedAt, new Date(clock).toISOString())} elapsed</span>
+                    )}
+                    {!terminalState && watchItem && !running && (
+                      <span className="pr-summary">{watchItem.reason}</span>
+                    )}
+                    {!terminalState && !watchItem && !running && job?.action?.summary && (
+                      <span className="pr-summary">{job.action.summary}</span>
+                    )}
+                    {!terminalState && !watchItem && row.failedCI && (
+                      <span className="failure">CI needs attention</span>
+                    )}
+                    {!terminalState && !watchItem && (row.outstanding > 0 || row.questions > 0) && (
                       <span>
-                        Last analyzed{" "}
-                        {job.last_analyzed_at
-                          ? new Date(job.last_analyzed_at).toLocaleString()
-                          : "never"}
+                        {row.outstanding > 0 ? `${row.outstanding} observations` : ""}
+                        {row.outstanding && row.questions ? " · " : ""}
+                        {row.questions > 0 ? `${row.questions} unanswered questions` : ""}
                       </span>
-
-                      <span>
-                        {snapshot.repairs?.filter((repair) => repair.job_id === job.id).length || 0}{" "}
-                        repair sessions
-                      </span>
-                    </div>
-                  )}
-
-                  {job?.error && (
+                    )}
+                  </div>
+                  {!terminalState && !watchItem && job?.error && (
                     <p className="warning">
-                      {errorMessage(job.error)} · Request analysis explicitly to retry.
+                      {errorMessage(job.error)} ·{" "}
+                      {/Run exceeded \d+s timeout/.test(job.error)
+                        ? "Increase the time limit in the review model picker, then check again."
+                        : "Request analysis explicitly to retry."}
                     </p>
                   )}
 
@@ -560,39 +644,43 @@ export const ScheduledPage = ({
                         : ""}
                     </p>
                   )}
-
-                  {job?.action?.reason && (
-                    <details className="pr-row-details">
-                      <summary>{running ? "Previous saved decision" : "Why this state"}</summary>
-                      <p>{job.action.reason}</p>
-                    </details>
-                  )}
                 </div>
 
                 <div className="row-actions">
-                  <Button
-                    size="sm"
-                    busy={busy === row.url}
-                    disabled={
-                      !!busy ||
-                      running ||
-                      row.state === "CLOSED" ||
-                      row.state === "MERGED" ||
-                      row.state === "ARCHIVED"
-                    }
-                    onClick={() => void openDiscovered(row, true)}
-                  >
-                    {job?.last_analyzed_at ? "Analyze Again" : "Analyze PR"}
-                  </Button>
-
-                  {running && (
+                  {!terminalState && !watchItem && !running && !activeBatch && (
                     <Button
                       size="sm"
-                      variant="outline"
+                      busy={busy === row.url}
+                      disabled={!!busy || running || !!activeBatch}
+                      onClick={() => void openDiscovered(row, true)}
+                    >
+                      {job?.last_analyzed_at ? "Analyze again" : "Analyze review"}
+                    </Button>
+                  )}
+
+                  {!terminalState &&
+                    watchItem &&
+                    ["review", "unknown"].includes(watchItem.status) && (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void window.vibestar.openExternal(watchItem.source_urls[0] || row.url)
+                        }
+                      >
+                        Review on GitHub
+                      </Button>
+                    )}
+
+                  {running && job && !activeBatch && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Stop checking PR #${row.number}`}
                       disabled={!!busy}
                       onClick={() => void action("scheduled.cancel", { id: job.id }, job.id)}
                     >
-                      Cancel analysis
+                      <Square size={12} />
+                      Stop
                     </Button>
                   )}
 
@@ -602,7 +690,7 @@ export const ScheduledPage = ({
                     disabled={!!busy}
                     onClick={() => void openDiscovered(row)}
                   >
-                    Review report
+                    View report
                   </Button>
 
                   {(job?.task_id || row.pr?.task_id) && (
@@ -630,16 +718,13 @@ export const ScheduledPage = ({
         </section>
       )}
 
-      <p className="page-footnote">
-        Analyze PR uses {configuration.provider === "codex" ? "Codex" : "Antigravity"} ·{" "}
-        {configuration.model || "official CLI default"} · {configuration.effort}. Analysis is
-        explicit and may consume subscription allowance.
-      </p>
-
       {selected && jobs.find((job) => job.id === selected) && (
         <PrDetails
           job={jobs.find((job) => job.id === selected)!}
           configuration={configuration}
+          watch={snapshot.pr_watch?.items.find(
+            (item) => item.url === jobs.find((job) => job.id === selected)?.url,
+          )}
           close={() => setSelected(undefined)}
           repositories={snapshot.repositories}
           settings={snapshot.settings}

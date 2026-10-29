@@ -1,3 +1,4 @@
+import { prReviewStatus, prWatchStatus } from "./status";
 import { useEffect, useState } from "react";
 
 import type { ScheduleJob } from "../../../backend/scheduled/contracts";
@@ -15,69 +16,21 @@ import { SolveReview } from "./repair/SolveReview";
 import { containDialogFocus, navigateTabs } from "../../lib/keyboard";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
 import type { PRAnalysisSession, ReviewAction } from "../../../backend/review/pr/contracts";
+import type { PRWatchItem } from "../../../backend/review/pr/watch-contracts";
 
-export const prTone = (job: ScheduleJob) =>
-  ["analyzing", "polling", "pending"].includes(job.status)
-    ? "running"
-    : job.status === "interrupted"
-      ? "warning"
-      : job.error
-        ? "failure"
-        : ["analyzing", "polling", "pending"].includes(job.status)
-          ? "running"
-          : job.action?.conversationState === "blocked"
-            ? "failure"
-            : job.action?.manualActionRequired
-              ? "warning"
-              : ["approved", "merged"].includes(job.action?.conversationState || "")
-                ? "success"
-                : ["waiting_for_ci", "waiting_for_reviewer"].includes(
-                      job.action?.conversationState || "",
-                    ) || ["analyzing", "polling"].includes(job.status)
-                  ? "running"
-                  : "healthy";
+export const prTone = (job: ScheduleJob) => prReviewStatus(job).tone;
 
-export const PrState = ({ job }: { job: ScheduleJob }) => {
-  const state = job.action?.conversationState;
-
-  const label =
-    job.status === "analyzing"
-      ? "ANALYZING DISCUSSION"
-      : job.status === "polling"
-        ? "CHECKING PR"
-        : job.status === "pending"
-          ? "ANALYSIS QUEUED"
-          : job.status === "interrupted"
-            ? "ANALYSIS INTERRUPTED"
-            : job.error
-              ? "INSPECTION FAILED"
-              : state === "blocked"
-                ? job.attention_source === "ci"
-                  ? "CI FAILED"
-                  : "BLOCKED"
-                : job.action?.manualActionRequired
-                  ? "ACTION REQUIRED"
-                  : state === "waiting_for_reviewer"
-                    ? "WAITING FOR REVIEW"
-                    : state === "waiting_for_ci"
-                      ? "CI RUNNING"
-                      : state === "approved"
-                        ? "APPROVED"
-                        : state === "merged"
-                          ? "MERGED"
-                          : state === "closed"
-                            ? "CLOSED"
-                            : job.last_checked_at
-                              ? job.action
-                                ? "NO ACTION REQUIRED"
-                                : "GITHUB INSPECTED"
-                              : "AWAITING CHECK";
-
-  return (
-    <span className={`pr-state ${prTone(job)}`}>
-      {prTone(job) === "success" ? "✓" : state === "blocked" ? "×" : "●"} {label}
-    </span>
-  );
+export const PrState = ({
+  job,
+  state,
+  reportState,
+}: {
+  job: ScheduleJob;
+  state?: string;
+  reportState?: string;
+}) => {
+  const status = prReviewStatus(job, state, reportState);
+  return <span className={`pr-state ${status.tone}`}>{status.label}</span>;
 };
 
 export const PrDetails = ({
@@ -89,6 +42,7 @@ export const PrDetails = ({
   settings,
   openRepair,
   refresh,
+  watch,
 }: {
   job: ScheduleJob;
   close: () => void;
@@ -98,6 +52,7 @@ export const PrDetails = ({
   settings?: Settings;
   openRepair?: (id: string) => void;
   refresh?: () => Promise<void>;
+  watch?: PRWatchItem;
 }) => {
   const [tab, setTab] = useState("Overview");
   const [selected, setSelected] = useState("");
@@ -114,6 +69,17 @@ export const PrDetails = ({
   const snapshot = analysis?.snapshot || job.pending_snapshot || job.last_snapshot;
   const report = analysis?.report;
   const running = ["polling", "analyzing"].includes(job.status);
+
+  const latestWatch =
+    !selected &&
+    watch?.checked_at &&
+    (!analysis ||
+      Date.parse(watch.checked_at) >= Date.parse(analysis.ended_at || analysis.started_at))
+      ? watch
+      : undefined;
+
+  const showQuickOverview = tab === "Overview" && !!latestWatch;
+  const watchState = latestWatch && prWatchStatus(latestWatch);
 
   useEffect(() => {
     let alive = true;
@@ -291,7 +257,11 @@ export const PrDetails = ({
           <div>
             <strong>{job.url.replace("https://github.com/", "").replace("/pull/", " #")}</strong>
             <h2>{snapshot?.title || job.title || "Pull request"}</h2>
-            <PrState job={job} />
+            {watchState ? (
+              <span className={`pr-state ${watchState.tone}`}>{watchState.label}</span>
+            ) : (
+              <PrState job={job} />
+            )}
           </div>
 
           <Button variant="ghost" aria-label="Close PR details" onClick={close}>
@@ -383,33 +353,55 @@ export const PrDetails = ({
             </p>
           )}
 
-          {analysis?.error && (
+          {!showQuickOverview && analysis?.error && (
             <p className="warning-box">
               {analysis.phase}: {analysis.error}. Previous reports remain in Analysis history.
             </p>
           )}
 
-          {report && !report.complete && (
+          {!showQuickOverview && report && !report.complete && (
             <p className="warning-box">
               Partial analysis. Every request has not been assessed. Inspect coverage warnings
               before acting.
             </p>
           )}
 
-          {report?.warnings.map((warning, index) => (
-            <p className="warning" key={index}>
-              {warning}
-            </p>
-          ))}
+          {!showQuickOverview &&
+            report?.warnings.map((warning, index) => (
+              <p className="warning" key={index}>
+                {warning}
+              </p>
+            ))}
 
-          {!report &&
+          {!showQuickOverview &&
+            !report &&
             snapshot?.coverage?.warnings.map((warning, index) => (
               <p className="warning" key={index}>
                 {warning}
               </p>
             ))}
 
-          {tab === "Overview" && (
+          {showQuickOverview && latestWatch && (
+            <section aria-label="Latest PR check">
+              <h3>Latest PR check</h3>
+              <p>{latestWatch.reason}</p>
+              <p className="subtle">Checked {new Date(latestWatch.checked_at!).toLocaleString()}</p>
+              {latestWatch.source_urls.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void window.vibestar.openExternal(latestWatch.source_urls[0])}
+                >
+                  Open discussion
+                </Button>
+              )}
+              <p className="subtle">
+                Detailed engineering reports and earlier attempts are available in Analysis History.
+              </p>
+            </section>
+          )}
+
+          {tab === "Overview" && !showQuickOverview && (
             <>
               <h3>PR overview</h3>
               <dl className="repository-facts">
@@ -746,6 +738,18 @@ export const PrDetails = ({
               void act("scheduled.analyze", {
                 id: job.id,
                 request_id: crypto.randomUUID(),
+                ...(configuration
+                  ? {
+                      configuration: {
+                        provider: configuration.provider,
+                        config: {
+                          model: configuration.model,
+                          effort: configuration.effort,
+                          timeout_secs: configuration.timeout_secs,
+                        },
+                      },
+                    }
+                  : {}),
               })
             }
           >

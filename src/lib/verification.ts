@@ -24,9 +24,7 @@ export const detailVerification = (detail: Detail) => {
         (command.run_id === implementation.id ||
           (!command.run_id && command.started_at >= implementation.started_at)),
     ),
-    detail.task.stage >= 4
-      ? JSON.stringify(["git", "diff", "--check", detail.task.base_commit_sha, "--"])
-      : undefined,
+    undefined,
     [],
     detail.task.verification_policy,
   );

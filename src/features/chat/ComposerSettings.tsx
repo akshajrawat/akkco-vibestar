@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { Task, StageConfig } from "../../lib/types";
-import { defaultSettings } from "../../../backend/domain";
+import { defaultSettings, pipelineConfiguration, pipelineStages } from "../../../backend/domain";
 import {
   supportedEfforts,
   configurationError,
@@ -17,13 +17,21 @@ import { Select } from "../../components/ui/Select";
 export const followupConfiguration = (task: Task, view: ReturnType<typeof useTaskView>) => {
   const defaults = task.execution_settings || defaultSettings;
 
+  const implementation = pipelineConfiguration(defaults, 3, task.stage_settings);
+  const provider = view.followupProvider || implementation.provider;
+
   const config =
-    view.followupProvider === "codex" ? defaults.codex_implementation : defaults.antigravity;
+    implementation.provider === provider
+      ? implementation
+      : pipelineStages
+          .map((role) => pipelineConfiguration(defaults, role.stage, task.stage_settings))
+          .find((entry) => entry.provider === provider) ||
+        (provider === "codex" ? defaultSettings.codex_implementation : defaultSettings.antigravity);
 
   return {
-    provider: view.followupProvider,
+    provider,
     config: {
-      ...config,
+      timeout_secs: config.timeout_secs,
       model: view.followupModel ?? config.model,
       effort: view.followupEffort ?? config.effort,
     },

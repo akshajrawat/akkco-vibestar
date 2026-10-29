@@ -13,6 +13,7 @@ import {
   AdeError,
   now,
   stageStatus,
+  pipelineConfiguration,
   type Task,
   type Settings,
   type CoreEvent,
@@ -34,16 +35,6 @@ import {
   configurationError,
 } from "../providers/contracts";
 
-const stageConfiguration = (stage: number, settings: Settings, task: Task | null) =>
-  task?.stage_settings?.[stage as 1 | 2 | 3 | 5] ??
-  (stage === 5
-    ? settings.antigravity_review || settings.antigravity
-    : stage === 1
-      ? settings.antigravity
-      : stage === 2
-        ? settings.codex_plan
-        : settings.codex_implementation);
-
 export class AgentRunner {
   constructor(
     private readonly root: string,
@@ -60,7 +51,8 @@ export class AgentRunner {
   validateWorkflow = async (task: Task, signal: AbortSignal) => {
     const settings = task.execution_settings || this.db.settings();
     for (const stage of [1, 2, 3, 5]) {
-      const provider = this.providers(stage, stage === 5 ? "antigravity" : undefined);
+      const config = pipelineConfiguration(settings, stage, task.stage_settings);
+      const provider = this.providers(stage, config.provider);
       const detection = await provider.detect(this.root, signal);
       signal.throwIfAborted();
       if (!detection.installed || !detection.connected || !detection.capabilities.length)
@@ -68,7 +60,7 @@ export class AgentRunner {
           "provider_unavailable",
           detection.error || `Connect ${provider.name} before starting the workflow.`,
         );
-      const invalid = configurationError(detection, stageConfiguration(stage, settings, task));
+      const invalid = configurationError(detection, config);
       if (invalid) throw new AdeError("model", invalid);
     }
   };
@@ -112,13 +104,14 @@ export class AgentRunner {
     const followup =
       t.stage === 3 && task?.continuation === "implementation" ? task.followup_config : undefined;
 
+    const saved = pipelineConfiguration(settings, t.stage, task?.stage_settings);
+
     const provider = this.providers(
       t.stage,
-      options?.provider || followup?.provider || (t.stage === 5 ? "antigravity" : undefined),
+      options?.provider || followup?.provider || saved.provider,
     );
 
-    const config =
-      options?.config ?? followup?.config ?? stageConfiguration(t.stage, settings, task);
+    const config = options?.config ?? followup?.config ?? saved;
 
     const id = randomUUID();
     if (options?.scanId || options?.watchId) {
@@ -152,8 +145,8 @@ export class AgentRunner {
       options?.purpose ||
       (t.stage === 3 && task?.continuation === "implementation"
         ? "Chat Follow-up"
-        : ["", "Antigravity Plan", "Codex Plan Refinement", "Codex Implementation"][t.stage] ||
-          (t.stage === 5 ? "Antigravity Final Review" : "Pipeline"));
+        : ["", "Plan", "Plan refinement", "Implementation"][t.stage] ||
+          (t.stage === 5 ? "Review" : "Pipeline"));
 
     usage.start(id, {
       task_id: task?.id || options?.telemetryTaskId || null,

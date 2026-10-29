@@ -22,7 +22,7 @@ or write to GitHub. Existing live tests retain explicit environment opt-ins.
 
 `vitest.config.ts` declares mutually exclusive named projects. Domain directories
 such as `tests/verification`, `tests/workspace`, `tests/pr-repair` and
-`tests/finalization` belong to regular regression coverage. Separate integration,
+`tests/diff` belong to regular regression coverage. Separate integration,
 security, terminal, desktop and live directories are excluded from that project.
 The worker limit is two to keep native/renderer fixtures practical on developer machines.
 
@@ -58,7 +58,6 @@ npm run build
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:pr
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:repair
-xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:git
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:output
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:watch
 ```
@@ -94,9 +93,10 @@ repositories. It proves staged formatting, retained unstaged hunks/unrelated fil
 failed-commit rollback, successful local push, failed quality/security push rejection
 and preservation of private hook configuration. Test pushes target local bare remotes.
 
-`tests/security/publication-boundary.test.ts` and finalization/repair regressions prove
-that skipping optional hooks cannot bypass ancestry, ref, SHA, review or authorization
-checks. Hook installation must not weaken these separate host guards.
+Terminal tests commit and push only to disposable local remotes. They verify inherited
+Git configuration, session lifecycle, redaction and workspace execution exclusion.
+Removed publication endpoints must fail dispatch; legacy migration and storage fixtures
+preserve old journals without allowing operations to replay.
 
 ## CI
 

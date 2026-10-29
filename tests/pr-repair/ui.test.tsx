@@ -5,12 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { defaultSettings } from "../../backend/domain";
 import { SolveReview } from "../../src/features/pull-requests/repair/SolveReview";
 import { RepairWorkspace } from "../../src/features/pull-requests/repair/RepairWorkspace";
-import { PublicationDialog } from "../../src/features/pull-requests/repair/PublicationDialog";
-import { LocalCommitDialog } from "../../src/features/pull-requests/repair/LocalCommitDialog";
-import type {
-  RepairPublication,
-  RepairDetail,
-} from "../../src/features/pull-requests/repair/types";
+import type { RepairDetail } from "../../src/features/pull-requests/repair/types";
 import type { RepairSession } from "../../backend/review/repair/contracts";
 import { observations, prSnapshot } from "../helpers/pr-fixtures";
 
@@ -150,37 +145,6 @@ session.verification = {
   risks: [],
 };
 
-const plan: RepairPublication = {
-  id: "publication",
-  repair_id: session.id,
-  pr_url: session.identity.url,
-  destination: {
-    repository: session.identity.head.name,
-    repository_id: session.identity.head.id,
-    url: session.identity.head.url,
-    branch: session.identity.head.branch,
-  },
-  expected_remote_head: "a".repeat(40),
-  local_head: "f".repeat(40),
-  fingerprint: session.review_hash!,
-  upstream_base: { branch: "develop", sha: "c".repeat(40) },
-  dirty: true,
-  changes: { files: 3, additions: 20, deletions: 4 },
-  validation: { observed_passed: 2, observed_failed: 0, reported_blocked: 1 },
-  commits: [],
-  confirmation: {
-    viewer: "akshajrawat",
-    approved_at: "2026-10-14T10:00:00Z",
-    reviewed_hash: session.review_hash!,
-    confirmed_at: null,
-  },
-  outcome: "prepared",
-  error: null,
-  created_at: "2026-10-14T10:00:00Z",
-  updated_at: "2026-10-14T10:00:00Z",
-  published_at: null,
-};
-
 const install = (handler: (method: string, params: Record<string, unknown>) => unknown) => {
   const rpc = vi.fn(async (method: string, params: Record<string, unknown>) =>
     handler(method, params),
@@ -280,7 +244,7 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
 
   fireEvent.click(
     await screen.findByRole("button", {
-      name: "Review repair and publication options",
+      name: "Review repair",
     }),
   );
 
@@ -290,6 +254,11 @@ it("keeps complete repair history and manual review visible, shares Readable/Raw
 
   expect(screen.getByText("Targeted implementation report")).toBeTruthy();
   expect(screen.getByText("Independent verification report")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Commit Locally" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Approve and Prepare Push" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Open terminal" }));
+  expect(screen.getByText("Terminal fixture view")).toBeTruthy();
+  fireEvent.click(screen.getByLabelText("Toggle utility dock"));
 
   expect(
     rpc.mock.calls.some(([method]) =>
@@ -410,97 +379,3 @@ it.each([
     expect(rpc.mock.calls.some(([method]) => method === "repair.start")).toBe(false);
   },
 );
-
-it("shows exact publication values and requires separate commit and explicit push confirmation", async () => {
-  const clean = { ...plan, dirty: false };
-
-  const rpc = install((method) =>
-    method === "repair.preparePublication"
-      ? clean
-      : method === "repair.publish"
-        ? { ...clean, outcome: "published" }
-        : {},
-  );
-
-  const close = vi.fn();
-  render(<PublicationDialog publication={plan} close={close} refresh={async () => {}} />);
-  expect(screen.getByText("akshajrawat/oppia")).toBeTruthy();
-  expect(screen.getByText("fix-translation-tests")).toBeTruthy();
-
-  expect((screen.getByRole("button", { name: "Confirm Push" }) as HTMLButtonElement).disabled).toBe(
-    true,
-  );
-
-  expect(rpc).not.toHaveBeenCalled();
-  expect((screen.getByLabelText("Local commit message") as HTMLTextAreaElement).value).toBe("");
-
-  fireEvent.change(screen.getByLabelText("Local commit message"), {
-    target: { value: "  Exact title  \n\nDetails\n" },
-  });
-
-  fireEvent.click(screen.getByRole("button", { name: "Commit Locally" }));
-
-  await waitFor(() =>
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Confirm Push",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(false),
-  );
-
-  expect(rpc.mock.calls.some(([method]) => method === "repair.publish")).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Confirm Push" }));
-  await waitFor(() => expect(close).toHaveBeenCalled());
-
-  expect(rpc).toHaveBeenCalledWith("repair.publish", {
-    id: session.id,
-    publication_id: plan.id,
-    confirmed: true,
-  });
-});
-
-it("makes local-only approval and commit explicit without preparing or confirming a remote push", async () => {
-  const rpc = install(() => ({}));
-  const close = vi.fn();
-
-  render(
-    <LocalCommitDialog
-      session={{
-        ...session,
-        identity: { ...session.identity, can_push: false },
-      }}
-      close={close}
-      refresh={async () => {}}
-    />,
-  );
-
-  expect(rpc).not.toHaveBeenCalled();
-
-  expect((screen.getByLabelText("Local-only commit message") as HTMLTextAreaElement).value).toBe(
-    "",
-  );
-
-  fireEvent.change(screen.getByLabelText("Local-only commit message"), {
-    target: { value: "  Local title  \n\nDetails\n" },
-  });
-
-  fireEvent.click(screen.getByRole("button", { name: "Confirm Local Commit" }));
-  await waitFor(() => expect(close).toHaveBeenCalled());
-
-  expect(rpc.mock.calls.map(([method]) => method)).toEqual([
-    "repair.approveLocal",
-    "repair.commit",
-    "repair.keepLocal",
-  ]);
-
-  expect(rpc).toHaveBeenCalledWith(
-    "repair.commit",
-    expect.objectContaining({
-      expected_hash: session.review_hash,
-      message: "  Local title  \n\nDetails\n",
-      confirmed: true,
-    }),
-  );
-});

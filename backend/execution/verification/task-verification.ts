@@ -77,7 +77,7 @@ export const taskVerification = (db: Database, id: string) => {
     ];
 
   const commands = db.all<VerificationCommand>(
-    `SELECT id,run_id,command,status,exit_code,stdout,stderr FROM test_runs WHERE task_id=? AND (run_id=? OR (run_id IS NULL AND started_at>=?) OR run_id IN (SELECT id FROM agent_runs WHERE task_id=? AND stage=5 AND purpose='Antigravity Final Review' AND started_at>=?)) ORDER BY started_at,rowid`,
+    `SELECT id,run_id,command,status,exit_code,stdout,stderr FROM test_runs WHERE task_id=? AND (run_id=? OR (run_id IS NULL AND started_at>=?) OR run_id IN (SELECT id FROM agent_runs WHERE task_id=? AND stage=5 AND purpose IN ('Review','Antigravity Final Review') AND started_at>=?)) ORDER BY started_at,rowid`,
     id,
     implementation?.id || "",
     implementation?.started_at || "9999",
@@ -89,7 +89,7 @@ export const taskVerification = (db: Database, id: string) => {
 
   const history = db
     .all<{ id: string; output: string | null; status: string }>(
-      "SELECT id,output,status FROM agent_runs WHERE task_id=? AND (stage=3 OR (stage=5 AND purpose='Antigravity Final Review')) AND id!=? ORDER BY started_at,rowid",
+      "SELECT id,output,status FROM agent_runs WHERE task_id=? AND (stage=3 OR (stage=5 AND purpose IN ('Review','Antigravity Final Review'))) AND id!=? ORDER BY started_at,rowid",
       id,
       implementation?.id || "",
     )
@@ -110,13 +110,5 @@ export const taskVerification = (db: Database, id: string) => {
       ),
     }));
 
-  return verificationSummary(
-    report,
-    commands,
-    task.stage >= 4
-      ? JSON.stringify(["git", "diff", "--check", task.base_commit_sha, "--"])
-      : undefined,
-    history,
-    task.verification_policy,
-  );
+  return verificationSummary(report, commands, undefined, history, task.verification_policy);
 };

@@ -119,7 +119,7 @@ it("shows a cancelled streamed draft and exact prompt with an explicit recovery 
   expect(recover).toHaveBeenCalledWith(run);
 });
 
-it("keeps compact review controls beside the composer without an automatic modal and preserves an independent draft on approval", async () => {
+it("keeps review controls in the sidebar and preserves an independent composer draft on approval", async () => {
   Object.defineProperty(HTMLElement.prototype, "scrollTo", {
     value: () => {},
     configurable: true,
@@ -159,7 +159,16 @@ it("keeps compact review controls beside the composer without an automatic modal
   expect(screen.getByRole("region", { name: "Pipeline review required" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
   expect(screen.queryByRole("dialog", { name: "Stage review required" })).toBeNull();
-  expect(screen.queryByRole("tab", { name: "Changes" })).toBeNull();
+  expect(screen.getByRole("tab", { name: "Changes" })).toBeTruthy();
+
+  expect(
+    screen
+      .getByRole("region", { name: "Pipeline review required" })
+      .closest(".secondary-workspace"),
+  ).toBeTruthy();
+
+  expect(screen.getByLabelText("Conversation").querySelector(".validation-turn")).toBeNull();
+  expect(screen.queryByText("Validation", { exact: true })).toBeNull();
   expect(screen.queryByRole("button", { name: "Split Changes beside chat" })).toBeNull();
   const draft = screen.getByLabelText("Task conversation") as HTMLTextAreaElement;
 
@@ -168,8 +177,8 @@ it("keeps compact review controls beside the composer without an automatic modal
   });
 
   fireEvent.click(screen.getByRole("button", { name: "View plan" }));
-  expect(screen.getByText("Antigravity original plan")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Approve → Codex refinement" }));
+  expect(screen.getByText("Original plan")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Approve → Plan refinement" }));
 
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("task.approve", {
@@ -296,6 +305,6 @@ it("retains the task request identity across transport retries and changes it af
 
 it("does not let a previous inspection failure mask a retry that is currently analyzing", () => {
   render(<PrState job={{ status: "analyzing", error: "previous failure" } as ScheduleJob} />);
-  expect(screen.getByText(/ANALYZING DISCUSSION/)).toBeTruthy();
-  expect(screen.queryByText(/INSPECTION FAILED/)).toBeNull();
+  expect(screen.getByText(/Checking discussion/)).toBeTruthy();
+  expect(screen.queryByText(/Check failed/)).toBeNull();
 });

@@ -3,43 +3,22 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { FinalizationService } from "../../backend/finalization/service";
-import { checked } from "../../backend/execution/runtime/process";
 import { defaultSettings, now } from "../../backend/domain";
 import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   prepareFixtureTask,
-} from "../helpers/fixtures";
+} from "./fixtures";
 
-export const finalizationFixture = async (
+export const reviewedTaskFixture = async (
   providers: Parameters<typeof createFixtureEngine>[1] = () => new FixtureProvider(),
 ) => {
-  const dir = await mkdtemp(join(tmpdir(), "vibestar-issue-git-"));
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-reviewed-task-"));
   const root = join(dir, "data");
   const engine = await createFixtureEngine(root, providers);
-  const { repo, upstream } = await fixtureRepository(engine, dir);
+  const { repo } = await fixtureRepository(engine, dir);
   const task = await prepareFixtureTask(engine, repo, randomUUID());
-  const fork = join(dir, "fork.git");
-  await checked("git", ["clone", "--bare", repo.path, fork], dir);
-  await checked("git", ["update-ref", "-d", `refs/heads/${task.branch_name}`], fork);
-
-  await checked(
-    "git",
-    ["remote", "add", "origin", "https://github.com/contributor/fixture.git"],
-    repo.path,
-  );
-
-  await checked(
-    "git",
-    ["remote", "set-url", "upstream", "https://github.com/fixture/fixture.git"],
-    repo.path,
-  );
-
-  repo.origin_url = "https://github.com/contributor/fixture.git";
-  repo.upstream_url = "https://github.com/fixture/fixture.git";
-  engine.db.saveRepository(repo);
   await writeFile(join(task.worktree_path, "source.txt"), "independently reviewed change\n");
   task.status = "ready_for_review";
   task.stage = 6;
@@ -100,49 +79,10 @@ export const finalizationFixture = async (
     now(),
   );
 
-  const identity = {
-    id: "fork-42",
-    full_name: "contributor/fixture",
-    permissions: { push: true },
-    fork: true,
-    parent: { full_name: "fixture/fixture" },
-    viewer: "contributor",
-  };
-
-  const transport = (url: string) => {
-    if (url !== repo.origin_url) throw new Error("Unexpected test transport");
-    return fork;
-  };
-
-  const service = new FinalizationService(engine, async () => identity, transport);
-
-  const preview = async (paths = ["source.txt"], replace = false) =>
-    service.preview({
-      id: task.id,
-      request_id: randomUUID(),
-      expected_hash: await engine.git.fingerprint(engine.db.task(task.id)),
-      paths,
-      replace_selected_staged: replace,
-    });
-
   const close = async () => {
-    await service.close();
     await engine.close();
     await rm(dir, { recursive: true, force: true });
   };
 
-  return {
-    dir,
-    root,
-    engine,
-    repo,
-    upstream,
-    fork,
-    task,
-    service,
-    identity,
-    transport,
-    preview,
-    close,
-  };
+  return { dir, root, engine, repo, task, close };
 };

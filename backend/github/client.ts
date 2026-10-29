@@ -1,6 +1,7 @@
 import { execute, capture } from "../execution/runtime/process";
 import { AdeError } from "../domain";
 import type { GitHubRepository, GitHubStatus } from "./contracts";
+import { authoredPullRequests, knownPullRequests } from "./pull-requests";
 
 export class GitHubClient {
   constructor(private readonly cwd: string) {}
@@ -32,9 +33,12 @@ export class GitHubClient {
     signal?: AbortSignal,
     maxPages = 1000,
     collection?: string,
+    onPage?: (page: number, loaded: number) => void,
   ) => {
     const rows: T[] = [];
     for (let page = 1; page <= maxPages; page++) {
+      onPage?.(page, rows.length);
+
       const response = await this.api<unknown>(
         `${endpoint}${endpoint.includes("?") ? "&" : "?"}per_page=100&page=${page}`,
         signal,
@@ -48,6 +52,7 @@ export class GitHubClient {
       if (!Array.isArray(part))
         throw new AdeError("github", "Unexpected repository pagination response");
       rows.push(...part);
+      onPage?.(page, rows.length);
       if (part.length < 100) return rows;
     }
 
@@ -110,70 +115,29 @@ export class GitHubClient {
     }
   };
 
-  authored = async (username: string, signal?: AbortSignal) => {
-    // Search upstream PRs across the account, including PRs whose heads are forks.
-    // GitHub search caps any single query at 1,000; partition by creation time.
-    let requests = 0;
+  graphql = async (
+    query: string,
+    variables: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<unknown> =>
+    JSON.parse(
+      await this.gh(
+        [
+          "api",
+          "--hostname",
+          "github.com",
+          "graphql",
+          "-f",
+          `query=${query}`,
+          ...Object.entries(variables).flatMap(([key, value]) => ["-f", `${key}=${value}`]),
+        ],
+        signal,
+      ),
+    );
 
-    const read = async <T>(endpoint: string) => {
-      if (++requests > 200)
-        throw new AdeError(
-          "github",
-          "Authored PR search reached its 200-request budget. Saved results remain; this refresh is incomplete.",
-        );
-      return this.api<T>(endpoint, signal);
-    };
+  authored = (username: string, signal?: AbortSignal) =>
+    authoredPullRequests(username, (query, variables) => this.graphql(query, variables, signal));
 
-    const search = async (
-      from: number,
-      until: number,
-    ): Promise<{ html_url: string; title: string; number: number; updated_at: string }[]> => {
-      const q = `is:pr author:${username} created:${new Date(from).toISOString()}..${new Date(until).toISOString()}`;
-      const endpoint = `search/issues?q=${encodeURIComponent(q)}&per_page=100`;
-
-      const first = await read<{
-        total_count: number;
-        incomplete_results: boolean;
-        items: {
-          html_url: string;
-          title: string;
-          number: number;
-          updated_at: string;
-        }[];
-      }>(`${endpoint}&page=1`);
-
-      if (first.incomplete_results)
-        throw new AdeError("github", "GitHub returned incomplete PR results; retry sync");
-      if (first.total_count > 1000) {
-        const mid = Math.floor((from + until) / 2000) * 1000;
-        if (mid <= from)
-          throw new AdeError(
-            "github",
-            "More than 1,000 PRs in one second; sync cannot safely enumerate them",
-          );
-        return [...(await search(from, mid)), ...(await search(mid + 1000, until))];
-      }
-
-      const rows = first.items;
-      for (let page = 2; page <= Math.ceil(first.total_count / 100); page++) {
-        const part = await read<typeof first>(`${endpoint}&page=${page}`);
-        if (part.incomplete_results)
-          throw new AdeError("github", "GitHub returned incomplete PR results; retry sync");
-        rows.push(...part.items);
-      }
-
-      if (new Set(rows.map((row) => row.html_url)).size !== first.total_count)
-        throw new AdeError(
-          "github",
-          "GitHub PR results changed or were truncated during pagination; retry sync. Saved results were preserved.",
-        );
-      return rows;
-    };
-
-    return [
-      ...new Map(
-        (await search(Date.UTC(2008, 0, 1), Date.now())).map((p) => [p.html_url, p]),
-      ).values(),
-    ];
-  };
+  pullRequests = (urls: string[], signal?: AbortSignal) =>
+    knownPullRequests(urls, (query, variables) => this.graphql(query, variables, signal));
 }

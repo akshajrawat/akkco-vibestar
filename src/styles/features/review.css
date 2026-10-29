@@ -66,8 +66,8 @@
 }
 
 .pr-state {
-  min-width: 140px;
-  justify-content: center;
+  min-width: 0;
+  font-weight: 500;
 }
 
 .pr-inbox-row {
@@ -146,7 +146,7 @@
 
 .final-review-panel {
   width: 100%;
-  padding: 28px clamp(20px, 3vw, 48px);
+  padding: 20px;
   max-width: 1120px;
   margin-inline: auto;
 }
@@ -266,8 +266,7 @@
   border-bottom: 1px solid var(--border);
 }
 
-.repair-context code,
-.publication-dialog code {
+.repair-context code {
   overflow-wrap: anywhere;
 }
 
@@ -327,21 +326,18 @@
   margin-right: 8px;
 }
 
-.solve-review-dialog,
-.publication-dialog {
+.solve-review-dialog {
   width: min(760px, 92vw);
   max-height: 90vh;
   overflow-y: auto;
 }
 
-.solve-review-dialog label,
-.publication-dialog label {
+.solve-review-dialog label {
   display: block;
 }
 
 .solve-review-dialog textarea,
-.solve-review-dialog .select-trigger,
-.publication-dialog input {
+.solve-review-dialog .select-trigger {
   width: 100%;
   margin: 7px 0;
 }

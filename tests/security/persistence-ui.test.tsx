@@ -113,6 +113,23 @@ it("isolates schema-invalid catalog, index, task and PR records before rendering
       }),
     );
 
+    db.run(
+      "INSERT INTO github_pull_requests VALUES(?,?,?)",
+      job.url,
+      JSON.stringify({
+        url: job.url,
+        repository: "fixture/project",
+        number: 1,
+        title: job.title,
+        state: "OPEN",
+        head_branch: "fixture",
+        head_repository: null,
+        updated_at: "2026-10-23T12:00:00Z",
+        task_id: null,
+      }),
+      "2026-10-23T12:00:00Z",
+    );
+
     const snapshot = (await rpc.call("snapshot", {})) as Snapshot;
     expect(snapshot.tasks.map((task) => task.id)).toEqual(["healthy"]);
     expect(snapshot.scheduled?.map((record) => record.id)).toEqual([job.id]);

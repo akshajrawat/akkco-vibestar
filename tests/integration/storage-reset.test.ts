@@ -8,7 +8,7 @@ import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../h
 import { checked } from "../../backend/execution/runtime/process";
 import { exists } from "../../backend/workspace/paths";
 import { defaultSettings } from "../../backend/domain";
-import { finalizationFixture } from "../finalization/fixtures";
+import { reviewedTaskFixture } from "../helpers/reviewed-task";
 
 it("previews exact removals, backs up valid SQLite and metadata, preserves imported sources/settings/auth and reopens without stale tasks or inference", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-reset-owned-"));
@@ -162,13 +162,14 @@ it("refuses active processes and stale reset previews before any backup or delet
 });
 
 it("refuses an uncertain Git publication and preserves its worktree and journal", async () => {
-  const fixture = await finalizationFixture();
+  const fixture = await reviewedTaskFixture();
   try {
-    const record = await fixture.preview();
+    const record = { id: "legacy-uncertain" };
 
     fixture.engine.db.run(
-      "UPDATE git_finalizations SET status='uncertain',data=json_set(data,'$.status','uncertain') WHERE id=?",
+      "INSERT INTO git_finalizations VALUES(?,?,'uncertain','{}','before','before')",
       record.id,
+      fixture.task.id,
     );
 
     const storage = new StorageService(fixture.engine);

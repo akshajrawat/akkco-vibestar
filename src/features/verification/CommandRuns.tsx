@@ -93,8 +93,8 @@ export const CommandRuns = ({
           onChange={setStage}
           options={[
             { value: "all", label: "All stages" },
-            { value: "1", label: "Antigravity planning" },
-            { value: "2", label: "Codex refinement" },
+            { value: "1", label: "Plan" },
+            { value: "2", label: "Plan refinement" },
             { value: "3", label: "Implementation" },
             { value: "5", label: "Final review" },
             { value: "manual", label: "Manual / validation" },

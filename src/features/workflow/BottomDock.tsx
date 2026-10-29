@@ -12,7 +12,7 @@ export const BottomDock = ({
   problems,
 }: {
   id: string;
-  terminal: React.ReactNode;
+  terminal: React.ReactNode | ((active: boolean, focusRequest: number) => React.ReactNode);
   problems: React.ReactNode;
 }) => {
   const view = useTaskView(id);
@@ -81,7 +81,10 @@ export const BottomDock = ({
         </div>
 
         <div className="dock-content" hidden={view.dockTab !== "Terminal"}>
-          {attached && terminal}
+          {attached &&
+            (typeof terminal === "function"
+              ? terminal(view.terminalDock && view.dockTab === "Terminal", view.terminalFocus)
+              : terminal)}
         </div>
         {view.dockTab === "Problems" && <div className="dock-content">{problems}</div>}
       </section>

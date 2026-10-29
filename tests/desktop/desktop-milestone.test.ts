@@ -207,7 +207,6 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.screenshot({ path: join(evidence, "electron-usage.png") });
       await page.locator(".tree-task").filter({ hasText: "Keyboard verification" }).click();
       await page.getByLabel("Toggle utility dock").click();
-      await page.getByRole("button", { name: "Start task terminal" }).click();
       await page.getByRole("button", { name: "Close shell" }).waitFor();
       const composer = page.getByLabel("Task conversation");
       let navigations = 0;

@@ -1,10 +1,11 @@
 import { it, expect } from "vitest";
 
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { TaskTerminals } from "../../backend/execution/terminals/task-terminals";
+import { checked } from "../../backend/execution/runtime/process";
 import { parseIssue } from "../../backend/domain";
 import {
   createFixtureEngine,
@@ -17,7 +18,13 @@ import {
 it("runs a real task-scoped PTY, retains the session and excludes simultaneous agents in that worktree", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-task-terminal-"));
   const engine = await createFixtureEngine(join(dir, "ade"), () => new FixtureProvider());
-  const terminals = new TaskTerminals(engine);
+
+  const terminals = new TaskTerminals(engine, undefined, {
+    PATH: process.env.PATH,
+    HOME: dir,
+    SHELL: "/bin/bash",
+  });
+
   try {
     const { repo } = await fixtureRepository(engine, dir);
 
@@ -31,7 +38,24 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
 
     await waitForTask(engine, a.id, (s) => s === "ready_for_review" || s === "failed");
     const task = engine.db.task(a.id);
-    const session = await terminals.open(a.id, 100, 25);
+
+    const [session, duplicate] = await Promise.all([
+      terminals.open(a.id, 100, 25),
+      terminals.open(a.id, 100, 25),
+    ]);
+
+    expect(duplicate.session_id).toBe(session.session_id);
+
+    expect(session).toMatchObject({
+      cwd: task.worktree_path,
+      shell: "bash",
+      branch: task.branch_name,
+    });
+
+    expect(await checked("git", ["remote", "get-url", "origin"], task.worktree_path)).toBe(
+      repo.upstream_url,
+    );
+
     expect(engine.isActive(a.id)).toBe(true);
 
     expect(engine.cleanupBlockers(a.id)).toMatchObject([
@@ -114,7 +138,13 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
 it("saves and replays only sanitized split-token output with continuous emitted sequence numbers", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-terminal-redaction-"));
   const engine = await createFixtureEngine(join(dir, "data"));
-  const terminals = new TaskTerminals(engine);
+
+  const terminals = new TaskTerminals(engine, undefined, {
+    PATH: process.env.PATH,
+    HOME: dir,
+    SHELL: "/bin/bash",
+  });
+
   try {
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, "redacted-terminal");
@@ -167,3 +197,113 @@ it("saves and replays only sanitized split-token output with continuous emitted 
     await rm(dir, { recursive: true, force: true });
   }
 }, 15000);
+
+it("commits with user Git configuration and pushes to a local remote from the manual terminal", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-manual-git-"));
+  const engine = await createFixtureEngine(join(dir, "data"));
+
+  const terminals = new TaskTerminals(engine, undefined, {
+    PATH: process.env.PATH,
+    HOME: dir,
+    SHELL: "/bin/bash",
+  });
+
+  try {
+    await writeFile(
+      join(dir, ".gitconfig"),
+      "[user]\n  name = Terminal User\n  email = terminal@example.invalid\n",
+    );
+
+    const { repo } = await fixtureRepository(engine, dir);
+    const task = await prepareFixtureTask(engine, repo, "manual-git");
+    const remote = join(dir, "remote.git");
+    await checked("git", ["init", "--bare", remote], dir);
+    repo.origin_url = remote;
+    engine.db.saveRepository(repo);
+    const sourceHead = await checked("git", ["rev-parse", "HEAD"], repo.path);
+    await writeFile(join(task.worktree_path, "manual.txt"), "Manual contribution\n");
+    const session = await terminals.open(task.id, 160, 25);
+
+    const done = new Promise<void>((resolve, reject) => {
+      let output = "";
+
+      const timer = setTimeout(() => {
+        engine.off("event", read);
+        reject(new Error("Manual Git PTY deadline: " + output));
+      }, 10000);
+
+      const read = (event: { event: string; task_id?: string; text?: string }) => {
+        if (event.event !== "terminal.output" || event.task_id !== task.id) return;
+        output += event.text || "";
+        if (output.includes("MANUAL_GIT_COMPLETE")) {
+          clearTimeout(timer);
+          engine.off("event", read);
+          resolve();
+        }
+      };
+
+      engine.on("event", read);
+    });
+
+    terminals.input(
+      task.id,
+      session.session_id,
+      "git add manual.txt && git commit -m 'Manual terminal commit' && git push origin HEAD:refs/heads/contribution && printf 'MANUAL_'; printf 'GIT_COMPLETE\\n'\r",
+    );
+
+    await done;
+    const head = await checked("git", ["rev-parse", "HEAD"], task.worktree_path);
+    expect(head).not.toBe(sourceHead);
+    expect(await checked("git", ["rev-parse", "refs/heads/contribution"], remote)).toBe(head);
+
+    expect(
+      await checked("git", ["show", "-s", "--format=%an <%ae>", "HEAD"], task.worktree_path),
+    ).toBe("Terminal User <terminal@example.invalid>");
+
+    expect(await checked("git", ["rev-parse", "HEAD"], repo.path)).toBe(sourceHead);
+    expect(engine.db.all("SELECT id FROM agent_runs")).toEqual([]);
+    await terminals.close(task.id);
+  } finally {
+    await terminals.dispose();
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 30000);
+
+it.each(["imported", "managed-with-origin"])(
+  "preserves existing Git configuration for %s checkouts",
+  async (mode) => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-terminal-origin-"));
+    const engine = await createFixtureEngine(join(dir, "data"));
+
+    const terminals = new TaskTerminals(engine, undefined, {
+      PATH: process.env.PATH,
+      HOME: dir,
+      SHELL: "/bin/bash",
+    });
+
+    try {
+      const { repo } = await fixtureRepository(engine, dir);
+      const task = await prepareFixtureTask(engine, repo, "origin-preservation");
+      if (mode === "imported") {
+        repo.source = "imported";
+        engine.db.saveRepository(repo);
+      } else {
+        await checked(
+          "git",
+          ["remote", "add", "origin", join(dir, "custom-destination.git")],
+          repo.path,
+        );
+      }
+
+      const before = await readFile(join(repo.path, ".git", "config"), "utf8");
+      await terminals.open(task.id, 100, 25);
+      expect(await readFile(join(repo.path, ".git", "config"), "utf8")).toBe(before);
+      await terminals.close(task.id);
+    } finally {
+      await terminals.dispose();
+      await engine.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);

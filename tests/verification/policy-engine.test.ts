@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { Rpc } from "../../backend/rpc";
 import { taskVerification } from "../../backend/execution/verification/task-verification";
 import { Database } from "../../backend/storage/database";
-import { finalizationFixture } from "../finalization/fixtures";
+import { reviewedTaskFixture } from "../helpers/reviewed-task";
 
 it("applies an explicit policy and rechecks an accepted review without losing its approval, starting a model or bypassing required tests", async () => {
-  const fixture = await finalizationFixture(() => {
+  const fixture = await reviewedTaskFixture(() => {
     throw new Error("Policy recheck must not invoke a model");
   });
 
-  const { engine, task, service } = fixture;
+  const { engine, task } = fixture;
   try {
     const artifact = engine.db.all<{ id: string; content: string }>(
       "SELECT id,content FROM task_artifacts WHERE task_id=? AND stage=3",
@@ -89,7 +89,7 @@ it("applies an explicit policy and rechecks an accepted review without losing it
     expect(engine.db.detail(task.id).runs).toEqual(original.runs);
     expect(engine.db.detail(task.id).artifacts).toEqual(original.artifacts);
     expect(await engine.git.fingerprint(engine.db.task(task.id))).toBe(fingerprint);
-    await expect(service.inspect(task.id)).resolves.toHaveProperty("files");
+    await expect(engine.git.diff(task)).resolves.toHaveProperty("files");
     const reopened = await Database.open(join(engine.root, "state", "vibestar.sqlite"));
     try {
       expect(reopened.task(task.id).verification_policy).toBe("repository");
@@ -104,7 +104,7 @@ it("applies an explicit policy and rechecks an accepted review without losing it
     });
 
     expect(engine.db.task(task.id).status).toBe("reviewed_with_gaps");
-    await expect(fixture.preview()).rejects.toThrow();
+    expect(taskVerification(engine.db, task.id).canReview).toBe(false);
 
     await rpc.call("task.verification.policy", {
       id: task.id,
@@ -150,7 +150,7 @@ it("applies an explicit policy and rechecks an accepted review without losing it
     await engine.recheckEvidence(task.id);
     expect(taskVerification(engine.db, task.id).outcome).toBe("failed");
     expect(engine.db.task(task.id).final_review_verdict).toBe("changes_requested");
-    await expect(fixture.preview()).rejects.toThrow();
+    expect(taskVerification(engine.db, task.id).canReview).toBe(false);
     const path = join(task.worktree_path, "source.txt");
     await writeFile(path, (await readFile(path, "utf8")) + "Changed after review\n");
 

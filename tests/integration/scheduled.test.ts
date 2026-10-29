@@ -121,6 +121,18 @@ it("legacy Check now only reads GitHub; Analyze explicitly extracts separate obs
 
   expect(session.report?.actions.every((a) => a.codeStatus === "unverified")).toBe(true);
   expect(session.snapshot?.discussion?.[0].body).toBe(reviewBody);
+  const context = JSON.parse(infer!.mock.calls[0][0].prompt.split("\nPR_REVIEW_CONTEXT_JSON\n")[1]);
+
+  expect(context.sourceSegments[0]).toMatchObject({
+    id: "review-1",
+    segmentId: "review-1:0",
+    body: reviewBody,
+  });
+
+  expect(context.snapshot.files).toEqual(prSnapshot.files);
+  expect(context.snapshot.checks).toEqual(prSnapshot.checks);
+  expect(context.snapshot.identity).toEqual(prSnapshot.identity);
+  expect(infer!.mock.calls[0][0].prompt).toContain("without filesystem reads");
   expect(engine.db.tasks()).toEqual([]);
   expect(engine.db.repositories()).toEqual([]);
 
@@ -321,38 +333,52 @@ it.each(["quote", "reply", "commit", "coverage"])(
   },
 );
 
-it("preserves full long comments in bounded packets and exposes missing segment/retrieval coverage", async () => {
-  const { scheduler, infer, inspect, job, engine } = await setup();
-  const snapshot = structuredClone(prSnapshot);
-  snapshot.discussion![0].body += "\nLong context 🧪".repeat(3000);
+it.each([3000, 12000])(
+  "preserves full long comments (%i repeats) and exposes missing coverage",
+  async (repeats) => {
+    const { scheduler, infer, inspect, job, engine } = await setup();
+    const snapshot = structuredClone(prSnapshot);
+    snapshot.discussion![0].body += "\nLong context 🧪".repeat(repeats);
 
-  snapshot.coverage = {
-    complete: false,
-    missing: ["checks"],
-    warnings: ["Check pagination incomplete."],
-  };
+    snapshot.coverage = {
+      complete: false,
+      missing: ["checks"],
+      warnings: ["Check pagination incomplete."],
+    };
 
-  const output = analysisResult(snapshot);
-  output.coverage[0].segmentIds = ["review-1:0"];
-  inspect.mockResolvedValue(snapshot);
-  infer!.mockResolvedValue(output);
-  const { analysis_id } = scheduler.analyze(job.id);
-  const session = await finished(scheduler, job.id);
-  expect(session.status).toBe("partial");
-  expect(session.report?.warnings).toContain("Check pagination incomplete.");
-  const dir = join(engine.root, "cache", "utility", job.id, `analysis-${analysis_id}`);
-  const manifest = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
+    const output = analysisResult(snapshot);
+    output.coverage[0].segmentIds = ["review-1:0"];
+    inspect.mockResolvedValue(snapshot);
+    infer!.mockResolvedValue(output);
+    const { analysis_id } = scheduler.analyze(job.id);
+    const session = await finished(scheduler, job.id);
+    expect(session.status).toBe("partial");
+    expect(session.report?.warnings).toContain("Check pagination incomplete.");
+    const dir = join(engine.root, "cache", "utility", job.id, `analysis-${analysis_id}`);
+    const manifest = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
 
-  const bodies = await Promise.all(
-    manifest.sources[0].segments.map(
-      async (segment: { path: string }) =>
-        JSON.parse(await readFile(join(dir, segment.path), "utf8")).body,
-    ),
-  );
+    const bodies = await Promise.all(
+      manifest.sources[0].segments.map(
+        async (segment: { path: string }) =>
+          JSON.parse(await readFile(join(dir, segment.path), "utf8")).body,
+      ),
+    );
 
-  expect(bodies.join("")).toBe(snapshot.discussion![0].body);
-  expect(Buffer.byteLength(infer!.mock.calls[0][0].prompt)).toBeLessThan(64000);
-});
+    expect(bodies.join("")).toBe(snapshot.discussion![0].body);
+    const prompt = infer!.mock.calls[0][0].prompt;
+    expect(Buffer.byteLength(prompt)).toBeLessThan(100000);
+    if (repeats === 12000) {
+      expect(prompt).not.toContain("PR_REVIEW_CONTEXT_JSON");
+      expect(prompt).toContain(`analysis-${analysis_id}/manifest.json`);
+    } else {
+      const inline = JSON.parse(prompt.split("\nPR_REVIEW_CONTEXT_JSON\n")[1]);
+
+      expect(inline.sourceSegments.map((source: { body: string }) => source.body).join("")).toBe(
+        snapshot.discussion![0].body,
+      );
+    }
+  },
+);
 
 it("cancels an explicit semantic operation without retry and preserves the last complete report", async () => {
   const { scheduler, infer, inspect, job } = await setup();

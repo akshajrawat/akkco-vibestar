@@ -60,12 +60,7 @@ it("reconciles an actual core restart during preparation without replaying a mer
       side === "head" ? fork : upstream,
     );
 
-    service = new RepairService(
-      engine,
-      async () => session.identity,
-      recovered,
-      () => fork,
-    );
+    service = new RepairService(engine, async () => session.identity, recovered);
 
     await service.detail(session.id);
     expect(service.store.get(session.id).status).toBe("interrupted");
@@ -97,12 +92,7 @@ it("protects source/repair ownership during cleanup and retains reviewed state o
 
     await workspaces.prepare(session, repo, checkpoint, new AbortController().signal);
 
-    service = new RepairService(
-      engine,
-      async () => session.identity,
-      workspaces,
-      () => fork,
-    );
+    service = new RepairService(engine, async () => session.identity, workspaces);
 
     const storage = new StorageService(engine);
     await expect(storage.removeRepository(repo.id)).rejects.toThrow("PR repair workspaces");
@@ -208,7 +198,6 @@ it("migrates a managed repair root while preserving ownership, checkpoints and s
       new RepairWorkspaces(engine.root, engine.git, (_, side) =>
         side === "head" ? fork : upstream,
       ),
-      () => fork,
     );
 
     const migrated = service.store.get(session.id);
@@ -245,17 +234,16 @@ it("runs real repair PTYs with exclusive leases and prevents concurrent agent/Gi
 
     await workspaces.prepare(session, repo, checkpoint, new AbortController().signal);
 
-    service = new RepairService(
-      engine,
-      async () => session.identity,
-      workspaces,
-      () => fork,
-    );
+    service = new RepairService(engine, async () => session.identity, workspaces);
 
-    terminals = new TaskTerminals(engine, {
-      assignment: service.assignment,
-      acquire: service.acquireTerminal,
-    });
+    terminals = new TaskTerminals(
+      engine,
+      {
+        assignment: service.assignment,
+        acquire: service.acquireTerminal,
+      },
+      { PATH: process.env.PATH, HOME: dir, SHELL: "/bin/bash" },
+    );
 
     const terminal = await terminals.open(session.id, 100, 20);
     expect(service.isActive(session.id)).toBe(true);

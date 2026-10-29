@@ -161,10 +161,10 @@ it("keeps the provider sequence after explicitly reviewed planning feedback when
     expect(engine.db.task(task.id).status).toBe("ready_for_review");
 
     expect(providers).toEqual([
-      { stage: 1, name: undefined },
-      { stage: 1, name: undefined },
-      { stage: 2, name: undefined },
-      { stage: 3, name: undefined },
+      { stage: 1, name: "antigravity" },
+      { stage: 1, name: "antigravity" },
+      { stage: 2, name: "codex" },
+      { stage: 3, name: "codex" },
       { stage: 5, name: "antigravity" },
     ]);
 

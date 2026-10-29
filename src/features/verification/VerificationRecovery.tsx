@@ -76,7 +76,7 @@ const RecoveryDialog = ({
       : kind === "review"
         ? "Review with verification gaps"
         : kind === "fix"
-          ? "Fix with Codex"
+          ? "Fix verification"
           : checks.length
             ? "Run missing checks"
             : "Prepare missing checks";
@@ -181,12 +181,12 @@ const RecoveryDialog = ({
                 </p>
 
                 <Button disabled={busy} onClick={prepare}>
-                  Prepare runnable checks with Codex
+                  Prepare runnable checks
                 </Button>
 
                 <p className="subtle">
-                  Review and authorize one Codex iteration to create missing test commands. Browser
-                  checks remain unverified until they actually run.
+                  Review and authorize one implementation iteration to create missing test commands.
+                  Browser checks remain unverified until they actually run.
                 </p>
 
                 <ul>
@@ -212,12 +212,13 @@ const RecoveryDialog = ({
         ) : kind === "fix" ? (
           <>
             <p>
-              Authorize one Codex iteration in this task's original worktree. Codex receives the
-              exact command failures, outstanding checks and final review findings.
+              Authorize one iteration using this task's saved implementation provider and model. The
+              agent receives the exact command failures, outstanding checks and final review
+              findings.
             </p>
 
             <p>
-              When checks have no runnable command, Codex prepares repeatable test scripts and
+              When checks have no runnable command, the agent prepares repeatable test scripts and
               records their exact commands and prerequisites.
             </p>
 
@@ -232,7 +233,7 @@ const RecoveryDialog = ({
             </ul>
 
             <p>
-              Codex must investigate prerequisites before retrying an unsuccessful installation.
+              The agent must investigate prerequisites before retrying an unsuccessful installation.
               Further agent iterations require another explicit request.
             </p>
 
@@ -247,14 +248,14 @@ const RecoveryDialog = ({
                 )
               }
             >
-              Authorize one Codex fix
+              Authorize one fix
             </Button>
           </>
         ) : (
           <>
             <p>
               Inspect the implementation and outstanding checks before authorizing independent
-              Antigravity review. Required unexecuted checks remain unverified.
+              independent review. Required unexecuted checks remain unverified.
             </p>
 
             {!preview ? (
@@ -315,8 +316,8 @@ const RecoveryDialog = ({
                 </label>
 
                 <p className="subtle">
-                  Code approval with gaps keeps changes locally. Git Finalization remains
-                  unavailable until required checks pass.
+                  Code approval with gaps keeps changes locally. Complete the required checks to
+                  finish verification.
                 </p>
 
                 <Button
@@ -400,7 +401,7 @@ export const VerificationRecovery = ({
     },
     {
       id: "fix",
-      label: "Fix with Codex",
+      label: "Fix verification",
       available: true,
       run: () => setKind("fix"),
     },

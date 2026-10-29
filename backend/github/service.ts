@@ -3,12 +3,11 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { redact } from "../execution/runtime/process";
 import { z } from "zod";
-import { AdeError, now, remoteIdentity } from "../domain";
+import { AdeError, now } from "../domain";
 import type { Engine } from "../execution/engine";
 import type { Scheduler } from "../scheduled/scheduler";
 import { parsePullRequest } from "../scheduled/contracts";
 import { GitHubClient } from "./client";
-import { githubTransport } from "../workspace/git-command";
 import {
   GitHubRepositorySchema,
   GitHubPullRequestSchema,
@@ -174,15 +173,13 @@ export class GitHubService {
 
   private controller = new AbortController();
 
-  private running: Promise<unknown> | undefined;
+  private running: Promise<ReturnType<GitHubService["snapshot"]>> | undefined;
 
   private status: GitHubStatus | null = null;
 
   private lastSync: string | null = null;
 
-  private detailCursor = 0;
-
-  private knownCursor = 0;
+  private syncingCatalog = false;
 
   private error: string | null = null;
 
@@ -223,8 +220,6 @@ export class GitHubService {
 
     this.lastSync = metadata?.last_sync || null;
     this.error = metadata?.error || null;
-    this.detailCursor = metadata?.detail_cursor || 0;
-    this.knownCursor = metadata?.known_cursor || 0;
   }
 
   catalog = () =>
@@ -338,75 +333,6 @@ export class GitHubService {
     };
   };
 
-  configureDestination = async (input: unknown) => {
-    const request = z
-      .object({
-        id: z.string().uuid(),
-        repository: z.string().trim().min(1).max(2000),
-        confirmed: z.literal(true),
-      })
-      .strict()
-      .parse(input);
-
-    this.engine.assertAvailable();
-    const repo = this.engine.db.repository(request.id);
-    if (repo.source === "imported")
-      throw new AdeError(
-        "ownership",
-        "Choose verified remotes from the local connection dialog. Vibestar does not rewrite user-owned checkout remotes.",
-      );
-
-    const url = githubTransport(
-      request.repository.includes(":")
-        ? request.repository
-        : `https://github.com/${request.repository}`,
-    );
-
-    const identity = remoteIdentity(url);
-    const name = `${identity.owner}/${identity.name}`;
-    const upstream = `${repo.owner}/${repo.name}`;
-    const signal = this.controller.signal;
-    const source = GitHubRepositorySchema.parse(await this.client.repository(upstream, signal));
-
-    const target =
-      name.toLowerCase() === upstream.toLowerCase()
-        ? source
-        : GitHubRepositorySchema.parse(await this.client.repository(name, signal));
-
-    if (
-      source.id <= 0 ||
-      target.id <= 0 ||
-      source.full_name.toLowerCase() !== upstream.toLowerCase() ||
-      target.full_name.toLowerCase() !== name.toLowerCase()
-    )
-      throw new AdeError(
-        "github_identity",
-        "The retrieved repository identity does not match this destination.",
-      );
-    if (!target.permissions?.push)
-      throw new AdeError(
-        "permission",
-        "The connected GitHub account cannot push to this repository.",
-      );
-    if (
-      target.id !== source.id &&
-      (!target.fork ||
-        target.parent?.id !== source.id ||
-        target.parent.full_name.toLowerCase() !== upstream.toLowerCase())
-    )
-      throw new AdeError(
-        "destination",
-        "Choose the writable source repository or a verified contribution fork of it.",
-      );
-
-    signal.throwIfAborted();
-    return this.engine.configureRepository(repo.id, {
-      upstream_url: repo.upstream_url,
-      origin_url: url,
-      base_branch: repo.base_branch,
-    });
-  };
-
   useLocally = async (
     name: string,
     deferred = false,
@@ -457,8 +383,15 @@ export class GitHubService {
     );
   };
 
-  sync = () => {
-    if (this.running) return this.running;
+  refreshPullRequests = () => this.sync(false);
+
+  sync = async (includeCatalog = true): Promise<ReturnType<GitHubService["snapshot"]>> => {
+    if (this.running) {
+      const catalogIncluded = this.syncingCatalog;
+      const result = await this.running;
+      return includeCatalog && !catalogIncluded ? this.sync(true) : result;
+    }
+
     if (this.closed || this.stopping) return Promise.resolve(this.snapshot());
 
     const release = this.engine.trackActivity(
@@ -471,7 +404,9 @@ export class GitHubService {
       this.stopSync,
     );
 
-    this.running = this.performSync().finally(() => {
+    this.syncingCatalog = includeCatalog;
+
+    this.running = this.performSync(includeCatalog).finally(() => {
       this.running = undefined;
       release();
     });
@@ -490,123 +425,38 @@ export class GitHubService {
     }
   };
 
-  private performSync = async () => {
+  private performSync = async (includeCatalog: boolean) => {
+    const signal = AbortSignal.any([
+      this.controller.signal,
+      AbortSignal.timeout(includeCatalog ? 120000 : 30000),
+    ]);
+
     try {
       this.phase = "Checking GitHub connection";
       this.engine.changed();
-      this.status = await this.client.detect(this.controller.signal);
-      this.engine.changed();
+      this.status = await this.client.detect(signal);
+      signal.throwIfAborted();
       if (!this.status.connected || !this.status.username)
         throw new AdeError(
           "github_auth",
           this.status.error || "Connect GitHub through Providers, then retry Refresh PR List.",
         );
-      this.phase = "Retrieving repository catalog";
-      this.engine.changed();
-
-      const repos = await this.client.pages<GitHubRepository>(
-        "user/repos?affiliation=owner,collaborator,organization_member&sort=pushed",
-        this.controller.signal,
-      );
-
-      this.phase = "Discovering authored pull requests";
-      this.engine.changed();
-      const found = await this.client.authored(this.status.username, this.controller.signal);
-      const urls = new Set(found.map((p) => p.html_url));
-      const savedPRs = this.prs();
-
-      const knownMissing = new Set(
-        [...savedPRs.map((pr) => pr.url), ...this.scheduler.jobs().map((job) => job.url)].filter(
-          (url) => !urls.has(url),
-        ),
-      );
-
-      const detailBudget = 500 - Math.min(100, knownMissing.size);
-      const cursor = this.detailCursor % Math.max(1, found.length);
-
-      const sorted = [...found].sort(
-        (a, b) => b.updated_at.localeCompare(a.updated_at) || a.html_url.localeCompare(b.html_url),
-      );
-
-      const bounded = sorted.slice(cursor, cursor + detailBudget);
-      let partial =
-        found.length > bounded.length
-          ? `Partial refresh: inspected ${bounded.length} of ${found.length} authored PRs. Refresh again to inspect the next saved page; previous results remain.`
-          : "";
-      const updates: GitHubPullRequest[] = [];
-      for (const pr of bounded) {
-        this.phase = `Retrieving pull request details · ${updates.length + 1} of ${found.length}`;
+      let repos: GitHubRepository[] | undefined;
+      if (includeCatalog) {
+        this.phase = "Retrieving repository catalog";
         this.engine.changed();
-        const ref = parsePullRequest(pr.html_url);
 
-        const info = await this.client
-          .api<{
-            head: {
-              ref: string;
-              sha?: string;
-              repo: { full_name: string } | null;
-            };
-            state: string;
-            merged: boolean;
-            draft?: boolean;
-            title?: string;
-            updated_at?: string;
-          }>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`, this.controller.signal)
-          .catch((error) => {
-            if (!this.controller.signal.aborted)
-              this.recordInaccessible(
-                savedPRs.find((old) => old.url === pr.html_url) || {
-                  url: pr.html_url,
-                  repository: `${ref.owner}/${ref.repo}`,
-                  number: pr.number,
-                  title: pr.title,
-                  state: "UNKNOWN",
-                  head_branch: "",
-                  head_repository: null,
-                  updated_at: pr.updated_at,
-                  task_id: null,
-                },
-                error,
-              );
-            throw error;
-          });
-
-        const repository = `${ref.owner}/${ref.repo}`;
-
-        // Both upstream identity and fork + head branch must agree, uniquely.
-        const matches = this.engine.db.tasks().filter((t) => {
-          const repo = this.engine.db.repository(t.repo_id);
-          return (
-            `${repo.owner}/${repo.name}`.toLowerCase() === repository.toLowerCase() &&
-            t.branch_name === info.head.ref &&
-            (repo.origin_url || repo.upstream_url)
-              .replace(/^git@github.com:/, "https://github.com/")
-              .replace(/\.git$/, "")
-              .toLowerCase() === `https://github.com/${info.head.repo?.full_name}`.toLowerCase()
-          );
-        });
-
-        const value: GitHubPullRequest = {
-          url: pr.html_url,
-          repository,
-          number: pr.number,
-          title: info.title || pr.title,
-          state: info.merged ? "MERGED" : info.state === "closed" ? "CLOSED" : "OPEN",
-          draft: info.draft,
-          head_sha: info.head.sha,
-          head_branch: info.head.ref,
-          head_repository: info.head.repo?.full_name || null,
-          updated_at: info.updated_at || pr.updated_at,
-          task_id: matches.length === 1 ? matches[0].id : null,
-        };
-
-        updates.push(value);
+        repos = await this.client.pages<GitHubRepository>(
+          "user/repos?affiliation=owner,collaborator,organization_member&sort=pushed",
+          signal,
+        );
       }
 
-      // Missing search results are not proof of closure. Confirm each known PR.
-      this.phase = "Checking previously discovered pull requests";
+      this.phase = "Refreshing pull request statuses";
       this.engine.changed();
-      const known = [...savedPRs];
+      const found = await this.client.authored(this.status.username, signal);
+      const urls = new Set(found.map((pr) => pr.url.toLowerCase()));
+      const known = this.prs();
       for (const job of this.scheduler.jobs()) {
         if (known.some((pr) => pr.url.toLowerCase() === job.url.toLowerCase())) continue;
         const ref = parsePullRequest(job.url);
@@ -624,87 +474,77 @@ export class GitHubService {
         });
       }
 
-      const missing = known.filter((p) => !urls.has(p.url));
-      const remaining = Math.max(0, 500 - bounded.length);
-      const knownCursor = this.knownCursor % Math.max(1, missing.length);
-      const rechecked = missing.slice(knownCursor, knownCursor + remaining);
-      if (missing.length > rechecked.length)
-        partial =
-          `${partial} Partial refresh: ${missing.length - rechecked.length} previously known PRs were not rechecked within the detail budget.`.trim();
-      for (const old of rechecked) {
-        const ref = parsePullRequest(old.url);
-
-        const info = await this.client
-          .api<{
-            state: string;
-            merged: boolean;
-            draft?: boolean;
-            updated_at?: string;
-            head?: {
-              ref: string;
-              sha: string;
-              repo: { full_name: string } | null;
-            };
-          }>(`repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`, this.controller.signal)
-          .catch((error) => {
-            if (!this.controller.signal.aborted) this.recordInaccessible(old, error);
-            throw error;
-          });
-
-        if (["open", "closed"].includes(info.state)) {
-          const value = {
-            ...old,
-            state: info.merged ? "MERGED" : info.state === "closed" ? "CLOSED" : "OPEN",
-            draft: info.draft ?? old.draft,
-            head_sha: info.head?.sha || old.head_sha,
-            head_branch: info.head?.ref || old.head_branch,
-            head_repository: info.head?.repo?.full_name || old.head_repository,
-            updated_at: info.updated_at || old.updated_at,
-            access_error: undefined,
-            last_known_state: undefined,
-          };
-
-          updates.push(value);
+      const missing = known.filter((pr) => !urls.has(pr.url.toLowerCase()));
+      let rechecked: GitHubPullRequest[] = [];
+      if (missing.length) {
+        this.phase = "Refreshing previously discovered pull requests";
+        this.engine.changed();
+        try {
+          rechecked = await this.client.pullRequests(
+            missing.map((pr) => pr.url),
+            signal,
+          );
+        } catch (error) {
+          if (!signal.aborted) for (const pr of missing) this.recordInaccessible(pr, error);
+          throw error;
         }
       }
 
-      const catalogTime = now();
+      signal.throwIfAborted();
+      const refreshed = now();
+
+      const updates = [...found, ...rechecked].map((pr) => {
+        // Both upstream identity and fork + head branch must agree, uniquely.
+        const matches = this.engine.db.tasks().filter((task) => {
+          const repo = this.engine.db.repository(task.repo_id);
+          return (
+            `${repo.owner}/${repo.name}`.toLowerCase() === pr.repository.toLowerCase() &&
+            task.branch_name === pr.head_branch &&
+            (repo.origin_url || repo.upstream_url)
+              .replace(/^git@github.com:/, "https://github.com/")
+              .replace(/\.git$/, "")
+              .toLowerCase() === `https://github.com/${pr.head_repository}`.toLowerCase()
+          );
+        });
+
+        return {
+          ...pr,
+          refreshed_at: refreshed,
+          task_id: matches.length === 1 ? matches[0].id : null,
+        };
+      });
 
       this.engine.db.transaction(() => {
-        for (const repo of repos)
-          this.engine.db.run(
-            "INSERT INTO github_repositories VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET full_name=excluded.full_name,data=excluded.data,synced_at=excluded.synced_at",
-            repo.id,
-            repo.full_name,
-            JSON.stringify(repo),
-            catalogTime,
-          );
-        this.engine.db.run("DELETE FROM github_repositories WHERE synced_at<>?", catalogTime);
+        if (repos) {
+          for (const repo of repos)
+            this.engine.db.run(
+              "INSERT INTO github_repositories VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET full_name=excluded.full_name,data=excluded.data,synced_at=excluded.synced_at",
+              repo.id,
+              repo.full_name,
+              JSON.stringify(repo),
+              refreshed,
+            );
+          this.engine.db.run("DELETE FROM github_repositories WHERE synced_at<>?", refreshed);
+        }
+
         for (const value of updates) this.savePR(value);
       });
 
       for (const value of updates) this.scheduler.discovered(value);
-      this.detailCursor = (cursor + bounded.length) % Math.max(1, found.length);
-      this.knownCursor = (knownCursor + rechecked.length) % Math.max(1, missing.length);
-      if (!partial) this.lastSync = now();
-      this.error = partial || null;
-    } catch (e) {
+      this.lastSync = refreshed;
+      this.error = null;
+    } catch (error) {
       this.error = this.controller.signal.aborted
         ? null
-        : e instanceof Error
-          ? e.message
-          : String(e);
+        : signal.aborted
+          ? "GitHub metadata refresh timed out. Saved results were preserved; retry refresh."
+          : redact(error instanceof Error ? error.message : String(error));
     } finally {
       this.phase = null;
 
       this.engine.db.run(
         "INSERT INTO settings VALUES('github_sync',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        JSON.stringify({
-          last_sync: this.lastSync,
-          error: this.error,
-          detail_cursor: this.detailCursor,
-          known_cursor: this.knownCursor,
-        }),
+        JSON.stringify({ last_sync: this.lastSync, error: this.error }),
       );
     }
 

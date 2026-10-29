@@ -8,17 +8,22 @@ import type { Scheduler } from "../../scheduled/scheduler";
 
 export const BatchSelectionSchema = z
   .object({
-    job_ids: z.array(z.string().uuid()).min(1).max(20),
+    job_ids: z.array(z.string().uuid()).min(1),
     scope: z.enum(["open", "attention", "stale", "selected"]),
   })
   .strict();
 
 export const StartPRBatchSchema = BatchSelectionSchema.extend({
   request_id: z.string().uuid(),
-  max_analyses: z.number().int().min(0).max(20).default(5),
+  max_analyses: z.number().int().min(0),
   configuration: FollowupConfigSchema,
   confirmed: z.literal(true),
-}).strict();
+})
+  .strict()
+  .refine(
+    (input) => input.max_analyses <= input.job_ids.length,
+    "Authorize at most one analysis per selected PR.",
+  );
 
 const BatchSchema = z
   .object({
@@ -26,31 +31,29 @@ const BatchSchema = z
     digest: z.string(),
     scope: BatchSelectionSchema.shape.scope,
     configuration: FollowupConfigSchema,
-    max_analyses: z.number().int().min(0).max(20),
+    max_analyses: z.number().int().min(0),
     analyses_used: z.number().int().min(0),
-    status: z.enum(["running", "completed", "cancelled", "interrupted"]),
+    status: z.enum(["running", "cancelling", "completed", "cancelled", "interrupted"]),
     created_at: z.string(),
     ended_at: z.string().nullable(),
-    items: z
-      .array(
-        z
-          .object({
-            job_id: z.string().uuid(),
-            analysis_id: z.string().uuid(),
-            status: z.enum([
-              "pending",
-              "running",
-              "completed",
-              "partial",
-              "failed",
-              "cancelled",
-              "interrupted",
-            ]),
-            error: z.string().nullable(),
-          })
-          .strict(),
-      )
-      .max(20),
+    items: z.array(
+      z
+        .object({
+          job_id: z.string().uuid(),
+          analysis_id: z.string().uuid(),
+          status: z.enum([
+            "pending",
+            "running",
+            "completed",
+            "partial",
+            "failed",
+            "cancelled",
+            "interrupted",
+          ]),
+          error: z.string().nullable(),
+        })
+        .strict(),
+    ),
   })
   .strict();
 
@@ -61,14 +64,16 @@ export class PRAnalysisBatches {
 
   private active = new Map<
     string,
-    { promise: Promise<void>; cancelled: boolean; jobId?: string }
+    { promise: Promise<void>; cancelled: boolean; jobId?: string; batch: PRBatch }
   >();
 
   constructor(
     private readonly engine: Engine,
     private readonly scheduler: Scheduler,
   ) {
-    for (const batch of this.list().filter((batch) => batch.status === "running")) {
+    for (const batch of this.list().filter((batch) =>
+      ["running", "cancelling"].includes(batch.status),
+    )) {
       batch.status = "interrupted";
       batch.ended_at = now();
       for (const item of batch.items)
@@ -193,6 +198,7 @@ export class PRAnalysisBatches {
       promise: Promise.resolve(),
       cancelled: false,
       jobId: undefined as string | undefined,
+      batch,
     };
 
     const release = this.engine.trackActivity(
@@ -258,7 +264,10 @@ export class PRAnalysisBatches {
   cancel = async (id: string) => {
     const operation = this.active.get(id);
     if (!operation) return;
+    if (operation.cancelled) return operation.promise;
     operation.cancelled = true;
+    operation.batch.status = "cancelling";
+    this.save(operation.batch);
     if (operation.jobId) await this.scheduler.cancel(operation.jobId);
     await operation.promise;
   };

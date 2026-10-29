@@ -371,7 +371,7 @@ it("edits an unstarted future stage independently of chat and completed runs", a
   );
 
   render(<TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />);
-  fireEvent.click(screen.getAllByRole("button", { name: "Edit future model" })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: "Edit future stage" })[0]);
   const editor = screen.getByLabelText("Future stage 3 settings");
 
   fireEvent.click(within(editor).getByRole("combobox", { name: "Reasoning / effort" }));
@@ -383,7 +383,7 @@ it("edits an unstarted future stage independently of chat and completed runs", a
     expect(rpc).toHaveBeenCalledWith("task.configureStage", {
       id: detail.task.id,
       stage: 3,
-      config: { model: "fixture-model", effort: "high", timeout_secs: 30 },
+      config: { provider: "codex", model: "fixture-model", effort: "high", timeout_secs: 30 },
     }),
   );
 

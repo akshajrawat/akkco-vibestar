@@ -20,7 +20,7 @@ it("uses an installed source virtualenv and ignored dependencies read-only witho
   const dir = await mkdtemp(join(tmpdir(), "vibestar-runtime-"));
   const engine = await createFixtureEngine(join(dir, "data"), () => new FixtureProvider());
   try {
-    const { repo } = await fixtureRepository(engine, dir);
+    const { repo, upstream } = await fixtureRepository(engine, dir);
     const toolchainName = `${basename(repo.path)}_tools`;
     await mkdir(join(dirname(repo.path), toolchainName));
 
@@ -36,6 +36,34 @@ it("uses an installed source virtualenv and ignored dependencies read-only witho
 
     await mkdir(join(repo.path, "node_modules"));
     await writeFile(join(repo.path, "node_modules", "runtime-probe.txt"), "source dependency");
+    const nested = "core/tests/playwright-acceptance-tests";
+    await mkdir(join(upstream, nested), { recursive: true });
+    await writeFile(join(upstream, nested, "package.json"), "{}\n");
+    await checked("git", ["add", "--", `${nested}/package.json`], upstream);
+
+    await checked(
+      "git",
+      [
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "Nested test package",
+      ],
+      upstream,
+    );
+
+    await engine.git.fetch(repo);
+    await checked("git", ["merge", "--ff-only", "refs/remotes/upstream/main"], repo.path);
+    await mkdir(join(repo.path, nested, "node_modules"));
+
+    await writeFile(
+      join(repo.path, nested, "node_modules", "runtime-probe.cjs"),
+      "module.exports = 'existing nested dependency';\n",
+    );
+
     await checked("python3", ["-m", "venv", "--without-pip", join(repo.path, ".venv")], repo.path);
 
     const site = await checked(
@@ -60,7 +88,14 @@ it("uses an installed source virtualenv and ignored dependencies read-only witho
     await waitForTask(engine, task.id, (s) => ["awaiting_approval", "failed"].includes(s));
     const saved = engine.db.task(task.id);
     expect(saved.status, saved.error || "").toBe("awaiting_approval");
-    expect(saved.runtime?.dependencies).toEqual(["node_modules", ".venv", `../${toolchainName}`]);
+
+    expect(saved.runtime?.dependencies).toEqual([
+      "node_modules",
+      ".venv",
+      `${nested}/node_modules`,
+      `../${toolchainName}`,
+    ]);
+
     expect(saved.runtime?.python).toBe(join(repo.path, ".venv", "bin", "python3"));
 
     const invocation = await sandboxInvocation(
@@ -82,6 +117,28 @@ it("uses an installed source virtualenv and ignored dependencies read-only witho
     expect(output.stdout).toContain("source dependency");
     expect(output.stdout).toContain("project toolchain");
     expect(output.stderr).toContain("Read-only file system");
+
+    const nestedCheck = await sandboxInvocation(
+      engine.root,
+      engine.db,
+      saved,
+      {
+        program: process.execPath,
+        args: [
+          "-e",
+          `const fs=require('node:fs');const assert=require('node:assert/strict');const path=${JSON.stringify(`${nested}/node_modules/runtime-probe.cjs`)};assert.equal(process.env.npm_config_offline,'true');assert.equal(process.env.npm_config_yes,'false');assert.equal(process.env.PIP_NO_INDEX,'1');assert.equal(require('./'+path),'existing nested dependency');assert.throws(()=>fs.writeFileSync(path,'changed'),{code:'EROFS'});console.log('nested tooling reused without installation');`,
+        ],
+      },
+      false,
+    );
+
+    const nestedOutput = await execute({ ...nestedCheck, cwd: saved.worktree_path });
+    expect(nestedOutput.code, nestedOutput.stderr).toBe(0);
+    expect(nestedOutput.stdout).toContain("nested tooling reused without installation");
+
+    expect(
+      await readFile(join(repo.path, nested, "node_modules", "runtime-probe.cjs"), "utf8"),
+    ).toContain("existing nested dependency");
 
     expect(await readFile(join(repo.path, "node_modules", "runtime-probe.txt"), "utf8")).toBe(
       "source dependency",

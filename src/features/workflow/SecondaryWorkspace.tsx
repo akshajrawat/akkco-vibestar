@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Expand, Minimize2, X } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
 
 import {
   useTaskView,
@@ -14,9 +13,16 @@ import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { ResizeHandle } from "../../components/shared/ResizeHandle";
 import { Button } from "../../components/ui/button";
 
-export const SecondaryWorkspace = ({ id, children }: { id: string; children: React.ReactNode }) => {
+export const SecondaryWorkspace = ({
+  id,
+  children,
+  actions,
+}: {
+  id: string;
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+}) => {
   const view = useTaskView(id);
-  const reduced = useReducedMotion();
   const anchor = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const scrollPositions = useRef(view.secondaryScroll);
@@ -159,15 +165,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
                   id={`workspace-tool-${id}-${key}`}
                   onClick={() => openWorkspaceTool(id, key as SecondarySection)}
                 >
-                  {view.secondarySection === key && (
-                    <motion.span
-                      className="workspace-tab-selection"
-                      layoutId={`workspace-tab-${id}`}
-                      transition={{ duration: reduced ? 0 : 0.16 }}
-                      aria-hidden="true"
-                    />
-                  )}
-                  <span className="workspace-tab-label">{label}</span>
+                  {label}
                 </button>
               ))}
             </div>
@@ -190,6 +188,7 @@ export const SecondaryWorkspace = ({ id, children }: { id: string; children: Rea
             >
               {children}
             </div>
+            {actions && <div className="workspace-actions">{actions}</div>}
           </aside>
         </>
       )}

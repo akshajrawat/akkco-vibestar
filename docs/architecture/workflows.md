@@ -31,8 +31,8 @@ Historical queued entries retain the authorization they already had.
 
 ## Stage gates, instructions and drafts
 
-Preparation pins base identity and records real Git activity. Antigravity planning,
-Codex refinement, implementation/validation and independent Antigravity review each
+Preparation pins base identity and records real Git activity. Plan,
+Plan refinement, Implementation with its checks and independent Review each
 pause at their existing human gate. No future stage is shown as running merely
 because approval is waiting. Provider/model/effort display comes from actual saved runs;
 composer settings affect the next requested message.
@@ -55,14 +55,20 @@ gaps. Observed command records retain argv, streams, exit and attempt identity. 
 reports are separately attributed; unknown/skipped tests cannot become passing coverage.
 Historical requirements and unresolved failures remain additive across repairs.
 
-- **Recheck saved evidence** reuses retained command/tool exits and host diff hygiene.
-  It runs no provider, installs nothing and does not deliver pending instructions.
-- **Run missing checks** replays only supported validated recorded argv. A known literal
-  shell wrapper can be decoded without interpreting an arbitrary shell program.
-- **Prepare missing checks / Fix with Codex** explicitly authorizes one implementation
-  iteration, retaining failures and environmental limitations.
-- **Continue independent review with gaps** requires a fresh worktree/evidence-bound
-  acknowledgment. Genuine application failures or ambiguous evidence cannot use it.
+Implementation reuses existing dependencies and runs all applicable test, lint, formatting
+and required platform/stress commands. Agents do not install, upgrade or download packages,
+browsers or toolchains. Existing ignored nested package dependencies are connected read-only;
+missing prerequisites are reported with unrun checks. Package runners use offline/no-fetch
+operation. It pauses at implementation approval, then independent review
+runs the applicable checks again in its read-only source boundary. Missing implementation
+evidence is supplied to the reviewer; it does not require a separate validation action or
+gap-acknowledgment dialog before review. Genuine failures still prevent final acceptance.
+The Checks tab records evidence rather than scheduling another workflow stage.
+
+Legacy stage 4 remains readable and an explicit approval can continue its saved
+implementation to review. Recovery RPCs remain compatible for older clients and retained
+history; they are not offered as an additional user workflow. No change replays providers
+on restart or discards saved instructions.
 
 Repository policy requires automated checks and explicit issue requirements while extra
 unexecuted manual browser checks can remain optional. Existing tasks change policy only
@@ -71,7 +77,7 @@ Passing optional evidence does not substitute for missing required execution.
 
 The read-only final reviewer receives a complete retained evidence packet. Its source
 verdict and coverage are distinct. `reviewed_with_gaps` retains unavailable checks and
-blocks finalization. Acceptance binds the current review fingerprint; edits invalidate it.
+blocks task completion. Acceptance binds the current review fingerprint; edits invalidate it.
 An unchanged recheck preserves an accepted review rather than starting inference again.
 
 Browser diagnostics have strict environment/report contracts. Opening the panel runs
@@ -81,10 +87,13 @@ success proves tooling availability, not application correctness. No automatic d
 
 ## PR discovery, analysis and batches
 
-Explicit Refresh uses official `gh` to collect authored PR history and local inactive
-review identities. Metadata discovery does not clone, start analysis or create a timer.
+Explicit Refresh uses official `gh` with bulk GraphQL metadata to collect authored PR history
+and local inactive review identities. The inbox action skips the repository catalog,
+full review context and AI, and bounds the entire refresh to 30 seconds. Metadata
+discovery does not clone, start analysis or create a timer.
 Search partitions avoid GitHub result limits. A missing search result never proves
-closed/merged state; direct retrieved identity wins and partial budgets retain warnings.
+closed/merged state; batched direct identity lookups confirm known PRs missing from search.
+Incomplete retrieval retains saved results and exposes an error without advancing freshness.
 
 Analyze refreshes bounded complete context, source discussion/threads/checks/files and
 identity before using UtilityAI when semantic assessment is necessary. Complete unchanged
@@ -92,10 +101,52 @@ reports and deterministic acknowledgments can reuse evidence without inference. 
 quotations, reply evidence, thread resolution and verified code outcomes stay distinct.
 Missing coverage is visible and does not become a complete assessment.
 
-Analyze All previews saved reusable reports, selects at most 20 PRs and exposes a visible
-AI limit (default five). Each item refreshes again. A durable counter is charged immediately
-before semantic invocation; deterministic/reused results consume none. Completed results
-survive cancellation. Startup interrupts unfinished batches without replaying work.
+The lightweight PR watch runs **once per app launch**. **Recheck open PRs** requests
+another fresh pass; filtering, window focus and navigating away/back do not start another.
+Core capability negotiation gates automatic startup. The core deduplicates repeated startup
+requests and never resumes cancelled/interrupted runs. A saved failure needs explicit recheck.
+
+Watch retrieval refreshes current PR status, then reads up to four conversations concurrently
+with a 30-second collection budget. Each GraphQL request includes the PR body, comments,
+reviews/threads, active review requests and up to 20 linked issue bodies. Connections retain
+pagination flags; more than 100 comments/reviews/threads or 100 comments in a thread makes
+coverage incomplete. Missing/oversized context stays **Needs a closer look**, never clear.
+Pending reviewer assignments are neutral **Waiting for reviewer**, not work owed by the
+authenticated viewer (normally akshajrawat). Formal review decisions and unresolved thread
+markers alone cannot flag work. Complete conversations include author replies: answered or
+addressed requests await the reviewer unless a later follow-up or explicitly unfinished work
+remains. The watch does not require code verification or reviewer acknowledgment to recognize
+a conversational response. Missing comment bodies for requested changes stay uncertain.
+Requests from the authenticated viewer are ignored. Policy-versioned fingerprints invalidate
+older classifications made using the previous assignment-based rule.
+
+Remaining complete conversations share one compact model prompt up to 85,000 bytes; larger
+sets are partitioned into bounded prompts. No diffs, commit history, CI history or file reads
+are requested. The saved review/explain model takes precedence over the utility default;
+the compact picker overrides provider/model/effort/time limit for recheck. The result is
+an attention flag, short reason and validated source IDs, not proof of code correctness.
+Unchanged successful classifications are reused after fresh retrieval. Timeout, invalid model
+evidence, missing results or capacity limits remain uncertain and do not automatically retry.
+The shared sandbox, usage accounting and execution-slot rules apply to every model call.
+
+Detailed **Analyze PR** in the review workspace remains explicit and retrieves full context
+for engineering observations and repairs. Its complete source packets and coverage validation
+remain independent of the lightweight watch. Contexts up to 96 KB are supplied directly;
+larger detailed contexts stay in complete on-disk packets. Timeouts never trigger paid retry
+or silently raise the configured limit.
+
+The inbox opens on **Open**; a compact status filter also offers **Merged**, **Closed** and **All** history. The
+freshest known lifecycle determines terminal status, so old analysis state cannot label
+a merged or closed PR as waiting for checks. Report coverage, stale context, failed checks,
+work requests and unanswered questions retain separate outcomes. Model findings do not
+prove code correctness. Filtering and refreshing metadata start no inference; only the once-per-launch watch and explicit recheck/analysis can do so.
+
+Legacy explicit engineering batches retain their persisted authorization before work. A durable counter is charged immediately
+before semantic invocation, bounded to the selected list; deterministic/reused results
+consume none. Cancellation preserves completed and partial evidence. Startup interrupts
+unfinished batches without replaying checks or inference. Retrieval publishes concrete
+API/page phases and elapsed time under a two-minute per-PR deadline. One batch Stop
+control immediately enters a durable cancelling state; it does not replay later PRs.
 
 ## Isolated PR repair
 
@@ -109,21 +160,19 @@ in the correct direction and protects existing ignored files against incoming tr
 Conflicts preserve files/index and require explicit resolution/resume. Source checkout,
 issue worktrees and unrelated branch/index state remain unchanged.
 
-Codex implements selected concerns; independent Antigravity review receives read-only
+The selected implementation provider implements concerns; independent review receives read-only
 source and full retained context. Every selected action requires one schema-valid result.
 Observed tests remain separate from reported summaries. The workflow stops at manual review.
 Explicit further fixes reuse that worktree and retain earlier evidence.
 
-Local-only approval/commit works independently of remote push permission. Preparation of
-a publication plan and Confirm Push are separate. Publication rechecks open PR identity,
-viewer permission, selected fingerprint, ancestry, exact head destination and expected
-remote SHA. Stale heads stop for fresh analysis. Unknown network outcomes reconcile
-read-only; reopening never repeats a push. Cleanup needs owner/ref evidence and clean,
-non-conflicted content, and retains history unless history deletion is separately confirmed.
+Users commit and push manually through the terminal after inspecting the retained
+review evidence. The application starts no publication operation. Cleanup needs
+owner/ref evidence and clean, non-conflicted content, and retains history unless
+history deletion is separately confirmed.
 
 Changes exposes original PR, upstream integration and repair baselines. Content-bound
 review marks invalidate when the file changes. Shared terminal leases exclude agent or
-publication writers; editor actions resolve the exact owned repair assignment.
+other workspace writers; editor actions resolve the exact owned repair assignment.
 
 ## Manual Issue Watch
 
@@ -164,58 +213,29 @@ Issue Watch uses supported Codex integration. The existing Antigravity adapter i
 exposed as a supported watch provider. Saving, opening, changing models and restarting
 never authorize a scan. Task handoff only prefills the existing idle task form.
 
-## Selected-file Git Finalization
+## Manual Git in the terminal
 
-Git Changes presents selected files, an exact commit message and commit/push actions
-on one surface. Options hold presets and hook policy. Inspection proves task/worktree/branch identity and
-records exact content/index fingerprints. Bounded no-follow file inspection excludes
-unsafe aliases, credentials/private keys, unexpected binaries and generated/debug additions.
-Ignored files remain unselectable.
+Use **Open terminal** after reviewing task or repair changes, or open **Terminal** in
+the workspace footer at any time after preparation. This starts and focuses the
+normal Linux/WSL interactive user shell in the owned worktree. The shell uses your
+Git configuration, credential helpers, SSH agent and CLI authentication like a VS Code
+integrated terminal. Run `git status`, stage files, commit and push manually. For a
+repair, push `HEAD` to the PR's existing head branch explicitly; its local isolated
+branch may have a different name. For issue tasks, `git push -u origin HEAD` publishes
+the current task branch. Managed checkouts receive a missing `origin` alias pointing
+to the registered fork or repository; existing remotes and imported checkouts are
+preserved. Remotes and hook policy can be managed with Git commands.
 
-Preview stages complete selected literal paths in a separate owned worktree/index.
-Unrelated task/source staged content survives, including rename/deletion cases. Selecting
-already staged paths needs an explicit full-content decision. The projected cumulative
-patch includes earlier task commits; a subset or changed tree needs fresh independent review.
+An open shell retains the workspace lease and blocks agents in that workspace until
+the trash button (**Close shell**). Hiding the dock retains the session and output;
+opening it again focuses the same shell. The plus button (**Start terminal**) starts
+a new shell after the previous one exits. The shell has normal user filesystem/network
+access; agent and verification commands stay sandboxed. Terminal output and saved logs remain bounded
+and redacted. Restart stops sessions and never repeats commands, commits or pushes.
 
-Required task verification is checked before selection, approval, commit and publication.
-The review must settle required commands; prose alone cannot waive missing evidence.
-Host diff hygiene runs independently. Manual approval binds the exact projected tree.
-
-Exact commit objects preserve UTF-8 bytes, multiline content, spaces and the absence
-of a final newline. They add no template, trailer or generated title. The journal precedes
-branch/index compare-and-swap mutation and retains snapshots for explicit recovery.
-Presets contain typed policy/destination fields, never arbitrary command strings.
-
-Optional hook configuration is captured and rechecked. Authorized repository/worktree
-hooks execute in the existing read-only sandbox with exact message input and bounded
-output. Unsupported/missing/mutating hooks fail explicitly. Skipping these hooks cannot
-waive host authorization, fingerprint, verification, ancestry or exact remote-SHA guards.
-
-Publication verifies actual fetch/push URLs, the writable source or canonical contribution fork, viewer,
-stable repository ID, permissions and exact remote object/absence. A different safe
-feature branch requires fresh preparation. Confirm Push binds destination, commit and
-SHA. Host ancestry proof plus an exact-ref lease permits only fast-forward updates or
-an explicitly absent feature branch. A source destination requires fresh write permission;
-an external contribution destination must be its verified fork. Non-fast-forward writes
-are refused. No writable destination is required for a local commit.
-
-Task options can connect a push repository for a managed clone. This explicit local
-configuration requires fresh write permission and matching source identity or fork
-parent ID/name. It observes repository locks, active tasks and terminal leases, and
-requires the helper's destination capability. Imported checkouts choose existing
-verified remotes without rewriting their Git configuration. Connecting a destination
-does not commit or push.
-
-Commit & Push first performs a read-only destination check. Confirmation shows the
-exact destination, branch, selected files, unchanged message and hook policy. The click
-then invokes the existing guarded approval/commit/prepare/publish operations in order.
-Any destination, viewer, repository-ID or remote-head drift stops publication and keeps
-the local commit. Saved presets never authorize execution or replay after restart.
-
-Startup interrupts local mutations and marks uncertain pushes for read-only reconciliation.
-Explicit resume applies only the original journaled local transition without duplicate
-commits. Cleanup refuses unresolved journals or changed/unknown preview ownership.
-Removing a preview preserves the task branch/local commit and cannot orphan dependent history.
+The removed commit/push workflow has no callable mutation endpoints. Legacy Git
+records and migrations are retained, and storage continues to preserve unresolved
+or dependent work rather than deleting its files or journals automatically.
 
 ## Storage reset and task disposal
 

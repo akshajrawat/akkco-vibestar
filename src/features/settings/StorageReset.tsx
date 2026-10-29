@@ -101,7 +101,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
               {preview.tasks.filter((task) => task.eligible).length} eligible tasks ·{" "}
               {preview.tasks.filter((task) => !task.eligible).length} protected tasks ·{" "}
               {preview.repairs.length} retained repair sessions · {preview.finalizations.length}{" "}
-              retained Git Finalizations
+              retained Git records
             </p>
 
             {preview.tasks.map((task) => (

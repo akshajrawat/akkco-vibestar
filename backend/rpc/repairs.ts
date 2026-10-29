@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import { AdeError } from "../domain";
-import { CommitMessageSchema } from "../workspace/commit-message";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
 
@@ -11,13 +10,6 @@ export const repairsMethods = [
   "repair.detail",
   "repair.start",
   "repair.cancel",
-  "repair.approve",
-  "repair.approveLocal",
-  "repair.commit",
-  "repair.preparePublication",
-  "repair.publish",
-  "repair.reconcilePublication",
-  "repair.keepLocal",
   "repair.cleanup",
   "repair.reviewFiles",
   "repair.reviewed",
@@ -59,66 +51,6 @@ export const callRepairs = async (
 
     case "repair.cancel":
       return services.repairs.cancel(idInput.strict().parse(input).id);
-
-    case "repair.approve": {
-      const p = idInput
-        .extend({
-          expected_hash: z.string().regex(/^[a-f0-9]{64}$/),
-          confirmed: z.literal(true),
-        })
-        .strict()
-        .parse(input);
-
-      return services.repairs.approve(p.id, p.expected_hash);
-    }
-
-    case "repair.approveLocal": {
-      const p = idInput
-        .extend({
-          expected_hash: z.string().regex(/^[a-f0-9]{64}$/),
-          confirmed: z.literal(true),
-        })
-        .strict()
-        .parse(input);
-
-      return services.repairs.approveLocal(p.id, p.expected_hash);
-    }
-
-    case "repair.commit": {
-      const p = idInput
-        .extend({
-          expected_hash: z.string().regex(/^[a-f0-9]{64}$/),
-          message: CommitMessageSchema,
-          confirmed: z.literal(true),
-        })
-        .strict()
-        .parse(input);
-
-      return services.repairs.commit(p.id, p.expected_hash, p.message);
-    }
-
-    case "repair.preparePublication":
-      return services.repairs.preparePublication(idInput.strict().parse(input).id);
-
-    case "repair.publish": {
-      const p = idInput
-        .extend({
-          publication_id: z.string().uuid(),
-          confirmed: z.literal(true),
-        })
-        .strict()
-        .parse(input);
-
-      return services.repairs.publish(p.id, p.publication_id);
-    }
-
-    case "repair.reconcilePublication": {
-      const p = idInput.extend({ publication_id: z.string().uuid() }).strict().parse(input);
-      return services.repairs.reconcilePublication(p.id, p.publication_id);
-    }
-
-    case "repair.keepLocal":
-      return services.repairs.keepLocal(idInput.strict().parse(input).id);
 
     case "repair.cleanup": {
       const p = idInput

@@ -5,6 +5,9 @@ export const reviewActionState = (
   analysis: PRAnalysisSession | undefined,
   current?: GitHubPullRequest,
 ) => {
+  const state = current?.state || analysis?.snapshot?.state;
+  if (state === "MERGED") return "Merged";
+  if (state === "CLOSED") return "Closed";
   if (!analysis?.report) return "Not analyzed";
   if (current?.access_error) return "Analysis incomplete";
   if (!analysis.report.complete || analysis.status === "partial") return "Analysis incomplete";

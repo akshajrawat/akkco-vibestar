@@ -1,5 +1,4 @@
 import type { RepairSession } from "../../../../backend/review/repair/contracts";
-import type { RepairPublication } from "../../../../backend/review/repair/publication";
 import type { AgentEvent, Message, Run, TestRun } from "../../../lib/types";
 import type { UsageRecord } from "../../../../backend/execution/output/usage";
 
@@ -15,5 +14,3 @@ export interface RepairDetail {
   activity: { id: number; kind: string; data: string; timestamp: string }[];
   publications: { id: string; status: string; data: string }[];
 }
-
-export type { RepairPublication };

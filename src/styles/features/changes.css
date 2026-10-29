@@ -585,20 +585,3 @@
   gap: 8px;
   justify-content: space-between;
 }
-
-.changes-review-action {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 20px 24px 0;
-}
-
-.git-selection-panel {
-  padding: 24px;
-  min-width: 0;
-}
-
-.git-selection-panel > * + *,
-.git-review-required {
-  margin-top: 20px;
-}

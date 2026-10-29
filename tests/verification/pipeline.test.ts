@@ -15,7 +15,7 @@ import {
 import { ValidationBlockerProvider } from "./provider";
 import type { Detail } from "../../src/lib/types";
 
-it("retains passing multiplication checks and an interrupted setup blocker across validation-only retry and restart without consuming saved instructions or model allowance", async () => {
+it("retains agent checks and setup blockers at implementation approval without a separate validation run", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-validation-blocker-"));
   const root = join(dir, "data");
   const selected: number[] = [];
@@ -60,24 +60,25 @@ it("retains passing multiplication checks and an interrupted setup blocker acros
       await engine.approveStage(task.id);
     }
 
-    await waitForTask(engine, task.id, (status) => status === "verification_blocked");
+    await waitForTask(engine, task.id, (status) => status === "awaiting_approval");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     const rpc = new Rpc(engine);
     const detail = (await rpc.call("task.detail", { id: task.id })) as Detail;
 
     expect(detail.task).toMatchObject({
-      stage: 4,
-      status: "verification_blocked",
+      stage: 5,
+      status: "awaiting_approval",
+      approval_gate: "implementation",
     });
 
-    expect(detail.task.error).toContain("Browser rendering and accessibility (blocked)");
+    expect(detail.task.error).toBeNull();
 
     expect(detail.validation).toMatchObject({
       outcome: "blocked",
       canReview: false,
     });
 
-    expect(detail.validation?.checks.filter((check) => check.outcome === "passed")).toHaveLength(4);
+    expect(detail.validation?.checks.filter((check) => check.outcome === "passed")).toHaveLength(3);
 
     expect(detail.tests.find((command) => command.call_id === "setup")).toMatchObject({
       status: "failed",
@@ -88,12 +89,12 @@ it("retains passing multiplication checks and an interrupted setup blocker acros
       detail.validation?.checks.find((check) => check.name === "Playwright installation"),
     ).toMatchObject({ kind: "setup", outcome: "interrupted" });
 
-    expect(detail.tests.filter((command) => command.exit_code === 0)).toHaveLength(4);
+    expect(detail.tests.filter((command) => command.exit_code === 0)).toHaveLength(3);
     expect(await readFile(join(upstream, "source.txt"), "utf8")).toBe("base\n");
     const saved = engine.followUp(task.id, "Use the existing helper later", undefined, true);
     expect(saved.disposition).toBe("draft");
     await engine.retry(task.id, 4);
-    await waitForTask(engine, task.id, (status) => status === "verification_blocked");
+    await waitForTask(engine, task.id, (status) => status === "awaiting_approval");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     expect(selected).toEqual([1, 2, 3]);
 
@@ -101,7 +102,7 @@ it("retains passing multiplication checks and an interrupted setup blocker acros
       engine.db.all("SELECT status FROM task_messages WHERE id=?", saved.message.id)[0].status,
     ).toBe("draft");
 
-    await expect(engine.approveStage(task.id)).rejects.toThrow("not waiting");
+    await expect(engine.approveStage(task.id)).rejects.toThrow("saved instructions");
 
     engine.db.saveTask({
       ...engine.db.task(task.id),
@@ -110,7 +111,7 @@ it("retains passing multiplication checks and an interrupted setup blocker acros
       stage: 5,
     });
 
-    await expect(engine.approveStage(task.id)).rejects.toThrow("Verification incomplete");
+    await expect(engine.approveStage(task.id)).rejects.toThrow("saved instructions");
 
     engine.db.saveTask({
       ...engine.db.task(task.id),
@@ -138,6 +139,21 @@ it("retains passing multiplication checks and an interrupted setup blocker acros
 
     expect(reopened.runs).toHaveLength(3);
     expect(selected).toEqual([1, 2, 3]);
+
+    await engine.approveStage(task.id, {
+      disposition: "keep_saved",
+      message_ids: [saved.message.id],
+    });
+
+    await waitForTask(
+      engine,
+      task.id,
+      (status) => status === "awaiting_approval" || status === "failed",
+    );
+
+    await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
+    expect(engine.db.task(task.id)).toMatchObject({ approval_gate: "final_review", error: null });
+    expect(selected).toEqual([1, 2, 3, 5]);
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });
@@ -176,8 +192,12 @@ it("retains an actual failed table assertion as failed even when the provider cl
       settings,
     );
 
-    await finishFixtureTask(engine, task.id, (status) =>
-      ["failed", "verification_blocked"].includes(status),
+    await finishFixtureTask(
+      engine,
+      task.id,
+      (status) =>
+        status === "awaiting_approval" &&
+        engine.db.task(task.id).approval_gate === "implementation",
     );
 
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
@@ -187,8 +207,9 @@ it("retains an actual failed table assertion as failed even when the provider cl
     })) as Detail;
 
     expect(detail.task, detail.task.error || "Task outcome").toMatchObject({
-      status: "failed",
-      stage: 4,
+      status: "awaiting_approval",
+      stage: 5,
+      approval_gate: "implementation",
     });
 
     expect(detail.validation).toMatchObject({
@@ -205,7 +226,11 @@ it("retains an actual failed table assertion as failed even when the provider cl
     );
 
     expect(detail.runs).toHaveLength(3);
-    await expect(engine.approveStage(task.id)).rejects.toThrow("not waiting");
+    await engine.approveStage(task.id);
+    await waitForTask(engine, task.id, (status) => status === "awaiting_approval");
+    await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
+    expect(engine.db.task(task.id).final_review_verdict).toBe("changes_requested");
+    await expect(engine.approveStage(task.id)).rejects.toThrow("unresolved findings");
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });

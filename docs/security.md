@@ -3,7 +3,7 @@
 Vibestar processes untrusted repository files, issue text, review comments and model
 output. Those inputs provide context; they do not grant host or publication authority.
 The primary boundaries are the Electron bridge, owned filesystem/Git assignments,
-execution sandbox, persistence contracts and independent publishing checks.
+execution sandbox and persistence contracts.
 
 ## Renderer and transport
 
@@ -24,6 +24,12 @@ chunks before events, snapshots and logs; redaction remains best effort.
 Bubblewrap starts from an empty root and an explicit mount manifest. Only the assigned
 worktree, permitted system/toolchain/runtime paths, managed artifacts and selected
 provider state are exposed. Planning/review source and Git mounts are read-only.
+Codex implementation commands can use the network for test servers inside this
+filesystem boundary. Dependency installation and auto-download are prohibited by agent
+instructions; npm defaults to offline/no-confirm operation and pip uses no index.
+Existing ignored dependency directories, including nested packages, are mounted read-only
+only at canonical, untracked, empty worktree destinations. Planning/review keep their read-only
+provider restrictions; missing check evidence remains unverified at final acceptance.
 Implementation and PTYs have their assigned worktree access. Missing isolation fails
 closed. Dependency reuse is read-only and requires safe ignored/untracked ownership.
 
@@ -42,7 +48,7 @@ must prove ownership before mutation or cleanup. Unknown ownership is preserved.
 
 Integrity fingerprints use exact content, modes, index and Git identifiers rather than
 redacted or truncated display output. Oversized integrity evidence fails explicitly.
-Content changes invalidate pending review, discard and publication authority.
+Content changes invalidate pending review, discard authority.
 
 SQLite upgrades take a private backup and validate foreign keys transactionally.
 Invalid collection records are isolated with payload-free diagnostics while original
@@ -54,38 +60,39 @@ Explicit discard binds the exact preview and acknowledgment and still requires o
 Git-operation and dependency checks. History-only removal retains worktree ownership.
 No broad recursive data-root reset is permitted.
 
-## Git operations and publication
+## Git operations and manual terminals
 
-The shared Git executor inspects local/worktree config and suppresses global/system
-executable configuration, implicit lazy fetch, unsafe helpers/filters/includes/rewrites
-and arbitrary executable commands. Managed network operations use canonical GitHub
-HTTPS and official gh credential delegation. Local transports are constructor-only fixtures.
+Core-managed Git operations inspect local/worktree configuration, suppress global/system
+executable configuration and use argv arrays. Agent and verification processes remain
+sandboxed. The application no longer stages, commits or publishes through dedicated RPCs.
 
-Local review approval, local commit and remote publication are distinct operations.
-The host verifies immutable repository/fork identity, viewer permission, exact selected
-content, required verification, current fingerprint, branch, ancestry and remote SHA.
-Publication targets the authorized contribution fork or verified PR head, never upstream.
+Explicit user-operated terminals are normal Linux/WSL shells with the user's own
+permissions, environment, Git configuration and authentication. They start only after
+worktree ownership validation and acquiring the task or repair lease. They are not an
+agent execution path and are not constrained by the agent sandbox. Opening the terminal
+dock starts and focuses the shell; hiding it does not close the session. For a managed
+clone only, startup adds a missing `origin` alias from its registered fork or repository
+URL under the repository lock after ownership validation. Existing remotes and imported
+checkout configuration are preserved. Output remains bounded and redacted. Restart
+terminates sessions and never replays entered commands.
 
-The independent host publisher proves fast-forward ancestry and applies an exact
-compare-and-swap ref lease. Broad force, wildcard leases and non-fast-forward writes
-are refused. Network ambiguity is journaled and reconciled read-only before retry.
-Restart does not replay pushes or model invocations.
-
-Optional application hooks run under the existing read-only sandbox policy and bounded
-output, not as arbitrary unsandboxed host commands. Contributor Husky hooks are separate
-local quality checks. Their installer preserves existing hook configuration/private
-scripts and skips linked worktrees. `--no-verify` never waives mandatory application guards.
+Historical Git journals remain protected by persistence/recovery and storage checks.
+No old journal or saved preset can authorize a new commit or push. Contributor hooks
+remain optional user quality checks and their installer preserves private hook policies.
 
 ## Evidence and explicit execution
 
 Observed command exits, model-reported tests and environmental prerequisites remain
 separate. Missing/skipped/unknown evidence is not a pass. Required historical checks
 and unresolved application failures survive repairs. Environmental-gap review needs
-fresh content/evidence-bound acknowledgment; it cannot authorize publication.
+fresh content/evidence-bound acknowledgment.
 
-Task creation is idle. Workflow startup, approval, saved-instruction delivery, PR
-analysis, Issue Watch scans and repair continuation require explicit requests.
-Saving/opening/refreshing metadata does not start inference. Incomplete/cancelled
+Task creation is idle. Workflow startup, approval, saved-instruction delivery, detailed PR
+analysis, Issue Watch scans and repair continuation require explicit requests. The lightweight
+PR watch runs once per app launch and on explicit recheck, using bounded read-only conversation
+context and the existing sandbox/slots. Core startup requests are deduplicated; interrupted,
+cancelled or failed operations are not replayed. Filtering or refreshing metadata does not
+start inference. Incomplete/cancelled
 attempts preserve evidence without inventing a completed baseline.
 
 ## Verification and reports

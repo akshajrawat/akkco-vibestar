@@ -87,11 +87,6 @@ export class ApprovalTransitions {
     if (target >= 2) this.host.db.artifact(id, 1);
     if (target >= 3) this.host.db.artifact(id, 2);
     if (target === 5) this.host.db.artifact(id, 3);
-    if (target === 5 && !taskVerification(this.host.db, id).canReview)
-      throw new AdeError(
-        "approval_required",
-        "Recheck saved evidence, then explicitly acknowledge current environmental gaps before starting another independent review.",
-      );
     if (restart || target < 3) {
       t.followup_config = undefined;
       t.continuation = "planning";
@@ -154,7 +149,8 @@ export class ApprovalTransitions {
     const original = this.host.db.task(id);
 
     const task =
-      gapAcknowledgment && original.status === "verification_blocked" && original.stage === 4
+      original.stage === 4 &&
+      ["verification_blocked", "failed", "interrupted", "cancelled"].includes(original.status)
         ? ({
             ...original,
             status: "awaiting_approval",
@@ -204,9 +200,6 @@ export class ApprovalTransitions {
         "The saved artifact changed. Open and review the current version before approving.",
       );
     if (completedStage === 3) {
-      const verification = taskVerification(this.host.db, id);
-      if (!verification.canReview && !gapAcknowledgment)
-        throw new AdeError("verification_blocked", verification.summary);
       if (gapAcknowledgment) {
         const preview = await this.host.reviewGapsPreview(id);
         if (
@@ -234,7 +227,7 @@ export class ApprovalTransitions {
     if (completedStage === 5 && task.final_review_hash !== (await this.host.git.fingerprint(task)))
       throw new AdeError(
         "stale_review",
-        "The worktree changed after Antigravity reviewed it. Run the final review again.",
+        "The worktree changed after the final review. Run the final review again.",
       );
 
     const pendingIds = () =>
@@ -340,7 +333,13 @@ export class ApprovalTransitions {
       !run ||
       ![1, 2].includes(run.stage) ||
       run.status === "completed" ||
-      !["pipeline", "Antigravity Plan", "Codex Plan Refinement"].includes(run.purpose) ||
+      ![
+        "pipeline",
+        "Plan",
+        "Plan refinement",
+        "Antigravity Plan",
+        "Codex Plan Refinement",
+      ].includes(run.purpose) ||
       runs.at(-1)?.id !== runId ||
       (task.approval_gate && task.status === "awaiting_approval")
     )

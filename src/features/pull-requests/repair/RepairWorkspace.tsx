@@ -32,9 +32,7 @@ import { UsageView } from "../../usage/UsageView";
 import { CommandRuns } from "../../verification/CommandRuns";
 import { TaskTerminal } from "../../../components/shared/TaskTerminal";
 import { OpenInEditor } from "../../../components/shared/OpenInEditor";
-import { PublicationDialog } from "./PublicationDialog";
-import { LocalCommitDialog } from "./LocalCommitDialog";
-import type { RepairDetail, RepairPublication } from "./types";
+import type { RepairDetail } from "./types";
 
 const layers = {
   original: "Original PR changes",
@@ -67,8 +65,6 @@ export const RepairWorkspace = ({
 
   const notice = statusNotice?.context === noticeContext ? statusNotice.message : "";
   const setNotice = (message: string) => setStatusNotice({ message, context: noticeContext });
-  const [publication, setPublication] = useState<RepairPublication>();
-  const [localCommit, setLocalCommit] = useState(false);
 
   const [diffSnapshot, setDiffSnapshot] = useState<{
     layer: keyof typeof layers;
@@ -179,15 +175,9 @@ export const RepairWorkspace = ({
   if (!detail) return <p className="empty-row">{error || "Opening PR repair workspace…"}</p>;
   const session = detail.session;
   const workspace = session.workspace;
+  const implementationProvider = session.configuration.codex.provider || "codex";
+  const reviewProvider = session.configuration.antigravity.provider || "antigravity";
   const awaiting = ["awaiting_manual_review", "verification_blocked"].includes(session.status);
-
-  const canApprove =
-    awaiting &&
-    session.implementation?.items.every((item) =>
-      ["implemented", "clarified"].includes(item.status),
-    ) &&
-    session.verification?.overall === "approved" &&
-    session.verification.items.every((item) => item.status === "accepted");
 
   const reportedTests = [
     ...(session.implementation?.tests || []),
@@ -352,88 +342,9 @@ export const RepairWorkspace = ({
                 </article>
               )}
 
-              {session.status === "ready_to_publish" && (
-                <article className="repair-gate">
-                  <h2>Manually approved · publication pending</h2>
-                  <Button
-                    variant="secondary"
-                    disabled={busy || detail.active}
-                    onClick={() => setLocalCommit(true)}
-                  >
-                    Commit Locally
-                  </Button>
-
-                  <Button
-                    disabled={busy || detail.active}
-                    onClick={async () => {
-                      const plan = await act<RepairPublication>("repair.preparePublication");
-                      if (plan) setPublication(plan);
-                    }}
-                  >
-                    Prepare Push
-                  </Button>
-                </article>
-              )}
-
-              {session.status === "published" && (
-                <article className="repair-gate success">
-                  <h2>Review repair pushed successfully</h2>
-                  <p>
-                    {session.identity.head.name}:{session.identity.head.branch}
-                  </p>
-
-                  <p>
-                    Updated commit{" "}
-                    <code>
-                      {
-                        detail.publications
-                          .map((p) => JSON.parse(p.data) as RepairPublication)
-                          .find((p) => p.outcome === "published")?.local_head
-                      }
-                    </code>
-                  </p>
-
-                  <div className="actions">
-                    <Button onClick={() => void window.vibestar.openExternal(session.identity.url)}>
-                      Open PR on GitHub
-                    </Button>
-
-                    <Button variant="secondary" onClick={() => analyze(session.job_id)}>
-                      Analyze PR Again
-                    </Button>
-                  </div>
-                </article>
-              )}
-
-              {!!detail.publications.length && (
+              {!!detail.activity.length && (
                 <details className="repair-history">
-                  <summary>Publication and repair history</summary>
-                  {detail.publications.map((row) => {
-                    const item = JSON.parse(row.data) as RepairPublication;
-                    return (
-                      <article key={row.id}>
-                        <Status status={row.status} />
-                        <code>{item.local_head}</code>
-                        <p>
-                          {item.destination.repository}:{item.destination.branch}
-                        </p>
-                        {item.error && <p className="warning">{item.error}</p>}
-                        {["uncertain", "pushing"].includes(row.status) && (
-                          <Button
-                            disabled={busy || detail.active}
-                            onClick={() =>
-                              void act("repair.reconcilePublication", {
-                                publication_id: row.id,
-                              })
-                            }
-                          >
-                            Reconcile remote read-only
-                          </Button>
-                        )}
-                      </article>
-                    );
-                  })}
-
+                  <summary>Repair history</summary>
                   {detail.activity.map((activity) => (
                     <p key={activity.id}>
                       {new Date(activity.timestamp).toLocaleString()} ·{" "}
@@ -461,10 +372,10 @@ export const RepairWorkspace = ({
                 id={id}
                 label="PR repair manual review"
                 title="Review repair complete · Manual review required"
-                detail="Inspect the repair and independent verification before the separate local commit and publication decisions."
+                detail="Inspect the repair and independent verification, then use the terminal for Git commands."
               >
                 <Button size="sm" onClick={() => openWorkspaceTool(id, "final-review")}>
-                  Review repair and publication options
+                  Review repair
                 </Button>
               </ActionTray>
             ) : null
@@ -475,7 +386,7 @@ export const RepairWorkspace = ({
               label="PR repair follow-up"
               placeholder={
                 canFollowUp
-                  ? "Describe a further fix for Codex, followed by independent verification…"
+                  ? `Describe a further fix for ${implementationProvider}, followed by independent verification…`
                   : "Keep a local draft while this repair cannot accept another run…"
               }
               sendLabel="Request Further Fix"
@@ -486,7 +397,7 @@ export const RepairWorkspace = ({
               onEdit={() => setNotice("")}
               hint={
                 canFollowUp
-                  ? "Send explicitly starts Codex repair followed by Antigravity verification."
+                  ? `Send explicitly starts ${implementationProvider} repair followed by ${reviewProvider} verification.`
                   : "Draft saved locally. Resolve the current repair state before requesting another run; published repairs require a new explicit PR analysis."
               }
               save={{
@@ -512,9 +423,7 @@ export const RepairWorkspace = ({
 
                 void act("repair.start", { instructions, request_id }).then((value) => {
                   if (value) {
-                    setNotice(
-                      "Further fix requested · approved Codex → Antigravity sequence retained",
-                    );
+                    setNotice("Further fix requested · saved stage providers retained");
 
                     if (composerContent(currentDraft.current) === instructions)
                       updateTaskView(id, {
@@ -533,7 +442,7 @@ export const RepairWorkspace = ({
                   aria-label="Inspect repair stage models"
                   onClick={() => openWorkspaceTool(id, "pipeline")}
                 >
-                  Codex → Antigravity
+                  {implementationProvider} → {reviewProvider}
                 </Button>
               }
               context={workspaceContext({
@@ -667,7 +576,7 @@ export const RepairWorkspace = ({
                   />
 
                   <h3>
-                    Antigravity independent review ·{" "}
+                    {reviewProvider} independent review ·{" "}
                     {session.verification?.overall.replaceAll("_", " ")}
                   </h3>
 
@@ -737,33 +646,12 @@ export const RepairWorkspace = ({
 
                   <div className="actions">
                     <Button
-                      disabled={busy || detail.active || !canApprove}
-                      onClick={async () => {
-                        const plan = await act<RepairPublication>("repair.approve", {
-                          expected_hash: session.review_hash,
-                          confirmed: true,
-                        });
-
-                        if (plan) setPublication(plan);
-                      }}
-                    >
-                      Approve and Prepare Push
-                    </Button>
-
-                    <Button
-                      variant="secondary"
-                      disabled={busy || detail.active || !canApprove}
-                      onClick={() => setLocalCommit(true)}
-                    >
-                      Commit Locally
-                    </Button>
-
-                    <Button
-                      variant="secondary"
                       disabled={busy || detail.active}
-                      onClick={() => void act("repair.keepLocal")}
+                      onClick={() =>
+                        updateTaskView(id, { terminalDock: true, dockTab: "Terminal" })
+                      }
                     >
-                      Keep Local
+                      Open terminal
                     </Button>
 
                     <Button variant="ghost" onClick={() => inspect("Tests")}>
@@ -828,14 +716,15 @@ export const RepairWorkspace = ({
               <Status status={session.status} />
               <h3>Repair pipeline</h3>
               <p>
-                Isolated branch preparation → Codex repair → Antigravity verification → manual
-                review → separate publication confirmation.
+                Isolated branch preparation → Implementation → Review → manual review → manual Git
+                commands in the terminal.
               </p>
 
               {Object.entries(session.configuration).map(([provider, configuration]) => (
                 <div key={provider}>
-                  <strong>{provider}</strong>
+                  <strong>{provider === "codex" ? "Implementation" : "Review"}</strong>
                   <p>
+                    {configuration.provider || (provider === "codex" ? "codex" : "antigravity")} ·{" "}
                     {configuration.model || "Official CLI default"} · {configuration.effort}
                   </p>
                 </div>
@@ -869,13 +758,15 @@ export const RepairWorkspace = ({
 
       <BottomDock
         id={id}
-        terminal={
+        terminal={(active, focusRequest) => (
           <TaskTerminal
             task={{ id, worktree_path: workspace.worktree_path }}
             owner="repair"
+            active={active}
+            focusRequest={focusRequest}
             onError={onError}
           />
-        }
+        )}
         problems={
           <div className="problems-panel">
             <p>{error || session.error || "No repair problems"}</p>
@@ -909,28 +800,6 @@ export const RepairWorkspace = ({
           Problems
         </Button>
       </footer>
-
-      {publication && (
-        <PublicationDialog
-          publication={publication}
-          close={() => setPublication(undefined)}
-          refresh={async () => {
-            await reload();
-            await refresh();
-          }}
-        />
-      )}
-
-      {localCommit && (
-        <LocalCommitDialog
-          session={session}
-          close={() => setLocalCommit(false)}
-          refresh={async () => {
-            await reload();
-            await refresh();
-          }}
-        />
-      )}
 
       {cleanup && (
         <div className="modal-backdrop">

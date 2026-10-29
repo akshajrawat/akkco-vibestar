@@ -38,6 +38,7 @@ export const GitHubPullRequestSchema = z
     head_branch: z.string(),
     head_repository: z.string().nullable(),
     updated_at: z.string(),
+    refreshed_at: z.string().optional(),
     task_id: z.string().nullable(),
   })
   .loose();
@@ -70,6 +71,7 @@ export interface GitHubPullRequest {
   head_branch: string;
   head_repository: string | null;
   updated_at: string;
+  refreshed_at?: string;
   task_id: string | null;
 }
 

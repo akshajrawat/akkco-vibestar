@@ -66,9 +66,12 @@
 }
 
 .workspace-tabs > button.selected,
-.dock-tabs > button.selected {
+.dock-tabs > button.selected,
+.workspace-tabs > button[aria-selected="true"],
+.dock-tabs > button[aria-selected="true"] {
   color: var(--text-primary);
-  box-shadow: inset 0 -1px var(--text-secondary);
+  background: var(--background-selected);
+  border-radius: 6px;
 }
 
 .workspace-tabs button small {

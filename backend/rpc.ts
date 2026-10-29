@@ -2,10 +2,10 @@ import { AdeError } from "./domain";
 import { AuthSessions } from "./execution/terminals/auth";
 import type { Engine } from "./execution/engine";
 import { TaskTerminals } from "./execution/terminals/task-terminals";
-import { FinalizationService } from "./finalization/service";
 import { GitHubService } from "./github/service";
 import { IssueWatchService } from "./issue-watch/service";
 import { PRAnalysisBatches } from "./review/pr/batches";
+import { PRWatch } from "./review/pr/watch";
 import { RepairService } from "./review/repair/service";
 import { ReviewService } from "./review/service";
 import { callOutput, outputMethods } from "./rpc/output";
@@ -35,6 +35,8 @@ export class Rpc {
 
   readonly github: GitHubService;
 
+  readonly prWatch: PRWatch;
+
   readonly issueWatch: IssueWatchService;
 
   private readonly review: ReviewService;
@@ -52,11 +54,11 @@ export class Rpc {
     monitor = new GitHubMonitor(engine.root),
     repairs = new RepairService(engine),
     issueWatch?: IssueWatchService,
-    readonly finalization = new FinalizationService(engine),
   ) {
     this.scheduler = new Scheduler(engine, monitor);
     this.prBatches = new PRAnalysisBatches(engine, this.scheduler);
     this.github = new GitHubService(engine, this.scheduler);
+    this.prWatch = new PRWatch(engine, this.github);
     this.issueWatch = issueWatch || new IssueWatchService(engine, this.github.client);
     this.review = new ReviewService(engine);
     this.repairs = repairs;
@@ -78,6 +80,7 @@ export class Rpc {
       auth: this.auth,
       scheduler: this.scheduler,
       prBatches: this.prBatches,
+      prWatch: this.prWatch,
       github: this.github,
       issueWatch: this.issueWatch,
       review: this.review,
@@ -105,8 +108,6 @@ export class Rpc {
 
   /** Keeps transport dispatch narrow; domain handlers retain validation and ownership checks. */
   call = async (method: string, input: unknown) => {
-    if (method.startsWith("git."))
-      return this.finalization.call(method.slice("git.".length), input);
     if (method.startsWith("issueWatch."))
       return this.issueWatch.call(method.slice("issueWatch.".length), input);
     const handler = this.handlers.get(method);
@@ -116,7 +117,7 @@ export class Rpc {
 
   close = async () => {
     this.auth.dispose();
-    await this.finalization.close();
+    await this.prWatch.close();
     await this.issueWatch.close();
     await this.github.close();
     await this.prBatches.close();

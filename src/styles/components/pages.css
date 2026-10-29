@@ -174,7 +174,7 @@
 }
 
 .pr-list-icon.merged {
-  color: #b7a0e8;
+  color: var(--accent-purple);
 }
 
 .empty-state {

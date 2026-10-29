@@ -338,12 +338,12 @@ export const SettingsPage = ({
                 <section className="settings-section">
                   <h2>Agent pipeline</h2>
                   <p className="pipeline-sequence">
-                    Antigravity Plan → Codex Refinement → Codex Implementation → Antigravity Review
+                    Plan → Plan refinement → Implementation → Review
                   </p>
 
                   <p className="subtle">
-                    Models and reasoning settings are independent. Empty model uses that CLI’s
-                    default; requested models and effort are never silently substituted.
+                    Each stage has its own provider, model and reasoning settings. Empty model uses
+                    that CLI’s default; requested models and effort are never silently substituted.
                   </p>
                   <StageSettings settings={value} onChange={setValue} providers={providers} />
                 </section>

@@ -104,7 +104,7 @@ const detail: Detail = {
   ),
 };
 
-it("shows code success with unresolved browser evidence, opens the exact command, and retries only host validation", async () => {
+it("shows code success with unresolved browser evidence, opens the exact command, without a separate validation action", async () => {
   const rpc = vi.fn(async () => null);
 
   Object.defineProperty(window, "vibestar", {
@@ -136,15 +136,8 @@ it("shows code success with unresolved browser evidence, opens the exact command
   expect(document.activeElement?.className).toBe("command-transcript");
   fireEvent.click(screen.getByRole("button", { name: "Diagnose in terminal" }));
   expect(terminal).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole("button", { name: "Recheck saved evidence" }));
-
-  await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith("task.verification.recheck", {
-      id: detail.task.id,
-    }),
-  );
-
-  expect(rpc).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("button", { name: "Recheck saved evidence" })).toBeNull();
+  expect(rpc).not.toHaveBeenCalled();
 });
 
 it("does not describe a host-side blocker as a cancelled provider run or missing provider exit", () => {

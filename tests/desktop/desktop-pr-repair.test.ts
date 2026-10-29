@@ -19,7 +19,7 @@ import { Database } from "../../backend/storage/database";
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
-  "completes an Oppia-shaped manual PR analysis, isolated repair, independent review and confirmed fast-forward publication through built Electron IPC",
+  "completes an Oppia-shaped manual PR analysis, isolated repair, independent review and manual terminal Git commands through built Electron IPC",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-repair-desktop-"));
 
@@ -59,12 +59,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       side === "head" ? fixture.fork : fixture.upstream,
     );
 
-    const repairs = new RepairService(
-      engine,
-      async () => fixture.session.identity,
-      workspaces,
-      () => fixture.fork,
-    );
+    const repairs = new RepairService(engine, async () => fixture.session.identity, workspaces);
 
     const rpc = new Rpc(engine, monitor, repairs);
 
@@ -123,6 +118,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
 
       await page.exposeFunction("fixtureRpc", async (method: string, params: unknown) => {
+        if (method === "pr.watch.start") return null;
         if (method === "providers.detect")
           return [
             await new RepairFixtureProvider("codex").detect(),
@@ -177,7 +173,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await page.getByRole("dialog", { name: "Pull request details" }).waitFor();
       await page.getByRole("button", { name: "Close PR details" }).click();
       expect(engine.db.all("SELECT * FROM ai_usage")).toEqual([]);
-      await page.getByRole("button", { name: "Analyze PR", exact: true }).click();
+      await page.getByRole("button", { name: "Analyze review", exact: true }).click();
 
       await page
         .getByRole("heading", {
@@ -210,7 +206,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
 
       await page
         .getByRole("button", {
-          name: "Review repair and publication options",
+          name: "Review repair",
           exact: true,
         })
         .click();
@@ -270,58 +266,59 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       });
 
       await page.getByRole("tab", { name: "Final review", exact: true }).click();
-      await page.getByRole("button", { name: "Approve and Prepare Push", exact: true }).click();
-      await page.getByRole("dialog", { name: "Confirm PR publication", exact: true }).waitFor();
 
-      expect(
-        await page.getByRole("button", { name: "Confirm Push", exact: true }).isDisabled(),
-      ).toBe(true);
+      expect(await page.getByRole("button", { name: "Commit Locally", exact: true }).count()).toBe(
+        0,
+      );
 
-      await page.screenshot({
-        path: join(screenshots, "manual-publication-before-commit.png"),
-      });
+      vi.stubEnv("HOME", isolatedHome);
+      vi.stubEnv("SHELL", "/bin/bash");
+      vi.stubEnv("GIT_CONFIG_GLOBAL", "/dev/null");
+      await page.getByRole("button", { name: "Open terminal", exact: true }).click();
+      await page.getByRole("button", { name: "Close shell", exact: true }).waitFor();
 
-      await page
-        .getByLabel("Local commit message", { exact: true })
-        .fill("Keep my exact repair title\n\nReviewed contribution.\n");
-
-      await page
-        .getByRole("dialog", { name: "Confirm PR publication" })
-        .getByRole("button", { name: "Commit Locally", exact: true })
-        .click();
+      const terminal = page.locator(".terminal-surface textarea");
 
       await expect
-        .poll(() => page.getByRole("button", { name: "Confirm Push", exact: true }).isEnabled())
+        .poll(() => terminal.evaluate((element) => element === document.activeElement))
         .toBe(true);
 
-      const approved = repairs.store.get(repair.id);
+      await page.keyboard.press("Control+`");
+      expect(await page.locator(".utility-dock").isVisible()).toBe(false);
+
+      expect(engine.db.all("SELECT id FROM terminal_sessions WHERE status='running'")).toHaveLength(
+        1,
+      );
+
+      await page.keyboard.press("Control+`");
+      expect(await page.locator(".utility-dock").isVisible()).toBe(true);
+
+      await expect
+        .poll(() => terminal.evaluate((element) => element === document.activeElement))
+        .toBe(true);
+
+      await terminal.pressSequentially(
+        'git -c user.name=Fixture -c user.email=fixture@example.invalid commit -am "Reviewed contribution" && git push ' +
+          "'" +
+          fixture.fork.replaceAll("'", "'\\''") +
+          "'" +
+          " HEAD:refs/heads/fix-translation-tests",
+      );
+
+      await terminal.press("Enter");
+
+      await expect
+        .poll(() => checked("git", ["rev-parse", "refs/heads/fix-translation-tests"], fixture.fork))
+        .not.toBe(fixture.head);
 
       const localHead = await checked(
         "git",
         ["rev-parse", "HEAD"],
-        approved.workspace.worktree_path,
+        repairs.assignment(repair.id).worktree_path,
       );
 
-      expect(
-        await checked("git", ["rev-parse", "refs/heads/fix-translation-tests"], fixture.fork),
-      ).toBe(fixture.head);
-
-      await page.screenshot({
-        path: join(screenshots, "explicit-push-confirmation.png"),
-      });
-
-      await page.getByRole("button", { name: "Confirm Push", exact: true }).click();
-
-      await page
-        .getByRole("heading", {
-          name: "Review repair pushed successfully",
-          exact: true,
-        })
-        .waitFor();
-
-      await page.screenshot({
-        path: join(screenshots, "published-repair.png"),
-      });
+      await page.screenshot({ path: join(screenshots, "manual-terminal-git.png") });
+      await page.getByRole("button", { name: "Close shell", exact: true }).click();
 
       expect(
         await checked("git", ["rev-parse", "refs/heads/fix-translation-tests"], fixture.fork),
@@ -369,6 +366,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await rpc.close();
       await engine.close();
       vi.restoreAllMocks();
+      vi.unstubAllEnvs();
       if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1")
         await rm(dir, { recursive: true, force: true });
     }

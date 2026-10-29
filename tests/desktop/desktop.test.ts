@@ -264,7 +264,6 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.screenshot({ path: "test-results/desktop/screenshots/chat-changes.png" });
       await page.getByLabel("Close context pane").click();
       await page.getByLabel("Toggle utility dock").click();
-      await page.getByRole("button", { name: "Start task terminal" }).click();
       await page.getByRole("button", { name: "Close shell" }).waitFor();
       const composer = page.getByLabel("Task conversation");
       const location = page.url();

@@ -1,3 +1,4 @@
+import { pipelineConfiguration } from "../../../../backend/domain";
 import { useState } from "react";
 
 import type { PRAnalysisSession } from "../../../../backend/review/pr/contracts";
@@ -190,12 +191,13 @@ export const SolveReview = ({
         </label>
 
         <p className="subtle">
-          Codex · {settings.codex_implementation.model || "CLI default"} ·{" "}
-          {settings.codex_implementation.effort}
+          Implementation: {pipelineConfiguration(settings, 3).provider} ·{" "}
+          {pipelineConfiguration(settings, 3).model || "CLI default"} ·{" "}
+          {pipelineConfiguration(settings, 3).effort}
           <br />
-          Antigravity ·{" "}
-          {(settings.antigravity_review || settings.antigravity).model || "CLI default"} ·{" "}
-          {(settings.antigravity_review || settings.antigravity).effort}
+          Review: {pipelineConfiguration(settings, 5).provider} ·{" "}
+          {pipelineConfiguration(settings, 5).model || "CLI default"} ·{" "}
+          {pipelineConfiguration(settings, 5).effort}
         </p>
 
         {error && (

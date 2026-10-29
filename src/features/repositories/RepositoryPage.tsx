@@ -194,10 +194,14 @@ export const RepositoryPage = ({
                   {r.owner}/{r.name}
                 </strong>
                 <span className="status-chip success">Active</span>
+              </div>
+              <div className="active-repository-meta">
                 <span className="subtle">
                   {r.source === "imported" ? "User-owned checkout" : "Vibestar-managed clone"}
                 </span>
                 <span className="subtle">Base {r.base_branch}</span>
+              </div>
+              <div className="active-repository-actions">
                 <OpenInEditor id={r.id} kind="repository" path={r.path} />
                 <Button
                   variant="ghost"

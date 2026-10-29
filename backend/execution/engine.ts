@@ -5,7 +5,7 @@ import { join } from "node:path";
 import lockfile from "proper-lockfile";
 
 import { AdeError, now, type CoreEvent } from "../domain";
-import { FinalizationStore } from "../finalization/store";
+import { HistoricalFinalizations } from "../storage/git-history";
 import { Database } from "../storage/database";
 import { RepositoryIndex } from "../workspace/discovery";
 import { GitWorkspace } from "../workspace/git";
@@ -236,7 +236,7 @@ export class Engine extends EventEmitter {
         }
       }
 
-      const finalizations = new FinalizationStore(engine.db);
+      const finalizations = new HistoricalFinalizations(engine.db);
       for (const task of engine.db.tasks())
         for (const record of finalizations.list(task.id)) {
           if (["preparing", "reviewing", "committing", "pushing"].includes(record.status)) {
@@ -349,8 +349,8 @@ export class Engine extends EventEmitter {
   runMissingCheck = (...args: Parameters<VerificationTransitions["runMissingCheck"]>) =>
     this.verification.runMissingCheck(...args);
 
-  fixWithCodex = (...args: Parameters<VerificationTransitions["fixWithCodex"]>) =>
-    this.verification.fixWithCodex(...args);
+  fixVerification = (...args: Parameters<VerificationTransitions["fixVerification"]>) =>
+    this.verification.fixVerification(...args);
 
   acceptDraft = (...args: Parameters<ApprovalTransitions["acceptDraft"]>) =>
     this.approvals.acceptDraft(...args);
@@ -368,9 +368,6 @@ export class Engine extends EventEmitter {
 
   private runUtility = (...args: Parameters<AgentOperations["runUtility"]>) =>
     this.agents.runUtility(...args);
-
-  reviewFinalization = (...args: Parameters<AgentOperations["reviewFinalization"]>) =>
-    this.agents.reviewFinalization(...args);
 
   beginShutdown = () => {
     this.state.closed = true;

@@ -2,6 +2,7 @@ import { it, expect, vi, afterEach } from "vitest";
 
 import { GitHubClient } from "../../backend/github/client";
 import { GitHubMonitor } from "../../backend/scheduled/github";
+import { PullRequestStateSchema } from "../../backend/scheduled/contracts";
 import { reviewBody } from "../helpers/pr-fixtures";
 
 afterEach(() => vi.restoreAllMocks());
@@ -269,10 +270,19 @@ const responses = (
 
 it("retrieves complete reviews/replies, canonical thread identities, original diff coordinates, patches, checks and issue context", async () => {
   const { gh, client } = responses();
+  const progress = vi.fn();
 
   const snapshot = await new GitHubMonitor("/tmp", client).inspect(
     "https://github.com/upstream/project/pull/1",
     new AbortController().signal,
+    progress,
+  );
+
+  expect(PullRequestStateSchema.safeParse(snapshot).success).toBe(true);
+  expect(progress).toHaveBeenCalledWith("Rechecking PR identity");
+
+  expect(progress.mock.calls.some(([phase]) => phase.includes("Reading review threads"))).toBe(
+    true,
   );
 
   expect(snapshot.coverage).toMatchObject({ complete: true, missing: [] });

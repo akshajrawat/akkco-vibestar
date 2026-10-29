@@ -79,9 +79,9 @@ it("persists each approval without starting the next provider, preserves isolati
     };
 
     await gate("antigravity_plan");
-    expect(selected).toEqual([{ stage: 1, provider: undefined }]);
+    expect(selected).toEqual([{ stage: 1, provider: "antigravity" }]);
     expect(engine.db.artifact(task.id, 1).summary).toBe("Fixture plan");
-    expect(engine.db.detail(task.id).runs[0].prompt).toContain("Do not run tests or formatters");
+    expect(engine.db.detail(task.id).runs[0].prompt).toContain("Do not edit files or run tests");
     await expect(engine.retry(task.id)).rejects.toThrow("approve");
     await expect(engine.retry(task.id, 2)).rejects.toThrow("Approve");
     await engine.close();
@@ -93,11 +93,11 @@ it("persists each approval without starting the next provider, preserves isolati
     expect(selected.map((r) => r.stage)).toEqual([1, 2]);
 
     expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "Do not run tests or formatters",
+      "Do not edit files or run tests",
     );
 
     expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "complete applicable verification checklist",
+      "exact applicable test, type, lint, formatting",
     );
 
     expect(await readFile(join(engine.db.task(task.id).worktree_path, "source.txt"), "utf8")).toBe(
@@ -114,7 +114,7 @@ it("persists each approval without starting the next provider, preserves isolati
     expect(selected.map((r) => r.stage)).toEqual([1, 2, 2, 3]);
 
     expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "identify and run every applicable check",
+      "Run the applicable tests, types, lint",
     );
 
     expect(await readFile(join(upstream, "source.txt"), "utf8")).toBe("base\n");
@@ -123,11 +123,11 @@ it("persists each approval without starting the next provider, preserves isolati
     expect(selected.at(-1)).toEqual({ stage: 5, provider: "antigravity" });
 
     expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "implementation-reported success does not substitute for your own verification",
+      "prior agent success is not your verification",
     );
 
     expect(engine.db.detail(task.id).usage.at(-1)).toMatchObject({
-      purpose: "Antigravity Final Review",
+      purpose: "Review",
       status: "completed",
       effort: "high",
     });
@@ -135,6 +135,12 @@ it("persists each approval without starting the next provider, preserves isolati
     expect(buildPrompt(engine.db, { ...engine.db.task(task.id), stage: 5 })).toContain(
       "testsNotRun",
     );
+
+    for (const run of engine.db.detail(task.id).runs) {
+      expect(run.prompt).toContain("Do not install, upgrade, download or bootstrap dependencies");
+      expect(run.prompt).toContain("npx --offline --no-install");
+      expect(run.prompt).not.toContain("Set up missing dependencies in task-owned locations");
+    }
 
     const worktree = engine.db.task(task.id).worktree_path;
     await writeFile(join(worktree, "source.txt"), "modified after review\n");
@@ -354,7 +360,7 @@ it("prevents the final reviewer from editing the implementation and retains its 
     );
 
     expect(engine.db.detail(task.id).usage.at(-1)).toMatchObject({
-      purpose: "Antigravity Final Review",
+      purpose: "Review",
       status: "failed",
     });
   } finally {

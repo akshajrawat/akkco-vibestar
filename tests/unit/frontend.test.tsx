@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+
+vi.mock("../../src/components/shared/TaskTerminal", () => ({
+  TaskTerminal: () => <p>Terminal fixture view</p>,
+}));
+
 import { afterEach, expect, it, vi } from "vitest";
 
 import { defaultSettings } from "../../backend/domain";
@@ -30,7 +35,7 @@ it("shows cancelled preparation as a compact row without a yellow box or duplica
 it("identifies cancelled planning even when detection was stopped before a run was created", async () => {
   const { RunError } = await import("../../src/features/chat/RunError");
   render(<RunError error="AdeError: antigravity: AdeError: Run cancelled" stage={1} />);
-  expect(screen.getByText("Antigravity planning was stopped.")).toBeTruthy();
+  expect(screen.getByText("Task planning was stopped.")).toBeTruthy();
   expect(screen.queryByText(/implementation was stopped/)).toBeNull();
 });
 
@@ -536,6 +541,7 @@ it("shows named cleanup blockers, keeps technical details collapsed, and require
 
 it("collapses PR reasoning and highlights active analysis above a previous approval", async () => {
   const { ScheduledPage } = await import("../../src/features/pull-requests/ScheduledPage");
+  const { prSnapshot } = await import("../helpers/pr-fixtures");
   const { ActionSchema } = await import("../../backend/scheduled/action");
 
   const job = {
@@ -548,7 +554,7 @@ it("collapses PR reasoning and highlights active analysis above a previous appro
     next_run_at: new Date().toISOString(),
     status: "analyzing" as const,
     last_checked_at: null,
-    last_snapshot: null,
+    last_snapshot: prSnapshot,
     pending_snapshot: null,
     changes: [],
     error: null,
@@ -580,10 +586,9 @@ it("collapses PR reasoning and highlights active analysis above a previous appro
     />,
   );
 
-  expect(screen.getByText(/ANALYZING DISCUSSION/)).toBeTruthy();
-  expect(screen.queryByText("APPROVED")).toBeNull();
-  expect(screen.getByText("Assessing the review conversation.")).toBeTruthy();
-  expect(container.querySelector(".pr-row-details")?.hasAttribute("open")).toBe(false);
+  expect(screen.getByText(/Checking discussion/)).toBeTruthy();
+  expect(screen.queryByText("Approved")).toBeNull();
+  expect(container.querySelector(".pr-row-details")).toBeNull();
   expect(container.querySelector(".pr-inbox-row")?.className).toContain("pr-running");
   expect(screen.getByRole("button", { name: /Open PR/ })).toBeTruthy();
 });
@@ -858,35 +863,20 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
   expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain("oppia/oppia");
 });
 
-it("keeps finalization explicit and shows source/worktree metadata without moving the user's checkout", async () => {
+it("opens the manual terminal without Git actions and keeps task completion explicit", async () => {
   const { TaskWorkspace } = await import("../../src/features/tasks/TaskWorkspace");
 
   const rpc = vi.fn(async (method: string) =>
-    method === "git.inspect"
-      ? {
-          files: [],
-          ignored: [],
-          fingerprint: "fixture",
-          preset: {
-            name: "Local only",
-            commit_hooks: "normal",
-            push: "none",
-            remote: "origin",
-            branch: "akkco/26831-task-a",
-          },
-          history: [],
-          active: false,
-        }
-      : method === "providers.detect"
-        ? []
-        : method === "task.diff"
-          ? {
-              files: [{ path: "source.txt" }],
-              insertions: 1,
-              deletions: 1,
-              base: "sha",
-            }
-          : null,
+    method === "providers.detect"
+      ? []
+      : method === "task.diff"
+        ? {
+            files: [{ path: "source.txt" }],
+            insertions: 1,
+            deletions: 1,
+            base: "sha",
+          }
+        : null,
   );
 
   Object.defineProperty(window, "vibestar", {
@@ -939,24 +929,13 @@ it("keeps finalization explicit and shows source/worktree metadata without movin
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Git Changes" }));
-  expect(screen.getByRole("dialog", { name: "Git Changes" })).toBeTruthy();
-
-  expect(screen.getByText(/Select files, commit, then push when ready/)).toBeTruthy();
-
-  expect(rpc).not.toHaveBeenCalledWith("task.complete", expect.anything());
-  fireEvent.click(screen.getByRole("button", { name: "Keep local and close" }));
-  expect(screen.queryByRole("dialog", { name: "Git Changes" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Git Changes" }));
-
-  expect(
-    within(screen.getByRole("dialog", { name: "Git Changes" })).queryByRole("button", {
-      name: "Mark task complete",
-    }),
-  ).toBeNull();
-
-  fireEvent.click(screen.getByRole("button", { name: "Keep local and close" }));
+  expect(screen.queryByRole("button", { name: "Git Changes" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Toggle secondary workspace" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open terminal" }));
+  expect(screen.getByRole("tab", { name: "Terminal" }).getAttribute("aria-selected")).toBe("true");
+  expect(rpc).not.toHaveBeenCalledWith("task.complete", expect.anything());
+  expect(rpc.mock.calls.some(([method]) => method.startsWith("git."))).toBe(false);
+
   fireEvent.click(screen.getByRole("tab", { name: "Workflow" }));
   fireEvent.click(screen.getByRole("button", { name: "Mark task complete" }));
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { AdeError } from "../domain";
+import { AdeError, FollowupConfigSchema } from "../domain";
 import { BatchSelectionSchema, StartPRBatchSchema } from "../review/pr/batches";
 import { GitHubMonitor } from "../scheduled/github";
 import { readLogTail } from "../storage/logs";
@@ -8,6 +8,8 @@ import type { RpcServices } from "./services";
 import { idInput } from "./validation";
 
 export const pullRequestsMethods = [
+  "pr.watch.start",
+  "pr.watch.cancel",
   "scheduled.add",
   "scheduled.analyze",
   "scheduled.batch.preview",
@@ -26,18 +28,37 @@ export const pullRequestsMethods = [
 
 /** Validates and dispatches pull-requests requests through their existing domain services. */
 export const callPullRequests = async (
-  services: Pick<RpcServices, "engine" | "scheduler" | "prBatches">,
+  services: Pick<RpcServices, "engine" | "scheduler" | "prBatches" | "prWatch">,
   method: string,
   input: unknown,
 ) => {
   const e = services.engine;
   switch (method) {
+    case "pr.watch.start":
+      return services.prWatch.start(input);
+
+    case "pr.watch.cancel":
+      z.object({}).strict().parse(input);
+      return services.prWatch.cancel();
+
     case "scheduled.add":
       return services.scheduler.add(input);
 
     case "scheduled.analyze": {
-      const p = idInput.extend({ request_id: z.string().uuid() }).strict().parse(input);
-      return services.scheduler.analyze(p.id, p.request_id);
+      const p = idInput
+        .extend({ request_id: z.string().uuid(), configuration: FollowupConfigSchema.optional() })
+        .strict()
+        .parse(input);
+
+      return services.scheduler.analyze(
+        p.id,
+        p.request_id,
+        p.configuration
+          ? {
+              configuration: { ...p.configuration.config, provider: p.configuration.provider },
+            }
+          : undefined,
+      );
     }
 
     case "scheduled.batch.preview":

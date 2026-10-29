@@ -99,7 +99,7 @@ it("keeps chat primary while sidebar tools navigate, resize and expand, preservi
   pipeline.focus();
   fireEvent.keyDown(pipeline, { key: "ArrowRight" });
   expect(screen.getByRole("tab", { name: "Plans" }).getAttribute("aria-selected")).toBe("true");
-  expect(screen.getByText("Antigravity original plan")).toBeTruthy();
+  expect(screen.getByText("Original plan")).toBeTruthy();
   expect(draft.isConnected).toBe(true);
   const plans = screen.getByRole("tabpanel", { name: "Plans" });
   plans.scrollTop = 80;

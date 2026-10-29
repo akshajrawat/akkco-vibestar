@@ -113,14 +113,14 @@ it("shows genuine review concerns as changes requested with evidence and a Codex
   });
 
   const pipeline = render(
-    <PipelineView detail={value} busy={false} action={vi.fn()} finalize={vi.fn()} />,
+    <PipelineView detail={value} busy={false} action={vi.fn()} terminal={vi.fn()} />,
   );
 
   expect(
     pipeline.container.querySelector(".pipeline-step.changes_requested .pipeline-icon.failure"),
   ).toBeTruthy();
 
-  expect(screen.getByRole("button", { name: "Fix with Codex" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Fix verification" })).toBeNull();
   pipeline.unmount();
   render(<FinalReviewSummary detail={value} changes={vi.fn()} tests={vi.fn()} />);
   expect(screen.getByText("Code review: Changes requested")).toBeTruthy();
@@ -202,16 +202,16 @@ it("explains non-runnable browser checks, exposes diagnostics and requires expli
 
   fireEvent.click(
     within(dialog).getByRole("button", {
-      name: "Prepare runnable checks with Codex",
+      name: "Prepare runnable checks",
     }),
   );
 
-  dialog = screen.getByRole("dialog", { name: "Fix with Codex" });
+  dialog = screen.getByRole("dialog", { name: "Fix verification" });
   expect(within(dialog).getByText(/prepares repeatable test scripts/)).toBeTruthy();
   expect(rpc).not.toHaveBeenCalled();
 
   const authorize = within(dialog).getByRole("button", {
-    name: "Authorize one Codex fix",
+    name: "Authorize one fix",
   });
 
   expect(document.activeElement).toBe(authorize);
@@ -276,36 +276,22 @@ it("executes a runnable recorded check separately from unavailable requirements 
   expect(rpc).toHaveBeenCalledTimes(1);
 });
 
-it("keeps a visible approval handoff when missing checks have passed but host validation still needs rechecking", () => {
+it("shows agent check results without a host validation action", () => {
   const value = detail();
 
   value.task.preparation_timing = {
-    started_at: "2026-10-25T12:00:00Z",
-    ended_at: "2026-10-25T12:00:25Z",
+    started_at: "2026-10-25T00:00:00Z",
+    ended_at: "2026-10-25T00:00:25Z",
   };
 
   value.validation = verificationSummary({}, [
-    {
-      id: "check",
-      command: "node --check script.js",
-      status: "passed",
-      exit_code: 0,
-    },
+    { id: "syntax", command: "node --check script.js", status: "passed", exit_code: 0 },
   ]);
 
-  render(<PipelineView detail={value} busy={false} action={vi.fn()} finalize={vi.fn()} />);
-
-  expect(
-    screen.getByText(
-      "Required checks passed. Recheck saved evidence to open implementation approval.",
-    ),
-  ).toBeTruthy();
-
-  const recovery = screen.getByText(
-    "Required checks passed. Recheck saved evidence to open implementation approval.",
-  ).parentElement!;
-
-  expect(within(recovery).getByRole("button", { name: "Recheck saved evidence" })).toBeTruthy();
+  render(<PipelineView detail={value} busy={false} action={vi.fn()} terminal={vi.fn()} />);
+  expect(screen.getByRole("region", { name: "Agent checks" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Recheck saved evidence" })).toBeNull();
+  expect(screen.queryByText("Validation", { exact: true })).toBeNull();
   expect(screen.getByText("Host · 25s")).toBeTruthy();
 });
 
@@ -376,10 +362,10 @@ it("does not offer review with gaps for actual failures, and requires a separate
 
   const ui = render(<VerificationRecovery detail={value} onError={vi.fn()} />);
   expect(screen.queryByRole("button", { name: "Continue to independent review" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Fix with Codex" }));
+  fireEvent.click(screen.getByRole("button", { name: "Fix verification" }));
   expect(rpc).not.toHaveBeenCalled();
   const dialog = screen.getByRole("dialog");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Authorize one Codex fix" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Authorize one fix" }));
 
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(

@@ -227,9 +227,7 @@ it.skipIf(process.env.VIBESTAR_PRODUCT_DESKTOP_TEST !== "1")(
         last!.usage?.filter(
           (r) =>
             r.status === "completed" &&
-            ["Antigravity Plan", "Codex Plan Refinement", "Codex Implementation"].includes(
-              r.purpose,
-            ),
+            ["Plan", "Plan refinement", "Implementation"].includes(r.purpose),
         ).length,
       ).toBeGreaterThanOrEqual(3);
 

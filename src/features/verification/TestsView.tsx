@@ -8,7 +8,6 @@ import { CommandRuns } from "./CommandRuns";
 import { Button } from "../../components/ui/button";
 import { VerificationSummary } from "./VerificationSummary";
 import { BrowserEnvironment } from "./BrowserEnvironment";
-import { VerificationRecovery } from "./VerificationRecovery";
 
 export const TestsView = ({
   detail,
@@ -41,10 +40,6 @@ export const TestsView = ({
         }}
         terminal={terminal}
       />
-
-      {detail.task.stage >= 4 && (
-        <VerificationRecovery detail={detail} onError={onError} disabled={busy} />
-      )}
 
       <details
         open={advanced}
@@ -93,7 +88,7 @@ export const TestsView = ({
         )}
 
         <details className="manual-command">
-          <summary>Run a validation command</summary>
+          <summary>Run a diagnostic command</summary>
           <form
             className="command-form"
             onSubmit={async (e) => {

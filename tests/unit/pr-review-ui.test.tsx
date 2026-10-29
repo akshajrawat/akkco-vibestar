@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
 import { selectValue } from "../helpers/select";
+// @vitest-environment jsdom
 import { it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 
 import { ScheduledPage } from "../../src/features/pull-requests/ScheduledPage";
 import { PrDetails } from "../../src/features/pull-requests/PrDetails";
@@ -70,8 +70,12 @@ const session: PRAnalysisSession = {
 };
 
 const install = (analyses = [session]) => {
-  const rpc = vi.fn(async (method: string) =>
-    method === "scheduled.detail" ? { analyses, runs: [], usage: [] } : {},
+  const rpc = vi.fn<(method: string, input?: unknown) => Promise<unknown>>(async (method) =>
+    method === "scheduled.detail"
+      ? { analyses, runs: [], usage: [] }
+      : method === "providers.detect"
+        ? []
+        : {},
   );
 
   window.vibestar = {
@@ -103,10 +107,184 @@ const snapshot: Snapshot = {
 it("shows the configured analysis model and performs no inspection/inference merely by opening the inbox", () => {
   const rpc = install();
   render(<ScheduledPage snapshot={snapshot} refresh={vi.fn()} open={vi.fn()} />);
-  expect(screen.getByText(/gpt-6.1-sol/).textContent).toContain("xhigh");
+
+  expect(screen.getByRole("button", { name: "Choose PR review model" }).title).toContain(
+    "gpt-6.1-sol · xhigh",
+  );
+
   expect(screen.queryByText("Resume")).toBeNull();
   expect(screen.queryByText("Automatically watch new PRs")).toBeNull();
   expect(rpc).not.toHaveBeenCalled();
+});
+
+it("defaults to open PRs and displays merged and closed history without pending-check badges", () => {
+  const rpc = install();
+
+  const archived = [
+    {
+      ...discoveredPR,
+      url: "https://github.com/upstream/project/pull/2",
+      number: 2,
+      title: "Merged contribution",
+      state: "MERGED",
+    },
+    {
+      ...discoveredPR,
+      url: "https://github.com/upstream/project/pull/3",
+      number: 3,
+      title: "Closed contribution",
+      state: "CLOSED",
+    },
+  ];
+
+  render(
+    <ScheduledPage
+      snapshot={{
+        ...discoveredSnapshot,
+        github: { ...discoveredSnapshot.github!, pull_requests: [discoveredPR, ...archived] },
+        scheduled: archived.map((pr) => ({
+          ...job,
+          id: `job-${pr.number}`,
+          url: pr.url,
+          last_snapshot: null,
+          last_checked_at: null,
+          last_analyzed_at: undefined,
+        })),
+      }}
+      refresh={vi.fn()}
+      open={vi.fn()}
+    />,
+  );
+
+  expect(
+    screen.getByRole("combobox", { name: "Filter by status" }).getAttribute("data-value"),
+  ).toBe("OPEN");
+
+  expect(screen.queryByRole("button", { name: "Merged contribution" })).toBeNull();
+  selectValue(screen.getByRole("combobox", { name: "Filter by status" }), "MERGED");
+  const merged = screen.getByRole("button", { name: "Merged contribution" }).closest("article")!;
+  expect(within(merged).getByText("Merged")).toBeTruthy();
+  expect(within(merged).queryByText(/awaiting|not checked|CI running/i)).toBeNull();
+  expect(within(merged).queryByRole("button", { name: "Analyze review" })).toBeNull();
+  selectValue(screen.getByRole("combobox", { name: "Filter by status" }), "CLOSED");
+  expect(screen.getByRole("button", { name: "Closed contribution" })).toBeTruthy();
+  expect(rpc).not.toHaveBeenCalled();
+});
+
+it("checks every open PR in one click with the configured review model and no batch form", async () => {
+  const rpc = install();
+
+  const prs = Array.from({ length: 24 }, (_, index) => ({
+    ...discoveredPR,
+    url: `https://github.com/upstream/project/pull/${index + 1}`,
+    number: index + 1,
+  }));
+
+  rpc.mockImplementation(async (method, input) =>
+    method === "scheduled.add"
+      ? { ...job, id: `job-${(input as { url: string }).url.split("/").at(-1)}` }
+      : {},
+  );
+
+  const reviewModel = { ...snapshot.settings.utility_ai, model: "review-model" };
+
+  render(
+    <ScheduledPage
+      snapshot={{
+        ...discoveredSnapshot,
+        settings: { ...snapshot.settings, review_ai: reviewModel },
+        github: {
+          ...discoveredSnapshot.github!,
+          pull_requests: [
+            ...prs,
+            {
+              ...discoveredPR,
+              url: "https://github.com/upstream/project/pull/99",
+              state: "MERGED",
+            },
+          ],
+        },
+      }}
+      refresh={vi.fn()}
+      open={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Recheck open PRs" }));
+
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "pr.watch.start",
+      expect.objectContaining({
+        trigger: "recheck",
+        configuration: {
+          provider: reviewModel.provider,
+          config: {
+            model: "review-model",
+            effort: reviewModel.effort,
+            timeout_secs: reviewModel.timeout_secs,
+          },
+        },
+      }),
+    ),
+  );
+
+  expect(screen.queryByRole("dialog", { name: "Analyze All" })).toBeNull();
+  expect(rpc.mock.calls.some(([method]) => method === "scheduled.batch.preview")).toBe(false);
+
+  expect(
+    rpc.mock.calls.some(
+      ([method]) => method === "scheduled.add" || method === "scheduled.batch.start",
+    ),
+  ).toBe(false);
+});
+
+it("shows concurrent watch progress and one Stop control without a sequential PR counter", async () => {
+  const rpc = install();
+
+  const watch = {
+    request_id: "watch",
+    status: "running" as const,
+    phase: "Reading 5 PR conversations concurrently",
+    started_at: new Date().toISOString(),
+    ended_at: null,
+    error: null,
+    items: [
+      {
+        url: job.url,
+        title: job.title!,
+        lifecycle: "OPEN" as const,
+        status: "checking" as const,
+        reason: "Reading conversation",
+        checked_at: null,
+        fingerprint: null,
+        source_urls: [],
+      },
+    ],
+  };
+
+  const live = { ...snapshot, pr_watch: watch };
+  const view = render(<ScheduledPage snapshot={live} refresh={vi.fn()} open={vi.fn()} />);
+  expect(screen.getByText("Checking open PRs")).toBeTruthy();
+  expect(screen.getByText(/Reading 5 PR conversations concurrently/)).toBeTruthy();
+  expect(screen.queryByText(/Checking PR 1 of/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Analyze review" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Stop PR check" }));
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith("pr.watch.cancel", {}));
+
+  view.rerender(
+    <ScheduledPage
+      snapshot={{ ...live, pr_watch: { ...watch, status: "cancelling" } }}
+      refresh={vi.fn()}
+      open={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByText("Stopping PR check…")).toBeTruthy();
+
+  expect(
+    (screen.getByRole("button", { name: "Stop PR check" }) as HTMLButtonElement).disabled,
+  ).toBe(true);
 });
 
 it("refreshes GitHub metadata without a manual tracking form or inference", async () => {
@@ -118,7 +296,7 @@ it("refreshes GitHub metadata without a manual tracking form or inference", asyn
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Refresh PR List" }));
-  await waitFor(() => expect(rpc).toHaveBeenCalledWith("github.sync", {}));
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith("github.pullRequests.refresh", {}));
   expect(screen.queryByLabelText("PR URL")).toBeNull();
   expect(screen.queryByRole("button", { name: "Track PR" })).toBeNull();
   expect(rpc.mock.calls.some(([method]) => method === "scheduled.analyze")).toBe(false);
@@ -221,7 +399,7 @@ it("merges duplicate discoveries, filters saved metadata and retains rows after 
   fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
   expect(screen.getByRole("button", { name: discoveredPR.title })).toBeTruthy();
 
-  selectValue(screen.getByLabelText("Filter by status"), "MERGED");
+  selectValue(screen.getByRole("combobox", { name: "Filter by status" }), "MERGED");
 
   expect(screen.queryByRole("button", { name: discoveredPR.title })).toBeNull();
   expect(rpc).not.toHaveBeenCalled();
@@ -238,14 +416,16 @@ it("launches one explicit analysis and reads local saved details when opening it
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "Analyze Again" }));
+  fireEvent.click(screen.getByRole("button", { name: "Analyze again" }));
 
   await waitFor(() =>
     expect(rpc.mock.calls.filter(([method]) => method === "scheduled.analyze")).toHaveLength(1),
   );
 
   expect(
-    rpc.mock.calls.some(([method]) => method === "github.sync" || method === "scheduled.run"),
+    rpc.mock.calls.some(
+      ([method]) => method === "github.pullRequests.refresh" || method === "scheduled.run",
+    ),
   ).toBe(false);
 
   expect(screen.getByRole("dialog", { name: "Pull request details" })).toBeTruthy();
@@ -253,6 +433,56 @@ it("launches one explicit analysis and reads local saved details when opening it
   expect((screen.getByRole("button", { name: "Solve Review" }) as HTMLButtonElement).disabled).toBe(
     true,
   );
+});
+
+it("applies compact model and time-limit overrides without changing saved settings", async () => {
+  const rpc = install();
+
+  rpc.mockImplementation(async (method) =>
+    method === "providers.detect"
+      ? [
+          {
+            provider: "codex",
+            installed: true,
+            connected: true,
+            version: "fixture",
+            capabilities: ["fixture"],
+            error: null,
+            models: [{ id: "session-model", supportedEfforts: ["high"] }],
+            efforts: ["high"],
+          },
+        ]
+      : method === "scheduled.detail"
+        ? { analyses: [session], runs: [], usage: [] }
+        : {},
+  );
+
+  render(<ScheduledPage snapshot={snapshot} refresh={vi.fn()} open={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "Choose PR review model" }));
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith("providers.detect", {}));
+  selectValue(screen.getByRole("combobox", { name: "Review model" }), "session-model");
+  selectValue(screen.getByRole("combobox", { name: "Review time limit" }), "300");
+  fireEvent.click(screen.getByRole("button", { name: "Close model selector" }));
+  fireEvent.click(screen.getByRole("button", { name: "Analyze again" }));
+
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "scheduled.analyze",
+      expect.objectContaining({
+        configuration: {
+          provider: "codex",
+          config: {
+            model: "session-model",
+            effort: "high",
+            timeout_secs: 300,
+          },
+        },
+      }),
+    ),
+  );
+
+  expect(rpc.mock.calls.some(([method]) => method === "settings.save")).toBe(false);
+  expect(snapshot.settings.utility_ai.model).toBe("gpt-6.1-sol");
 });
 
 it("renders the entire original multiline review, source links, independent observations and positive feedback", async () => {
@@ -319,4 +549,50 @@ it("keeps incomplete coverage and cancellation visible and preserves a complete 
   render(<PrDetails job={job} close={vi.fn()} />);
   await screen.findByText(/Every request has not been assessed/);
   expect(screen.getByText("Source review-2 was deferred.")).toBeTruthy();
+});
+
+it("shows the current quick result instead of an old cancelled engineering attempt", async () => {
+  const cancelled: PRAnalysisSession = {
+    ...session,
+    id: "old-cancelled",
+    status: "cancelled",
+    phase: "Analysis cancelled — no automatic retry",
+    error: "Stopped by user",
+    report: undefined,
+  };
+
+  install([cancelled]);
+
+  render(
+    <PrDetails
+      job={{ ...job, status: "interrupted" }}
+      close={vi.fn()}
+      watch={{
+        url: job.url,
+        title: job.title!,
+        lifecycle: "OPEN",
+        status: "waiting",
+        reason: "You answered the review and supplied test links; waiting for the reviewer.",
+        checked_at: "2026-10-28T00:00:00Z",
+        fingerprint: "fresh",
+        source_urls: [job.url],
+      }}
+    />,
+  );
+
+  await screen.findByRole("region", { name: "Latest PR check" });
+  expect(screen.getByText("Waiting for reviewer")).toBeTruthy();
+  expect(screen.getByText(/You answered the review/)).toBeTruthy();
+
+  await waitFor(() =>
+    expect(window.vibestar.rpc).toHaveBeenCalledWith("scheduled.detail", { id: job.id }),
+  );
+
+  expect(screen.queryByText(/Stopped by user/)).toBeNull();
+  expect(screen.queryByText("Check interrupted")).toBeNull();
+  expect(screen.queryByText("No engineering report saved")).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: "Analysis History" }));
+  expect(screen.getAllByText(/Stopped by user/).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole("button", { name: /cancelled/ }));
+  expect(screen.getByText(/Analysis cancelled/)).toBeTruthy();
 });

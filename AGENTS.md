@@ -17,10 +17,10 @@ The renderer presents state; the Linux/WSL Node core owns all execution authorit
 - `backend/execution/engine`: scheduling, lifecycle, workflow, approval and recovery internals.
 - `backend/execution/{agents,providers,runtime,output,terminals,verification}`: execution support.
 - `backend/rpc`: domain request handlers; `backend/rpc.ts`: service composition and dispatch.
-- `backend/{github,issue-watch,review,finalization,workspace,storage}`: trusted domain services.
+- `backend/{github,issue-watch,review,workspace,storage}`: trusted domain services.
 - `electron`: main process, isolated preload, stdio bridge and desktop contracts.
 - `tests/{unit,integration,security,terminals,desktop,live}`: named suite categories.
-- `tests/{workspace,verification,pr-repair,issue-watch,finalization,diff}`: domain regressions.
+- `tests/{workspace,verification,pr-repair,issue-watch,diff}`: domain regressions.
 - `tests/helpers`: shared fixture constructors. Keep domain-only fixtures with their tests.
 
 ## Code conventions
@@ -59,8 +59,9 @@ Avoid adding a blank line after every statement. Prettier and ESLint enforce lay
 - Validate the main-frame IPC sender and every host mutation's input/confirmation.
 - Preserve core capability negotiation before unsupported mutations.
 - Use argv arrays. Do not interpolate repository paths or model text into a shell.
-- Require the outer sandbox and provider restrictions; missing isolation fails closed.
-- Planning/review stays read-only. Implementation/PTY access is limited to its owned assignment.
+- Require the outer sandbox and provider restrictions for agents and verification; missing isolation fails closed.
+- Explicit user-operated terminals use the normal Linux/WSL shell and user permissions, like VS Code.
+- Planning/review stays read-only. Agent implementation access is limited to its owned assignment.
 - Keep shared execution slots, maintenance leases and cancellation state authoritative.
 - Canonicalize managed paths, reject aliases and prove worktree/branch/common-directory ownership.
 - Never remove imported source checkouts or unknown/dirty/unpublished work automatically.
@@ -70,10 +71,9 @@ Avoid adding a blank line after every statement. Prettier and ESLint enforce lay
 - Persist bounded redacted logs, not OAuth tokens. Preserve streaming redaction across chunks.
 - Distinguish observed command outcomes from provider reports and missing evidence.
 - Preserve explicit workflow startup, approval gates and saved-instruction decisions.
-- PR analysis and Issue Watch require explicit requests; startup/opening must not invoke inference.
-- Publication requires fresh identity, permission, fingerprint, verification, ancestry and remote-SHA checks.
-- Optional contributor/application hooks are not a security boundary. `--no-verify` cannot waive host guards.
-- Do not change the application publisher to execute repository hooks unsandboxed.
+- The lightweight PR watch checks once per app launch and on explicit recheck; detailed PR analysis and Issue Watch require explicit requests. Never replay interrupted runs or add background inference timers.
+- Git commits and pushes are manual terminal commands; do not restore application publication endpoints.
+- Optional contributor hooks are not a security boundary. `--no-verify` cannot waive host guards.
 - Contributor hook installers must preserve existing private hooks and hook configuration.
 - Cancellation/restart must not replay provider runs or remote writes.
 

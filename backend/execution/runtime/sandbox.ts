@@ -70,6 +70,15 @@ export const sandboxInvocation = async (
     "--setenv",
     "TMPDIR",
     "/tmp",
+    "--setenv",
+    "npm_config_offline",
+    "true",
+    "--setenv",
+    "npm_config_yes",
+    "false",
+    "--setenv",
+    "PIP_NO_INDEX",
+    "1",
   ];
 
   if (invocation.verificationEnvironment === "installed_browsers") {

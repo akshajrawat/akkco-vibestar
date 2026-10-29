@@ -14,6 +14,7 @@ import {
   type ScheduleJob,
   type ScheduleAttention,
   PullRequestStateSchema,
+  type PullRequestState,
 } from "./contracts";
 
 const savedJob = z
@@ -196,7 +197,7 @@ export class Scheduler {
     requestId: string = randomUUID(),
     options?: {
       configuration: Settings["utility_ai"];
-      authorizeInference: () => void;
+      authorizeInference?: () => void;
     },
   ) => this.launch(id, requestId, true, options);
 
@@ -210,7 +211,7 @@ export class Scheduler {
     requestId: string,
     options: {
       configuration: Settings["utility_ai"];
-      authorizeInference: () => void;
+      authorizeInference?: () => void;
     },
   ) => {
     this.analyze(id, requestId, options);
@@ -230,7 +231,7 @@ export class Scheduler {
     semantic: boolean,
     options?: {
       configuration: Settings["utility_ai"];
-      authorizeInference: () => void;
+      authorizeInference?: () => void;
     },
   ) => {
     this.engine.assertAvailable();
@@ -259,7 +260,9 @@ export class Scheduler {
       ended_at: null,
       phase: "Fetching complete GitHub context",
       configuration: structuredClone(
-        options?.configuration || this.engine.db.settings().utility_ai,
+        options?.configuration ||
+          this.engine.db.settings().review_ai ||
+          this.engine.db.settings().utility_ai,
       ),
     };
 
@@ -284,13 +287,35 @@ export class Scheduler {
           job.error = null;
           this.save(job);
           this.analysis.save(session);
-          const snapshot = await this.monitor.inspect(job.url, controller.signal);
+          const deadline = AbortSignal.timeout(120000);
+          let snapshot: PullRequestState;
+          try {
+            snapshot = PullRequestStateSchema.parse(
+              await this.monitor.inspect(
+                job.url,
+                AbortSignal.any([controller.signal, deadline]),
+                (phase) => {
+                  if (controller.signal.aborted) return;
+                  session.phase = phase;
+                  this.analysis.save(session);
+                },
+              ),
+            );
+          } catch (error) {
+            if (deadline.aborted && !controller.signal.aborted)
+              throw new AdeError(
+                "github_timeout",
+                "GitHub context retrieval exceeded two minutes. Retry this PR after checking the GitHub connection.",
+              );
+            throw error;
+          }
+
           controller.signal.throwIfAborted();
           session.snapshot = snapshot;
           job.title = snapshot.title;
           job.last_checked_at = now();
           job.pending_snapshot = snapshot;
-          if (semantic) {
+          if (semantic && snapshot.state === "OPEN") {
             job.status = "analyzing";
             this.save(job);
 

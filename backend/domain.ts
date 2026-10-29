@@ -55,22 +55,34 @@ export const FollowupConfigSchema = z.object({
   config: StageConfigSchema,
 });
 
+export const PipelineStageConfigSchema = StageConfigSchema.extend({
+  provider: z.enum(["codex", "antigravity"]).optional(),
+});
+
+// Persisted keys and numeric stages retain compatibility with existing tasks.
+export const pipelineStages = [
+  { stage: 1, key: "antigravity", label: "Plan", provider: "antigravity" },
+  { stage: 2, key: "codex_plan", label: "Plan refinement", provider: "codex" },
+  { stage: 3, key: "codex_implementation", label: "Implementation", provider: "codex" },
+  { stage: 5, key: "antigravity_review", label: "Review", provider: "antigravity" },
+] as const;
+
 export const PipelineStageSettingsSchema = z
   .object({
-    1: StageConfigSchema.optional(),
-    2: StageConfigSchema.optional(),
-    3: StageConfigSchema.optional(),
-    5: StageConfigSchema.optional(),
+    1: PipelineStageConfigSchema.optional(),
+    2: PipelineStageConfigSchema.optional(),
+    3: PipelineStageConfigSchema.optional(),
+    5: PipelineStageConfigSchema.optional(),
   })
   .strict();
 
 export const SettingsSchema = z
   .object({
     concurrency: z.number().int().min(1).max(4),
-    antigravity: StageConfigSchema,
-    antigravity_review: StageConfigSchema.optional(),
-    codex_plan: StageConfigSchema,
-    codex_implementation: StageConfigSchema,
+    antigravity: PipelineStageConfigSchema,
+    antigravity_review: PipelineStageConfigSchema.optional(),
+    codex_plan: PipelineStageConfigSchema,
+    codex_implementation: PipelineStageConfigSchema,
     utility_ai: StageConfigSchema.extend({
       provider: z.enum(["antigravity", "codex"]),
     }).default({
@@ -98,10 +110,10 @@ export const SettingsSchema = z
       }),
   })
   .superRefine((settings, context) => {
-    for (const key of ["antigravity", "antigravity_review"] as const) {
+    for (const { key, provider } of pipelineStages) {
       const config = settings[key];
       if (!config) continue;
-      const error = modelEffortError("antigravity", config.model, config.effort);
+      const error = modelEffortError(config.provider || provider, config.model, config.effort);
       if (error)
         context.addIssue({
           code: "custom",
@@ -143,6 +155,21 @@ export const SettingsSchema = z
 
 export type Settings = z.infer<typeof SettingsSchema>;
 export type StageConfig = z.infer<typeof StageConfigSchema>;
+export type PipelineStageConfig = z.infer<typeof PipelineStageConfigSchema>;
+
+/** Resolves legacy provider defaults without changing saved settings or completed runs. */
+export const pipelineConfiguration = (
+  settings: Settings,
+  stage: number,
+  overrides?: z.infer<typeof PipelineStageSettingsSchema>,
+) => {
+  const role = pipelineStages.find((entry) => entry.stage === stage);
+  if (!role) throw new AdeError("invalid_stage", "Unknown agent pipeline stage.");
+  const configured = settings[role.key];
+  const saved = overrides?.[role.stage] || configured;
+  const config = saved || settings.antigravity;
+  return { ...config, provider: saved?.provider || configured?.provider || role.provider };
+};
 
 export const defaultSettings: Settings = {
   concurrency: 2,

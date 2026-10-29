@@ -28,13 +28,17 @@ export class CoreBridge extends EventEmitter {
 
   private verificationPolicyAvailable = false;
 
-  private exactCommitMessagesAvailable = false;
+  private manualTerminalAvailable = false;
 
-  private gitFinalizationAvailable = false;
-
-  private repositoryDestinationsAvailable = false;
+  private pipelineProvidersAvailable = false;
 
   private manualPrAvailable = false;
+
+  private prReviewControlsAvailable = false;
+
+  private bulkPrMetadataAvailable = false;
+
+  private quickPrWatchAvailable = false;
 
   private repairAvailable = false;
 
@@ -61,6 +65,9 @@ export class CoreBridge extends EventEmitter {
   start = () => {
     this.stopping = false;
     this.manualPrAvailable = false;
+    this.prReviewControlsAvailable = false;
+    this.bulkPrMetadataAvailable = false;
+    this.quickPrWatchAvailable = false;
     this.repairAvailable = false;
     this.issueWatchAvailable = false;
     this.approvalsAvailable = false;
@@ -70,8 +77,8 @@ export class CoreBridge extends EventEmitter {
     this.browserVerificationAvailable = false;
     this.pipelineVerificationAvailable = false;
     this.verificationPolicyAvailable = false;
-    this.exactCommitMessagesAvailable = false;
-    this.gitFinalizationAvailable = false;
+    this.manualTerminalAvailable = false;
+    this.pipelineProvidersAvailable = false;
 
     this.checking = this.launch().catch((error) => {
       this.warning = String(error);
@@ -161,10 +168,12 @@ export class CoreBridge extends EventEmitter {
         browser_verification_environment?: boolean;
         pipeline_verification?: number;
         verification_policy?: boolean;
-        exact_commit_messages?: boolean;
-        git_finalization?: number;
-        repository_destinations?: number;
+        manual_user_terminal?: number;
+        pipeline_stage_providers?: number;
         manual_pr_analysis?: boolean;
+        pr_review_controls?: number;
+        bulk_pr_metadata?: number;
+        pr_quick_watch?: number;
         pr_repair?: boolean;
         manual_issue_watch?: boolean;
         issue_watch_contract?: number;
@@ -178,10 +187,12 @@ export class CoreBridge extends EventEmitter {
         this.browserVerificationAvailable = info.browser_verification_environment === true;
         this.pipelineVerificationAvailable = info.pipeline_verification === 2;
         this.verificationPolicyAvailable = info.verification_policy === true;
-        this.exactCommitMessagesAvailable = info.exact_commit_messages === true;
-        this.gitFinalizationAvailable = info.git_finalization === 1;
-        this.repositoryDestinationsAvailable = info.repository_destinations === 1;
+        this.manualTerminalAvailable = info.manual_user_terminal === 1;
+        this.pipelineProvidersAvailable = info.pipeline_stage_providers === 1;
         this.manualPrAvailable = info.manual_pr_analysis === true;
+        this.prReviewControlsAvailable = info.pr_review_controls === 1;
+        this.bulkPrMetadataAvailable = info.bulk_pr_metadata === 1;
+        this.quickPrWatchAvailable = info.pr_quick_watch === 1;
         this.repairAvailable = info.pr_repair === true;
 
         this.issueWatchAvailable =
@@ -212,18 +223,47 @@ export class CoreBridge extends EventEmitter {
 
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (
+      !this.pipelineProvidersAvailable &&
+      [
+        "task.create",
+        "task.startWorkflow",
+        "task.retry",
+        "task.approve",
+        "task.configure",
+        "task.configureStage",
+        "task.verification.fix",
+        "task.followup",
+        "task.message.send",
+        "repair.create",
+        "repair.start",
+      ].includes(method)
+    )
+      throw new Error(
+        this.warning || "Update the execution helper before using per-stage pipeline providers.",
+      );
     if (method === "task.verification.policy" && !this.verificationPolicyAvailable)
       throw new Error("Update the execution helper before changing verification policy.");
     if (!this.pipelineVerificationAvailable && method.startsWith("task.verification."))
       throw new Error(
         "Update the execution helper before using verification recovery and review with gaps.",
       );
-    if (!this.gitFinalizationAvailable && method.startsWith("git."))
-      throw new Error("Update the execution helper before using Git Finalization.");
-    if (!this.repositoryDestinationsAvailable && method === "repository.configureDestination")
-      throw new Error("Update the execution helper before configuring a push destination.");
-    if (!this.exactCommitMessagesAvailable && method === "repair.commit")
-      throw new Error("Update the execution helper before committing exact multiline messages.");
+    if (
+      method.startsWith("git.") ||
+      [
+        "repository.configureDestination",
+        "repair.approve",
+        "repair.approveLocal",
+        "repair.commit",
+        "repair.preparePublication",
+        "repair.publish",
+        "repair.reconcilePublication",
+        "repair.keepLocal",
+      ].includes(method)
+    )
+      throw new Error("Use the built-in terminal to run Git commands manually.");
+    if (!this.manualTerminalAvailable && ["terminal.open", "repair.terminal.open"].includes(method))
+      throw new Error("Update the execution helper before opening a manual user terminal.");
     if (!this.browserVerificationAvailable && method.startsWith("task.browser."))
       throw new Error(
         "Update the execution helper before selecting or inspecting browser verification environments.",
@@ -235,6 +275,17 @@ export class CoreBridge extends EventEmitter {
         : params && typeof params === "object" && "settings" in params
           ? params.settings
           : undefined;
+
+    if (
+      !this.pipelineProvidersAvailable &&
+      settings &&
+      typeof settings === "object" &&
+      ["antigravity", "codex_plan", "codex_implementation", "antigravity_review"].some((key) => {
+        const config = (settings as Record<string, unknown>)[key];
+        return config && typeof config === "object" && "provider" in config;
+      })
+    )
+      throw new Error("Update the execution helper before saving per-stage pipeline providers.");
 
     if (
       !this.finalReviewSettingsAvailable &&
@@ -255,11 +306,12 @@ export class CoreBridge extends EventEmitter {
         method,
       )
     )
-      throw new Error("Update the execution helper before using PR repair and publishing.");
+      throw new Error("Update the execution helper before using PR repair.");
     if (
       !this.manualPrAvailable &&
       [
         "github.sync",
+        "github.pullRequests.refresh",
         "github.configure",
         "scheduled.add",
         "scheduled.run",
@@ -271,6 +323,17 @@ export class CoreBridge extends EventEmitter {
       throw new Error(
         this.warning || "Update the execution helper before using manual PR actions.",
       );
+    if (
+      !this.prReviewControlsAvailable &&
+      ["scheduled.analyze", "scheduled.batch.start"].includes(method)
+    )
+      throw new Error(
+        "Update the execution helper before checking PRs with the selected review model.",
+      );
+    if (!this.bulkPrMetadataAvailable && method === "github.pullRequests.refresh")
+      throw new Error("Update the execution helper before using bulk PR metadata refresh.");
+    if (!this.quickPrWatchAvailable && method === "pr.watch.start")
+      throw new Error("Update the execution helper before using automatic quick PR checks.");
     if (
       !this.approvalsAvailable &&
       [
@@ -292,6 +355,7 @@ export class CoreBridge extends EventEmitter {
         "task.message.send",
         "task.approve",
         "task.configureStage",
+        "task.verification.fix",
       ].includes(method)
     )
       throw new Error(
@@ -312,6 +376,7 @@ export class CoreBridge extends EventEmitter {
           capabilities: {
             manual_issue_watch: this.issueWatchAvailable,
             issue_watch_contract: this.issueWatchAvailable ? 1 : null,
+            ...(this.quickPrWatchAvailable ? { pr_quick_watch: true } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };

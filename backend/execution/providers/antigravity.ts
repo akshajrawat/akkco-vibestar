@@ -36,6 +36,7 @@ export class AntigravityProvider implements AgentProvider {
         "--mode",
         "--sandbox",
         "--effort",
+        "--input-format",
         "--output-format",
         "--json-schema",
       ]);
@@ -78,16 +79,18 @@ export class AntigravityProvider implements AgentProvider {
       "--mode",
       r.stage === 3 ? "accept-edits" : "plan",
       "--sandbox",
+      "--input-format",
+      "stream-json",
       "--output-format",
       "stream-json",
       "--effort",
       r.config.effort,
       ...(r.config.model ? ["--model", r.config.model] : []),
       "--json-schema",
-      JSON.stringify(r.schema),
-      "-p",
-      r.prompt,
+      r.schemaPath,
     ],
+    // One stdin message keeps complete task context out of OS-limited argv.
+    input: `${JSON.stringify({ event: "user", message: { content: r.prompt } })}\n`,
   });
 
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {

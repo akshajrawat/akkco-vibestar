@@ -115,6 +115,41 @@ it("does not disable real Antigravity plan mode or bypass permissions", () => {
   expect(args).toContain("read-only");
   expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
   expect(codex.invocation({ ...request, stage: 3 }).args).toContain("workspace-write");
+
+  expect(codex.invocation({ ...request, stage: 3 }).args).toContain(
+    "sandbox_workspace_write.network_access=true",
+  );
+
+  expect(codex.invocation({ ...request, stage: 2 }).args).toContain(
+    "sandbox_workspace_write.network_access=false",
+  );
+});
+
+it("sends complete Antigravity prompts as one stdin message and references the mounted schema", () => {
+  const prompt = 'Quoted "context"\n第二行 🪐\n'.repeat(12000);
+
+  const invocation = agy.invocation({
+    runId: "run",
+    cwd: "/worktree",
+    stage: 1,
+    config: { model: "chosen", effort: "high", timeout_secs: 60 },
+    prompt,
+    schemaPath: "/artifacts/schema.json",
+    schema: { type: "object" },
+  });
+
+  expect(invocation.args).toContain("--input-format");
+  expect(invocation.args[invocation.args.indexOf("--input-format") + 1]).toBe("stream-json");
+
+  expect(invocation.args[invocation.args.indexOf("--json-schema") + 1]).toBe(
+    "/artifacts/schema.json",
+  );
+
+  expect(invocation.args).not.toContain("-p");
+  expect(invocation.args).not.toContain(prompt);
+  const lines = invocation.input.trimEnd().split("\n");
+  expect(lines).toHaveLength(1);
+  expect(JSON.parse(lines[0])).toEqual({ event: "user", message: { content: prompt } });
 });
 
 it("retains exact tool arguments and distinguishes provider aggregates from separately emitted command streams", () => {

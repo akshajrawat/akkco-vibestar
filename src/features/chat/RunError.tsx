@@ -26,9 +26,9 @@ export const RunError = ({
   const validation = stage === 4;
 
   const provider =
-    run?.provider === "antigravity" || (!run && [1, 5].includes(stage))
+    run?.provider === "antigravity"
       ? "Antigravity"
-      : run?.provider === "codex" || (!run && [2, 3].includes(stage))
+      : run?.provider === "codex"
         ? "Codex"
         : stage === 0
           ? "Repository"

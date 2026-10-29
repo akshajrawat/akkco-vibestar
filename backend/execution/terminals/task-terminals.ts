@@ -2,14 +2,24 @@ import { spawn, type IPty } from "node-pty";
 
 import { randomUUID } from "node:crypto";
 import { mkdir, open } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { userInfo } from "node:os";
 
 import { AdeError, now, type WorkspaceAssignment } from "../../domain";
 import type { Engine } from "../engine";
-import { sandboxInvocation } from "../runtime/sandbox";
-import { cleanEnvironment, redact, processIdentity } from "../runtime/process";
+import { redact, processIdentity } from "../runtime/process";
 import { StreamRedactor } from "../output/stream-redactor";
 import { BoundedWriter, OutputBudget } from "../output/bounded-output";
+import { gitChecked } from "../../workspace/git-command";
+
+export interface TaskTerminalSnapshot {
+  session_id: string;
+  output: string;
+  sequence: number;
+  cwd?: string;
+  shell?: string;
+  branch?: string;
+}
 
 export class TaskTerminals {
   private readonly sessions = new Map<
@@ -19,9 +29,16 @@ export class TaskTerminals {
       pty: IPty;
       output: string;
       sequence: number;
+      cwd: string;
+      shell: string;
+      branch: string;
       stop: () => Promise<void>;
     }
   >();
+
+  private readonly opening = new Map<string, Promise<TaskTerminalSnapshot>>();
+
+  private closed = false;
 
   constructor(
     private readonly engine: Engine,
@@ -29,22 +46,44 @@ export class TaskTerminals {
       assignment: (id: string) => WorkspaceAssignment;
       acquire: (id: string) => Promise<() => Promise<void>>;
     },
+    private readonly environment: NodeJS.ProcessEnv = process.env,
   ) {}
 
   open = async (id: string, cols: number, rows: number) => {
-    const existing = this.sessions.get(id);
-    if (existing)
-      return {
-        session_id: existing.id,
-        output: existing.output,
-        sequence: existing.sequence,
-      };
-    if (this.sessions.size >= 4)
+    if (this.closed) throw new AdeError("closed", "Terminals are shutting down.");
+    const existing = this.current(id);
+    if (existing) return existing;
+    const pending = this.opening.get(id);
+    if (pending) return pending;
+    if (this.sessions.size + this.opening.size >= 4)
       throw new AdeError(
         "terminal_limit",
         "Close an existing task terminal before opening another (maximum 4)",
       );
 
+    const started = this.start(id, cols, rows).finally(() => this.opening.delete(id));
+    this.opening.set(id, started);
+    return started;
+  };
+
+  /** Adds only a missing alias in an owned managed clone; user-owned remotes stay untouched. */
+  private directory = (task: WorkspaceAssignment) =>
+    this.engine.git.withLock(task.repo_id, async () => {
+      const cwd = await this.engine.git.assertTask(task);
+      const repository = this.engine.db.repository(task.repo_id);
+      if (repository.source !== "imported") {
+        const remotes = (await gitChecked(["remote"], cwd)).split("\n");
+        if (!remotes.includes("origin"))
+          await gitChecked(
+            ["remote", "add", "--", "origin", repository.origin_url || repository.upstream_url],
+            cwd,
+          );
+      }
+
+      return cwd;
+    });
+
+  private start = async (id: string, cols: number, rows: number): Promise<TaskTerminalSnapshot> => {
     const releaseLease = this.repair
       ? await this.repair.acquire(id)
       : this.engine.acquireTerminal(id);
@@ -61,15 +100,7 @@ export class TaskTerminals {
     const sessionId = randomUUID();
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      const cwd = await this.engine.git.assertTask(task);
-
-      const invocation = await sandboxInvocation(
-        this.engine.root,
-        this.engine.db,
-        task,
-        { program: "bash", args: ["--noprofile", "--norc", "-i"] },
-        false,
-      );
+      const cwd = await this.directory(task);
 
       const dir = join(this.engine.root, "logs", id);
       await mkdir(dir, { recursive: true });
@@ -82,15 +113,20 @@ export class TaskTerminals {
         now(),
       );
 
-      const pty = spawn(invocation.program, invocation.args, {
+      // Explicit user terminals share the user's shell, Git config and authentication.
+      // Agent and verification commands continue through the separate sandbox path.
+      const shell = this.environment.SHELL || userInfo().shell || "/bin/bash";
+
+      const pty = spawn(shell, ["-i"], {
         cwd,
         cols,
         rows,
         name: "xterm-256color",
         env: {
-          ...cleanEnvironment(),
+          ...this.environment,
+          PWD: cwd,
           TERM: "xterm-256color",
-          PS1: "\\[\\e[38;5;110m\\]vibestar \\w\\[\\e[0m\\] $ ",
+          COLORTERM: "truecolor",
         } as Record<string, string>,
       });
 
@@ -108,6 +144,9 @@ export class TaskTerminals {
         pty,
         output: "",
         sequence: 0,
+        cwd,
+        shell: basename(shell),
+        branch: task.branch_name,
         stop: async () => {
           if (stopping) return exited;
           stopping = true;
@@ -243,6 +282,9 @@ export class TaskTerminals {
         session_id: sessionId,
         output: session.output,
         sequence: session.sequence,
+        cwd: session.cwd,
+        shell: session.shell,
+        branch: session.branch,
       };
     } catch (e) {
       try {
@@ -274,6 +316,9 @@ export class TaskTerminals {
           session_id: session.id,
           output: session.output,
           sequence: session.sequence,
+          cwd: session.cwd,
+          shell: session.shell,
+          branch: session.branch,
         }
       : null;
   };
@@ -291,10 +336,13 @@ export class TaskTerminals {
   };
 
   close = async (taskId: string) => {
+    await this.opening.get(taskId)?.catch(() => {});
     await this.sessions.get(taskId)?.stop();
   };
 
   dispose = async () => {
-    await Promise.allSettled([...this.sessions.keys()].map((id) => this.close(id)));
+    this.closed = true;
+    const ids = new Set([...this.sessions.keys(), ...this.opening.keys()]);
+    await Promise.allSettled([...ids].map((id) => this.close(id)));
   };
 }

@@ -73,8 +73,8 @@ it("preserves whole vs partial scope through the user-approved pipeline and next
             ? "All requirements of this issue are in scope unless explicitly excluded by notes."
             : "ONLY the claimed scope belongs to this task. Other issue requirements are explicit non-goals.",
         );
-      for (const run of runs)
-        expect(run.prompt).toContain("Do not require duplicate manual browser launches");
+      for (const run of runs.filter((run) => run.stage === 3 || run.stage === 5))
+        expect(run.prompt).toContain("avoid duplicate optional browser work");
     }
 
     expect(buildPrompt(engine.db, { ...engine.db.task(whole.id), stage: 1 })).not.toContain(

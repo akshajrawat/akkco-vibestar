@@ -34,7 +34,7 @@ export const PlanView = ({
             aria-pressed={selectedStage === stage}
             onClick={() => selectStage?.(stage)}
           >
-            {stage === 1 ? "Antigravity original" : "Codex refined"}
+            {stage === 1 ? "Original" : "Refined"}
           </Button>
         ))}
       </div>
@@ -59,7 +59,7 @@ export const PlanView = ({
       return (
         <section key={stage}>
           <div className="panel-heading">
-            <strong>{stage === 1 ? "Antigravity original plan" : "Codex refined plan"}</strong>
+            <strong>{stage === 1 ? "Original plan" : "Refined plan"}</strong>
             <small>
               {saved
                 ? "Saved plan"

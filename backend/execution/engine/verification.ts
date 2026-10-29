@@ -2,7 +2,7 @@ import type { Engine } from "../engine";
 import type { ExecutionState } from "./state";
 
 import { createHash } from "node:crypto";
-import { AdeError, now } from "../../domain";
+import { AdeError, now, pipelineConfiguration } from "../../domain";
 import { CommandExecutions } from "../verification/command-executions";
 import { object } from "../providers/contracts";
 import { taskVerification } from "../verification/task-verification";
@@ -166,7 +166,7 @@ export class VerificationTransitions {
     return this.host.runCommand(id, candidate.argv);
   };
 
-  fixWithCodex = (id: string, requestId: string) => {
+  fixVerification = (id: string, requestId: string) => {
     this.host.assertAvailable();
 
     const existing = this.host.db.all<{
@@ -182,7 +182,10 @@ export class VerificationTransitions {
     }
 
     if (this.host.isActive(id) || this.state.taskMaintenance.has(id))
-      throw new AdeError("busy", "Wait for task activity to finish before requesting Codex fixes.");
+      throw new AdeError(
+        "busy",
+        "Wait for task activity to finish before requesting verification fixes.",
+      );
     const task = this.host.db.task(id);
     if (task.stage < 4)
       throw new AdeError(
@@ -191,6 +194,7 @@ export class VerificationTransitions {
       );
     const evidence = taskVerification(this.host.db, id);
     const settings = task.execution_settings || this.host.db.settings();
+    const { provider, ...config } = pipelineConfiguration(settings, 3, task.stage_settings);
 
     const review = this.host.db.all<{ output: string }>(
       "SELECT output FROM agent_runs WHERE task_id=? AND stage=5 ORDER BY started_at DESC,rowid DESC LIMIT 1",
@@ -215,10 +219,10 @@ export class VerificationTransitions {
 
     return this.host.followUp(
       id,
-      "Fix the demonstrated implementation failures and rerun affected checks in this original worktree. Read the saved verification repair evidence in TASK CONTEXT. For required checks without an executable recorded command, prepare repeatable test scripts using the project's tooling, run feasible checks and report their exact commands, outcomes and prerequisites. Prefer supported check-only npm scripts, node --test, pytest or npx playwright test so Run missing checks can replay the saved commands. Use stable check names to link the new commands to the existing requirements; do not discard requirements or claim unexecuted checks passed. Investigate environmental gaps without repeating failed installation attempts unless prerequisites changed. One Codex iteration is authorized; further iterations require a new explicit request.",
+      "Fix the demonstrated implementation failures and rerun affected checks in this original worktree. Read the saved verification repair evidence in TASK CONTEXT. For required checks without an executable recorded command, prepare repeatable test scripts using the project's existing tooling, run feasible checks and report their exact commands, outcomes and prerequisites. Prefer supported check-only npm scripts, node --test, pytest or npx --offline --no-install playwright test. Use stable check names to preserve requirements; never claim unexecuted checks passed. Do not install or download dependencies, browsers or toolchains. Report unavailable prerequisites. One implementation iteration is authorized; further iterations require a new explicit request.",
       {
-        provider: "codex",
-        config: task.stage_settings?.[3] || settings.codex_implementation,
+        provider,
+        config,
       },
       false,
       requestId,
