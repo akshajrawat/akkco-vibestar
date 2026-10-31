@@ -31,11 +31,30 @@ Historical queued entries retain the authorization they already had.
 
 ## Stage gates, instructions and drafts
 
-Preparation pins base identity and records real Git activity. Plan,
-Plan refinement, Implementation with its checks and independent Review each
-pause at their existing human gate. No future stage is shown as running merely
+Preparation pins base identity and records real Git activity.
+Each issue gets a dedicated branch. An explicitly started workflow may use a clean,
+unreserved source checkout already on its up-to-date base branch; otherwise it gets
+an isolated worktree. Another task never commits, stashes or moves existing edits to
+make room. Both providers receive the assigned directory and branch through the same
+host ownership boundary. Source checkout files and branches are retained by task cleanup.
+
+Plan, Plan refinement and Implementation with its checks pause for human approval.
+Independent Review ends the workflow with a verdict and numbered next steps, on either
+success or findings. Queued feedback remains saved, never an automatic fix loop.
+No future stage is shown as running merely
 because approval is waiting. Provider/model/effort display comes from actual saved runs;
 composer settings affect the next requested message.
+
+Planning prompts contain the issue, comments and scoped instructions; refinement adds
+the original plan. Implementation receives the refined plan directly. Workflow prompts
+are shown as user messages and provider replies remain visible in chat. Completed
+activity is collapsed under “Worked for…”; technical protocol details remain in Raw logs.
+
+After the final verdict, the ordinary composer can request one independent workspace
+conversation turn with the selected model. It can edit only the assigned task workspace,
+does not advance workflow stages, and invalidates the review fingerprint if content
+changes even when the provider fails. Greetings and complete app-identity questions
+use an empty read-only workspace with host-app context and skip source preparation.
 
 Approval binds the artifact the user viewed. Pending saved instructions need an explicit
 keep-saved/include-next-stage choice bound to current message IDs. Retry does not consume
@@ -76,8 +95,8 @@ through an explicit journaled operation. Reports cannot downgrade protected requ
 Passing optional evidence does not substitute for missing required execution.
 
 The read-only final reviewer receives a complete retained evidence packet. Its source
-verdict and coverage are distinct. `reviewed_with_gaps` retains unavailable checks and
-blocks task completion. Acceptance binds the current review fingerprint; edits invalidate it.
+verdict and coverage are distinct. `reviewed_with_gaps` retains findings or unavailable
+checks and blocks task completion. Completion binds the current review fingerprint; edits invalidate it.
 An unchanged recheck preserves an accepted review rather than starting inference again.
 
 Browser diagnostics have strict environment/report contracts. Opening the panel runs
@@ -186,15 +205,26 @@ accept plain labels and verified repository-matching GitHub links. Label discove
 an explicit bounded read, never a scan.
 
 Scan Now, Recheck, Retry and Continue each authorize a distinct attempt. Collection uses
-official gh with bounded concurrency, request/time/byte/source limits and fresh tracker
+official gh with serialized reads, request/time/byte/source limits and fresh tracker
 identity. Tracker bodies are default; comments are opt-in. Assignments, excluded labels,
 verified tracker references, competing PRs and accepted claims override model preferences.
 Claim age alone does not establish abandonment. Missing evidence stays uncertain.
 
-Default bounds are 200 candidate identities, 40 detailed contexts, 20 semantic candidates,
-400 GitHub requests, a 128 KiB semantic packet and a 120-second model timeout. At most one
+Discovery uses pages of up to 10 issues. Choose newest or oldest by creation time;
+Scan now starts the first page and Next 10 advances the selected saved attempt.
+Recheck accepts at most 10 selected candidates. Retry repeats the saved page.
+Prior pages stay saved and are not automatically re-fetched. A successfully checked
+batch retains its results without claiming complete repository coverage. GitHub
+search pages can shift between requests; restart the first batch to discover new issues.
+
+Default bounds are 10 candidate identities, 10 detailed contexts, 10 semantic candidates,
+80 GitHub requests (also the host maximum for legacy configurations), a 128 KiB semantic packet and a 120-second model timeout. At most one
 host-started semantic invocation is reserved per attempt; CLI-internal requests are not
 misrepresented as separate host authorizations. No provider fallback or automatic retry occurs.
+Authenticated conditional requests reuse persistent ETag response bodies only on a
+GitHub 304 response. A rate-limit response stops queued watch reads for at least
+60 seconds; the user must retry explicitly. Settings → Storage → Clear cache
+also removes the bounded HTTP response cache.
 
 Final metadata is checked after screening. Changed evidence makes the attempt partial.
 Partial, blocked, cancelled and interrupted attempts preserve the last complete baseline.

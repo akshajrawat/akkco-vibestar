@@ -188,21 +188,13 @@ it("keeps saved instructions independent of retry, feedback and approval across 
       message_ids: [third.message.id],
     });
 
-    await gate("final_review");
+    await waitForTask(engine, task.id, (status) => status === "ready_for_review");
+    await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
+    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
 
-    await expect(
-      engine.approveStage(task.id, {
-        disposition: "include_next_stage",
-        message_ids: [third.message.id],
-      }),
-    ).rejects.toThrow("starts no agent");
-
-    await engine.approveStage(task.id, {
-      disposition: "keep_saved",
-      message_ids: [third.message.id],
-    });
-
-    expect(engine.db.task(task.id).status).toBe("ready_for_review");
+    expect(
+      engine.db.detail(task.id).messages.find((message) => message.id === third.message.id)?.status,
+    ).toBe("draft");
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });
@@ -301,7 +293,8 @@ it("edits only unstarted future stage settings and keeps actual run history and 
     });
 
     await engine.approveStage(task.id);
-    await gate("final_review");
+    await waitForTask(engine, task.id, (status) => status === "ready_for_review");
+    await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
 
     expect(engine.db.detail(task.id).runs.at(-1)).toMatchObject({
       stage: 5,

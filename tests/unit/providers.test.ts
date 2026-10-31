@@ -202,3 +202,21 @@ it("rejects missing flags and malformed plans", () => {
   expect(() => verifyFlags("--json", ["--json", "--sandbox"])).toThrow();
   expect(() => validatePlan(1, { summary: "missing fields" })).toThrow();
 });
+
+it("resumes only the explicit Antigravity conversation identity supplied by the owned chat", () => {
+  const request = {
+    runId: "chat",
+    cwd: "/owned/task",
+    stage: 1,
+    config: { model: "chosen", effort: "high", timeout_secs: 60 },
+    prompt: "hello",
+    schemaPath: "/schema",
+    schema: {},
+    conversation: { threadId: "owned-conversation" },
+  };
+
+  expect(agy.invocation(request).args).toContain("--conversation");
+  expect(agy.invocation(request).args).toContain("owned-conversation");
+  expect(agy.invocation(request).args).not.toContain("--json-schema");
+  expect(agy.invocation(request).args).not.toContain("--continue");
+});

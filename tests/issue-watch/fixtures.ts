@@ -73,16 +73,28 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
         full_name: "oppia/oppia",
         html_url: "https://github.com/oppia/oppia",
       } as never;
-    if (endpoint.startsWith("search/issues?"))
+    if (endpoint.startsWith("search/issues?")) {
+      const params = new URL(`https://api.github.com/${endpoint}`).searchParams;
+      const size = Number(params.get("per_page") || 100);
+      const page = Number(params.get("page") || 1);
+
+      const items = [...issues.values()].sort(
+        (a, b) =>
+          (params.get("order") === "asc" ? 1 : -1) *
+          (Date.parse(a.created_at) - Date.parse(b.created_at) || a.number - b.number),
+      );
+
       return {
-        total_count: issues.size,
+        total_count: items.length,
         incomplete_results: false,
-        items: [...issues.values()].map((issue) => ({
+        items: items.slice((page - 1) * size, page * size).map((issue) => ({
           node_id: issue.node_id,
           number: issue.number,
           html_url: issue.html_url,
         })),
       } as never;
+    }
+
     if (endpoint.endsWith("community/profile"))
       return {
         files: {

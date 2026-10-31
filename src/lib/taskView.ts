@@ -285,6 +285,8 @@ const state = (id: string) => {
   return value;
 };
 
+export const getTaskView = (id: string) => state(id);
+
 export const updateTaskView = (id: string, update: Partial<TaskView>) => {
   const previous = state(id);
 

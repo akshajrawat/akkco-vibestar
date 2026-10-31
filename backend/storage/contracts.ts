@@ -29,6 +29,7 @@ export const TaskRecordSchema = z
     base_branch: z.string().optional(),
     base_commit_sha: z.string().optional(),
     worktree_path: z.string().optional(),
+    workspace_mode: z.literal("source").optional(),
     created_at: z.string().optional(),
     updated_at: z.string().optional(),
     status: z.enum(taskStatuses).optional(),

@@ -53,6 +53,7 @@ export interface Snapshot {
     pr_quick_watch?: boolean;
     manual_issue_watch: boolean;
     issue_watch_contract: number | null;
+    issue_watch_batches?: number | null;
   };
   persistence?: import("../../backend/storage/records").PersistenceDiagnostic[];
   repairs?: import("../../backend/review/repair/contracts").RepairSession[];

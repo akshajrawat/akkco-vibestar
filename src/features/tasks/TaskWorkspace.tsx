@@ -14,13 +14,13 @@ import { ComposerSettings, followupConfiguration } from "../chat/ComposerSetting
 import { TaskTerminal } from "../../components/shared/TaskTerminal";
 import {
   useTaskView,
+  getTaskView,
   updateTaskView,
   openWorkspaceTool,
   type SecondarySection,
 } from "../../lib/taskView";
 import { useWorkspaceKeys } from "../../hooks/useWorkspaceKeys";
 import { AgentTimeline } from "../chat/AgentTimeline";
-import { AgentResponse } from "../chat/AgentResponse";
 import { PlanView } from "../workflow/PlanView";
 import { LogView } from "../chat/LogView";
 import { TestsView } from "../verification/TestsView";
@@ -35,6 +35,9 @@ import { SecondaryWorkspace } from "../workflow/SecondaryWorkspace";
 import { BottomDock } from "../workflow/BottomDock";
 import { PipelineView, RunDetailsView } from "../workflow/TaskEngineering";
 import { FinalReviewSummary } from "../verification/FinalReviewSummary";
+import { useOptimisticMessages } from "../chat/useOptimisticMessages";
+import { eventData } from "../chat/output/events";
+import { useConversationEvents } from "../chat/output/useConversationEvents";
 
 export const TaskWorkspace = ({
   detail,
@@ -50,13 +53,13 @@ export const TaskWorkspace = ({
   back: () => void;
 }) => {
   const t = detail.task;
+  const conversationEvents = useConversationEvents(t.id, "task", detail.events, onError);
   const view = useTaskView(t.id);
   useWorkspaceKeys(t.id);
   const shell = useRef<HTMLDivElement>(null);
   const [promptOpen, setPromptOpen] = useState(false);
   const [draftRun, setDraftRun] = useState<Run>();
   const [busy, setBusy] = useState(false);
-  const [conversationMode, setConversationMode] = useState<"chat" | "changes">("chat");
   const noticeContext = `${t.id}:${t.stage}:${t.status}:${t.approval_gate}:${detail.runs.at(-1)?.id}:${detail.artifacts.at(-1)?.id}`;
 
   const [statusNotice, setStatusNotice] = useState<{
@@ -72,7 +75,12 @@ export const TaskWorkspace = ({
     disposition: "keep_saved" | "include_next_stage";
   }>();
 
-  const [sent, setSent] = useState<Message[]>([]);
+  const {
+    messages,
+    upsert: showMessage,
+    remove: removeMessage,
+  } = useOptimisticMessages(t.id, detail.messages);
+
   const sending = useRef(false);
   const acting = useRef(false);
   const [diff, setDiff] = useState<Diff | null>(null);
@@ -95,12 +103,12 @@ export const TaskWorkspace = ({
       ? "implementation"
       : undefined);
 
-  const messages = [
-    ...detail.messages,
-    ...sent.filter((message) => !detail.messages.some((row) => row.id === message.id)),
-  ];
-
   const pending = messages.filter((message) => ["draft", "queued"].includes(message.status || ""));
+
+  const latestQuestion = [...messages]
+    .reverse()
+    .find((message) => message.role === "user" && message.purpose === "chat");
+
   const pendingIds = pending.map((message) => message.id);
 
   const approvalArtifact = [...detail.artifacts]
@@ -128,12 +136,6 @@ export const TaskWorkspace = ({
 
   const chosenInstructions =
     instructionChoice?.ids === pendingKey ? instructionChoice.disposition : "";
-
-  const currentDraft = useRef(view);
-
-  useEffect(() => {
-    currentDraft.current = view;
-  }, [view]);
 
   const content = composerContent(view);
 
@@ -227,7 +229,7 @@ export const TaskWorkspace = ({
     }
   };
 
-  const submit = async (saveOnly = false) => {
+  const submit = async (saveOnly = false, workflow = false) => {
     if (!content || content.length > 32000 || busy || sending.current) return;
     if (saveOnly && saved) {
       setNotice(
@@ -240,26 +242,51 @@ export const TaskWorkspace = ({
     }
 
     const configuration = followupConfiguration(t, view);
-    const question = !saveOnly && conversationMode === "chat";
+    const question = !saveOnly && !workflow;
+    const workspaceAccess = question && (t.stage >= 6 || t.approval_gate === "final_review");
 
     const signature = JSON.stringify({
       content,
       configuration,
       saveOnly,
       question,
+      workspaceAccess,
     });
 
     const request_id =
       view.messageRequest?.signature === signature ? view.messageRequest.id : crypto.randomUUID();
 
     updateTaskView(t.id, { messageRequest: { id: request_id, signature } });
+    const draftSnapshot = { draft: view.draft, draftContext: view.draftContext };
+    const optimisticId = saved && !saveOnly && !question ? saved.id : request_id;
+    if (!saveOnly) {
+      showMessage({
+        id: optimisticId,
+        role: "user",
+        content,
+        created_at: new Date().toISOString(),
+        status: question ? "chat_pending" : "pending",
+        purpose: question ? "chat" : undefined,
+      });
+
+      updateTaskView(t.id, { draft: "", draftContext: [], chatFollow: true });
+    }
+
     sending.current = true;
     setBusy(true);
     try {
       const result = await rpc<{ message?: Message; disposition: string }>(
         question ? "task.chat" : saved && !saveOnly ? "task.message.send" : "task.followup",
         question
-          ? { id: t.id, content, configuration, request_id }
+          ? {
+              id: t.id,
+              content,
+              configuration: {
+                ...configuration,
+                ...(workspaceAccess ? { access: "workspace" } : {}),
+              },
+              request_id,
+            }
           : saved && !saveOnly
             ? {
                 id: t.id,
@@ -275,12 +302,13 @@ export const TaskWorkspace = ({
               },
       );
 
-      if (result.message)
-        setSent((messages) => [
-          ...messages.filter((message) => message.id !== result.message!.id),
-          result.message!,
-        ]);
+      if (result.message) {
+        if (result.message.id !== optimisticId) removeMessage(optimisticId);
+        showMessage(result.message);
+      }
+
       if (saveOnly || result.disposition === "draft") {
+        if (!saveOnly && !composerContent(getTaskView(t.id))) updateTaskView(t.id, draftSnapshot);
         if (result.message)
           updateTaskView(t.id, {
             savedInstruction: { id: result.message.id, content },
@@ -289,7 +317,7 @@ export const TaskWorkspace = ({
       } else {
         setNotice(
           question
-            ? "Read-only question sent"
+            ? ""
             : saved && result.disposition === "delivered"
               ? "Instruction already delivered · no new agent started"
               : result.disposition === "queued"
@@ -298,14 +326,23 @@ export const TaskWorkspace = ({
         );
 
         // Preserve edits made while this request was in flight.
-        if (composerContent(currentDraft.current) === content)
-          updateTaskView(t.id, {
-            draft: "",
-            draftContext: [],
-            messageRequest: null,
-          });
+        updateTaskView(t.id, { messageRequest: null });
       }
     } catch (e) {
+      if (!saveOnly) {
+        removeMessage(optimisticId);
+        if (!composerContent(getTaskView(t.id))) updateTaskView(t.id, draftSnapshot);
+        else
+          showMessage({
+            id: optimisticId,
+            role: "user",
+            content,
+            created_at: new Date().toISOString(),
+            status: question ? "chat_failed" : "failed",
+            purpose: question ? "chat" : undefined,
+          });
+      }
+
       onError(errorMessage(e));
     } finally {
       setBusy(false);
@@ -360,7 +397,7 @@ export const TaskWorkspace = ({
             size="sm"
             variant="ghost"
             onClick={() => {
-              setConversationMode("changes");
+              setNotice("Write your feedback, then choose Send to workflow.");
 
               updateTaskView(t.id, {
                 expandedTool: false,
@@ -469,10 +506,11 @@ export const TaskWorkspace = ({
 
       {t.status === "reviewed_with_gaps" && (
         <p className="warning">
-          Code review accepted · changes kept locally.{" "}
-          {verification.canReview
-            ? "Recheck evidence to request final verification review."
-            : "Complete the required verification checks."}
+          {!t.final_review_verdict
+            ? "Changes updated after review. Ask for a fresh review when ready."
+            : t.final_review_verdict === "changes_requested"
+              ? "Review found problems. Use the chat to request a fix when ready."
+              : "Review finished with verification gaps. See the review for next steps."}
         </p>
       )}
 
@@ -616,93 +654,49 @@ export const TaskWorkspace = ({
       <div className="workspace-content">
         <ChatSurface
           id={t.id}
+          empty={!messages.length && !detail.runs.length && !active}
           revision={revision + ":" + detail.events.length + ":" + detail.runs.length}
           activity={
             <CurrentRun
-              detail={detail}
+              detail={{ ...detail, events: conversationEvents }}
               output={currentRun}
               stop={() => void action("task.cancel")}
             />
           }
           conversation={
             <>
-              <article className="context-message">
-                <small>
-                  You · {t.scope_mode === "whole_issue" ? "Entire issue" : "Specific scope"}
-                </small>
-                <h2>{t.issue?.title || `Issue #${t.issue_number}`}</h2>
-                <p>
-                  {t.scope_mode === "whole_issue"
-                    ? "All issue requirements are in scope."
-                    : t.claimed_scope}
-                </p>
-                {t.notes && <p>{t.notes}</p>}
-                <details>
-                  <summary>Issue context</summary>
-                  <AgentResponse text={t.issue?.body || "No description"} />
-                </details>
-              </article>
-
-              {(t.worktree_path || active) && (
-                <section className="preparation-turn">
-                  <strong>
-                    {t.status === "not_started"
-                      ? "Read-only chat workspace"
-                      : "Repository preparation"}
-                  </strong>
-
-                  {detail.activity
-                    ?.filter((row) => ["preparation", "chat_preparation"].includes(row.kind))
-                    .map((row) => {
-                      const data = JSON.parse(row.data) as {
-                        argv: string[];
-                        code: number;
-                        stdout: string;
-                        stderr: string;
-                        duration_ms: number;
-                      };
-
-                      return (
-                        <details key={row.id}>
-                          <summary>
-                            <span className={data.code === 0 ? "success" : "failure"}>
-                              {data.code === 0 ? "✓" : "!"}
-                            </span>
-                            <code>{data.argv.join(" ")}</code>
-                            <small>{Math.round(data.duration_ms / 1000)}s</small>
-                          </summary>
-                          <pre>{data.stdout || data.stderr}</pre>
-                        </details>
-                      );
-                    })}
-
-                  {t.worktree_path && (
-                    <p className="mono subtle">
-                      <GitBranch size={12} />
-                      {t.branch_name}
-                    </p>
-                  )}
-
-                  {t.stage === 0 && active && (
-                    <p className="subtle">Fetching upstream and creating an isolated worktree…</p>
-                  )}
-                </section>
+              {!messages.length && !detail.runs.length && !active && (
+                <div className="chat-welcome">
+                  <h1>Let’s start building.</h1>
+                </div>
               )}
 
               {detail.activity
                 ?.filter((row) => row.kind === "chat_error")
                 .slice(-1)
-                .map((row) => (
-                  <RunError
-                    key={row.id}
-                    error={JSON.parse(row.data).error}
-                    logs={() => inspect("Logs")}
-                  />
-                ))}
+                .map((row) => {
+                  const data = eventData(row.data);
+                  if (
+                    data.message_id !== latestQuestion?.id ||
+                    latestQuestion?.status === "chat_completed" ||
+                    (latestQuestion?.run_id &&
+                      detail.runs.some((run) => run.id === latestQuestion.run_id && run.error))
+                  )
+                    return null;
+                  return (
+                    <RunError
+                      key={row.id}
+                      error={String(data.error || "Conversation could not finish")}
+                      logs={() => inspect("Logs")}
+                    />
+                  );
+                })}
 
               <AgentTimeline
+                compact
+                showPrompts
                 expandResults={false}
-                events={detail.events}
+                events={conversationEvents}
                 runs={detail.runs}
                 messages={messages}
                 retryMessage={
@@ -759,43 +753,22 @@ export const TaskWorkspace = ({
                     logs={() => inspect("Logs")}
                   />
                 )}
-
-              {!!diff?.files.length && (
-                <details className="chat-changes" open>
-                  <summary>
-                    Changed {diff.files.length} {diff.files.length === 1 ? "file" : "files"}
-                  </summary>
-
-                  {diff.files.map((file) => (
-                    <div className="edited-file" key={file.path}>
-                      <button
-                        onClick={() => {
-                          updateTaskView(t.id, { diffPath: file.path });
-                          inspect("Changes");
-                        }}
-                      >
-                        <code>{file.path}</code>
-                      </button>
-                      <span className="spacer" />
-                      <span className="success">+{file.insertions}</span>
-                      <span className="failure">−{file.deletions}</span>
-                    </div>
-                  ))}
-                </details>
-              )}
             </>
           }
           composer={
             <Composer
               id={t.id}
               label="Task conversation"
-              placeholder={active ? "Write while the agent works…" : "Ask Vibestar…"}
-              sendLabel={conversationMode === "chat" ? "Ask question" : "Send follow-up"}
+              placeholder={active ? "Write a message…" : "Message Vibestar…"}
+              sendLabel="Send message"
               busy={busy}
-              disabled={
-                t.status === "preserved" || (occupied && (conversationMode === "chat" || !active))
-              }
+              disabled={t.status === "preserved" || occupied}
               onSend={() => void submit()}
+              stop={
+                active || detail.runs.some((run) => run.status === "running")
+                  ? () => void action("task.cancel")
+                  : undefined
+              }
               save={{
                 label:
                   saved?.status === "delivered"
@@ -806,51 +779,27 @@ export const TaskWorkspace = ({
                 run: () => void submit(true),
                 disabled: !!saved || t.status === "preserved",
               }}
-              model={
-                <>
-                  <label className="conversation-mode">
-                    <span className="sr-only">Message action</span>
-                    <Select
-                      label="Message action"
-                      value={conversationMode}
-                      onChange={(value) => setConversationMode(value as "chat" | "changes")}
-                      options={[
-                        {
-                          value: "chat",
-                          label: "Ask",
-                          description: "Discuss your task without changing files",
-                        },
-                        {
-                          value: "changes",
-                          label: "Work",
-                          description:
-                            t.status === "not_started"
-                              ? "Start the workflow to enable work"
-                              : "Send feedback or request changes",
-                          disabled: t.status === "not_started",
-                        },
-                      ]}
-                    />
-                  </label>
-                  <ComposerSettings task={t} />
-                </>
+              workflow={
+                t.status !== "not_started"
+                  ? {
+                      run: () => void submit(false, true),
+                      disabled: t.status === "preserved" || (occupied && !active),
+                    }
+                  : undefined
               }
+              model={<ComposerSettings task={t} />}
               notice={notice}
               onEdit={() => setNotice("")}
               hint={
                 t.status === "preserved"
                   ? "History removed. Files and branch remain available in your editor."
-                  : conversationMode === "chat"
-                    ? occupied
-                      ? "Wait for the current operation to finish."
-                      : "Ask about your task. Start workflow when you’re ready to make changes."
+                  : occupied
+                    ? "Wait for the current operation to finish."
                     : active
-                      ? `Send queues feedback for ${feedbackStage} at the next safe boundary. Save for later starts no agent.`
-                      : occupied
-                        ? "Close the terminal before sending feedback. Save for later starts no agent."
-                        : t.approval_gate?.endsWith("plan")
-                          ? "Send feedback reruns the current planning stage. Save for later keeps the approval gate."
-                          : "Send starts an implementation follow-up. Save for later starts no agent."
+                      ? `Send to workflow queues feedback for ${feedbackStage} at the next safe boundary.`
+                      : t.stage >= 6 || t.approval_gate === "final_review"
+                        ? "Ask a question or request a fix with the selected model."
+                        : "Message the agent, or use the workflow controls to make changes."
               }
               context={workspaceContext({
                 id: t.id,

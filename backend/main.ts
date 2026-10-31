@@ -74,6 +74,7 @@ const main = async () => {
             pipeline_approvals: true,
             saved_instruction_choices: true,
             workflow_first: 1,
+            workspace_chat: 1,
             independent_final_review: true,
             pipeline_verification: 2,
             verification_policy: true,
@@ -87,6 +88,7 @@ const main = async () => {
             pr_repair: true,
             manual_issue_watch: true,
             issue_watch_contract: 1,
+            issue_watch_batches: 1,
           };
         else if (!rpc && request.method === "snapshot")
           result = {

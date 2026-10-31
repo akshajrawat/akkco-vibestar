@@ -1,4 +1,5 @@
 import { readWorktreeOwner, writeWorktreeOwner } from "./ownership";
+import { prepareSourceCheckout, sourceCheckout } from "./source-checkout";
 import { gitChecked, gitExecute, gitCapture } from "./git-command";
 import {
   mkdir,
@@ -174,6 +175,7 @@ export class GitWorkspace {
     signal?: AbortSignal,
     checkpoint?: (t: Task) => void,
     trace?: (record: unknown) => Promise<void>,
+    source?: { reusableOwners: string[] },
   ) =>
     this.withLock(repo.id, async () => {
       await managedPath(this.root, join("worktrees", repo.id));
@@ -205,6 +207,7 @@ export class GitWorkspace {
 
       if (!/^[a-f0-9]{40,64}$/.test(base))
         throw new AdeError("git_base", "Invalid base commit SHA");
+      const primary = source ? await sourceCheckout(repo, base, source.reusableOwners) : null;
       for (let suffix = 0; suffix < 10000; suffix++) {
         const branch = branchName(
           t.issue_number,
@@ -229,6 +232,11 @@ export class GitWorkspace {
         );
 
         if (existing.code === 0 || (await exists(path))) continue;
+        if (primary) {
+          await prepareSourceCheckout(primary, t, branch, base, command, checkpoint);
+          return;
+        }
+
         await mkdir(dirname(path), { recursive: true });
         await managedPath(this.root, path);
         t.branch_name = branch;
@@ -325,6 +333,16 @@ export class GitWorkspace {
         "recovery",
         "Task workspace removal was checkpointed. Complete cleanup explicitly; preparation cannot restore it.",
       );
+    if (task.workspace_mode === "source") {
+      await this.assertTask(task);
+      if (task.workspace_checkpoint?.state !== "ready")
+        throw new AdeError(
+          "recovery",
+          "Source checkout preparation was interrupted. Inspect its branch and ownership before retrying.",
+        );
+      return true;
+    }
+
     await managedPath(this.root, task.worktree_path);
     if (!inside(join(this.root, "worktrees", repo.id), task.worktree_path))
       throw new AdeError(
@@ -499,7 +517,7 @@ export class GitWorkspace {
 
   assertTask = async (t: WorkspaceAssignment) => {
     await this.registeredPath(t.repo_id);
-    const cwd = await taskRoot(this.root, t);
+    const cwd = await taskRoot(this.root, t, this.repository?.(t.repo_id));
     const branch = await gitChecked(["symbolic-ref", "--short", "HEAD"], cwd);
     if (branch !== t.branch_name)
       throw new AdeError(

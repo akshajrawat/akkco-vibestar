@@ -10,11 +10,13 @@ export const FinalReviewSummary = ({
   changes,
   tests,
   fix,
+  compact = false,
 }: {
   detail: Detail;
   changes: () => void;
   tests: () => void;
   fix?: () => void;
+  compact?: boolean;
 }) => {
   const artifact = [...detail.artifacts]
     .reverse()
@@ -56,6 +58,21 @@ export const FinalReviewSummary = ({
   }
 
   const review = parsed.data;
+  if (detail.task.stage >= 6 && !detail.task.final_review_verdict)
+    return (
+      <section className="final-review-summary" aria-label="Independent review result">
+        <strong className="warning">Review is out of date</strong>
+        <p>The chat changed the worktree after this review. Request a fresh review when ready.</p>
+        <Button size="sm" variant="ghost" onClick={changes}>
+          Open Changes
+        </Button>
+        <details>
+          <summary>Previous review</summary>
+          <AgentResponse text={artifact!.content} />
+        </details>
+      </section>
+    );
+
   const verification = detailVerification(detail);
 
   const passed = verification.checks.filter(
@@ -78,27 +95,20 @@ export const FinalReviewSummary = ({
       !["passed", "failed"].includes(check.outcome),
   ).length;
 
-  const approved =
-    review.approval === "approved" &&
-    !failed &&
-    !review.issues?.length &&
-    !review.implementationConcerns?.length;
+  const codeChanges =
+    review.approval === "changes_requested" ||
+    !!review.issues?.length ||
+    !!review.implementationConcerns?.length;
+
+  const approved = review.approval === "approved" && !codeChanges;
 
   return (
     <section className="final-review-summary" aria-label="Independent review result">
-      <strong
-        className={
-          approved && verification.canReview
-            ? "success"
-            : failed || review.approval === "changes_requested"
-              ? "failure"
-              : "warning"
-        }
-      >
+      <strong className={approved ? "success" : codeChanges ? "failure" : "warning"}>
         Code review:{" "}
         {approved
           ? "Approved"
-          : review.approval === "changes_requested" || failed
+          : codeChanges
             ? "Changes requested"
             : "Review blocked — insufficient evidence"}
       </strong>
@@ -108,30 +118,40 @@ export const FinalReviewSummary = ({
         {failed ? `, ${failed} failed` : ""}
       </p>
 
-      {unverified.length > 0 && (
+      {approved && !verification.canReview && (
+        <p className={failed ? "failure" : "warning"}>
+          Verification {failed ? "failed" : "incomplete"}. Code approval does not establish that the
+          required checks passed.
+        </p>
+      )}
+
+      {!compact && unverified.length > 0 && (
         <p className="warning">Unverified: {unverified.map((check) => check.name).join(", ")}</p>
       )}
       {skipped > 0 && <p className="subtle">Optional manual browser checks: {skipped} skipped.</p>}
       <p>
         Next step:{" "}
         {approved
-          ? verification.canReview
-            ? detail.task.approval_gate
-              ? "Manual review and acceptance"
-              : "Review changes / open terminal"
-            : "Keep reviewed changes locally / additional verification"
+          ? failed
+            ? "Inspect failed checks and repair demonstrated failures before acceptance"
+            : verification.canReview
+              ? detail.task.approval_gate
+                ? "Manual review and acceptance"
+                : "Review changes / open terminal"
+              : "Keep reviewed changes locally / additional verification"
           : "Inspect findings and request fixes"}
       </p>
 
-      {review.issues?.map((issue, index) => (
-        <article key={index}>
-          <strong>
-            {issue.severity} · {issue.summary}
-          </strong>
-          {issue.file && <code>{issue.file}</code>}
-          <p>{issue.evidence}</p>
-        </article>
-      ))}
+      {!compact &&
+        review.issues?.map((issue, index) => (
+          <article key={index}>
+            <strong>
+              {issue.severity} · {issue.summary}
+            </strong>
+            {issue.file && <code>{issue.file}</code>}
+            <p>{issue.evidence}</p>
+          </article>
+        ))}
 
       <div className="actions">
         <Button size="sm" variant="ghost" onClick={changes}>
@@ -148,7 +168,7 @@ export const FinalReviewSummary = ({
           </Button>
         )}
       </div>
-      <AgentResponse text={artifact!.content} />
+      {!compact && <AgentResponse text={artifact!.content} />}
     </section>
   );
 };

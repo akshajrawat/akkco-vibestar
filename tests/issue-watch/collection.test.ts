@@ -5,7 +5,7 @@ import { GitHubReadPool, IssueSearch } from "../../backend/github/issue-search";
 import { WatchLimitsSchema } from "../../backend/issue-watch/contracts";
 import { githubIssue } from "./fixtures";
 
-it("caps shared concurrent reads at four and removes cancelled waiters", async () => {
+it("serializes shared reads and removes cancelled waiters", async () => {
   const pool = new GitHubReadPool();
   let active = 0;
   let maximum = 0;
@@ -24,15 +24,15 @@ it("caps shared concurrent reads at four and removes cancelled waiters", async (
     pool.run(operation, controller.signal).catch(() => {}),
   );
 
-  expect(active).toBe(4);
+  expect(active).toBe(1);
   controllers[4].abort();
-  releases.shift()!();
-  await vi.waitFor(() => expect(releases).toHaveLength(4));
-  releases.shift()!();
-  await vi.waitFor(() => expect(releases).toHaveLength(4));
-  for (const release of releases.splice(0)) release();
+  for (let index = 0; index < 6; index++) {
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    releases.shift()!();
+  }
+
   await Promise.all(pending);
-  expect(maximum).toBe(4);
+  expect(maximum).toBe(1);
   expect(active).toBe(0);
 });
 
@@ -68,29 +68,23 @@ it("retains strict request, pagination and data budgets without fallback or auto
   api.mockRestore();
 });
 
-it.each(["repeated", "overlapping", "changed-total", "incomplete", "pull-request"])(
-  "keeps %s search pages partial and bounded",
+it.each(["duplicate", "short-page", "incomplete", "pull-request"])(
+  "keeps a %s batch partial without fetching another search page",
   async (mode) => {
     const client = new GitHubClient("/tmp");
-    const items = Array.from({ length: 100 }, (_, index) => githubIssue(index + 1));
-    const second = Array.from({ length: 100 }, (_, index) => githubIssue(index + 101));
-    if (mode === "overlapping") second[0] = items[0];
+    const items = Array.from({ length: 10 }, (_, index) => githubIssue(index + 1));
+    if (mode === "duplicate") items[9] = items[0];
 
-    const api = vi
-      .spyOn(client, "api")
-      .mockResolvedValueOnce({
-        total_count: 200,
-        incomplete_results: mode === "incomplete",
-        items:
-          mode === "pull-request"
+    const api = vi.spyOn(client, "api").mockResolvedValue({
+      total_count: 200,
+      incomplete_results: mode === "incomplete",
+      items:
+        mode === "short-page"
+          ? items.slice(0, 5)
+          : mode === "pull-request"
             ? items.map((item, index) => (index === 0 ? { ...item, pull_request: {} } : item))
             : items,
-      })
-      .mockResolvedValueOnce({
-        total_count: mode === "changed-total" ? 201 : 200,
-        incomplete_results: false,
-        items: mode === "repeated" ? items : second,
-      });
+    });
 
     try {
       const reader = new IssueSearch(
@@ -101,19 +95,17 @@ it.each(["repeated", "overlapping", "changed-total", "incomplete", "pull-request
       );
 
       const result = await reader.discover(
-        {
-          id: "R_oppia",
-          full_name: "oppia/oppia",
-          url: "https://github.com/oppia/oppia",
-        },
+        { id: "R_oppia", full_name: "oppia/oppia", url: "https://github.com/oppia/oppia" },
         "repo:oppia/oppia is:issue is:open",
       );
 
       expect(result.complete).toBe(false);
+      expect(result.batchComplete).toBe(false);
+      expect(result.nextPage).toBeNull();
       expect(result.warnings.length).toBeGreaterThan(0);
       expect(new Set(result.identities.map((item) => item.id)).size).toBe(result.identities.length);
-      expect(result.identities.length).toBeLessThanOrEqual(200);
-      expect(api).toHaveBeenCalledTimes(2);
+      expect(result.identities.length).toBeLessThanOrEqual(10);
+      expect(api).toHaveBeenCalledTimes(1);
     } finally {
       api.mockRestore();
     }

@@ -122,3 +122,61 @@ const fs=require('node:fs/promises');const net=require('node:net');
     ]);
   }
 }, 15000);
+
+it("masks Codex app-server configuration inside the sandbox while retaining CLI-owned session storage", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-conversation-sandbox-"));
+  fixture.home = join(dir, "home");
+  const state = join(fixture.home, ".codex");
+  await mkdir(state, { recursive: true });
+  const config = join(state, "config.toml");
+  await writeFile(config, "INERT_USER_CONFIG_CANARY");
+  const engine = await createFixtureEngine(join(dir, "data"));
+  try {
+    const { repo } = await fixtureRepository(engine, dir);
+    const task = await prepareFixtureTask(engine, repo, "conversation-config");
+    const projectConfig = join(task.worktree_path, ".codex", "config.toml");
+    await mkdir(join(task.worktree_path, ".codex"));
+    await writeFile(projectConfig, "INERT_PROJECT_CONFIG_CANARY");
+
+    const invocation = await sandboxInvocation(
+      engine.root,
+      engine.db,
+      task,
+      {
+        program: process.execPath,
+        args: [
+          "-e",
+          `const fs=require('node:fs');if(fs.readFileSync(${JSON.stringify(config)},'utf8')!=='')throw Error('User config exposed');if(fs.readFileSync(${JSON.stringify(projectConfig)},'utf8')!=='')throw Error('Project config exposed');fs.writeFileSync(${JSON.stringify(join(state, "new-session"))},'INERT_SESSION');try{fs.writeFileSync('source.txt','bad');process.exitCode=1}catch(e){if(e.code!=='EROFS')throw e}`,
+        ],
+        isolateProviderConfig: true,
+      },
+      true,
+      undefined,
+      "codex",
+    );
+
+    const output = await execute({ ...invocation, cwd: task.worktree_path });
+    expect(output.code, output.stderr).toBe(0);
+    expect(await readFile(config, "utf8")).toBe("INERT_USER_CONFIG_CANARY");
+    expect(await readFile(projectConfig, "utf8")).toBe("INERT_PROJECT_CONFIG_CANARY");
+    expect(await readFile(join(state, "new-session"), "utf8")).toBe("INERT_SESSION");
+    await rm(config);
+    await symlink(join(state, "new-session"), config);
+
+    await expect(
+      sandboxInvocation(
+        engine.root,
+        engine.db,
+        task,
+        { program: process.execPath, args: [], isolateProviderConfig: true },
+        true,
+        undefined,
+        "codex",
+      ),
+    ).rejects.toThrow("must not be an alias");
+  } finally {
+    await engine.close();
+    fixture.home = "";
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 15000);

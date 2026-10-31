@@ -347,7 +347,8 @@
 .message-actions {
   display: flex;
   gap: 3px;
-  opacity: 0.6;
+  opacity: 0;
+  transition: opacity 200ms ease;
 }
 
 .user-message:hover .message-actions,

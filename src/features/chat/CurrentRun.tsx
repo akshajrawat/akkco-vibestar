@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Detail } from "../../lib/types";
 import { duration } from "../../lib/format";
@@ -39,6 +39,7 @@ export const CurrentRun = ({
   const run = runningRun || (!active ? detail.runs.at(-1) : undefined);
   const model = run?.model || "CLI default · model not reported";
   const [, tick] = useState(0);
+  const activity = useMemo(() => runActivity(detail.events, run), [detail.events, run]);
 
   useEffect(() => {
     if (!active) return;
@@ -46,7 +47,12 @@ export const CurrentRun = ({
     return () => clearInterval(timer);
   }, [active]);
 
-  if (!active && !run) return null;
+  if (
+    !active ||
+    runningRun?.purpose === "Read-only conversation" ||
+    runningRun?.purpose === "Workspace conversation"
+  )
+    return null;
 
   const labels: Record<string, string> = {
     queued: "Queued",
@@ -78,7 +84,6 @@ export const CurrentRun = ({
               ][run.stage]
             : labels[status];
 
-  const activity = runActivity(detail.events, run);
   return (
     <section className="current-run compact-activity" aria-label="Current agent run">
       <button className="current-run-open" onClick={output} aria-label="Inspect current run">

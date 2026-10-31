@@ -302,6 +302,7 @@ child.on('exit',code=>process.exit(code||0));
               capabilities: {
                 manual_issue_watch: false,
                 issue_watch_contract: null,
+                issue_watch_batches: null,
               },
             });
           }
@@ -340,6 +341,44 @@ it.skipIf(process.platform === "win32")(
       await expect(bridge.request("issueWatch.create")).resolves.toEqual({
         accepted: "issueWatch.create",
       });
+
+      await expect(bridge.request("issueWatch.scan", { order: "newest" })).rejects.toThrow(
+        "batches of 10",
+      );
+
+      for (const method of ["issueWatch.retry", "issueWatch.continue"])
+        await expect(bridge.request(method, {})).rejects.toThrow("batches of 10");
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "forwards batched scans only after the helper confirms batch support",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-batches-"));
+
+    await writeFile(
+      join(dir, "core.cjs"),
+      helper(true, true).replace(
+        "issue_watch_contract:1",
+        "issue_watch_contract:1,issue_watch_batches:1",
+      ),
+    );
+
+    const bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
+    try {
+      bridge.start();
+
+      await expect(bridge.request("snapshot")).resolves.toMatchObject({
+        capabilities: { issue_watch_batches: 1 },
+      });
+
+      await expect(bridge.request("issueWatch.scan", { order: "oldest" })).resolves.toEqual({
+        accepted: "issueWatch.scan",
+      });
     } finally {
       await bridge.stop();
       await rm(dir, { recursive: true, force: true });
@@ -373,6 +412,43 @@ it.skipIf(process.platform === "win32")(
       await expect(bridge.request("task.detail")).resolves.toEqual({
         accepted: "task.detail",
       });
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "requires workspace-chat capability for editing while retaining read-only chat",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-workspace-chat-"));
+    let bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
+    try {
+      await writeFile(join(dir, "core.cjs"), helper());
+      bridge.start();
+
+      await expect(
+        bridge.request("task.chat", { configuration: { access: "workspace" } }),
+      ).rejects.toThrow("workspace edits in chat");
+
+      await expect(bridge.request("task.chat", { configuration: {} })).resolves.toEqual({
+        accepted: "task.chat",
+      });
+
+      await bridge.stop();
+
+      await writeFile(
+        join(dir, "core.cjs"),
+        helper().replace("workflow_first:1,", "workflow_first:1,workspace_chat:1,"),
+      );
+
+      bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
+      bridge.start();
+
+      await expect(
+        bridge.request("task.chat", { configuration: { access: "workspace" } }),
+      ).resolves.toEqual({ accepted: "task.chat" });
     } finally {
       await bridge.stop();
       await rm(dir, { recursive: true, force: true });

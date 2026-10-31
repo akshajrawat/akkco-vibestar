@@ -292,6 +292,7 @@ export interface Task {
   base_branch: string;
   base_commit_sha: string;
   worktree_path: string;
+  workspace_mode?: "source";
   created_at: string;
   updated_at: string;
   status: TaskStatus;
@@ -312,7 +313,13 @@ export interface Task {
 // Shared physical assignment; repair workflows do not become issue tasks.
 export type WorkspaceAssignment = Pick<
   Task,
-  "id" | "repo_id" | "branch_name" | "worktree_path" | "base_commit_sha"
+  | "id"
+  | "repo_id"
+  | "branch_name"
+  | "worktree_path"
+  | "base_commit_sha"
+  | "workspace_mode"
+  | "workspace_checkpoint"
 >;
 
 export interface CoreEvent {

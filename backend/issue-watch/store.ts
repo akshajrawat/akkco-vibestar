@@ -17,9 +17,50 @@ import {
 } from "./contracts";
 import { digest, type previewRules } from "./rules";
 import { isMatch } from "./eligibility";
+import type { GitHubResponseCache } from "../github/client";
 
 export class IssueWatchStore {
   constructor(private readonly db: Database) {}
+
+  /** Cached bodies are reused only after an authenticated GitHub 304 response. */
+  readonly httpCache: GitHubResponseCache = {
+    get: (endpoint) => {
+      const row = this.db.all<{ etag: string; body: string }>(
+        "SELECT etag,body FROM issue_watch_http_cache WHERE endpoint=? AND length(body)<=2097152",
+        endpoint,
+      )[0];
+
+      if (!row || !row.etag || row.etag.length > 1000 || /[\r\n]/.test(row.etag)) return;
+      try {
+        return { etag: row.etag, body: JSON.parse(row.body) as unknown };
+      } catch {
+        return;
+      }
+    },
+    set: (endpoint, etag, body) => {
+      const value = JSON.stringify(body);
+      if (Buffer.byteLength(value) > 2 * 1024 * 1024) return;
+
+      this.db.run(
+        "INSERT INTO issue_watch_http_cache VALUES(?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET etag=excluded.etag,body=excluded.body,checked_at=excluded.checked_at",
+        endpoint,
+        etag,
+        value,
+        now(),
+      );
+
+      const entries = this.db.all<{ endpoint: string; bytes: number }>(
+        "SELECT endpoint,length(CAST(body AS BLOB)) bytes FROM issue_watch_http_cache ORDER BY checked_at DESC,rowid DESC",
+      );
+
+      let bytes = 0;
+      for (const [index, entry] of entries.entries()) {
+        bytes += entry.bytes;
+        if (index >= 1000 || bytes > 20 * 1024 * 1024)
+          this.db.run("DELETE FROM issue_watch_http_cache WHERE endpoint=?", entry.endpoint);
+      }
+    },
+  };
 
   private decode = <T>(
     table: string,
@@ -455,7 +496,7 @@ export class IssueWatchStore {
     this.get(watchId);
     return this.db
       .all<{ id: string; data: string }>(
-        "SELECT r.issue_id id,r.data FROM issue_watch_results r JOIN issue_watch_scans s ON s.id=r.last_evaluated_scan_id WHERE r.watch_id=? AND s.status='completed' ORDER BY r.last_seen DESC",
+        "SELECT r.issue_id id,r.data FROM issue_watch_results r JOIN issue_watch_scans s ON s.id=r.last_evaluated_scan_id WHERE r.watch_id=? AND (s.status='completed' OR (s.status='partial' AND json_extract(s.data,'$.batch.complete')=1)) ORDER BY r.last_seen DESC",
         watchId,
       )
       .flatMap((row) => {
@@ -613,7 +654,8 @@ export class IssueWatchStore {
       for (const candidate of candidates)
         scan.summary[candidate.classification] = (scan.summary[candidate.classification] || 0) + 1;
       this.saveScan(scan);
-      if (scan.status !== "completed") return;
+      if (scan.status !== "completed" && !(scan.status === "partial" && scan.batch?.complete))
+        return;
       for (const candidate of candidates) {
         const old = this.db.all<{
           first_seen: string;
@@ -637,6 +679,8 @@ export class IssueWatchStore {
           JSON.stringify(candidate),
         );
       }
+
+      if (scan.status !== "completed") return;
 
       this.saveWatch({
         ...watch,

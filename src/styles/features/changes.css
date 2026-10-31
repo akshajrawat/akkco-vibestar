@@ -234,14 +234,6 @@
   color: var(--text-secondary);
 }
 
-.chat-changes .edited-file button {
-  background: transparent;
-  border: 0;
-  text-align: left;
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-
 .context-heading {
   display: flex;
   align-items: center;

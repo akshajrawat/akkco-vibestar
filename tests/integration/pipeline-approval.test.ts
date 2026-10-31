@@ -8,7 +8,7 @@ import type { Engine } from "../../backend/execution/engine";
 import { defaultSettings, parseIssue } from "../../backend/domain";
 import { StreamedPlan } from "../../backend/execution/agents/streamed-plan";
 import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
-import { buildPrompt } from "../../backend/execution/agents/prompt";
+import { Rpc } from "../../backend/rpc";
 import {
   createFixtureEngine,
   fixtureRepository,
@@ -81,7 +81,11 @@ it("persists each approval without starting the next provider, preserves isolati
     await gate("antigravity_plan");
     expect(selected).toEqual([{ stage: 1, provider: "antigravity" }]);
     expect(engine.db.artifact(task.id, 1).summary).toBe("Fixture plan");
-    expect(engine.db.detail(task.id).runs[0].prompt).toContain("Do not edit files or run tests");
+
+    expect(engine.db.detail(task.id).runs[0].prompt).toContain(
+      "Read it carefully, search recursively through any links or files you want to for that repository and create a detailed plan to solve this issue",
+    );
+
     await expect(engine.retry(task.id)).rejects.toThrow("approve");
     await expect(engine.retry(task.id, 2)).rejects.toThrow("Approve");
     await engine.close();
@@ -113,17 +117,21 @@ it("persists each approval without starting the next provider, preserves isolati
     await gate("implementation");
     expect(selected.map((r) => r.stage)).toEqual([1, 2, 2, 3]);
 
-    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "Run the applicable tests, types, lint",
+    expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toBe(
+      [JSON.stringify(engine.db.artifact(task.id, 2), null, 2), "Add regression coverage"].join(
+        "\n\n",
+      ),
     );
 
     expect(await readFile(join(upstream, "source.txt"), "utf8")).toBe("base\n");
     await engine.approveStage(task.id);
-    await gate("final_review");
+    await waitForTask(engine, task.id, (status) => ["ready_for_review", "failed"].includes(status));
+    await idle(engine, task.id);
+    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
     expect(selected.at(-1)).toEqual({ stage: 5, provider: "antigravity" });
 
     expect(engine.db.detail(task.id).runs.at(-1)?.prompt).toContain(
-      "prior agent success is not your verification",
+      "do not fix them or start another implementation run",
     );
 
     expect(engine.db.detail(task.id).usage.at(-1)).toMatchObject({
@@ -132,22 +140,22 @@ it("persists each approval without starting the next provider, preserves isolati
       effort: "high",
     });
 
-    expect(buildPrompt(engine.db, { ...engine.db.task(task.id), stage: 5 })).toContain(
-      "testsNotRun",
-    );
-
-    for (const run of engine.db.detail(task.id).runs) {
-      expect(run.prompt).toContain("Do not install, upgrade, download or bootstrap dependencies");
-      expect(run.prompt).toContain("npx --offline --no-install");
-      expect(run.prompt).not.toContain("Set up missing dependencies in task-owned locations");
-    }
+    const prompts = engine.db.detail(task.id).runs;
+    expect(prompts[0].prompt).toContain("This is the issue : Issue");
+    expect(prompts[0].prompt).toContain("All comments");
+    expect(prompts[0].prompt).not.toContain("TASK CONTEXT:");
+    expect(prompts.at(-1)?.prompt).toContain("numbered points");
 
     const worktree = engine.db.task(task.id).worktree_path;
     await writeFile(join(worktree, "source.txt"), "modified after review\n");
-    await expect(engine.approveStage(task.id)).rejects.toThrow("changed after");
+
+    await expect(new Rpc(engine).call("task.complete", { id: task.id })).rejects.toThrow(
+      "worktree changed",
+    );
+
     await writeFile(join(worktree, "source.txt"), "A\n");
-    await engine.approveStage(task.id);
-    expect(engine.db.task(task.id).status).toBe("ready_for_review");
+    await new Rpc(engine).call("task.complete", { id: task.id });
+    expect(engine.db.task(task.id).status).toBe("completed");
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });

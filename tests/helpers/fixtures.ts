@@ -118,7 +118,7 @@ export class FixtureProvider extends CodexProvider {
       : r.stage === 1
         ? plan1
         : r.stage === 2
-          ? plan2
+          ? { ...plan2, scope: /(?:^|\n)Scope: ([^\n]+)/.exec(r.prompt)?.[1] || plan2.scope }
           : r.stage === 5
             ? {
                 approval: "approved",
@@ -223,7 +223,12 @@ export const finishFixtureTask = async (
   engine.on("event", approve);
   const timer = setInterval(approve, 20);
   try {
-    await waitForTask(engine, id, (status) => !!failure || predicate(status));
+    await waitForTask(
+      engine,
+      id,
+      (status) => !!failure || (predicate(status) && !engine.isActive(id)),
+    );
+
     if (failure) throw failure;
   } finally {
     clearInterval(timer);

@@ -98,6 +98,14 @@ const applicationError = (output: string) =>
 
 const environmentReason = (output: string) => {
   if (applicationError(output)) return undefined;
+  if (/\bEROFS\b|read-only file system/i.test(output))
+    return "Verification requires a writable filesystem";
+  if (
+    /AF_UNIX.{0,100}(?:path|socket).{0,50}(?:too long|length)|(?:unix|socket) path.{0,50}too long/i.test(
+      output,
+    )
+  )
+    return "Verification socket path exceeds the platform limit";
   if (/canceled due to missing packages|could not determine executable to run/i.test(output))
     return "Verification tooling unavailable";
   if (

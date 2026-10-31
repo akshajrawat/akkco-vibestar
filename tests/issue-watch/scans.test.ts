@@ -229,7 +229,7 @@ it("preserves partial discoveries and the old baseline when search/context budge
   expect(baseline.status).toBe("completed");
 
   f.overrides.set(
-    "search/issues?q=repo%3Aoppia%2Foppia%20is%3Aissue%20is%3Aopen&sort=updated&order=desc&per_page=100&page=1",
+    "search/issues?q=repo%3Aoppia%2Foppia%20is%3Aissue%20is%3Aopen&sort=created&order=desc&per_page=10&page=1",
     {
       total_count: 9999,
       incomplete_results: true,
@@ -247,7 +247,7 @@ it("preserves partial discoveries and the old baseline when search/context budge
   expect(partial.status).toBe("partial");
   expect(partial.coverage.search_complete).toBe(false);
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(baseline.id);
-  expect(f.service.store.candidates(watch.id, partial.id)).toHaveLength(3);
+  expect(f.service.store.candidates(watch.id, partial.id)).toHaveLength(1);
 
   f.overrides.set("repos/oppia/oppia", {
     node_id: "R_impostor",

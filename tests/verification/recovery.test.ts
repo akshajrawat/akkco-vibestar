@@ -182,13 +182,13 @@ it("supports legacy gap acknowledgments, gives the reviewer complete evidence an
     await expect(rpc.call("task.verification.continueReview", params)).rejects.toThrow();
 
     await waitForTask(engine, task.id, (status) =>
-      ["awaiting_approval", "failed"].includes(status),
+      ["reviewed_with_gaps", "failed"].includes(status),
     );
 
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
 
     expect(engine.db.task(task.id), engine.db.task(task.id).error || "review").toMatchObject({
-      approval_gate: "final_review",
+      stage: 6,
       final_review_verdict: "code_approved_incomplete",
     });
 
@@ -201,7 +201,7 @@ it("supports legacy gap acknowledgments, gives the reviewer complete evidence an
     ).toBe("blocked");
 
     expect(after.canReview).toBe(false);
-    await engine.approveStage(task.id);
+    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
     expect(engine.db.task(task.id).status).toBe("reviewed_with_gaps");
     await expect(rpc.call("task.complete", { id: task.id })).rejects.toThrow();
 

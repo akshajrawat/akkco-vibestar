@@ -1165,3 +1165,153 @@ in `~/tmp/vibestar-pr-watch-desktop-aTTY9e/`. The final repair fixture also pass
 inert providers and mocked GitHub transports. Live model/API latency and native Windows
 behavior were not measured. User application data was only read for diagnosis; no
 live-provider or GitHub-write test was run.
+
+## 2026-10-29 — T3 Code chat reconstruction
+
+The working tree was based on `550716b1dde02bd208691ae6801d662f74d72163`, still the
+remote HEAD at final verification. The reference was T3 Code commit
+`861a51a6c4a036a6f14fea2a6f093808de1d96ce`; its source analysis and remaining differences
+are in [the chat parity report](chat-parity.md), with its MIT notice retained in
+[third-party notices](../third-party-notices.md).
+
+`npm run verify` passed 377 regular tests, 138 integration tests, 132 security tests
+and 6 terminal tests (653 total); one existing opt-in regular case remained skipped.
+Formatting, lint, types and the production build passed. After the final saved-instruction
+restoration adjustment, the 24 chat/composer cases passed and another production build
+(including type checking) passed. The adjustment and test also passed targeted lint and
+formatting checks.
+
+The final build passed three Electron fixtures under Xvfb with one worker: workspace
+chat, agent output and PR repair. These use inert providers, isolated roots and local Git
+remotes. Final workspace evidence is in
+`~/tmp/vibestar-chat-workspace-lnUmeY/screenshots/`, output evidence in
+`~/tmp/vibestar-output-desktop-9xeHAt/screenshots/`, and repair/interactive terminal
+results in `~/tmp/vibestar-pr-repair-desktop-ifZjyB/screenshots/`.
+The output fixture's obsolete provider-specific approval/usage labels were updated
+to the current generic plan label and scoped usage cards; assertions continue to inspect
+real fixture run output, redaction, history paging, interruption and reload state.
+
+An isolated comparison rendered upstream WorkLog and ComposerSurface components and
+source-derived user-bubble markup with upstream CSS, beside the built Vibestar chat,
+on the same Electron host. Completed, streaming and failed states at 1100px and 760px
+produced twelve captures in `test-results/chat-reference/`. At 1100px the lanes are
+736px, composers 114px high, and the sample bubbles 354.5 × 36px in both fixtures.
+All compared states fit the viewport. The 760px Vibestar lane is approximately 2.4px
+wider because of its responsive gutter. Actual built workspace and manual-terminal
+captures were also copied into that ignored evidence directory.
+
+Regressions cover optimistic submission/rollback, echo ordering, saved instructions,
+structured deltas and final-answer deduplication, terminal-state ordering, cancellation,
+error dismissal, history scrolling and prompt anchoring. Long-answer tests reconstruct
+3,000 events after refresh and recover a 5,000-event burst without changing the message
+identity. Greeting tests prove real fixture-provider invocation without worktree setup,
+no repository mount, persisted chat history, no automatic run on reopen, and a new scope
+when a later repository question prepares source. The official installed Codex-generated
+protocol schema was inspected without inference.
+
+No live provider, GitHub-write or native Windows test was run. Actual subscription
+latency was not measured. Application state, credentials and user-owned checkouts were
+not modified by these tests; no commit, push or publication was performed.
+
+## 2026-10-29 — Minimal native agent conversation
+
+Removed the local black palette, new-message spacer/top anchoring and duplicate
+conversation run banner. The composer now has one agent conversation with explicit
+Send to workflow feedback. Conversation turns retain agent tools and read-only
+isolation, use native prose without workflow response schemas, and send only the new
+message when resuming a completed provider session. New sessions receive bounded
+history/project context without injected workflow reports or response-format instructions.
+
+`npm run verify` passed: 378 regular tests (one skipped), 140 integration tests,
+132 security tests, six terminal tests, formatting, lint, types and the production
+build. After a final reply-spacing refinement, the affected 40 renderer tests and
+production build passed again. Three built Electron fixtures then passed under Xvfb
+with one worker: chat workspace, pipeline approval and agent output. These cover
+keyboard submission, consecutive answers, responsive layout and reduced motion.
+
+Compared the final 1440 × 900 workspace capture with the earlier capture on the same
+Electron host. The conversation now matches the app palette, and consecutive turns
+remain together without artificial blank space. Final workspace captures are in
+`~/tmp/vibestar-chat-workspace-NUwvks/screenshots/`; the comparison used the earlier
+`~/tmp/vibestar-chat-workspace-lnUmeY/screenshots/` capture.
+
+Provider tests used inert processes and isolated roots. No live subscription latency,
+native Windows behavior or GitHub writes were tested.
+
+## 2026-10-30 — Direct workflow conversation and source branch allocation
+
+Workflow prompts now carry the issue/comments and scoped user instructions directly;
+refinement adds the original plan and implementation receives the refined plan without
+another workflow instruction wrapper. Final review saves its verdict and stops at stage 6;
+queued instructions remain saved rather than triggering a repair loop. The ordinary composer
+can request a separate workspace edit after review with its selected model. Explicit access
+and the `workspace_chat: 1` capability preserve read-only behavior for older callers.
+
+The idle transcript shows a short welcome. Workflow briefs appear as user messages, plans
+and final replies appear directly, and completed activity folds under “Worked for…”. Provider
+input echoes and technical tool metadata stay out of chat. App-identity questions use an
+empty read-only workspace with host-app context instead of preparing or fingerprinting source.
+
+Each issue gets a dedicated branch. New explicit workflows can use a clean primary source
+checkout already at its fetched base commit; dirty, reserved, non-base and historical
+assignments use separate worktrees. Local fixtures proved the same allocation for both
+providers, retained unfinished source edits without committing or stashing, preserved
+external remotes, and checked restart, owner/branch rejection, source cleanup and managed
+root migration. Source implementation can edit task files while Git metadata and recognized
+installed dependencies remain read-only in the production outer sandbox.
+
+`npm run verify` passed 394 regular tests (one additional case skipped), 148 integration,
+135 security and six terminal tests: 683 passing deterministic tests, plus formatting,
+lint, types and the production build. All four built Electron fixtures passed under Xvfb
+with one worker: chat workspace, agent output, pipeline approval and PR repair. They cover
+keyboard interaction, responsive layouts, workflow gates, real fixture PTYs and output.
+Idle and conversation captures were inspected against the supplied reference screenshots.
+
+Electron evidence is retained in:
+
+- `~/tmp/vibestar-gate-desktop-KF0SZD/screenshots/`
+- `~/tmp/vibestar-chat-workspace-cdtq40/screenshots/`
+- `~/tmp/vibestar-output-desktop-Hhj30s/screenshots/`
+- `~/tmp/vibestar-pr-repair-desktop-AQZjEI/screenshots/`
+
+A final compatibility adjustment prevents resuming legacy conversations that lack the new
+host-app context, and the first planner's closing instruction was aligned verbatim with the
+requested minimal prompt. The affected workflow/conversation files then passed all 23 focused
+cases and a fresh production build. Formatting/lint checks also passed after documentation updates.
+No live provider inference, live latency measurements, GitHub writes or native Windows
+installation/input checks were performed. The project name remains Akkco Vibestar.
+
+## October 30, 2026 — Chat disclosures and Issue Watch batches
+
+Long user and workflow prompts now use a bounded preview with Show more/less.
+Chat uses rounded blue user bubbles and a dark reading surface. Thinking and
+Worked for remain disclosures even when the provider emits no extra activity;
+reported Codex commentary stays inside the work log and the final answer remains
+outside it. Scrolled history exposes a circular, keyboard accessible jump button.
+
+Issue Watch discovers up to ten issues per explicit attempt, in newest or oldest
+creation order. Saved page/order/next-page records survive restart. Next 10 does
+not fetch earlier candidate contexts again. Completed batches retain their results
+without advancing the repository-wide baseline. Rechecks accept at most ten issues;
+legacy larger scan settings are capped at 80 requests per attempt. Reads are serial
+across watch scans. Rate-limit failures stop queued reads for at least 60 seconds,
+with explicit retry. Migration 27 adds a bounded HTTP body/ETag cache; only an
+authenticated GitHub 304 permits body reuse, and failures have no stale fallback.
+Desktop capability negotiation blocks scans, retries and continuations against
+helpers that cannot enforce the new batch contract.
+
+Validation used temporary roots, inert providers and mocked GitHub data. No live
+provider or GitHub account request was used to exercise scanning. The full unit
+suite passed 399 tests (one unrelated skip). The integration pass completed 147
+of 148 checks before an expected snapshot needed the new capability field; the
+corrected bridge file plus its added compatibility case then passed all 11 tests.
+All 135 security and six terminal tests passed. Focused batch/collection/chat tests
+passed after final guard changes; the final renderer suite passed ten tests.
+Formatting, lint, types and production builds were checked again at completion.
+
+Built Electron fixtures under Xvfb passed chat and Issue Watch scenarios. They
+exercise prompt expansion, native disclosure toggling with the keyboard, jumping
+to latest, newest discovery, Next 10 and oldest discovery/display order. Evidence:
+`~/tmp/vibestar-chat-workspace-Iu85O5/screenshots/` and
+`~/tmp/vibestar-watch-evidence-Xqz7QL/screenshots/`. These were visually inspected;
+this is not a claim of pixel identity with ChatGPT or of native Windows validation.

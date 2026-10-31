@@ -7,6 +7,11 @@ import { AdeError } from "../../domain";
 import { StreamRedactor } from "../output/stream-redactor";
 import { OutputBudget } from "../output/bounded-output";
 
+export interface ProcessInputProtocol {
+  start: (send: (message: unknown) => void, end: () => void) => void;
+  receive: (line: string) => void;
+}
+
 export interface ProcessRequest {
   rawStdoutForIntegrity?: boolean;
   gitEnvironment?: boolean;
@@ -14,6 +19,7 @@ export interface ProcessRequest {
   args: string[];
   cwd: string;
   input?: string;
+  inputProtocol?: ProcessInputProtocol;
   timeoutMs?: number;
   progressLines?: boolean;
   wslInterop?: boolean;
@@ -143,7 +149,9 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     const line = (stream: "stdout" | "stderr", value: string) => {
       if (aborted) return;
       try {
-        r.onLine?.(stream, redact(value));
+        const safe = redact(value);
+        r.onLine?.(stream, safe);
+        if (stream === "stdout") r.inputProtocol?.receive(safe);
       } catch (e) {
         aborted = e instanceof Error ? e : new Error(String(e));
         if (child.pid) terminateGroup(child.pid, "SIGKILL");
@@ -264,7 +272,16 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     child.stdout.on("data", (c: Buffer) => consume("stdout", c));
     child.stderr.on("data", (c: Buffer) => consume("stderr", c));
     child.stdin.on("error", () => {});
-    child.stdin.end(r.input);
+    if (r.inputProtocol) {
+      try {
+        r.inputProtocol.start(
+          (message) => child.stdin.write(JSON.stringify(message) + "\n"),
+          () => child.stdin.end(),
+        );
+      } catch (error) {
+        interrupt(error instanceof Error ? error : new Error(String(error)));
+      }
+    } else child.stdin.end(r.input);
 
     child.on("close", (code) => {
       for (const stream of ["stdout", "stderr"] as const) {

@@ -202,9 +202,8 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
         )
         .toBe(true);
 
-      expect(
-        await page.getByRole("combobox", { name: "Message action" }).getAttribute("data-value"),
-      ).toBe("changes");
+      expect(await page.getByRole("combobox", { name: "Message action" }).count()).toBe(0);
+      await page.getByText("Write your feedback, then choose Send to workflow.").waitFor();
 
       expect(engine.db.detail(task.id).runs).toHaveLength(1);
       await page.setViewportSize({ width: 1440, height: 940 });
@@ -214,7 +213,7 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
       await page.locator(".plan-comparison .run-prompt summary").first().click();
 
       expect(await page.locator(".plan-comparison .run-prompt pre").first().innerText()).toContain(
-        "every available issue comment",
+        "This is the issue : Review-gated fixture task",
       );
 
       await page.screenshot({
@@ -246,8 +245,13 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
       });
 
       await page.getByRole("button", { name: "Approve → Review" }).click();
-      await page.getByRole("button", { name: "Accept review", exact: true }).waitFor();
-      await page.getByRole("button", { name: "View review", exact: true }).click();
+      await page.getByRole("button", { name: "Open terminal", exact: true }).waitFor();
+
+      expect(await page.getByRole("button", { name: "Accept review", exact: true }).count()).toBe(
+        0,
+      );
+
+      await page.getByRole("tab", { name: "Final review", exact: true }).click();
 
       await page
         .locator(".secondary-content")
@@ -261,7 +265,6 @@ it.skipIf(process.env.VIBESTAR_GATE_DESKTOP_TEST !== "1")(
 
       await page.locator(".secondary-content").getByText("remote CI", { exact: true }).waitFor();
       await page.screenshot({ path: join(evidence, "final-review.png") });
-      await page.getByRole("button", { name: "Accept review", exact: true }).click();
       await page.getByRole("button", { name: "Open terminal" }).waitFor();
       await page.getByRole("tab", { name: "Workflow", exact: true }).click();
       const panel = await page.locator(".engineering-panel").boundingBox();

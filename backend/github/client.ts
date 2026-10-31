@@ -3,6 +3,11 @@ import { AdeError } from "../domain";
 import type { GitHubRepository, GitHubStatus } from "./contracts";
 import { authoredPullRequests, knownPullRequests } from "./pull-requests";
 
+export interface GitHubResponseCache {
+  get: (endpoint: string) => { etag: string; body: unknown } | undefined;
+  set: (endpoint: string, etag: string, body: unknown) => void;
+}
+
 export class GitHubClient {
   constructor(private readonly cwd: string) {}
 
@@ -23,10 +28,25 @@ export class GitHubClient {
     return result.stdout;
   };
 
-  api = async <T>(endpoint: string, signal?: AbortSignal): Promise<T> =>
-    JSON.parse(
-      await this.gh(["api", "--hostname", "github.com", "--method", "GET", endpoint], signal),
-    );
+  api = async <T>(
+    endpoint: string,
+    signal?: AbortSignal,
+    cache?: GitHubResponseCache,
+  ): Promise<T> => {
+    const args = ["api", "--hostname", "github.com", "--method", "GET"];
+    const saved = cache?.get(endpoint);
+    if (cache) args.push("--include");
+    if (saved) args.push("-H", `If-None-Match: ${saved.etag}`);
+    const response = await this.gh([...args, endpoint], signal);
+    if (!cache) return JSON.parse(response);
+    const match = response.match(/^HTTP\/[\d.]+ (\d{3})[^\n]*\r?\n([\s\S]*?)\r?\n\r?\n([\s\S]*)$/);
+    if (!match) throw new AdeError("github", "GitHub response headers were unavailable.");
+    if (match[1] === "304" && saved) return structuredClone(saved.body) as T;
+    const value = JSON.parse(match[3]);
+    const etag = match[2].match(/^etag:\s*([^\r\n]+)/im)?.[1].trim();
+    if (etag && etag.length <= 1000) cache.set(endpoint, etag, value);
+    return value as T;
+  };
 
   pages = async <T>(
     endpoint: string,

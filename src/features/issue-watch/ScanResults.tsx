@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 
 import type { CandidateSummary, WatchScan } from "../../../backend/issue-watch/contracts";
@@ -14,6 +14,7 @@ const sortOptions = [
 
 export const ScanResults = ({
   candidates,
+  discoveryOrder,
   selected,
   onSelect,
   provisional,
@@ -22,6 +23,7 @@ export const ScanResults = ({
   onError,
 }: {
   candidates: CandidateSummary[];
+  discoveryOrder?: "newest" | "oldest";
   selected: string;
   onSelect: (id: string) => void;
   provisional: boolean;
@@ -33,9 +35,14 @@ export const ScanResults = ({
   const [query, setQuery] = useState("");
 
   const [sort, setSort] = useState(() => {
+    if (discoveryOrder) return discoveryOrder;
     const saved = localStorage.getItem("vibestar.issueWatch.sort");
     return sortOptions.some((option) => option.value === saved) ? saved! : "newest";
   });
+
+  useEffect(() => {
+    if (discoveryOrder) setSort(discoveryOrder);
+  }, [discoveryOrder]);
 
   const visible = candidates
     .filter((candidate) => {

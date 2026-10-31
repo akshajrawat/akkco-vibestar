@@ -1,4 +1,4 @@
-import { now } from "../domain";
+import { AdeError, now } from "../domain";
 import type { GitHubClient } from "../github/client";
 import {
   IssueSearch,
@@ -34,8 +34,13 @@ export class IssueWatchScanner {
     const revision = this.store.revision(watch.id, scan.revision);
     const { rules, limits } = revision.configuration;
 
-    const reader = new IssueSearch(this.client, signal, limits, this.pool, () =>
-      progress(scan.phase),
+    const reader = new IssueSearch(
+      this.client,
+      signal,
+      { ...limits, max_requests: Math.min(80, limits.max_requests) },
+      this.pool,
+      () => progress(scan.phase),
+      this.store.httpCache,
     );
 
     const candidates: WatchCandidate[] = [];
@@ -47,7 +52,7 @@ export class IssueWatchScanner {
     };
 
     const progress = (phase: string) => {
-      signal.throwIfAborted();
+      reader.assertAvailable();
       scan.phase = phase;
       scan.coverage.requests = reader.requests;
       scan.coverage.retained_bytes = reader.bytes;
@@ -86,12 +91,12 @@ export class IssueWatchScanner {
           "Scoped recheck: other watch candidates are not rechecked and the full baseline is preserved.",
         );
       } else {
-        for (const candidate of known.values())
-          identities.set(candidate.issue.id, {
-            id: candidate.issue.id,
-            number: candidate.issue.number,
-          });
-        const discovery = await reader.discover(repository, scan.coverage.query);
+        const discovery = await reader.discover(repository, scan.coverage.query, scan.batch);
+        if (scan.batch) {
+          scan.batch.next_page = discovery.nextPage;
+          scan.batch.complete = discovery.batchComplete;
+        }
+
         scan.coverage.search_total = discovery.total;
         scan.coverage.search_complete = discovery.complete;
         for (const warning of discovery.warnings) warn(warning);
@@ -99,7 +104,8 @@ export class IssueWatchScanner {
         for (const identity of discovery.identities) identities.set(identity.id, identity);
       }
 
-      if (identities.size > limits.max_candidates) {
+      const candidateLimit = Math.min(10, limits.max_candidates);
+      if (identities.size > candidateLimit) {
         scan.coverage.search_complete = false;
 
         warn(
@@ -108,7 +114,7 @@ export class IssueWatchScanner {
       }
 
       progress("Checking issue metadata");
-      for (const identity of [...identities.values()].slice(0, limits.max_candidates)) {
+      for (const identity of [...identities.values()].slice(0, candidateLimit)) {
         try {
           const issue = await reader.issue(repository, identity.number);
           verifyIssueIdentity(issue, identity);
@@ -119,6 +125,7 @@ export class IssueWatchScanner {
         } catch (error) {
           signal.throwIfAborted();
           scan.coverage.search_complete = false;
+          if (scan.batch) scan.batch.complete = false;
 
           warn(
             `Issue #${identity.number} could not be verified: ${error instanceof Error ? error.message : String(error)}`,
@@ -227,35 +234,6 @@ export class IssueWatchScanner {
             candidate.claim_state = "maintainer_approval_needed";
         }
 
-        try {
-          const current = await reader.issue(repository, candidate.issue.number);
-
-          verifyIssueIdentity(current, {
-            id: candidate.issue.id,
-            number: candidate.issue.number,
-          });
-
-          if (digest(current) !== digest(candidate.issue)) {
-            candidate.issue = current;
-
-            candidate.uncertainty.push(
-              "Issue changed during collection; previous discussion/context may be stale.",
-            );
-
-            candidate.claim_state = "eligibility_uncertain";
-            scan.coverage.evidence_complete = false;
-          }
-        } catch {
-          signal.throwIfAborted();
-
-          candidate.uncertainty.push(
-            "Current issue could not be revalidated after discussion retrieval.",
-          );
-
-          candidate.claim_state = "eligibility_uncertain";
-          scan.coverage.evidence_complete = false;
-        }
-
         this.store.saveCandidate(scan, candidate);
 
         progress(
@@ -340,8 +318,13 @@ export class IssueWatchScanner {
       ).length;
 
       const checked = new Set(candidates.map((candidate) => candidate.issue.id));
+      if (scan.batch && [...known.keys()].some((id) => !checked.has(id))) {
+        scan.coverage.search_complete = false;
+        warn("Other saved candidates were not rechecked; previous evidence remains historical.");
+      }
+
       for (const old of known.values())
-        if (!checked.has(old.issue.id)) {
+        if (!scan.batch && !checked.has(old.issue.id)) {
           candidates.push({
             ...old,
             classification: "not_rechecked",
@@ -355,6 +338,13 @@ export class IssueWatchScanner {
           scan.coverage.search_complete = false;
         }
 
+      if (scan.batch)
+        scan.batch.complete &&=
+          scan.coverage.exclusions_complete &&
+          scan.coverage.evidence_complete &&
+          scan.coverage.semantic_complete &&
+          scan.coverage.checked === scan.coverage.discovered;
+
       scan.status =
         scan.coverage.search_complete &&
         scan.coverage.exclusions_complete &&
@@ -363,17 +353,23 @@ export class IssueWatchScanner {
           ? "completed"
           : "partial";
     } catch (error) {
+      if (scan.batch) scan.batch.complete = false;
+
       scan.status = signal.aborted
         ? "cancelled"
-        : error instanceof CollectionLimit
-          ? "partial"
-          : "failed";
+        : error instanceof AdeError && error.kind === "github_rate_limit"
+          ? "blocked"
+          : error instanceof CollectionLimit
+            ? "partial"
+            : "failed";
 
       scan.error = signal.aborted
         ? "Cancelled. Collected evidence was retained; baseline unchanged."
         : (error instanceof Error ? error.message : String(error)).slice(0, 4000);
     } finally {
       if (signal.aborted) scan.status = "cancelled";
+      if (scan.batch && !["completed", "partial"].includes(scan.status))
+        scan.batch.complete = false;
 
       scan.phase =
         scan.status === "completed"

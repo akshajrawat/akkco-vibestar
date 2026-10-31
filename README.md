@@ -1,7 +1,7 @@
 # Akkco Vibestar
 
 A local desktop workspace for open-source contribution tasks and pull-request repairs.
-Vibestar uses isolated Git worktrees, official provider CLIs, per-stage provider choices, explicit review gates,
+Vibestar uses dedicated issue branches, isolated Git worktrees, official provider CLIs, per-stage provider choices, explicit review gates,
 and recorded verification evidence. It does not automatically publish work.
 
 This project is pre-stable. This repository preparation milestone is not an official release.
@@ -16,9 +16,21 @@ More previews: [task overview](docs/screenshots/overview.png),
 ## What it does
 
 - Creates idle issue tasks with optional read-only repository conversations.
+- Keeps ordinary chat separate from workflow execution, with streamed answers,
+  expandable tool activity and follow-up conversation in the same workspace.
+  Codex uses its official app-server protocol; both providers can continue a completed
+  conversation for the same task and model through their existing CLI sign-in.
+  One agent conversation uses normal text replies; Send to workflow explicitly routes
+  feedback into the pipeline.
 - Runs an explicitly started Plan → Plan refinement → Implementation → Review
   workflow, with a provider choice for each stage and human approval between stages.
+  Review ends with a verdict and next steps. Request further fixes directly in chat
+  using the selected model; the workflow does not automatically repeat.
+- Shows workflow prompts as user messages, agent replies in chat, and collapsible
+  “Worked for…” activity. Basic app questions skip repository preparation.
 - Keeps each task's pinned base, files, conversation, command evidence and usage separate.
+  A clean, idle source checkout can hold the first workflow's issue branch. Overlapping
+  tasks and dirty checkouts use separate worktrees without committing or stashing existing changes.
 - Checks open PR conversations once when the app opens, flagging unanswered change
   requests from other people and distinguishing replies waiting on a reviewer.
   Conversations load concurrently and share a compact model check. Recheck open PRs
@@ -26,8 +38,9 @@ More previews: [task overview](docs/screenshots/overview.png),
 - Refresh PR List updates lifecycle metadata in bulk without running AI. Merged and closed
   history stay available through the status filter; detailed engineering analysis stays explicit.
 - Saves Issue Watch topics in a full-width list. Open a topic for claim status,
-  one-click GitHub links, search, and newest/oldest/update sorting. Scans run only
-  when requested; incomplete evidence stays uncertain.
+  one-click GitHub links and search. Scan up to 10 newest or oldest issues at a time,
+  then select Next 10. Saved batches and GitHub response caching reduce repeated
+  retrieval; incomplete evidence stays uncertain.
 - Provides a built-in terminal in task and PR repair workspaces for manual Git
   commands, commits and pushes using your normal Linux/WSL shell and authentication.
   Opening the terminal starts and focuses the shell in the task's worktree.

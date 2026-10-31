@@ -515,6 +515,63 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       await expect.poll(() => fixture.service.store.history(watch.id)[0]?.status).toBe("cancelled");
       expect(provider.calls).toBe(3);
       expect(fixture.service.store.get(watch.id).last_complete_scan_id).toBe(second.id);
+
+      for (let number = 20; number < 40; number++) fixture.issues.set(number, githubIssue(number));
+      const batched = await fixture.create();
+      await page.reload();
+      await page.getByRole("button", { name: "Issue Watch", exact: true }).click();
+      await page.getByRole("button", { name: /Oppia opportunities/ }).click();
+      await page.getByRole("button", { name: "Scan now", exact: true }).click();
+
+      await expect
+        .poll(() => fixture.service.store.history(batched.watch.id)[0]?.batch?.complete)
+        .toBe(true);
+
+      const newest = fixture.service.store.history(batched.watch.id)[0];
+      expect(newest.coverage.checked).toBe(10);
+      expect(newest.batch?.order).toBe("newest");
+
+      expect(
+        await page
+          .getByRole("button", { name: "Continue Analysis · choose candidates", exact: true })
+          .count(),
+      ).toBe(0);
+
+      await page.getByRole("button", { name: "Next 10", exact: true }).waitFor();
+      await page.screenshot({ path: join(screenshots, "batch-newest-next-ten.png") });
+      await page.getByRole("button", { name: "Next 10", exact: true }).click();
+
+      await expect
+        .poll(() => fixture.service.store.history(batched.watch.id)[0]?.batch?.page)
+        .toBe(2);
+
+      await expect
+        .poll(() => fixture.service.store.history(batched.watch.id)[0]?.batch?.complete)
+        .toBe(true);
+
+      await page.getByRole("button", { name: "Scan now", exact: true }).waitFor();
+      await page.screenshot({ path: join(screenshots, "batch-next-ten.png") });
+      await page.getByRole("combobox", { name: "Discovery order", exact: true }).click();
+      await page.getByRole("option", { name: "Oldest issues first", exact: true }).click();
+      await page.getByRole("button", { name: "Scan now", exact: true }).click();
+
+      await expect
+        .poll(() => fixture.service.store.history(batched.watch.id)[0]?.batch?.order)
+        .toBe("oldest");
+
+      await expect
+        .poll(() => fixture.service.store.history(batched.watch.id)[0]?.batch?.complete)
+        .toBe(true);
+
+      await page.getByRole("button", { name: "Scan now", exact: true }).waitFor();
+      await page.screenshot({ path: join(screenshots, "batch-oldest.png") });
+
+      expect(
+        await page
+          .getByRole("combobox", { name: "Sort issues", exact: true })
+          .getAttribute("data-value"),
+      ).toBe("oldest");
+
       expect(errors).toEqual([]);
       const normal = new Database(join(emptyRoot, "state", "vibestar.sqlite"));
       try {

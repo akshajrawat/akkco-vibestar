@@ -35,12 +35,15 @@ export const TaskTerminal = ({
   activeRef.current = active;
   errorRef.current = onError;
   const replay = useRef<{ text: string; sequence: number; session_id?: string }[] | null>(null);
+  const closedSessions = useRef(new Set<string>());
+  const [startError, setStartError] = useState("");
   const [snapshot, setSnapshot] = useState<TaskTerminalSnapshot | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const prefix = owner === "repair" ? "repair.terminal" : "terminal";
 
   const attach = useCallback((value: TaskTerminalSnapshot | null) => {
+    if (value && closedSessions.current.has(value.session_id)) value = null;
     terminal.current?.reset();
     sessionRef.current = value?.session_id || "";
     setSnapshot(value);
@@ -58,6 +61,7 @@ export const TaskTerminal = ({
     const target = terminal.current;
     if (!target || opening.current === target) return;
     opening.current = target;
+    setStartError("");
     setBusy(true);
     replay.current = [];
     try {
@@ -75,6 +79,7 @@ export const TaskTerminal = ({
     } catch (error) {
       if (terminal.current === target) {
         replay.current = null;
+        setStartError(errorMessage(error));
         errorRef.current(errorMessage(error));
       }
     } finally {
@@ -87,6 +92,8 @@ export const TaskTerminal = ({
     setReady(false);
     setBusy(false);
     setSnapshot(null);
+    setStartError("");
+    closedSessions.current.clear();
     sessionRef.current = "";
     const theme = terminalTheme();
 
@@ -127,6 +134,12 @@ export const TaskTerminal = ({
         else if (event.session_id === sessionRef.current) term.write(event.text || "");
       }
 
+      if (event.event === "terminal.closed" && event.session_id) {
+        closedSessions.current.add(event.session_id);
+        if (closedSessions.current.size > 32)
+          closedSessions.current.delete(closedSessions.current.values().next().value!);
+      }
+
       if (event.event === "terminal.closed" && event.session_id === sessionRef.current) {
         sessionRef.current = "";
         setSnapshot(null);
@@ -143,6 +156,7 @@ export const TaskTerminal = ({
       .catch((error) => {
         if (alive) {
           setReady(true);
+          setStartError(errorMessage(error));
           errorRef.current(errorMessage(error));
         }
       });
@@ -267,9 +281,11 @@ export const TaskTerminal = ({
         <div className="terminal-placeholder" role="status">
           {busy || !ready
             ? "Starting shell…"
-            : task.worktree_path
-              ? "Shell closed"
-              : "Prepare this task's workspace to open a terminal."}
+            : startError
+              ? startError
+              : task.worktree_path
+                ? "Shell closed · use + to start a new terminal"
+                : "Prepare this task's workspace to open a terminal."}
         </div>
       )}
     </section>

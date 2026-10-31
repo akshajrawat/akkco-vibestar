@@ -13,6 +13,7 @@ import { rpc, errorMessage } from "../../../lib/api";
 import { parseArgv } from "../../verification/commands";
 import {
   useTaskView,
+  getTaskView,
   updateTaskView,
   openWorkspaceTool,
   type SecondarySection,
@@ -33,6 +34,8 @@ import { CommandRuns } from "../../verification/CommandRuns";
 import { TaskTerminal } from "../../../components/shared/TaskTerminal";
 import { OpenInEditor } from "../../../components/shared/OpenInEditor";
 import type { RepairDetail } from "./types";
+import { useOptimisticMessages } from "../../chat/useOptimisticMessages";
+import { useConversationEvents } from "../../chat/output/useConversationEvents";
 
 const layers = {
   original: "Original PR changes",
@@ -56,6 +59,13 @@ export const RepairWorkspace = ({
   const [detail, setDetail] = useState<RepairDetail>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const {
+    messages,
+    upsert: showMessage,
+    remove: removeMessage,
+  } = useOptimisticMessages(id, detail?.messages || []);
+
   const noticeContext = `${id}:${detail?.session.status}:${detail?.runs.at(-1)?.id}`;
 
   const [statusNotice, setStatusNotice] = useState<{
@@ -78,15 +88,10 @@ export const RepairWorkspace = ({
   const view = useTaskView(id);
   const layer = view.diffLayer;
   const diff = diffSnapshot?.layer === layer ? diffSnapshot.value : null;
-  const currentDraft = useRef(view);
-
-  useEffect(() => {
-    currentDraft.current = view;
-  }, [view]);
-
   useWorkspaceKeys(id);
   const acting = useRef(false);
   const onError = useCallback((text: string) => setError(text), []);
+  const conversationEvents = useConversationEvents(id, "repair", detail?.events || [], onError);
 
   const reload = useCallback(async () => {
     setDetail(await rpc<RepairDetail>("repair.detail", { id }));
@@ -254,7 +259,7 @@ export const RepairWorkspace = ({
             <CurrentRun
               detail={{
                 runs: detail.runs,
-                events: detail.events,
+                events: conversationEvents,
                 usage: detail.usage,
                 status: session.status,
                 updated_at: session.updated_at,
@@ -330,7 +335,18 @@ export const RepairWorkspace = ({
                   </Button>
                 </article>
               )}
-              <AgentTimeline runs={detail.runs} events={detail.events} messages={detail.messages} />
+              <AgentTimeline
+                compact
+                expandResults={false}
+                runs={detail.runs}
+                events={conversationEvents}
+                messages={messages}
+                files={layer === "repair" ? diff?.files : undefined}
+                openDiff={(path) => {
+                  updateTaskView(id, { diffPath: path, diffLayer: "repair" });
+                  inspect("Changes");
+                }}
+              />
               {session.status === "stale_remote_head" && (
                 <article className="repair-gate warning">
                   <h2>Remote PR head changed</h2>
@@ -390,6 +406,7 @@ export const RepairWorkspace = ({
                   : "Keep a local draft while this repair cannot accept another run…"
               }
               sendLabel="Request Further Fix"
+              stop={detail.active ? () => void act("repair.cancel") : undefined}
               busy={busy}
               disabled={!canFollowUp}
               maxLength={16000}
@@ -419,17 +436,36 @@ export const RepairWorkspace = ({
 
                 updateTaskView(id, {
                   messageRequest: { id: request_id, signature },
+                  draft: "",
+                  draftContext: [],
+                  chatFollow: true,
+                });
+
+                const draftSnapshot = { draft: view.draft, draftContext: view.draftContext };
+
+                showMessage({
+                  id: request_id,
+                  role: "user",
+                  content: instructions,
+                  created_at: new Date().toISOString(),
+                  status: "pending",
                 });
 
                 void act("repair.start", { instructions, request_id }).then((value) => {
                   if (value) {
                     setNotice("Further fix requested · saved stage providers retained");
 
-                    if (composerContent(currentDraft.current) === instructions)
-                      updateTaskView(id, {
-                        draft: "",
-                        draftContext: [],
-                        messageRequest: null,
+                    updateTaskView(id, { messageRequest: null });
+                  } else {
+                    removeMessage(request_id);
+                    if (!composerContent(getTaskView(id))) updateTaskView(id, draftSnapshot);
+                    else
+                      showMessage({
+                        id: request_id,
+                        role: "user",
+                        content: instructions,
+                        created_at: new Date().toISOString(),
+                        status: "failed",
                       });
                   }
                 });

@@ -219,7 +219,7 @@ export class VerificationTransitions {
 
     return this.host.followUp(
       id,
-      "Fix the demonstrated implementation failures and rerun affected checks in this original worktree. Read the saved verification repair evidence in TASK CONTEXT. For required checks without an executable recorded command, prepare repeatable test scripts using the project's existing tooling, run feasible checks and report their exact commands, outcomes and prerequisites. Prefer supported check-only npm scripts, node --test, pytest or npx --offline --no-install playwright test. Use stable check names to preserve requirements; never claim unexecuted checks passed. Do not install or download dependencies, browsers or toolchains. Report unavailable prerequisites. One implementation iteration is authorized; further iterations require a new explicit request.",
+      "Fix the demonstrated implementation failures and rerun affected checks in this original worktree. Read the saved verification evidence below. For required checks without an executable recorded command, prepare repeatable test scripts using the project's existing tooling, run feasible checks and report their exact commands, outcomes and prerequisites. Prefer supported check-only npm scripts, node --test, pytest or npx --offline --no-install playwright test. Use stable check names to preserve requirements; never claim unexecuted checks passed. Do not install or download dependencies, browsers or toolchains. Report unavailable prerequisites. One implementation iteration is authorized; further iterations require a new explicit request.",
       {
         provider,
         config,

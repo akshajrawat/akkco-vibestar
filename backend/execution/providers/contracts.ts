@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { NormalizedEvent, StageConfig } from "../../domain";
 import { VerificationCheckSchema } from "../verification/verification";
+import type { ProcessInputProtocol } from "../runtime/process";
 
 export interface ProviderDetection {
   provider: string;
@@ -53,6 +54,7 @@ export interface AgentRunRequest {
   schemaPath: string;
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
+  conversation?: { threadId?: string };
 }
 
 export interface AgentProvider {
@@ -62,9 +64,11 @@ export interface AgentProvider {
     program: string;
     args: string[];
     input?: string;
+    inputProtocol?: ProcessInputProtocol;
+    isolateProviderConfig?: boolean;
   };
   normalize: (raw: Record<string, unknown>) => NormalizedEvent[];
-  result: (raw: Record<string, unknown>) => unknown;
+  result: (raw: Record<string, unknown>, conversation?: boolean) => unknown;
   conversationId: (raw: Record<string, unknown>) => string | null;
   outputSchema?: (schema: Record<string, unknown>) => Record<string, unknown>;
   parseStructuredOutput?: (schema: Record<string, unknown>, value: unknown) => unknown;

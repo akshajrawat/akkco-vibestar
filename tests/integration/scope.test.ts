@@ -67,18 +67,18 @@ it("preserves whole vs partial scope through the user-approved pipeline and next
     for (const t of [whole, partial]) {
       const runs = engine.db.detail(t.id).runs;
       expect(runs.map((r) => r.stage)).toEqual([1, 2, 3, 5]);
-      for (const run of runs)
+      for (const run of runs.filter((run) => run.stage !== 3))
         expect(run.prompt).toContain(
-          t.scope_mode === "whole_issue"
-            ? "All requirements of this issue are in scope unless explicitly excluded by notes."
-            : "ONLY the claimed scope belongs to this task. Other issue requirements are explicit non-goals.",
+          t.scope_mode === "whole_issue" ? "Scope: entire issue." : `Scope: ${t.claimed_scope}`,
         );
-      for (const run of runs.filter((run) => run.stage === 3 || run.stage === 5))
-        expect(run.prompt).toContain("avoid duplicate optional browser work");
+
+      expect(JSON.parse(String(runs.find((run) => run.stage === 3)!.prompt))).toEqual(
+        engine.db.artifact(t.id, 2),
+      );
     }
 
-    expect(buildPrompt(engine.db, { ...engine.db.task(whole.id), stage: 1 })).not.toContain(
-      "ONLY the claimed scope",
+    expect(buildPrompt(engine.db, { ...engine.db.task(whole.id), stage: 1 })).toContain(
+      "Scope: entire issue.",
     );
 
     const previous = engine.db.detail(partial.id).runs;

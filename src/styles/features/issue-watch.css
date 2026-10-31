@@ -258,3 +258,21 @@
 .watch-scan-info p + p {
   margin-top: 12px;
 }
+
+.watch-batch-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-block: 14px;
+}
+
+.watch-batch-controls > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.watch-batch-controls > .select-trigger {
+  width: auto;
+  min-width: 200px;
+}

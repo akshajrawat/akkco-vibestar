@@ -198,6 +198,28 @@ export class IssueWatchService {
     if (existing) return { operation_id: existing.scan_id!, scan_id: existing.scan_id! };
     const watch = this.store.get(p.watch_id);
     const revision = this.store.revision(watch.id, p.expected_revision);
+    let batch: WatchScan["batch"];
+    if (!p.candidate_ids) {
+      const previous = p.after_scan_id ? this.store.scan(watch.id, p.after_scan_id) : null;
+      const retry = parentId ? this.store.scan(watch.id, parentId) : null;
+      if (
+        previous &&
+        (previous.revision !== revision.revision ||
+          !previous.batch?.next_page ||
+          (p.order && previous.batch.order !== p.order))
+      )
+        throw new AdeError("invalid_input", "This attempt has no next batch for these criteria.");
+
+      batch = {
+        order: previous?.batch?.order || retry?.batch?.order || p.order || "newest",
+        page: previous?.batch?.next_page || retry?.batch?.page || 1,
+        next_page: null,
+        complete: false,
+      };
+    } else if (p.candidate_ids.length > 10 || p.after_scan_id) {
+      throw new AdeError("invalid_input", "Recheck at most 10 selected issues per attempt.");
+    }
+
     if (p.instruction_override) {
       const preview = previewRules({
         repository: watch.repository.full_name,
@@ -246,6 +268,8 @@ export class IssueWatchService {
       for (const id of p.candidate_ids) this.store.savedCandidate(watch.id, id);
     }
 
+    if (this.store.active(watch.id))
+      throw new AdeError("busy", "This watch already has an active scan.");
     if (this.active.size >= 4)
       throw new AdeError(
         "busy",
@@ -256,7 +280,7 @@ export class IssueWatchService {
       id: randomUUID(),
       watch_id: watch.id,
       revision: p.expected_revision,
-      parent_scan_id: parentId,
+      parent_scan_id: p.after_scan_id || parentId,
       intent: p.candidate_ids && intent === "scan" ? "recheck" : intent,
       status: "running",
       phase: "Collecting GitHub issues",
@@ -266,6 +290,7 @@ export class IssueWatchService {
       utility_run_id: null,
       instruction_override: p.instruction_override || null,
       candidate_ids: p.candidate_ids || null,
+      batch,
       coverage: {
         query: "",
         search_total: null,

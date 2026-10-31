@@ -2,7 +2,9 @@ import { homedir } from "node:os";
 import { realpath, stat, mkdir, lstat } from "node:fs/promises";
 import { isAbsolute, join, relative, dirname, sep, resolve } from "node:path";
 
-import { AdeError, slug, type WorkspaceAssignment } from "../domain";
+import { AdeError, slug, type WorkspaceAssignment, type Repository } from "../domain";
+import { gitChecked } from "./git-command";
+import { readWorktreeOwner } from "./ownership";
 
 export const inside = (root: string, path: string) => {
   const r = relative(root, path);
@@ -105,9 +107,47 @@ export const safeFile = async (root: string, path: string) => {
   return file;
 };
 
-export const taskRoot = async (root: string, task: WorkspaceAssignment) => {
+export const taskRoot = async (
+  root: string,
+  task: WorkspaceAssignment,
+  repository?: Repository,
+) => {
   if (!/^[a-zA-Z0-9-]+$/.test(task.repo_id))
     throw new AdeError("isolation", "Invalid repository ID");
+  if (task.workspace_mode === "source") {
+    if (
+      !repository ||
+      repository.id !== task.repo_id ||
+      repository.path !== task.worktree_path ||
+      (await realpath(repository.path)) !== repository.path
+    )
+      throw new AdeError("ownership", "Source task no longer matches its registered checkout.");
+    const cwd = repository.path;
+
+    const common = await realpath(
+      await gitChecked(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd),
+    );
+
+    const gitdir = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], cwd));
+    if (
+      task.workspace_checkpoint?.git_common_dir !== common ||
+      gitdir !== common ||
+      common !== join(cwd, ".git") ||
+      (await realpath(await gitChecked(["rev-parse", "--show-toplevel"], cwd))) !== cwd ||
+      (await readWorktreeOwner(gitdir, "vibestar-task-owner")) !== task.id ||
+      (await gitChecked(["symbolic-ref", "--short", "HEAD"], cwd)) !== task.branch_name ||
+      (await gitChecked(
+        ["config", "--local", "--get", `branch.${task.branch_name}.vibestarTask`],
+        cwd,
+      )) !== task.id
+    )
+      throw new AdeError(
+        "ownership",
+        "Source task branch or ownership changed; its files were preserved.",
+      );
+    return cwd;
+  }
+
   const allowed = await managedPath(root, join("worktrees", task.repo_id));
   const path = await realpath(await managedPath(root, task.worktree_path));
   if (!inside(allowed, path))

@@ -3,7 +3,6 @@ import type { ExecutionState } from "./state";
 
 import { randomUUID } from "node:crypto";
 import { AdeError, now, type WorkspaceAssignment } from "../../domain";
-import { taskRoot } from "../../workspace/paths";
 import type { VerificationEnvironment } from "../verification/browser/contracts";
 import { execute } from "../runtime/process";
 import { sandboxInvocation } from "../runtime/sandbox";
@@ -13,7 +12,7 @@ export class CommandExecution {
   constructor(
     private readonly host: Pick<
       Engine,
-      "isActive" | "db" | "root" | "publish" | "assertAvailable" | "changed" | "drain"
+      "isActive" | "db" | "git" | "root" | "publish" | "assertAvailable" | "changed" | "drain"
     >,
     private readonly state: ExecutionState,
   ) {}
@@ -41,7 +40,7 @@ export class CommandExecution {
         "Wait for task execution to finish before running a manual command",
       );
     const t = repair || this.host.db.task(id);
-    const cwd = await taskRoot(this.host.root, t);
+    const cwd = await this.host.git.assertTask(t);
     const run = randomUUID();
 
     this.host.db.run(

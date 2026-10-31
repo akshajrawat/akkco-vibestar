@@ -262,8 +262,9 @@ it("shows actual execution independently from follow-up selection and keeps the 
     />,
   );
 
-  expect(screen.getByLabelText("Current agent run").textContent).toContain("completed");
-  expect(screen.getByLabelText("Current agent run").textContent).not.toContain("running");
+  expect(screen.queryByLabelText("Current agent run")).toBeNull();
+  expect(screen.getByText("Worked")).toBeTruthy();
+  expect(screen.queryByText(/Implementation completed/)).toBeNull();
 });
 
 it("shows provider-emitted failures and status text while the CLI is still running without synthesizing progress", () => {

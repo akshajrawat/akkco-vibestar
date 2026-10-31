@@ -18,7 +18,8 @@ export const RunError = ({
   logs?: () => void;
   blocked?: boolean;
 }) => {
-  const [dismissed, setDismissed] = useState(false);
+  const identity = `${run?.id || ""}:${stage}:${run?.status || ""}:${error}`;
+  const [dismissed, setDismissed] = useState<string>();
 
   const cancelled =
     run?.status === "cancelled" || (stage !== 4 && /cancelled|stopped|interrupt/i.test(error));
@@ -35,21 +36,23 @@ export const RunError = ({
           : "Task";
 
   const stageName =
-    run?.purpose === "Code Review Ask AI"
-      ? "code review"
-      : stage === 5
-        ? "final review"
-        : stage === 1
-          ? "planning"
-          : stage === 2
-            ? "plan refinement"
-            : stage === 3
-              ? "implementation"
-              : stage === 0
-                ? "preparation"
-                : "validation";
+    run?.purpose === "Read-only conversation"
+      ? "conversation"
+      : run?.purpose === "Code Review Ask AI"
+        ? "code review"
+        : stage === 5
+          ? "final review"
+          : stage === 1
+            ? "planning"
+            : stage === 2
+              ? "plan refinement"
+              : stage === 3
+                ? "implementation"
+                : stage === 0
+                  ? "preparation"
+                  : "validation";
 
-  if (dismissed) return null;
+  if (dismissed === identity) return null;
   return (
     <section
       className={`run-error ${cancelled || blocked ? "run-error-cancelled" : "run-error-failed"}`}
@@ -108,7 +111,7 @@ export const RunError = ({
         size="icon"
         variant="ghost"
         aria-label="Dismiss run notice"
-        onClick={() => setDismissed(true)}
+        onClick={() => setDismissed(identity)}
       >
         <X size={12} />
       </Button>

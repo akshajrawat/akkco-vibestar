@@ -9,7 +9,6 @@ import { Usage } from "../execution/output/usage";
 import { GitHubClient } from "../github/client";
 import { reviewActionState } from "../review/pr/inbox";
 import { Editors } from "../workspace/editors";
-import { taskRoot } from "../workspace/paths";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
 
@@ -57,7 +56,12 @@ export const callSystem = async (
     case "usage.info":
       return {
         root: e.root,
-        capabilities: { manual_issue_watch: true, issue_watch_contract: 1, pr_quick_watch: true },
+        capabilities: {
+          manual_issue_watch: true,
+          issue_watch_contract: 1,
+          issue_watch_batches: 1,
+          pr_quick_watch: true,
+        },
         database: join(e.root, "state", "vibestar.sqlite"),
         schema: e.db.all("SELECT max(version) version FROM schema_migrations")[0],
         runs: e.db.all("SELECT count(*) count FROM ai_usage")[0],
@@ -69,7 +73,12 @@ export const callSystem = async (
         tasks: e.db.tasks(),
         settings: e.db.displaySettings(),
         root: e.root,
-        capabilities: { manual_issue_watch: true, issue_watch_contract: 1, pr_quick_watch: true },
+        capabilities: {
+          manual_issue_watch: true,
+          issue_watch_contract: 1,
+          issue_watch_batches: 1,
+          pr_quick_watch: true,
+        },
         execution_environment: {
           distro: process.env.WSL_DISTRO_NAME || "Linux",
         },
@@ -211,7 +220,7 @@ export const callSystem = async (
         p.kind === "repair"
           ? await services.repairs.openPath(p.id)
           : p.kind === "task"
-            ? await taskRoot(e.root, e.db.task(p.id))
+            ? await e.git.assertTask(e.db.task(p.id))
             : await realpath(e.db.repository(p.id).path);
 
       if (process.env.WSL_DISTRO_NAME) {

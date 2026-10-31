@@ -88,6 +88,7 @@ export class StorageService {
     this.engine.withStorageMaintenance(() => this.clearData(kind));
 
   private clearData = async (kind: "logs" | "cache") => {
+    if (kind === "cache") this.engine.db.run("DELETE FROM issue_watch_http_cache");
     await this.remove(kind);
     await mkdir(join(this.engine.root, kind), { recursive: true, mode: 0o700 });
     this.engine.changed();
@@ -270,6 +271,19 @@ export class StorageService {
   ) => {
     const e = this.engine;
     return e.git.withLock(repo.id, async () => {
+      if (task.workspace_mode === "source") {
+        if (preview)
+          return {
+            ...this.emptyDisposalPreview(task, repo),
+            active_operation:
+              "Source checkout is retained. Use Remove history only to preserve its branch and files.",
+          };
+        throw new AdeError(
+          "source_checkout",
+          "Source checkouts are never removed or reset by task cleanup. Use Remove history only to preserve the branch and files.",
+        );
+      }
+
       let disposal: TaskDisposalPreview | undefined;
       let removalHead: string | undefined;
       if (!task.branch_name && !task.worktree_path) return;

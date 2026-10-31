@@ -207,7 +207,7 @@ it("shows real provider/model/stage/activity and elapsed time, changes stages an
     />,
   );
 
-  expect(screen.getByLabelText("Current agent run").textContent).toContain("cancelled");
+  expect(screen.queryByLabelText("Current agent run")).toBeNull();
   expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
 });
 

@@ -268,4 +268,8 @@ CREATE INDEX task_conversation ON task_messages(task_id,purpose,created_at);
     version: 26,
     sql: `CREATE TABLE pr_analysis_batches(id TEXT PRIMARY KEY,status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL);`,
   },
+  {
+    version: 27,
+    sql: `CREATE TABLE issue_watch_http_cache(endpoint TEXT PRIMARY KEY,etag TEXT NOT NULL,body TEXT NOT NULL CHECK(json_valid(body)),checked_at TEXT NOT NULL);`,
+  },
 ];

@@ -146,6 +146,25 @@ export const migrateDataRoot = async (source: string, target: string) => {
 
     for (const task of db.tasks()) {
       if (!task.worktree_path) continue;
+      if (task.workspace_mode === "source") {
+        const repository = db.repository(task.repo_id);
+        if (repository.path !== translated(task.worktree_path))
+          throw new AdeError("migration", "Source task no longer matches its registered checkout.");
+
+        db.saveTask({
+          ...task,
+          worktree_path: translated(task.worktree_path),
+          workspace_checkpoint: task.workspace_checkpoint
+            ? {
+                ...task.workspace_checkpoint,
+                git_common_dir: translated(task.workspace_checkpoint.git_common_dir),
+              }
+            : undefined,
+        });
+
+        continue;
+      }
+
       if (!inside(join(source, "worktrees"), task.worktree_path))
         throw new AdeError("migration", "Task path is outside the old managed root");
       const copy = await stagedPath(task.worktree_path);

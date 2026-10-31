@@ -231,6 +231,7 @@ export const PipelineView = ({
                     "Code Review Ask AI",
                     "git-finalization-review",
                     "Read-only conversation",
+                    "Workspace conversation",
                   ].includes(run.purpose || ""),
               );
 

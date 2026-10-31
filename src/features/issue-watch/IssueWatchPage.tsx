@@ -42,6 +42,10 @@ export const IssueWatchPage = ({
   const [busy, setBusy] = useState(false);
   const [showDismissed, setShowDismissed] = useState(false);
 
+  const [discoveryOrder, setDiscoveryOrder] = useState<"newest" | "oldest">(() =>
+    localStorage.getItem("vibestar.issueWatch.discoveryOrder") === "oldest" ? "oldest" : "newest",
+  );
+
   const [overview, setOverview] = useState(!initialWatchId);
   const [showDetails, setShowDetails] = useState(true);
 
@@ -69,7 +73,9 @@ export const IssueWatchPage = ({
   const resultsScanId = showingPrevious ? detail?.baseline?.id : scan?.scan.id;
   const model = detail?.revision.configuration.model;
   const unsupported = model && !detail?.provider_support[model.provider]?.supported;
-  const provisional = !showingPrevious && !!scan && scan.scan.status !== "completed";
+
+  const provisional =
+    !showingPrevious && !!scan && scan.scan.status !== "completed" && !scan.scan.batch?.complete;
 
   useEffect(() => {
     if (
@@ -93,7 +99,11 @@ export const IssueWatchPage = ({
     setOverview(false);
   };
 
-  const run = async (kind: "scan" | "retry" | "continue" = "scan", ids?: string[]) => {
+  const run = async (
+    kind: "scan" | "retry" | "continue" = "scan",
+    ids?: string[],
+    next = false,
+  ) => {
     if (!detail) return;
     setBusy(true);
     state.setError("");
@@ -104,6 +114,8 @@ export const IssueWatchPage = ({
               watch_id: detail.watch.id,
               expected_revision: detail.watch.current_revision,
               ...(ids ? { candidate_ids: ids } : {}),
+              ...(!ids ? { order: next ? scan?.scan.batch?.order : discoveryOrder } : {}),
+              ...(next ? { after_scan_id: scan?.scan.id } : {}),
             }
           : {
               watch_id: detail.watch.id,
@@ -172,7 +184,9 @@ export const IssueWatchPage = ({
   };
 
   const pending = candidates.filter(
-    (candidate) => candidate.eligible && candidate.semantic_state !== "completed",
+    (candidate) =>
+      candidate.eligible &&
+      ["pending", "unavailable", "invalid"].includes(candidate.semantic_state),
   );
 
   if (!enabled)
@@ -302,6 +316,33 @@ export const IssueWatchPage = ({
                   <p className="error-box">{detail.provider_support[model!.provider].reason}</p>
                 )}
 
+                <div className="watch-batch-controls">
+                  <Select
+                    label="Discovery order"
+                    value={discoveryOrder}
+                    disabled={!!active || busy}
+                    onChange={(value) => {
+                      const order = value === "oldest" ? "oldest" : "newest";
+                      setDiscoveryOrder(order);
+                      localStorage.setItem("vibestar.issueWatch.discoveryOrder", order);
+                    }}
+                    options={[
+                      { value: "newest", label: "Newest issues first" },
+                      { value: "oldest", label: "Oldest issues first" },
+                    ]}
+                  />
+                  <span>10 issues per batch · saved results are kept</span>
+                  {scan?.scan.batch?.next_page && scan.scan.batch.order === discoveryOrder && (
+                    <Button
+                      size="sm"
+                      disabled={busy || !!active || !!unsupported || detail.watch.archived}
+                      onClick={() => void run("scan", undefined, true)}
+                    >
+                      Next 10
+                    </Button>
+                  )}
+                </div>
+
                 {active && (
                   <section className="watch-progress" role="status" aria-live="polite">
                     <span className="watch-pulse" />
@@ -365,9 +406,11 @@ export const IssueWatchPage = ({
                     role="status"
                   >
                     <strong>
-                      {scan.scan.status === "completed"
-                        ? "Scan complete"
-                        : `${scan.scan.status.replaceAll("_", " ")} · Coverage is incomplete`}
+                      {scan.scan.batch?.complete && scan.scan.status === "partial"
+                        ? `Batch ${scan.scan.batch.page} complete · more repository coverage remains`
+                        : scan.scan.status === "completed"
+                          ? "Scan complete"
+                          : `${scan.scan.status.replaceAll("_", " ")} · Coverage is incomplete`}
                     </strong>
 
                     <details className="watch-scan-evidence">
@@ -401,7 +444,10 @@ export const IssueWatchPage = ({
                             pending
                               .slice(
                                 0,
-                                detail.revision.configuration.limits.max_semantic_candidates,
+                                Math.min(
+                                  10,
+                                  detail.revision.configuration.limits.max_semantic_candidates,
+                                ),
                               )
                               .map((candidate) => candidate.issue.id),
                           )
@@ -459,6 +505,7 @@ export const IssueWatchPage = ({
                     <>
                       <ScanResults
                         candidates={candidates}
+                        discoveryOrder={scan?.scan.batch?.order}
                         selected={selected}
                         onSelect={(id) => {
                           if (

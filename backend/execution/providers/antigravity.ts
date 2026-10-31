@@ -86,8 +86,8 @@ export class AntigravityProvider implements AgentProvider {
       "--effort",
       r.config.effort,
       ...(r.config.model ? ["--model", r.config.model] : []),
-      "--json-schema",
-      r.schemaPath,
+      ...(r.conversation?.threadId ? ["--conversation", r.conversation.threadId] : []),
+      ...(r.conversation ? [] : ["--json-schema", r.schemaPath]),
     ],
     // One stdin message keeps complete task context out of OS-limited argv.
     input: `${JSON.stringify({ event: "user", message: { content: r.prompt } })}\n`,
@@ -219,7 +219,7 @@ export class AntigravityProvider implements AgentProvider {
     ];
   };
 
-  result = (raw: Record<string, unknown>) => {
+  result = (raw: Record<string, unknown>, conversation = false) => {
     if (raw.type !== "result" && raw.event !== "result") return undefined;
     const nested = object(raw.result);
 
@@ -228,6 +228,8 @@ export class AntigravityProvider implements AgentProvider {
 
     if (value && typeof value === "object") return value;
     if (typeof value === "string") {
+      if (conversation) return { summary: value };
+
       try {
         return JSON.parse(value);
       } catch {

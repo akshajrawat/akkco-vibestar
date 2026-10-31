@@ -11,38 +11,9 @@
   flex-shrink: 0;
 }
 
-.current-run-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.current-run-text > div {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 4px;
-}
-
-.current-run-text span,
-.current-run-text time {
-  color: var(--text-secondary);
-}
-
-.current-run-text small {
-  display: block;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 4px;
-}
-
 .workspace > .current-run {
   padding: 8px 14px;
   flex-wrap: wrap;
-}
-
-.workspace > .current-run .current-run-text {
-  flex-basis: 280px;
 }
 
 .editor-launcher {

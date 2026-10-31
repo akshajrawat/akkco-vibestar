@@ -1,13 +1,14 @@
 import { gitChecked } from "../../workspace/git-command";
 import { homedir } from "node:os";
 import { dirname, join, isAbsolute, resolve } from "node:path";
-import { realpath, lstat, readlink } from "node:fs/promises";
+import { realpath, lstat, readlink, writeFile } from "node:fs/promises";
 import { AdeError, type WorkspaceAssignment } from "../../domain";
 import { exists, taskRoot, inside, managedPath } from "../../workspace/paths";
 import type { Database } from "../../storage/database";
 import { checked, cleanEnvironment } from "./process";
 import { taskRuntime } from "../../workspace/runtime";
 import type { VerificationEnvironment } from "../verification/browser/contracts";
+import type { ProcessInputProtocol } from "./process";
 
 export const sandboxInvocation = async (
   root: string,
@@ -17,6 +18,8 @@ export const sandboxInvocation = async (
     program: string;
     args: string[];
     input?: string;
+    inputProtocol?: ProcessInputProtocol;
+    isolateProviderConfig?: boolean;
     verificationEnvironment?: VerificationEnvironment;
   },
   readOnly: boolean,
@@ -29,7 +32,11 @@ export const sandboxInvocation = async (
     throw new AdeError("sandbox", "The execution core must run inside Linux/WSL.");
   const home = await realpath(homedir());
   if (!task) await managedPath(root, analysisWorkspace || "");
-  const cwd = task ? await taskRoot(root, task) : await realpath(analysisWorkspace || "");
+
+  const cwd = task
+    ? await taskRoot(root, task, db.repository(task.repo_id))
+    : await realpath(analysisWorkspace || "");
+
   if (!task && !inside(join(root, "cache", "utility"), cwd))
     throw new AdeError("isolation", "PR analysis workspace is outside the managed root");
   const repository = task ? db.repository(task.repo_id) : null;
@@ -176,36 +183,87 @@ export const sandboxInvocation = async (
     if (detected) await mountExecutable(detected);
   }
 
+  const configurationMounts: string[] = [];
   if (provider) {
     const state = join(home, provider === "antigravity" ? ".gemini" : ".codex");
     if (await exists(state)) args.push("--bind", await realpath(state), state);
+    if (invocation.isolateProviderConfig) {
+      if (provider !== "codex")
+        throw new AdeError("sandbox", "Unsupported isolated provider configuration");
+      const projectConfigDirectory = join(cwd, ".codex");
+
+      const projectConfigParent = await lstat(projectConfigDirectory).catch(
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        },
+      );
+
+      if (projectConfigParent?.isSymbolicLink())
+        throw new AdeError("sandbox", "Project provider configuration must not be an alias.");
+      const configs: string[] = [];
+      for (const config of [
+        join(state, "config.toml"),
+        join(projectConfigDirectory, "config.toml"),
+      ]) {
+        const entry = await lstat(config).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        });
+
+        if (entry && !entry.isFile())
+          throw new AdeError(
+            "sandbox",
+            "Provider configuration must not be an alias or directory.",
+          );
+        if (entry) configs.push(config);
+      }
+
+      // A regular empty file works on nodev mounts; binding /dev/null here can return EACCES.
+      // Mask only this namespace. Authentication and session storage stay CLI-owned.
+      if (configs.length) {
+        const blank = await managedPath(root, join(root, "artifacts", "empty-codex-config.toml"));
+
+        await writeFile(blank, "", { flag: "wx", mode: 0o600 }).catch(
+          (error: NodeJS.ErrnoException) => {
+            if (error.code !== "EEXIST") throw error;
+          },
+        );
+
+        const blankEntry = await lstat(blank);
+        if (!blankEntry.isFile() || blankEntry.size !== 0 || blankEntry.uid !== process.getuid?.())
+          throw new AdeError(
+            "sandbox",
+            "Isolated provider configuration was replaced or modified.",
+          );
+        for (const config of configs) configurationMounts.push("--ro-bind", blank, config);
+      }
+    }
   }
 
   // Native tools installed in the user's bin directory remain available read-only.
   const localBin = join(home, ".local", "bin");
   if (await exists(localBin)) args.push("--ro-bind", localBin, localBin);
+  args.push(readOnly ? "--ro-bind" : "--bind", cwd, cwd);
   if (repo) {
     const common = await realpath(
       await gitChecked(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd),
     );
 
     const gitdir = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], cwd));
-    if (!inside(join(common, "worktrees"), gitdir))
+    if (task?.workspace_mode !== "source" && !inside(join(common, "worktrees"), gitdir))
       throw new AdeError("isolation", "Task has invalid Git worktree metadata");
 
-    args.push(
-      "--ro-bind",
-      common,
-      common,
-      "--tmpfs",
-      join(common, "worktrees"),
-      readOnly ? "--ro-bind" : "--bind",
-      gitdir,
-      gitdir,
-    );
+    args.push("--ro-bind", common, common);
+    if (await exists(join(common, "worktrees"))) args.push("--tmpfs", join(common, "worktrees"));
+    if (gitdir !== common)
+      args.push(
+        readOnly || task?.workspace_mode === "source" ? "--ro-bind" : "--bind",
+        gitdir,
+        gitdir,
+      );
   }
 
-  args.push(readOnly ? "--ro-bind" : "--bind", cwd, cwd);
   if (repo) {
     const runtime = await taskRuntime(repo, cwd, true);
     for (const mount of runtime.mounts) args.push("--ro-bind", mount.source, mount.target);
@@ -239,6 +297,12 @@ export const sandboxInvocation = async (
     args.push("--ro-bind", context, context);
   }
 
-  args.push("--chdir", cwd, "--", invocation.program, ...invocation.args);
-  return { program: "bwrap", args, input: invocation.input };
+  // File overlays follow directory mounts so a source mount cannot expose its project configuration again.
+  args.push(...configurationMounts, "--chdir", cwd, "--", invocation.program, ...invocation.args);
+  return {
+    program: "bwrap",
+    args,
+    input: invocation.input,
+    inputProtocol: invocation.inputProtocol,
+  };
 };

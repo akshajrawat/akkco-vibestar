@@ -399,11 +399,13 @@ export class Engine extends EventEmitter {
   fetchRepository = (...args: Parameters<RepositoryOperations["fetchRepository"]>) =>
     this.repositories.fetchRepository(...args);
 
-  providers = async () =>
-    Promise.all([
+  providers = async () => {
+    this.runner.clearProviderDetection();
+    return Promise.all([
       new AntigravityProvider().detect(this.root),
       new CodexProvider().detect(this.root),
     ]);
+  };
 
   configureRepository = (...args: Parameters<RepositoryOperations["configureRepository"]>) =>
     this.repositories.configureRepository(...args);

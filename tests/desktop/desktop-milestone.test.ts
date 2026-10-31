@@ -236,7 +236,7 @@ it.skipIf(process.env.VIBESTAR_DESKTOP_TEST !== "1")(
       await page.getByText("First line", { exact: false }).waitFor();
       await page.getByRole("button", { name: "Close shell" }).click();
       await page.getByLabel("Hide utility dock").click();
-      await expect.poll(() => composer.getAttribute("placeholder")).toBe("Ask Vibestar…");
+      await expect.poll(() => composer.getAttribute("placeholder")).toBe("Message Vibestar…");
       await page.getByLabel("Choose chat model").click();
 
       await page

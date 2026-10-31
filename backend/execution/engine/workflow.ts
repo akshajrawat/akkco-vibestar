@@ -13,11 +13,17 @@ import {
   type Task,
 } from "../../domain";
 import { fetchIssue } from "../../workspace/issue";
-import { exists } from "../../workspace/paths";
+import { exists, managedPath } from "../../workspace/paths";
 import { taskRuntime } from "../../workspace/runtime";
 import type { AgentRunner } from "../agents/agent-runner";
 import { redact } from "../runtime/process";
-import { ChatResponseSchema, StartWorkflowSchema, TaskChatSchema, chatPrompt } from "../workflow";
+import {
+  ChatResponseSchema,
+  StartWorkflowSchema,
+  TaskChatSchema,
+  chatPrompt,
+  isConversationOnly,
+} from "../workflow";
 import type { Engine } from "../engine";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
@@ -182,6 +188,11 @@ export class WorkflowOrchestrator {
       );
     this.host.taskRepository(task.repo_id, parseIssue(task.issue_url));
 
+    const ready = task.worktree_path && task.workspace_checkpoint?.state === "ready";
+    const workspaceAccess = p.configuration.access === "workspace";
+    if (workspaceAccess && (!ready || (task.stage < 6 && task.approval_gate !== "final_review")))
+      throw new AdeError("invalid_state", "Workspace chat edits are available after final review.");
+
     const existing = this.host.db.all<{
       id: string;
       task_id: string;
@@ -236,32 +247,106 @@ export class WorkflowOrchestrator {
       JSON.stringify(p.configuration),
     );
 
-    const prompt = chatPrompt(this.host.db, task, p.content);
+    const contextOnly = isConversationOnly(p.content);
+    const writable = workspaceAccess && !contextOnly;
+
+    const purpose = writable ? "Workspace conversation" : "Read-only conversation";
+
+    const previous = this.host.db.all<{
+      conversation_id: string | null;
+      status: string;
+      provider: string;
+      model: string;
+      effort: string;
+      started_at: string;
+      content: string | null;
+      purpose: string;
+    }>(
+      "SELECT r.conversation_id,r.status,r.provider,r.model,r.effort,r.started_at,r.purpose,m.content FROM agent_runs r LEFT JOIN task_messages m ON m.run_id=r.id AND m.role='user' AND m.purpose='chat' WHERE r.task_id=? AND r.purpose IN ('Read-only conversation','Workspace conversation') ORDER BY r.started_at DESC,r.rowid DESC LIMIT 1",
+      task.id,
+    )[0];
+
+    const previousContextOnly =
+      previous?.purpose !== "Workspace conversation" && isConversationOnly(previous?.content || "");
+
+    const hasAppContext =
+      previous?.conversation_id &&
+      this.host.db.all(
+        "SELECT id FROM agent_runs WHERE task_id=? AND conversation_id=? AND prompt LIKE 'You are running inside Akkco Vibestar,%' LIMIT 1",
+        task.id,
+        previous.conversation_id,
+      ).length > 0;
+
+    const threadId =
+      previous?.status === "completed" &&
+      previous.provider === p.configuration.provider &&
+      previous.model === p.configuration.config.model &&
+      previous.effort === p.configuration.config.effort &&
+      previous.purpose === purpose &&
+      hasAppContext &&
+      previousContextOnly === contextOnly
+        ? previous.conversation_id || undefined
+        : undefined;
+
+    const prompt = chatPrompt(this.host.db, task, p.content, {
+      includeHistory: !threadId,
+      contextOnly,
+      writable,
+    });
 
     void this.operations
       .withExecutionSlot(
         task.id,
-        "Read-only conversation",
+        purpose,
         this.state.repositoryController.signal,
         async (signal) => {
-          if (!task.worktree_path || task.workspace_checkpoint?.state !== "ready")
+          let workspace: string | undefined;
+          if (contextOnly) {
+            workspace = await managedPath(
+              this.host.root,
+              join(this.host.root, "cache", "utility", `conversation-${task.id}`),
+            );
+
+            await mkdir(workspace, { recursive: true, mode: 0o700 });
+          } else if (!task.worktree_path || task.workspace_checkpoint?.state !== "ready")
             await this.prepareTaskWorkspace(task, signal, "chat_preparation");
 
-          const result = ChatResponseSchema.parse(
-            await this.runner.run(
-              { ...task, stage: 1 },
-              task.execution_settings || this.host.db.settings(),
-              signal,
-              {
-                prompt,
-                purpose: "Read-only conversation",
-                schema: ChatResponseSchema,
-                provider: p.configuration.provider,
-                config: p.configuration.config,
-                messageId: message.id,
-              },
-            ),
-          );
+          const before = writable ? await this.host.git.fingerprint(task) : undefined;
+          let result: z.infer<typeof ChatResponseSchema>;
+          try {
+            result = ChatResponseSchema.parse(
+              await this.runner.run(
+                { ...task, stage: writable ? 3 : 1 },
+                task.execution_settings || this.host.db.settings(),
+                signal,
+                {
+                  prompt,
+                  purpose,
+                  schema: ChatResponseSchema,
+                  provider: p.configuration.provider,
+                  config: p.configuration.config,
+                  messageId: message.id,
+                  conversation: { threadId },
+                  contextOnly,
+                  workspace,
+                },
+              ),
+            );
+          } finally {
+            // A chat edit invalidates review authority even when its provider turn fails.
+            if (writable && before !== (await this.host.git.fingerprint(task))) {
+              this.host.db.saveTask({
+                ...this.host.db.task(task.id),
+                stage: 6,
+                status: "reviewed_with_gaps",
+                approval_gate: undefined,
+                final_review_hash: undefined,
+                final_review_verdict: undefined,
+                review_gap_acknowledgment: undefined,
+                updated_at: now(),
+              });
+            }
+          }
 
           this.host.db.transaction(() => {
             this.host.db.run(
@@ -334,6 +419,20 @@ export class WorkflowOrchestrator {
           mode: 0o600,
         });
       },
+      kind === "preparation" && t.workflow_start
+        ? {
+            reusableOwners: this.host.db
+              .tasks()
+              .filter(
+                (task) =>
+                  task.repo_id === repo.id &&
+                  task.workspace_mode === "source" &&
+                  ["completed", "preserved", "cancelled"].includes(task.status) &&
+                  this.host.cleanupBlockers(task.id).length === 0,
+              )
+              .map((task) => task.id),
+          }
+        : undefined,
     );
 
     this.host.db.saveRepository(repo);
@@ -386,7 +485,7 @@ export class WorkflowOrchestrator {
 
         this.host.db.saveTask(t);
         // Refresh authored context at each approved stage, never invoke a model to fetch it.
-        if (t.issue.context_fetched_at || t.issue.number === t.issue_number) {
+        if (t.stage !== 3 && (t.issue.context_fetched_at || t.issue.number === t.issue_number)) {
           t.issue = await fetchIssue(parseIssue(t.issue_url), this.host.root, signal);
           this.host.db.saveTask(t);
         }
@@ -397,6 +496,23 @@ export class WorkflowOrchestrator {
       if (t.stage === 5) {
         t.final_review_hash = await this.host.git.fingerprint(t);
         t.final_review_verdict = this.operations.savedReviewVerdict(t.id);
+
+        // A verdict ends the workflow. Feedback cannot turn review into an automatic repair loop.
+        this.host.db.run(
+          "UPDATE task_messages SET status='draft' WHERE task_id=? AND status='queued'",
+          t.id,
+        );
+
+        this.host.db.saveTask({
+          ...t,
+          stage: 6,
+          status: t.final_review_verdict === "verified" ? "ready_for_review" : "reviewed_with_gaps",
+          approval_gate: undefined,
+          updated_at: now(),
+        });
+
+        this.host.changed(t.id);
+        return;
       }
 
       const queued =
@@ -451,9 +567,7 @@ export class WorkflowOrchestrator {
             ? "codex_plan"
             : t.stage === 3
               ? "implementation"
-              : t.stage === 5
-                ? "final_review"
-                : undefined;
+              : undefined;
 
       if (approvalGate) {
         this.host.db.saveTask({

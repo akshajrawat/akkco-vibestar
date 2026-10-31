@@ -234,7 +234,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         .toContain("[REDACTED]");
 
       await page.screenshot({ path: join(evidence, "active-raw-stderr.png") });
-      await page.getByRole("button", { name: "Approve → Codex refinement" }).waitFor();
+      await page.getByRole("button", { name: "Approve → Plan refinement", exact: true }).waitFor();
       await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.getByRole("button", { name: "Readable", exact: true }).click();
       await page.getByLabel("Expand workspace tool").click();
@@ -295,7 +295,9 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
 
       await page.getByLabel("Return to chat").click();
       await page.getByRole("tab", { name: "Usage", exact: true }).first().click();
-      await page.getByText("Antigravity Plan", { exact: true }).first().waitFor();
+      const usageRun = page.locator(".usage-panel .usage-run summary").filter({ hasText: /^Plan/ });
+      await usageRun.waitFor();
+      await usageRun.scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(evidence, "reported-usage.png") });
       await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
       await page.reload();

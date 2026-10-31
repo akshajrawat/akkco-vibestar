@@ -59,17 +59,17 @@ historical fields where required. Security canonicalizers stay in trusted backen
 `backend/execution/engine.ts` is the stable façade and startup/shutdown coordinator.
 Its internal collaborators are grouped under `backend/execution/engine/`:
 
-| Module            | Responsibility                                                           |
-| ----------------- | ------------------------------------------------------------------------ |
-| `state.ts`        | One authoritative set of execution slots, leases and cancellation state  |
-| `scheduling.ts`   | Queue draining, active runs, terminal leases and maintenance exclusion   |
-| `tasks.ts`        | Idempotent issue-task creation, request digests and initial persistence  |
-| `repositories.ts` | Registration, clone preparation, verified local connections and remotes  |
-| `workflow.ts`     | Explicit startup, read-only conversation, preparation and stage sequence |
-| `approvals.ts`    | Review gates, retries, draft recovery and explicit follow-ups            |
-| `verification.ts` | Evidence rechecks, policy transitions and content-bound gap review       |
-| `commands.ts`     | Sandboxed manual argv execution and observed command records             |
-| `agents.ts`       | Existing runner coordination for utility and repair work                 |
+| Module            | Responsibility                                                          |
+| ----------------- | ----------------------------------------------------------------------- |
+| `state.ts`        | One authoritative set of execution slots, leases and cancellation state |
+| `scheduling.ts`   | Queue draining, active runs, terminal leases and maintenance exclusion  |
+| `tasks.ts`        | Idempotent issue-task creation, request digests and initial persistence |
+| `repositories.ts` | Registration, clone preparation, verified local connections and remotes |
+| `workflow.ts`     | Explicit startup, task conversations, preparation and stage sequence    |
+| `approvals.ts`    | Review gates, retries, draft recovery and explicit follow-ups           |
+| `verification.ts` | Evidence rechecks, policy transitions and content-bound gap review      |
+| `commands.ts`     | Sandboxed manual argv execution and observed command records            |
+| `agents.ts`       | Existing runner coordination for utility and repair work                |
 
 Collaborators share state rather than keeping independent concurrency counters.
 They receive only the Engine methods and internal capabilities they need. Their
@@ -78,9 +78,22 @@ Repository operations and workflow startup settle before shutdown closes SQLite.
 
 `execution/agents` owns AgentRunner, prompts, continuations, streamed plans and UtilityAI.
 `execution/providers` adapts official Codex and Antigravity CLI capabilities and output.
+Ordinary Codex conversation uses app-server initialization, thread and turn messages
+inside the mandatory outer sandbox. Completed conversations can resume their saved
+thread for the same task, model and effort; interrupted turns are never replayed.
+Each explicit turn owns its process and closes stdin on completion. The sandbox masks
+user and project Codex configuration for this path while authentication and thread storage remain
+CLI-owned. Successful official discovery is reused for up to 30 seconds; explicit
+provider refresh and failed runs invalidate that cache. Workflow stages keep bounded
+CLI/schema invocations and independent approval authority. App-server streaming items
+normalize to the existing persisted event contracts. Antigravity continues an explicitly
+identified completed conversation through its documented `--conversation` CLI option.
 Antigravity sends one JSON user message through the documented streamed stdin protocol
 and reads its schema from the mounted artifact file, keeping large issue context out of
 process argv. The runner closes stdin after that message, completing one authorized turn.
+Conversation turns use ordinary provider prose without an output schema. New sessions
+receive project context and bounded completed history once; resumed turns receive only
+the new user message. Workflow schemas and instructions remain exclusive to workflow runs.
 `execution/runtime` owns process execution and the outer sandbox. `execution/output`
 owns bounded output, streaming redaction and reported usage. `execution/terminals`
 separates ephemeral login PTYs from owned task/repair shells. `execution/verification`
@@ -101,8 +114,9 @@ flowchart TD
   Gate2 --> Implement[Implementation and agent-run checks]
   Implement --> Gate3[Human approval]
   Gate3 --> Review[Independent read-only review]
-  Review --> Gate4[Human acceptance]
-  Gate4 --> Ready[Ready for manual Git commands]
+  Review --> Verdict[Final verdict and next steps; workflow stops]
+  Verdict --> Followup[Explicit chat fixes with selected model]
+  Verdict --> Ready[Manual review and Git commands]
 ```
 
 Creation persists `not_started`; it starts no provider or worktree preparation.
@@ -110,6 +124,20 @@ Explicit startup binds request identity, provider settings and selected complete
 conversation messages or a reviewed summary. Historical authorized queue entries
 keep their saved semantics. Idle chat uses a read-only stage-1 sandbox and never
 creates a plan artifact or advances pipeline authority.
+Complete greetings, thanks and app-identity questions use an empty managed conversation workspace, so they
+skip cloning, worktree setup and source fingerprinting while retaining real provider
+inference, task-owned history, usage and execution slots. New sessions identify Akkco
+Vibestar as the host app. Repository questions use the owned worktree. Provider threads
+are reused only within the same workspace scope and read/write authority, determined
+from host-owned task state and saved user-message records.
+
+The first planner receives the complete issue/comments and the scoped user brief; refinement
+receives that brief and the original plan. Implementation receives the refined plan directly,
+plus explicitly delivered user instructions when present. These are provider user messages,
+also rendered as user turns in chat. Schemas still validate each stage's saved artifact. Long
+user turns have a bounded preview with Show more/less. Thinking activity uses a
+disclosure during execution; completed turns show Worked for with the final reply
+outside the disclosure. Scrolled history exposes an explicit jump-to-latest control.
 
 Each stage saves its own provider, model, effort and timeout. Codex and Antigravity
 can fill any role; sandbox permissions follow the stage, independently of the chosen
@@ -121,14 +149,28 @@ The bridge requires the per-stage-provider capability before workflow mutations.
 Plans and implementation results pause durably. Feedback, retries and recovered
 drafts retain their original stage boundaries. A saved pending instruction requires
 an explicit inclusion decision. Cancellation and restart preserve evidence and do
-not imply permission to rerun a provider. Final acceptance binds the reviewed
-worktree fingerprint; later edits require a fresh review.
+not imply permission to rerun a provider. Final review ends at stage 6 with its fingerprint
+and verdict; queued feedback becomes saved instructions and never restarts implementation.
+Verified changes become ready for manual completion; findings or evidence gaps remain
+`reviewed_with_gaps`. Historical final-acceptance gates remain readable and actionable.
+After review, an explicit chat turn uses stage-3 workspace permissions and the selected
+composer model, with the previous plan/results available as context. It creates no workflow
+artifact and schedules no subsequent stage. Actual edits, including edits from a failed
+turn, invalidate review authority. Manual task completion still requires current verified content.
+The request carries explicit workspace access in its chat configuration; older callers retain
+read-only semantics. The bridge requires the core's `workspace_chat: 1` capability before
+forwarding an edit-capable chat request.
 
 ## Workspaces and filesystem ownership
 
 `backend/workspace` owns Git operations, registered/imported sources, physical paths,
 worktree identity, runtime mounts and editor launch. Each task pins its base branch
-and commit and receives a separate worktree and owned branch. Repair assignments
+and commit and receives a dedicated owned branch. An explicitly started workflow can
+use the registered source checkout when it is clean, on the configured base branch,
+at the fetched base commit, and unreserved. Other tasks use separate worktrees;
+dirty or busy source files are never committed, stashed or switched for another task.
+Read-only pre-workflow chat and historical queued tasks retain isolated worktrees.
+Repair assignments
 reuse the physical contract without pretending to be issue tasks.
 
 Managed paths are checked against the canonical startup root with no-follow parent
@@ -140,11 +182,21 @@ Creation/removal checkpoints include process-start identity for crash recovery.
 Agents see only their assigned source/runtime boundary. Ignored source
 dependencies, including nested package directories, and recognized toolchains can be
 mounted read-only; they are not copied or installed automatically. Nested mounts require
-canonical directories, ignored/untracked dependency contents and an empty owned destination;
-aliases, tracked dependencies and populated task directories are not overlaid.
-Agent prompts prohibit dependency/browser/toolchain installation and package auto-fetch.
+canonical directories and ignored/untracked dependency contents. Isolated worktrees also
+require an empty owned destination; source assignments bind their installed dependencies
+read-only in place. Aliases and tracked dependencies are never overlaid.
+Refined plans carry dependency/browser/toolchain prerequisites into implementation.
 Sandbox package runners default to offline npm and no-index pip operation.
 Read-only planning/review cannot modify source or Git.
+Source assignments persist an explicit mode, canonical registered path, common-directory
+checkpoint and task/branch owner markers. Every use verifies that identity. Their provider
+sandbox mounts Git metadata and recognized installed dependencies read-only even during
+implementation. The source reservation survives pauses and restart; reuse requires a
+known completed, cancelled or preserved owner with no active operation, and a clean
+checkout manually returned to the base branch. Task cleanup never removes or resets a
+source checkout; the existing history-only action preserves its files and branch. Managed
+source assignments migrate with their repository; imported assignments retain the existing
+requirement to keep their original storage location.
 External editors and explicit manual terminals operate under the user's own environment.
 
 Repository discovery searches configured project folders and known imported sources.
@@ -245,6 +297,18 @@ Repair history, usage, commands and three diff baselines remain distinguishable.
 tracker/claim evidence, bounded collection, semantic screening and saved results.
 Saving/opening a watch never scans. Each explicit scan/retry/continuation creates
 its own durable attempt and reserves at most one semantic invocation.
+Discovery reads one page of up to ten issues, ordered by creation time (newest or
+oldest). Each saved attempt records its page/order/next page, and Next 10 explicitly
+authorizes a new attempt. Earlier candidates are not fetched again. Successfully
+checked batches accumulate saved results without advancing repository-wide coverage.
+Search pages can shift as GitHub issues change; page history is not an atomic snapshot.
+Issue Watch serializes its GitHub reads across watches and stops for a minimum
+60-second cooldown after a rate-limit error, with no automatic retries. The host
+caps each attempt at 80 requests, including tracker and PR evidence. A bounded
+SQLite HTTP cache (migration 27, at most 20 MiB / 1,000 entries) stores response
+bodies and ETags. Authenticated conditional gh requests must return 304 before any
+cached body is reused; failed requests never authorize stale-cache fallback.
+Clearing the application cache also clears these HTTP entries.
 
 Partial/cancelled/interrupted attempts retain evidence without advancing the last
 complete baseline. Missing coverage stays uncertain. A final metadata recheck
@@ -296,6 +360,23 @@ Task approval controls and check summaries live in the secondary workspace. Appr
 opens that sidebar once and keeps its actions available while inspecting other tool tabs;
 the conversation contains agent output and the composer. Expanded tool content aligns
 with the tool heading, and repository rows separate identity, metadata and actions.
+The task composer has one agent conversation, with no Ask/Work mode switch. Explicit
+Send to workflow and workflow-panel controls authorize pipeline feedback and execution.
+
+Task and PR repair share the chat surface, composer, optimistic-message reconciliation
+and event timeline. Server echoes replace optimistic rows by identity; submission failures
+restore the sent draft without replacing later typing. Scroll position and follow intent
+are scoped to a workspace visit, with resize-driven following and an explicit Latest action.
+Messages stay in natural document flow without viewport-sized spacers or top anchoring.
+Workflow prompts appear as ordinary user messages; idle tasks show a short welcome.
+Completed activity folds under an elapsed “Worked for…” disclosure with assistant replies
+visible below it. Provider input echoes and diagnostic tool metadata stay out of chat;
+raw logs retain the technical evidence. Preparation commands stay in workflow/run tools. Owner-scoped
+message caches retain real deltas across the bounded detail window and recover missing
+prefixes through existing paginated event reads, without starting providers. Changed-file summaries
+belong to implementation turns; final review messages distinguish code approval from
+observed verification and explain the remaining manual step. Historical stage 4 records,
+validation recovery and their persisted identifiers remain supported.
 
 `src/lib/api.ts` owns transport and error presentation. Display formatting lives in
 `lib/format.ts`; chat event decoding and verification argv parsing live in their

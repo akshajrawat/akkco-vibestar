@@ -59,6 +59,12 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
       ignored.code !== 0
     )
       continue;
+    if (source === worktree) {
+      mounts.push({ source: installed, target });
+      dependencies.push(name);
+      continue;
+    }
+
     const entry = await lstat(target).catch(() => null);
     if (!entry && connect) await mkdir(target);
     if ((!entry && connect) || (entry?.isDirectory() && (await readdir(target)).length === 0)) {

@@ -105,13 +105,13 @@ it("lets the independent reviewer run missing implementation checks and complete
     await waitForTask(
       engine,
       task.id,
-      (status) => status === "awaiting_approval" || status === "failed",
+      (status) => status === "ready_for_review" || status === "failed",
     );
 
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
 
     expect(engine.db.task(task.id), engine.db.task(task.id).error || "Review result").toMatchObject(
-      { final_review_verdict: "verified", approval_gate: "final_review" },
+      { final_review_verdict: "verified", stage: 6, status: "ready_for_review" },
     );
 
     expect(stages).toEqual([1, 2, 3, 5]);
@@ -120,8 +120,7 @@ it("lets the independent reviewer run missing implementation checks and complete
       taskVerification(engine.db, task.id).checks.find((item) => item.name === check.name),
     ).toMatchObject({ outcome: "passed", source: "observed_command" });
 
-    await engine.approveStage(task.id);
-    expect(engine.db.task(task.id).status).toBe("ready_for_review");
+    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
 
     expect(await readFile(join(engine.db.task(task.id).worktree_path, "source.js"), "utf8")).toBe(
       "const answer = 42;\n",

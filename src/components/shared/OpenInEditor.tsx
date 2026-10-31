@@ -42,7 +42,7 @@ export const OpenInEditor = ({
         size="sm"
         variant={kind !== "repository" ? "default" : "secondary"}
         disabled={disabled || busy}
-        title={kind !== "repository" ? "Open isolated worktree" : "Open source checkout"}
+        title={kind !== "repository" ? "Open task workspace" : "Open source checkout"}
         onClick={async () => {
           setBusy(true);
           setError("");

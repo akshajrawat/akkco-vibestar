@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, LoaderCircle, Plus, X } from "lucide-react";
+import { ArrowUp, LoaderCircle, Plus, Square, X } from "lucide-react";
 
 import { useTaskView, updateTaskView } from "../../lib/taskView";
 import { containDialogFocus } from "../../lib/keyboard";
@@ -29,7 +29,9 @@ export const Composer = ({
   placeholder,
   sendLabel,
   onSend,
+  stop,
   save,
+  workflow,
   model,
   context,
   busy,
@@ -44,7 +46,9 @@ export const Composer = ({
   placeholder: string;
   sendLabel: string;
   onSend: () => void;
+  stop?: () => void;
   save?: { label: string; run: () => void; disabled?: boolean };
+  workflow?: { run: () => void; disabled?: boolean };
   model: ReactNode;
   context: ContextOption[];
   busy: boolean;
@@ -69,7 +73,7 @@ export const Composer = ({
     const field = textarea.current;
     if (!field) return;
     field.style.height = "auto";
-    field.style.height = `${Math.max(64, Math.min(field.scrollHeight, 240))}px`;
+    field.style.height = `${Math.max(56, Math.min(field.scrollHeight, 240))}px`;
   }, [view.draft, view.expandedTool]);
 
   const attach = async (source: ContextOption, value = "") => {
@@ -148,6 +152,7 @@ export const Composer = ({
       <textarea
         ref={textarea}
         aria-label={label}
+        aria-describedby={`composer-hint-${id}`}
         rows={2}
         value={view.draft}
         placeholder={placeholder}
@@ -274,7 +279,7 @@ export const Composer = ({
           )}
         </div>
 
-        {save && (
+        {save && content && (
           <Button
             size="sm"
             variant="ghost"
@@ -284,20 +289,44 @@ export const Composer = ({
             {save.label}
           </Button>
         )}
+        {workflow && content && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy || tooLong || workflow.disabled}
+            onClick={workflow.run}
+          >
+            Send to workflow
+          </Button>
+        )}
         <span className="spacer" />
         {model}
-        <Button
-          type="submit"
-          variant="default"
-          aria-label={sendLabel}
-          aria-busy={busy}
-          title={busy ? "Request in progress…" : sendLabel}
-          disabled={busy || disabled || !content || tooLong}
-        >
-          {busy ? <LoaderCircle size={16} className="spinning" /> : <ArrowUp size={16} />}
-        </Button>
+        {stop ? (
+          <Button
+            type="button"
+            variant="default"
+            aria-label="Stop response"
+            title="Stop response"
+            onClick={stop}
+          >
+            <Square size={14} />
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            variant="default"
+            aria-label={sendLabel}
+            aria-busy={busy}
+            title={busy ? "Request in progress…" : sendLabel}
+            disabled={busy || disabled || !content || tooLong}
+          >
+            {busy ? <LoaderCircle size={16} className="spinning" /> : <ArrowUp size={16} />}
+          </Button>
+        )}
       </div>
-      <small className="composer-note">{hint} Shift+Enter adds a newline.</small>
+      <small id={`composer-hint-${id}`} className="sr-only">
+        {hint} Shift+Enter adds a newline.
+      </small>
       {tooLong && (
         <small role="alert" className="failure">
           Message and context exceed {maxLength.toLocaleString()} characters. Shorten them before
@@ -310,9 +339,9 @@ export const Composer = ({
           {view.persistenceError}
         </small>
       ) : (
-        (notice || content) && (
+        notice && (
           <small className="composer-state" role="status">
-            {notice || "Draft saved locally"}
+            {notice}
           </small>
         )
       )}

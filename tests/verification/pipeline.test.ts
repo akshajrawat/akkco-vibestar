@@ -148,11 +148,18 @@ it("retains agent checks and setup blockers at implementation approval without a
     await waitForTask(
       engine,
       task.id,
-      (status) => status === "awaiting_approval" || status === "failed",
+      (status) => status === "reviewed_with_gaps" || status === "failed",
     );
 
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
-    expect(engine.db.task(task.id)).toMatchObject({ approval_gate: "final_review", error: null });
+
+    expect(engine.db.task(task.id)).toMatchObject({
+      stage: 6,
+      status: "reviewed_with_gaps",
+      error: null,
+    });
+
+    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
     expect(selected).toEqual([1, 2, 3, 5]);
   } finally {
     await engine.close();
@@ -227,10 +234,11 @@ it("retains an actual failed table assertion as failed even when the provider cl
 
     expect(detail.runs).toHaveLength(3);
     await engine.approveStage(task.id);
-    await waitForTask(engine, task.id, (status) => status === "awaiting_approval");
+    await waitForTask(engine, task.id, (status) => status === "reviewed_with_gaps");
     await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
     expect(engine.db.task(task.id).final_review_verdict).toBe("changes_requested");
-    await expect(engine.approveStage(task.id)).rejects.toThrow("unresolved findings");
+    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
+    await expect(new Rpc(engine).call("task.complete", { id: task.id })).rejects.toThrow();
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });

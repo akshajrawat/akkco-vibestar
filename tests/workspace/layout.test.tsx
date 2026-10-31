@@ -69,7 +69,7 @@ it("renders verification repair history without interpreting it as repository pr
   ];
 
   render(<TaskWorkspace detail={value} revision={0} onError={vi.fn()} back={vi.fn()} />);
-  expect(screen.getByText("Repository preparation")).toBeTruthy();
+  expect(screen.queryByText("Repository preparation")).toBeNull();
   expect(screen.getByLabelText("Task conversation")).toBeTruthy();
 });
 

@@ -151,3 +151,32 @@ it.each(["repository", "issue"] as const)(
     expect(result.checks[0]).toMatchObject({ scope, required: true });
   },
 );
+
+it.each([
+  ["Error: EROFS: read-only file system, mkdir '/owned/task/.cache'", "writable filesystem"],
+  ["Error: AF_UNIX socket path is too long", "socket path"],
+])(
+  "classifies a concrete sandbox prerequisite failure without inventing a test failure: %s",
+  (stderr, reason) => {
+    const result = verificationSummary({}, [
+      { id: "blocked", command: "npm test", status: "failed", exit_code: 1, stderr },
+    ]);
+
+    expect(result.checks[0]).toMatchObject({ outcome: "blocked", source: "observed_command" });
+    expect(result.checks[0].environment).toContain(reason);
+  },
+);
+
+it("does not let a filesystem error erase an assertion failure in the same output", () => {
+  const result = verificationSummary({}, [
+    {
+      id: "failed",
+      command: "npm test",
+      status: "failed",
+      exit_code: 1,
+      stderr: "AssertionError: expected true; EROFS: read-only file system",
+    },
+  ]);
+
+  expect(result.checks[0].outcome).toBe("failed");
+});

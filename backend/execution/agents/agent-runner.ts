@@ -33,9 +33,12 @@ import {
   object,
   type AgentProvider,
   configurationError,
+  type ProviderDetection,
 } from "../providers/contracts";
 
 export class AgentRunner {
+  private readonly detections = new Map<string, { at: number; value: ProviderDetection }>();
+
   constructor(
     private readonly root: string,
     private readonly db: Database,
@@ -47,13 +50,32 @@ export class AgentRunner {
     ) => AgentProvider,
   ) {}
 
+  clearProviderDetection = () => this.detections.clear();
+
+  private detect = async (provider: AgentProvider, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    const cached = this.detections.get(provider.name);
+    if (cached && Date.now() - cached.at < 30000) return cached.value;
+    const value = await provider.detect(this.root, signal);
+    signal.throwIfAborted();
+    // Cache successful official discovery briefly, never authentication failures or fixture capabilities.
+    if (
+      ["codex", "antigravity"].includes(value.provider) &&
+      value.installed &&
+      value.connected &&
+      value.capabilities.length
+    )
+      this.detections.set(provider.name, { at: Date.now(), value });
+    return value;
+  };
+
   /** Checks the saved pipeline's provider capabilities without consuming inference or starting a stage. */
   validateWorkflow = async (task: Task, signal: AbortSignal) => {
     const settings = task.execution_settings || this.db.settings();
     for (const stage of [1, 2, 3, 5]) {
       const config = pipelineConfiguration(settings, stage, task.stage_settings);
       const provider = this.providers(stage, config.provider);
-      const detection = await provider.detect(this.root, signal);
+      const detection = await this.detect(provider, signal);
       signal.throwIfAborted();
       if (!detection.installed || !detection.connected || !detection.capabilities.length)
         throw new AdeError(
@@ -86,16 +108,28 @@ export class AgentRunner {
       questionId?: string;
       repair?: WorkspaceAssignment;
       contextPaths?: string[];
+      conversation?: { threadId?: string };
+      contextOnly?: boolean;
     },
   ) => {
     const task = "repo_id" in t ? t : null;
     const repair = options?.repair;
-    const assignment = task || repair || null;
+    const owner = task || repair || null;
+    if (
+      options?.contextOnly &&
+      (!task || t.stage !== 1 || options.purpose !== "Read-only conversation")
+    )
+      throw new AdeError(
+        "invalid_state",
+        "Conversation-only workspaces cannot execute workflow stages.",
+      );
+    // Conversational turns keep task history while mounting an empty utility workspace.
+    const assignment = options?.contextOnly ? null : owner;
     const fingerprint = repair ? this.git.repairFingerprint : this.git.fingerprint;
     if (!assignment && !options?.workspace)
       throw new AdeError("invalid_state", "Detached analysis requires a managed PR workspace");
 
-    const table = assignment
+    const table = owner
       ? "agent_runs"
       : options?.jobId || options?.purpose === "scheduled"
         ? "scheduled_agent_runs"
@@ -135,8 +169,8 @@ export class AgentRunner {
     const prompt = options?.prompt ?? buildPrompt(this.db, task!);
     const usage = new Usage(this.db);
 
-    const repo = assignment
-      ? this.db.repository(assignment.repo_id)
+    const repo = owner
+      ? this.db.repository(owner.repo_id)
       : options?.telemetryTaskId
         ? this.db.repository(this.db.task(options.telemetryTaskId).repo_id)
         : null;
@@ -277,7 +311,11 @@ export class AgentRunner {
     const dir = join(
       this.root,
       "logs",
-      assignment ? t.id : options?.scanId ? `issue-watch-${options.scanId}` : `pr-watch-${t.id}`,
+      task || repair
+        ? t.id
+        : options?.scanId
+          ? `issue-watch-${options.scanId}`
+          : `pr-watch-${t.id}`,
     );
 
     let cwd = "";
@@ -297,6 +335,7 @@ export class AgentRunner {
     let savedDraft = "";
     const draftId = randomUUID();
     let final: unknown;
+    const conversationMessages = new Map<string, string>();
     let failure: unknown;
     let code: number | null = null;
     let invoked = false;
@@ -304,7 +343,7 @@ export class AgentRunner {
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
       cwd = assignment ? await this.git.assertTask(assignment) : options!.workspace!;
-      const detection = await provider.detect(this.root, signal);
+      const detection = await this.detect(provider, signal);
       if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
       officialCodex = detection.provider === "codex";
       usage.recordLimits(id, detection.subscriptionLimits);
@@ -341,9 +380,10 @@ export class AgentRunner {
 
       const outputSchema = provider.outputSchema?.(schema) || schema;
 
-      await writeFile(schemaPath, JSON.stringify(outputSchema), {
-        mode: 0o600,
-      });
+      if (!options?.conversation)
+        await writeFile(schemaPath, JSON.stringify(outputSchema), {
+          mode: 0o600,
+        });
 
       let sentPrompt = prompt;
       const contextPaths = [...(options?.contextPaths || [])];
@@ -402,6 +442,7 @@ export class AgentRunner {
         schemaPath,
         schema: outputSchema,
         workspaceType: repair ? "task" : options ? "utility" : "task",
+        ...(options?.conversation ? { conversation: options.conversation } : {}),
       });
 
       const invocation = await sandboxInvocation(
@@ -410,7 +451,7 @@ export class AgentRunner {
         assignment,
         directInvocation,
         t.stage !== 3,
-        schemaPath,
+        options?.conversation ? undefined : schemaPath,
         (detection.provider === "codex" && directInvocation.program === "codex") ||
           (detection.provider === "antigravity" && directInvocation.program === "agy")
           ? detection.provider
@@ -460,7 +501,8 @@ export class AgentRunner {
           const conversationId = stream === "stdout" ? provider.conversationId(raw) : null;
           if (stream === "stdout") {
             usage.observe(id, raw);
-            const reportedModel = object(raw.init).model || raw.model;
+            const session = object(object(raw.result).thread).id ? object(raw.result) : {};
+            const reportedModel = object(raw.init).model || raw.model || session.model;
             if (typeof reportedModel === "string" && reportedModel) {
               this.db.run(`UPDATE ${table} SET model=? WHERE id=?`, reportedModel, id);
               this.db.run("UPDATE ai_usage SET model=? WHERE id=?", reportedModel, id);
@@ -491,11 +533,26 @@ export class AgentRunner {
             this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
           }
 
-          const result = stream === "stdout" ? provider.result(raw) : undefined;
+          const result =
+            stream === "stdout" ? provider.result(raw, !!options?.conversation) : undefined;
+
           if (result !== undefined) final = result;
+
           for (const event of stream === "stderr"
             ? [{ kind: "command.output" as const, data: { stderr: line } }]
             : provider.normalize(raw)) {
+            if (options?.conversation && event.kind === "message") {
+              const data = object(event.data);
+              const key = String(data.call_id ?? "answer");
+
+              const text =
+                typeof data.text === "string"
+                  ? data.text
+                  : `${conversationMessages.get(key) || ""}${typeof data.text_delta === "string" ? data.text_delta : ""}`;
+
+              conversationMessages.set(key, text);
+            }
+
             if (event.kind === "run.failed") failure = event.data;
             if (task && !options && [1, 2].includes(t.stage) && event.kind === "message") {
               const plan = draft.observe(event.data);
@@ -514,7 +571,7 @@ export class AgentRunner {
               }
             }
 
-            if (!assignment) {
+            if (!task && !repair) {
               utilityEvent(event, line, stream);
               continue;
             }
@@ -553,6 +610,13 @@ export class AgentRunner {
           `${provider.name} / ${options?.purpose || stageStatus(t.stage)} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
           { provider: provider.name, stage: t.stage, code },
         );
+
+      // Workflow stages require schemas; conversation turns use the provider's ordinary prose.
+      if (options?.conversation && !options.schema?.safeParse(final).success) {
+        const summary = [...conversationMessages.values()].reverse().find((text) => text.trim());
+
+        if (summary) final = { summary };
+      }
 
       const value = provider.parseStructuredOutput
         ? provider.parseStructuredOutput(schema, final)
@@ -624,6 +688,8 @@ export class AgentRunner {
         );
       return result;
     } catch (error) {
+      this.detections.delete(provider.name);
+
       utilityEvent({
         kind: signal.aborted ? "run.cancelled" : "run.failed",
         data: { message: redact(String(error)) },
@@ -660,9 +726,9 @@ export class AgentRunner {
       } finally {
         await stdout?.close();
         await stderr?.close();
-        await unlink(schemaPath).catch(() => {});
+        if (!options?.conversation) await unlink(schemaPath).catch(() => {});
         // Discovery reads official allowance only; it never starts a model turn.
-        if (invoked && officialCodex && !signal.aborted) {
+        if (invoked && officialCodex && !signal.aborted && !options?.conversation) {
           const after = await discoverCodexModels(
             this.root,
             AbortSignal.any([signal, AbortSignal.timeout(5000)]),

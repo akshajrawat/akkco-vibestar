@@ -20,6 +20,8 @@ export class CoreBridge extends EventEmitter {
 
   private workflowFirstAvailable = false;
 
+  private workspaceChatAvailable = false;
+
   private finalReviewSettingsAvailable = false;
 
   private browserVerificationAvailable = false;
@@ -43,6 +45,8 @@ export class CoreBridge extends EventEmitter {
   private repairAvailable = false;
 
   private issueWatchAvailable = false;
+
+  private issueWatchBatchesAvailable = false;
 
   private stopping = false;
 
@@ -70,9 +74,11 @@ export class CoreBridge extends EventEmitter {
     this.quickPrWatchAvailable = false;
     this.repairAvailable = false;
     this.issueWatchAvailable = false;
+    this.issueWatchBatchesAvailable = false;
     this.approvalsAvailable = false;
     this.instructionChoicesAvailable = false;
     this.workflowFirstAvailable = false;
+    this.workspaceChatAvailable = false;
     this.finalReviewSettingsAvailable = false;
     this.browserVerificationAvailable = false;
     this.pipelineVerificationAvailable = false;
@@ -164,6 +170,7 @@ export class CoreBridge extends EventEmitter {
         pipeline_approvals?: boolean;
         saved_instruction_choices?: boolean;
         workflow_first?: number;
+        workspace_chat?: number;
         independent_final_review?: boolean;
         browser_verification_environment?: boolean;
         pipeline_verification?: number;
@@ -177,12 +184,14 @@ export class CoreBridge extends EventEmitter {
         pr_repair?: boolean;
         manual_issue_watch?: boolean;
         issue_watch_contract?: number;
+        issue_watch_batches?: number;
       }>("core.info", {}, 15000),
     ])
       .then(([bundle, info]) => {
         this.approvalsAvailable = info.pipeline_approvals === true;
         this.instructionChoicesAvailable = info.saved_instruction_choices === true;
         this.workflowFirstAvailable = info.workflow_first === 1;
+        this.workspaceChatAvailable = info.workspace_chat === 1;
         this.finalReviewSettingsAvailable = info.independent_final_review === true;
         this.browserVerificationAvailable = info.browser_verification_environment === true;
         this.pipelineVerificationAvailable = info.pipeline_verification === 2;
@@ -197,6 +206,8 @@ export class CoreBridge extends EventEmitter {
 
         this.issueWatchAvailable =
           info.manual_issue_watch === true && info.issue_watch_contract === 1;
+
+        this.issueWatchBatchesAvailable = info.issue_watch_batches === 1;
 
         this.warning = !this.approvalsAvailable
           ? "The running core cannot enforce plan review approvals. Restart the current dev build, or update the WSL helper in Settings → Execution. Task execution is blocked until updated."
@@ -223,6 +234,12 @@ export class CoreBridge extends EventEmitter {
 
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (
+      this.issueWatchAvailable &&
+      ["issueWatch.scan", "issueWatch.retry", "issueWatch.continue"].includes(method) &&
+      !this.issueWatchBatchesAvailable
+    )
+      throw new Error("Update the execution helper to scan Issue Watch in batches of 10.");
     if (
       !this.pipelineProvidersAvailable &&
       [
@@ -368,6 +385,19 @@ export class CoreBridge extends EventEmitter {
       throw new Error(
         "Update the execution helper before creating idle tasks or using read-only task conversations.",
       );
+    if (
+      method === "task.chat" &&
+      params &&
+      typeof params === "object" &&
+      "configuration" in params &&
+      params.configuration &&
+      typeof params.configuration === "object" &&
+      "access" in params.configuration &&
+      params.configuration.access === "workspace" &&
+      !this.workspaceChatAvailable
+    )
+      throw new Error("Update the execution helper before requesting workspace edits in chat.");
+
     try {
       const result = await this.sendRequest<T>(method, params);
       if (method === "snapshot" && result && typeof result === "object")
@@ -376,6 +406,7 @@ export class CoreBridge extends EventEmitter {
           capabilities: {
             manual_issue_watch: this.issueWatchAvailable,
             issue_watch_contract: this.issueWatchAvailable ? 1 : null,
+            issue_watch_batches: this.issueWatchBatchesAvailable ? 1 : null,
             ...(this.quickPrWatchAvailable ? { pr_quick_watch: true } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),

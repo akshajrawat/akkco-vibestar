@@ -24,7 +24,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("refreshes legacy fetched issue context before every approved provider stage", async () => {
+it("refreshes issue context for planning and review while implementation receives only the refined plan", async () => {
   api.mockImplementation(async (endpoint: string) => {
     if (endpoint === "repos/fixture/fixture/issues/1")
       return { title: "Updated issue", body: "Complete current requirements" };
@@ -48,12 +48,16 @@ it("refreshes legacy fetched issue context before every approved provider stage"
     await finishFixtureTask(engine, task.id, (s) => s === "ready_for_review" || s === "failed");
     expect(engine.db.task(task.id).status).toBe("ready_for_review");
     expect(engine.db.detail(task.id).runs).toHaveLength(4);
-    for (const run of engine.db.detail(task.id).runs)
+    for (const run of engine.db.detail(task.id).runs.filter((run) => run.stage !== 3))
       expect(run.prompt).toContain("Latest author comment");
 
     expect(
+      JSON.parse(String(engine.db.detail(task.id).runs.find((run) => run.stage === 3)!.prompt)),
+    ).toEqual(engine.db.artifact(task.id, 2));
+
+    expect(
       api.mock.calls.filter(([endpoint]) => endpoint === "repos/fixture/fixture/issues/1"),
-    ).toHaveLength(4);
+    ).toHaveLength(3);
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });

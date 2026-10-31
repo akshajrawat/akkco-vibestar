@@ -368,13 +368,11 @@ it.each([
     fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("Keep this instruction for later");
 
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Request Further Fix",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    if (detail.active) expect(screen.getByRole("button", { name: "Stop response" })).toBeTruthy();
+    else
+      expect(
+        (screen.getByRole("button", { name: "Request Further Fix" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
 
     expect(rpc.mock.calls.some(([method]) => method === "repair.start")).toBe(false);
   },

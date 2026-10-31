@@ -17,7 +17,9 @@ import { exists } from "../../backend/workspace/paths";
 vi.mock("../../backend/workspace/issue", () => ({
   fetchIssue: vi.fn(async () => ({
     title: "Discuss before workflow",
-    body: "Explain source.txt before implementation.",
+    body:
+      "Explain source.txt before implementation.\n" +
+      "Additional issue context and contributor discussion.\n".repeat(100),
     comments: [],
     labels: [],
     state: "open",
@@ -28,16 +30,26 @@ vi.mock("../../backend/workspace/issue", () => ({
 
 class WorkspaceV3Provider extends ValidationBlockerProvider {
   invocation = (request: AgentRunRequest) =>
-    Object.keys(request.schema.properties as object).length === 1
+    Object.keys(request.schema.properties as object).length === 1 &&
+    request.cwd.includes("/cache/utility/conversation-")
       ? {
           program: process.execPath,
           input: "",
           args: [
             "-e",
-            `(async()=>{const fs=require('node:fs/promises');let denied=false;try{await fs.writeFile('source.txt','UNAUTHORIZED')}catch{denied=true}if(!denied)throw Error('Chat source was writable');const summary='Read-only answer: source.txt contains '+(await fs.readFile('source.txt','utf8')).trim();console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify({summary})}}));console.log(JSON.stringify({type:'turn.completed'}));})().catch(e=>{console.error(e);process.exitCode=1})`,
+            "console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Hello from Akkco Vibestar.'}}));console.log(JSON.stringify({type:'turn.completed'}));",
           ],
         }
-      : new ValidationBlockerProvider().invocation(request);
+      : Object.keys(request.schema.properties as object).length === 1
+        ? {
+            program: process.execPath,
+            input: "",
+            args: [
+              "-e",
+              `(async()=>{const fs=require('node:fs/promises');let denied=false;try{await fs.writeFile('source.txt','UNAUTHORIZED')}catch{denied=true}if(!denied)throw Error('Chat source was writable');const summary='Read-only answer: source.txt contains '+(await fs.readFile('source.txt','utf8')).trim();console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:summary}}));console.log(JSON.stringify({type:'turn.completed'}));})().catch(e=>{console.error(e);process.exitCode=1})`,
+            ],
+          }
+        : new ValidationBlockerProvider().invocation(request);
 }
 
 const require = createRequire(import.meta.url);
@@ -701,7 +713,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
         .getByLabel("Task conversation")
         .fill("Explain source.txt without implementing the issue.");
 
-      await page.getByRole("button", { name: "Ask question", exact: true }).click();
+      await page.getByRole("button", { name: "Send message", exact: true }).click();
 
       await page
         .getByText("Read-only answer: source.txt contains base", {
@@ -711,6 +723,32 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
 
       await expect.poll(() => engine.isActive(idle.id)).toBe(false);
       expect(engine.db.task(idle.id).status).toBe("not_started");
+      expect(await page.getByRole("combobox", { name: "Message action" }).count()).toBe(0);
+
+      expect(
+        await page.evaluate(() => {
+          const chat = document.querySelector(".chat-main")!;
+          return getComputedStyle(chat).backgroundColor === "rgb(13, 14, 16)";
+        }),
+      ).toBe(true);
+
+      await page.getByLabel("Task conversation").fill("hi?");
+      await page.getByLabel("Task conversation").press("Enter");
+      await expect.poll(() => engine.db.detail(idle.id).runs.length).toBe(2);
+      await expect.poll(() => engine.isActive(idle.id)).toBe(false);
+
+      await expect
+        .poll(() => page.locator(".saved-assistant-message, .message-event").count())
+        .toBe(2);
+
+      expect(engine.db.detail(idle.id).runs.at(-1)?.prompt).not.toContain("Return your answer");
+
+      expect(
+        await page
+          .locator(".timeline-content")
+          .evaluate((node) => node.nextElementSibling === null),
+      ).toBe(true);
+
       await page.getByRole("button", { name: "Choose chat model", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Chat model configuration", exact: true });
       await picker.getByRole("combobox", { name: "Task model", exact: true }).click();
@@ -729,7 +767,7 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
 
       await page.reload();
       await page.getByLabel("Task conversation").waitFor();
-      expect(engine.db.detail(idle.id).runs).toHaveLength(1);
+      expect(engine.db.detail(idle.id).runs).toHaveLength(2);
       expect(engine.db.task(idle.id).status).toBe("not_started");
       if (!(await page.getByRole("tab", { name: "Workflow", exact: true }).isVisible()))
         await page.getByLabel("Toggle secondary workspace").click();
@@ -757,9 +795,8 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
           path: join(evidence, `v3-idle-chat-${width}x${height}.png`),
         });
 
-        expect(await page.getByLabel("Current agent run").innerText()).toContain(
-          "Conversation · read-only",
-        );
+        expect(await page.getByLabel("Current agent run").count()).toBe(0);
+        await page.getByText("Worked for", { exact: false }).last().waitFor();
       }
 
       await page
@@ -775,12 +812,53 @@ it.skipIf(process.env.VIBESTAR_WORKSPACE_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Start workflow", exact: true }).click();
       await expect.poll(() => engine.db.task(idle.id).status).toBe("awaiting_approval");
       await expect.poll(() => engine.isActive(idle.id)).toBe(false);
-      expect(engine.db.detail(idle.id).runs).toHaveLength(2);
+      expect(engine.db.detail(idle.id).runs).toHaveLength(3);
       expect(engine.db.detail(idle.id).runs.at(-1)?.prompt).toContain("KEEP_REVIEWED_INSTRUCTION");
 
       expect(engine.db.detail(idle.id).runs.at(-1)?.prompt).not.toContain(
         "Explain source.txt without implementing",
       );
+
+      const brief = page.locator(".workflow-message").last();
+      const more = brief.getByRole("button", { name: "Show more", exact: true });
+      await more.scrollIntoViewIfNeeded();
+
+      expect(
+        await brief.locator(".user-message-body").evaluate((node) => node.clientHeight),
+      ).toBeLessThanOrEqual(240);
+
+      await page.screenshot({ path: join(evidence, "chat-long-prompt-collapsed.png") });
+      await more.focus();
+      await page.keyboard.press("Enter");
+
+      await expect
+        .poll(() => brief.locator(".user-message-body").evaluate((node) => node.clientHeight))
+        .toBeGreaterThan(240);
+
+      await page.screenshot({ path: join(evidence, "chat-long-prompt-expanded.png") });
+      await brief.getByRole("button", { name: "Show less", exact: true }).click();
+      const worked = page.locator(".work-log").last();
+      await worked.locator(":scope > summary").focus();
+      await page.keyboard.press("Enter");
+      expect(await worked.getAttribute("open")).not.toBeNull();
+      await page.screenshot({ path: join(evidence, "chat-work-expanded.png") });
+
+      await page.locator(".event-timeline").evaluate((node) => {
+        node.scrollTop = 0;
+        node.dispatchEvent(new Event("scroll"));
+      });
+
+      await page.getByRole("button", { name: "Jump to latest", exact: true }).click();
+
+      await expect
+        .poll(() =>
+          page
+            .locator(".event-timeline")
+            .evaluate((node) => node.scrollHeight - node.scrollTop - node.clientHeight),
+        )
+        .toBeLessThanOrEqual(32);
+
+      await page.screenshot({ path: join(evidence, "chat-jumped-to-latest.png") });
 
       const ownedPath = engine.db.task(idle.id).worktree_path;
       await writeFile(join(ownedPath, "experimental.txt"), "Disposable V3 fixture\n");

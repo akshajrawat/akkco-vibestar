@@ -1,4 +1,3 @@
-import { RunPrompt } from "./RunPrompt";
 import { useMemo } from "react";
 import {
   FileSearch,
@@ -10,6 +9,8 @@ import {
   LoaderCircle,
   CircleMinus,
   CircleAlert,
+  Copy,
+  Pencil,
 } from "lucide-react";
 import type { AgentEvent, Run, Message, DiffFile } from "../../lib/types";
 import { duration } from "../../lib/format";
@@ -18,7 +19,9 @@ import { agentEntries, toolState } from "./output/activity";
 import { AgentResponse } from "./AgentResponse";
 import { RunError } from "./RunError";
 import { Button } from "../../components/ui/button";
-import { ProviderIcon } from "../../components/ui/ProviderIcon";
+import { responseSummary } from "./output/response";
+import { WorkLog } from "./WorkLog";
+import { UserMessageBody } from "./UserMessageBody";
 
 export const AgentTimeline = ({
   events,
@@ -31,6 +34,9 @@ export const AgentTimeline = ({
   search = "",
   filter = "all",
   expandResults = true,
+  runSummary,
+  compact = false,
+  showPrompts = false,
 }: {
   events: AgentEvent[];
   runs: Run[];
@@ -42,16 +48,61 @@ export const AgentTimeline = ({
   search?: string;
   filter?: string;
   expandResults?: boolean;
+  runSummary?: (run: Run) => React.ReactNode;
+  compact?: boolean;
+  showPrompts?: boolean;
 }) => {
   const entries = useMemo(() => agentEntries(events, search), [events, search]);
 
-  const renderTool = (row: (typeof entries)[number]) => {
+  const runById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs]);
+
+  const entriesByRun = useMemo(() => {
+    const grouped = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      const local = grouped.get(entry.event.run_id) || [];
+      local.push(entry);
+      grouped.set(entry.event.run_id, local);
+    }
+
+    return grouped;
+  }, [entries]);
+
+  const lastImplementation = [...runs]
+    .reverse()
+    .find((run) => run.stage === 3 && run.purpose !== "Read-only conversation");
+
+  const answeredRuns = useMemo(
+    () =>
+      new Set(
+        runs
+          .filter(
+            (run) =>
+              run.output ||
+              entriesByRun
+                .get(run.id)
+                ?.some(
+                  (entry) =>
+                    entry.event.kind === "message" &&
+                    responseSummary(String(entry.data.text || "")).trim(),
+                ),
+          )
+          .map((run) => run.id),
+      ),
+    [runs, entriesByRun],
+  );
+
+  const renderTool = (row: (typeof entries)[number], finalText?: string) => {
     const { event, data } = row;
-    const run = runs.find((r) => r.id === event.run_id);
+    const run = runById.get(event.run_id);
     if (event.kind === "message")
       return (
         <article className="message-event" key={row.key}>
-          <AgentResponse text={String(data.text || "")} />
+          <AgentResponse
+            structured
+            inline={compact && !!finalText}
+            expanded={finalText ? expandResults : false}
+            text={finalText || String(data.text || "")}
+          />
         </article>
       );
     if (event.stream === "stderr")
@@ -68,6 +119,19 @@ export const AgentTimeline = ({
           <pre>{data.unparsed}</pre>
         </article>
       );
+    if (compact && ["reasoning", "analysis"].includes(String(data.tool))) {
+      const text = String(data.text || "").trim();
+      if (!text) return null;
+      return (
+        <details className="reasoning-event" key={row.key}>
+          <summary>
+            <Brain size={16} /> {text.split("\n")[0].replaceAll("**", "")}
+          </summary>
+          <AgentResponse text={text} />
+        </details>
+      );
+    }
+
     if (
       ["run.failed", "run.cancelled"].includes(event.kind) ||
       (event.kind === "analysis.status" && typeof data.text === "string" && !data.tool)
@@ -87,22 +151,26 @@ export const AgentTimeline = ({
           className={`provider-diagnostic ${error ? "failure" : ""}`}
           role="status"
         >
-          <strong>
-            {error
-              ? "Provider error"
-              : event.kind === "run.cancelled"
-                ? "Run cancelled"
-                : "Provider status"}
-          </strong>
+          {!compact && (
+            <strong>
+              {error
+                ? "Provider error"
+                : event.kind === "run.cancelled"
+                  ? "Run cancelled"
+                  : "Provider status"}
+            </strong>
+          )}
 
           <AgentResponse
             text={typeof message === "string" ? message : JSON.stringify(data, null, 2)}
           />
 
-          <details>
-            <summary>Emitted event</summary>
-            <pre>{event.raw || JSON.stringify(data, null, 2)}</pre>
-          </details>
+          {!compact && (
+            <details>
+              <summary>Emitted event</summary>
+              <pre>{event.raw || JSON.stringify(data, null, 2)}</pre>
+            </details>
+          )}
         </article>
       );
     }
@@ -179,6 +247,48 @@ export const AgentTimeline = ({
       "connecting to sandbox server",
     );
 
+    if (compact)
+      return (
+        <article
+          className={`tool-event ${failed ? "tool-failed" : ""}`}
+          data-state={state}
+          key={row.key}
+        >
+          <details>
+            <summary>
+              <span className="tool-icon">
+                <Icon size={16} />
+              </span>
+              <span>{label}</span>
+              <code>{paths.length ? paths.join(", ") : preview}</code>
+            </summary>
+            <div className="tool-details">
+              {data.command != null && <code>{String(data.command)}</code>}
+              {paths.map((path) => (
+                <div key={path}>
+                  {openDiff ? (
+                    <button className="edited-file" onClick={() => openDiff(path)}>
+                      {path}
+                    </button>
+                  ) : (
+                    <code>{path}</code>
+                  )}
+                </div>
+              ))}
+              {data.stdout != null && <pre>{String(data.stdout)}</pre>}
+              {data.stderr != null && <pre>{String(data.stderr)}</pre>}
+              {data.text != null && <AgentResponse text={String(data.text)} />}
+              {typeof data.exit_code === "number" && <small>Exit {data.exit_code}</small>}
+              {failed && <small className="failure">Failed</small>}
+              {interrupted && <small className="warning">Interrupted</small>}
+              {skipped && (
+                <small className="warning">{state === "blocked" ? "Blocked" : "Skipped"}</small>
+              )}
+            </div>
+          </details>
+        </article>
+      );
+
     return (
       <article
         className={`tool-event ${failed ? "tool-failed" : interrupted ? "tool-interrupted" : skipped ? "tool-skipped" : ""}`}
@@ -187,7 +297,9 @@ export const AgentTimeline = ({
       >
         <details>
           <summary>
-            <Icon size={13} />
+            <span className="tool-icon">
+              <Icon size={14} />
+            </span>
             <span>
               {label}
               {command ? " ·" : ""}
@@ -196,7 +308,9 @@ export const AgentTimeline = ({
             <code>
               {paths.length ? `${paths.length} file${paths.length === 1 ? "" : "s"}` : preview}
             </code>
-            <small className="tool-state">{state}</small>
+            <small className="tool-state">
+              {data.source === "provider-reported" ? "provider reported" : state}
+            </small>
             {skipped || interrupted ? (
               <CircleMinus size={12} className="warning" />
             ) : failed ? (
@@ -371,23 +485,22 @@ export const AgentTimeline = ({
 
   const blocks: { time: string; key: string; content: React.ReactNode }[] = [];
   for (const message of messages.filter(
-    (message) => message.role !== "assistant" || !runs.some((run) => run.id === message.run_id),
+    (message) => message.role !== "assistant" || !answeredRuns.has(message.run_id || ""),
   ))
     blocks.push({
       time: message.created_at,
       key: message.id,
       content: (
-        <article className="user-message">
-          <small>
-            {message.role === "assistant" ? "Agent" : "You"}
-            {message.purpose === "chat" ? " · Read-only conversation" : ""}
-          </small>
-
-          {message.status?.startsWith("chat_") && message.status !== "chat_completed" && (
-            <small className="subtle">
-              {message.status.replace("chat_", "").replaceAll("_", " ")}
-            </small>
-          )}
+        <article
+          className={message.role === "assistant" ? "saved-assistant-message" : "user-message"}
+          data-message-id={message.id}
+        >
+          {message.status?.startsWith("chat_") &&
+            ["chat_failed", "chat_cancelled"].includes(message.status) && (
+              <small className="subtle">
+                {message.status.replace("chat_", "").replaceAll("_", " ")}
+              </small>
+            )}
 
           {message.status === "queued" && (
             <small className="running">Feedback queued · next safe stage boundary</small>
@@ -396,14 +509,22 @@ export const AgentTimeline = ({
           {message.status === "draft" && (
             <small className="warning">Instruction saved for later · no agent started</small>
           )}
-          <p>{message.content.split("\n\nLinked PR review context (untrusted):")[0]}</p>
+          {message.role === "assistant" ? (
+            <AgentResponse text={message.content} />
+          ) : (
+            <UserMessageBody>
+              <p>{message.content.split("\n\nLinked PR review context (untrusted):")[0]}</p>
+            </UserMessageBody>
+          )}
           <div className="message-actions">
             <Button
-              size="sm"
+              size="icon"
               variant="ghost"
+              aria-label="Copy message"
+              title="Copy message"
               onClick={() => void navigator.clipboard.writeText(message.content).catch(() => {})}
             >
-              Copy
+              <Copy size={16} />
             </Button>
 
             {retryMessage && message.status !== "review_question" && message.purpose !== "chat" && (
@@ -415,8 +536,14 @@ export const AgentTimeline = ({
             {editMessage &&
               message.status !== "review_question" &&
               message.role !== "assistant" && (
-                <Button size="sm" variant="ghost" onClick={() => editMessage(message)}>
-                  Edit &amp; retry
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Edit and retry message"
+                  title="Edit and retry"
+                  onClick={() => editMessage(message)}
+                >
+                  <Pencil size={16} />
                 </Button>
               )}
           </div>
@@ -437,7 +564,7 @@ export const AgentTimeline = ({
       ];
 
   for (const run of groupedRuns) {
-    const local = entries.filter(
+    const local = (run.id ? entriesByRun.get(run.id) || [] : entries).filter(
       (e) =>
         (!run.id || e.event.run_id === run.id) &&
         (!search ||
@@ -457,86 +584,157 @@ export const AgentTimeline = ({
                   : e.event.kind === "test.result")),
     );
 
+    if (!run.id && !local.length) continue;
+
+    const finalSummary = run.output ? responseSummary(run.output).trim() : undefined;
+
+    const finalMessage = run.output
+      ? [...local].reverse().find((row) => {
+          if (row.event.kind !== "message" || row.data.phase === "commentary") return false;
+          const text = String(row.data.text || "");
+          return (
+            responseSummary(text).trim() === finalSummary ||
+            (text.trimStart().startsWith("{") && /"(?:summary|goal|understanding)"/.test(text))
+          );
+        })
+      : compact &&
+          local.at(-1)?.event.kind === "message" &&
+          local.at(-1)?.data.phase !== "commentary"
+        ? local.at(-1)
+        : undefined;
+
+    const visible = local.filter((row) => {
+      if (row.event.kind === "run.failed" && run.error) return false;
+      if (finalMessage && row !== finalMessage && row.event.kind === "message")
+        return responseSummary(String(row.data.text || "")).trim() !== finalSummary;
+      return true;
+    });
+
+    const activity = compact ? visible.filter((row) => row !== finalMessage) : visible;
+
+    const workflowPrompt =
+      showPrompts &&
+      run.prompt &&
+      [
+        "Plan",
+        "Plan refinement",
+        "Implementation",
+        "Review",
+        "pipeline",
+        "Antigravity Plan",
+        "Codex Plan Refinement",
+        "Codex Implementation",
+      ].includes(run.purpose || "pipeline");
+
+    let structuredPrompt = false;
+    if (workflowPrompt && run.stage === 3) {
+      try {
+        structuredPrompt = !!JSON.parse(run.prompt);
+      } catch {
+        // Explicit instructions appended after a plan must remain visible too.
+      }
+    }
+
     blocks.push({
       time: run.started_at,
       key: run.id || "ungrouped",
       content: (
-        <section className="agent-turn">
-          {run.id && (
-            <div className="agent-turn-heading">
-              <span className={`agent-avatar ${run.provider}`}>
-                <ProviderIcon provider={run.provider} model={run.model} size={14} />
-              </span>
-              <strong>{run.provider === "antigravity" ? "Antigravity" : "Codex"}</strong>
-              <span className="subtle">
-                {run.purpose === "Read-only conversation"
-                  ? "Conversation · read-only"
-                  : run.purpose === "Code Review Ask AI"
-                    ? "Code review · read-only"
-                    : run.purpose === "scheduled"
-                      ? "PR review"
-                      : run.stage === 1
-                        ? "Planning"
-                        : run.stage === 2
-                          ? "Reviewing plan"
-                          : run.stage === 5
-                            ? "Reviewing changes & tests"
-                            : "Implementing"}
-              </span>
-
-              <small>
-                {run.model || "CLI default"} · {run.effort}
-              </small>
-            </div>
+        <>
+          {workflowPrompt && (
+            <article className="user-message workflow-message" data-run-id={run.id}>
+              <UserMessageBody>
+                {structuredPrompt ? (
+                  <AgentResponse inline text={run.prompt} />
+                ) : (
+                  <p>{run.prompt}</p>
+                )}
+              </UserMessageBody>
+            </article>
           )}
-          {run.id && <RunPrompt run={run} />}
-          {local
-            .filter(
-              (row) =>
-                !(
-                  row.event.kind === "message" &&
-                  run.output &&
-                  String(row.data.text).trim().startsWith("{")
-                ),
-            )
-            .map(renderTool)}
-
-          {run.output &&
-            (filter === "all" || filter === "messages") &&
-            (!search || run.output.toLowerCase().includes(search.toLowerCase())) && (
-              <AgentResponse
-                text={run.output}
-                expanded={expandResults || [1, 2].includes(run.stage)}
-              />
+          <section className="agent-turn">
+            {!compact && run.id && run.purpose !== "Read-only conversation" && (
+              <div className="agent-turn-heading">
+                <span>
+                  {run.purpose === "Code Review Ask AI"
+                    ? "Code review"
+                    : run.stage === 1
+                      ? "Plan"
+                      : run.stage === 2
+                        ? "Plan refinement"
+                        : run.stage === 5
+                          ? "Implementation review"
+                          : "Implementation"}
+                </span>
+              </div>
             )}
-          {run.error && <RunError error={run.error} run={run} />}
-          {run.id && (
-            <div className="turn-outcome">
-              {run.status === "running" ? (
-                <>
-                  <LoaderCircle size={12} className="spinning" />
-                  Working…
-                </>
-              ) : (
-                <>
-                  {run.status === "completed" ? <Check size={12} /> : null}
-                  {run.status === "completed" && run.purpose === "Read-only conversation"
-                    ? "Answer completed"
-                    : run.status === "completed"
-                      ? run.stage === 1
-                        ? "Plan completed"
-                        : run.stage === 2
-                          ? "Plan refined"
-                          : run.stage === 5
-                            ? "Final review completed"
-                            : "Implementation completed"
-                      : run.status}{" "}
-                  · {duration(run.started_at, run.ended_at)}
-                </>
+            {compact && run.id ? (
+              <WorkLog run={run} hasActivity={activity.length > 0}>
+                {activity.map((row) => renderTool(row))}
+              </WorkLog>
+            ) : (
+              activity.map((row) =>
+                renderTool(row, row === finalMessage ? run.output || undefined : undefined),
+              )
+            )}
+            {compact && finalMessage && renderTool(finalMessage, run.output || undefined)}
+            {run.output &&
+              !finalMessage &&
+              (filter === "all" || filter === "messages") &&
+              (!search || run.output.toLowerCase().includes(search.toLowerCase())) && (
+                <AgentResponse text={run.output} expanded={expandResults} inline={compact} />
               )}
-            </div>
-          )}
-        </section>
+            {run.id === lastImplementation?.id &&
+              files.length > 0 &&
+              (filter === "all" || filter === "files") && (
+                <details className="chat-changes">
+                  <summary>
+                    Changed {files.length} {files.length === 1 ? "file" : "files"}
+                  </summary>
+                  {files.map((file) => (
+                    <button
+                      className="edited-file"
+                      key={file.path}
+                      onClick={() => openDiff?.(file.path)}
+                    >
+                      <FilePenLine size={13} />
+                      <code>{file.path}</code>
+                      <span className="spacer" />
+                      <span className="success">+{file.insertions}</span>
+                      <span className="failure">−{file.deletions}</span>
+                    </button>
+                  ))}
+                </details>
+              )}
+            {run.error && <RunError error={run.error} run={run} />}
+            {runSummary?.(run)}
+            {!compact && run.id && (
+              <div className="turn-outcome">
+                {run.status === "running" ? (
+                  <>
+                    <LoaderCircle size={12} className="spinning" />
+                    {run.provider === "antigravity" ? "Antigravity" : "Codex"} · Working…
+                  </>
+                ) : (
+                  <>
+                    {run.status === "completed" ? <Check size={12} /> : null}
+                    {run.status === "completed" && run.purpose === "Read-only conversation"
+                      ? "Answer completed"
+                      : run.status === "completed"
+                        ? run.stage === 1
+                          ? "Plan completed"
+                          : run.stage === 2
+                            ? "Plan refined"
+                            : run.stage === 5
+                              ? "Final review completed"
+                              : "Implementation completed"
+                        : run.status}{" "}
+                    · {duration(run.started_at, run.ended_at)}
+                  </>
+                )}
+              </div>
+            )}
+          </section>
+        </>
       ),
     });
   }

@@ -334,6 +334,7 @@ describe("domain and persistence", () => {
         { version: 24 },
         { version: 25 },
         { version: 26 },
+        { version: 27 },
       ]);
 
       db.close();
@@ -416,7 +417,7 @@ it("upgrades the V2 database additively without changing authorized queued tasks
 
     expect(
       current.all<{ version: number }>("SELECT version FROM schema_migrations").at(-1)?.version,
-    ).toBe(26);
+    ).toBe(27);
   } finally {
     current.close();
     await rm(dir, { recursive: true, force: true });

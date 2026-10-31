@@ -17,17 +17,232 @@
 }
 
 .chat-workspace .chat-main {
-  --chat-reading-width: 1050px;
-  --chat-gutter: clamp(20px, 4vw, 64px);
+  --chat-reading-width: 800px;
+  --chat-gutter: clamp(20px, 3vw, 40px);
+  background: #0d0e10;
+  color: var(--text-primary);
+  position: relative;
+}
+
+.composer-lane {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.chat-draft .event-timeline {
+  flex: 0 1 auto;
+  margin-top: auto;
+  overflow: visible;
+}
+
+.chat-draft .composer-lane {
+  margin-bottom: auto;
+}
+
+.chat-welcome {
+  padding-block: 0 24px;
+  text-align: center;
+}
+
+.chat-welcome h1 {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+}
+
+.work-log,
+.work-log-summary {
+  margin-block: 24px 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.work-log > summary,
+.reasoning-event > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.work-log > summary {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.work-log > summary::-webkit-details-marker,
+.reasoning-event > summary::-webkit-details-marker {
+  display: none;
+}
+
+.work-log[open] > summary > svg {
+  transform: rotate(90deg);
+}
+
+.work-log-entries {
+  margin-top: 12px;
+}
+
+.work-log-entries > * + * {
+  margin-top: 12px;
+}
+
+.reasoning-event > summary {
+  color: var(--text-secondary);
+}
+
+.reasoning-event .agent-response {
+  margin-top: 8px;
+}
+
+.response-fields h3 {
+  text-transform: capitalize;
+}
+
+.workflow-message {
+  max-width: 80%;
+}
+
+.chat-workspace .user-message {
+  background: #1c4078;
+  border-radius: 24px;
+  padding: 14px 18px;
+  margin-block: 24px 34px;
+}
+
+.chat-workspace .user-message p,
+.chat-workspace .agent-response {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.chat-workspace .user-message .agent-response {
+  color: var(--text-primary);
+}
+
+.chat-workspace .user-message .message-expand {
+  color: var(--text-primary);
+}
+
+.user-message-body {
+  max-height: min(240px, 28vh);
+  overflow: hidden;
+}
+
+.user-message-body.clipped {
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+}
+
+.user-message-body.expanded {
+  max-height: none;
+}
+
+.message-expand {
+  display: block;
+  margin-top: 8px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.scroll-to-latest {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(var(--composer-height, 140px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
   background: var(--background-panel);
+  box-shadow: 0 3px 12px var(--shadow);
+}
+
+.context-message > summary {
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.context-message {
+  color: var(--text-secondary);
+}
+
+.agent-turn-heading {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.tool-event summary {
+  min-height: 24px;
+  padding: 0 2px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.tool-event summary:hover {
+  background: var(--background-hover);
+}
+
+.tool-event summary .tool-state {
+  font-size: 10px;
+}
+
+.tool-event summary > code {
+  font-size: 12px;
+}
+
+.chat-changes {
+  margin-block: 12px;
+}
+
+.chat-changes .edited-file {
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.chat-changes .edited-file:hover {
+  background: var(--background-hover);
+}
+
+@media (hover: none) {
+  .user-message .message-actions {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 639px) {
+  .user-message {
+    max-width: 90%;
+  }
+
+  .chat-workspace .chat-input {
+    margin-bottom: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-event summary {
+    transition: none;
+  }
 }
 
 .chat-workspace .event-timeline {
-  padding: 22px var(--chat-gutter) 28px;
+  padding: 20px var(--chat-gutter) 12px;
   overscroll-behavior: contain;
+  overflow-anchor: none;
 }
 
-.chat-workspace .event-timeline > * {
+.chat-workspace .timeline-content {
   max-width: var(--chat-reading-width);
   margin-left: auto;
   margin-right: auto;
@@ -53,14 +268,13 @@
   width: calc(100% - var(--chat-gutter) - var(--chat-gutter));
   max-width: var(--chat-reading-width);
   margin: 8px auto 16px;
-  padding: 12px 14px 9px;
-  border-radius: 18px;
+  padding: 12px 14px 10px;
+  border-radius: var(--radius-composer);
   border-color: var(--border-default);
-  background: var(--background-elevated);
+  background: var(--background-input);
 }
 
 .chat-workspace .chat-input:has(textarea:focus) {
-  border-color: var(--border-strong);
   outline: none;
   border-color: var(--focus-ring);
   outline-offset: 2px;
@@ -72,22 +286,13 @@
   box-shadow: none;
 }
 
-.conversation-mode .select-trigger {
-  width: auto;
-  padding: 4px 8px;
-  border-color: transparent;
-  background: transparent;
-}
-
-.conversation-mode .select-value small {
-  display: none;
-}
-
 .chat-workspace .chat-input textarea {
   color: var(--text-primary);
   line-height: 1.6;
   max-height: 240px;
   overflow-y: auto;
+  font-size: 14px;
+  min-height: 56px;
 }
 
 .chat-workspace .composer-toolbar {
@@ -207,7 +412,8 @@
   color: var(--text-muted);
 }
 
-.chat-workspace .chat-input button[type="submit"] {
+.chat-workspace .chat-input button[type="submit"],
+.chat-workspace .chat-input button[aria-label="Stop response"] {
   border-radius: 50%;
   width: 32px;
   height: 32px;

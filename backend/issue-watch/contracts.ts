@@ -52,10 +52,10 @@ export const WatchRulesSchema = z
 
 export const WatchLimitsSchema = z
   .object({
-    max_candidates: z.number().int().min(1).max(200).default(200),
-    max_context_candidates: z.number().int().min(1).max(40).default(40),
-    max_semantic_candidates: z.number().int().min(1).max(20).default(20),
-    max_requests: z.number().int().min(5).max(400).default(400),
+    max_candidates: z.number().int().min(1).max(200).default(10),
+    max_context_candidates: z.number().int().min(1).max(40).default(10),
+    max_semantic_candidates: z.number().int().min(1).max(20).default(10),
+    max_requests: z.number().int().min(5).max(400).default(80),
   })
   .strict();
 
@@ -309,6 +309,15 @@ export const ScanSchema = z
     utility_run_id: z.string().uuid().nullable(),
     instruction_override: z.string().max(8000).nullable(),
     candidate_ids: z.array(identity).max(200).nullable(),
+    batch: z
+      .object({
+        order: z.enum(["newest", "oldest"]),
+        page: z.number().int().min(1).max(100),
+        next_page: z.number().int().min(2).max(100).nullable(),
+        complete: z.boolean(),
+      })
+      .strict()
+      .optional(),
     coverage: CoverageSchema,
     error: z.string().max(4000).nullable(),
     context_hash: z
@@ -326,6 +335,8 @@ export const ScanInput = z
     request_id: z.string().uuid(),
     instruction_override: z.string().min(1).max(8000).optional(),
     candidate_ids: z.array(identity).min(1).max(200).optional(),
+    order: z.enum(["newest", "oldest"]).optional(),
+    after_scan_id: z.string().uuid().optional(),
   })
   .strict();
 

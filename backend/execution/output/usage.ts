@@ -33,6 +33,11 @@ export interface UsageRecord {
 export class Usage {
   private readonly steps = new Map<string, Map<number, Record<string, unknown>>>();
 
+  private readonly codexUsage = new Map<
+    string,
+    { previous: Record<string, unknown>; totals: Record<string, number> }
+  >();
+
   constructor(private readonly db: Database) {}
 
   start = (
@@ -56,10 +61,68 @@ export class Usage {
     );
 
   observe = (id: string, raw: Record<string, unknown>) => {
+    if (raw.method === "account/rateLimits/updated") {
+      const limits = object(object(raw.params).rateLimits);
+
+      const windows = [limits.primary, limits.secondary]
+        .map(object)
+        .filter(
+          (window) =>
+            typeof window.usedPercent === "number" &&
+            typeof window.windowDurationMins === "number" &&
+            typeof window.resetsAt === "number",
+        )
+        .map((window) => ({
+          usedPercent: window.usedPercent as number,
+          windowDurationMins: window.windowDurationMins as number,
+          resetsAt: window.resetsAt as number,
+        }));
+
+      if (windows.length)
+        this.recordLimits(
+          id,
+          {
+            reportedAt: now(),
+            ...(typeof limits.planType === "string" ? { planType: limits.planType } : {}),
+            windows,
+          },
+          true,
+        );
+    }
+
     const result = object(raw.result);
     const step = object(raw.step_update);
     const stepUsage = object(step.usage);
     let usage = object(raw.usage || result.usage);
+    if (raw.method === "thread/tokenUsage/updated") {
+      const tokenUsage = object(object(raw.params).tokenUsage);
+      const current = object(tokenUsage.total);
+      const last = object(tokenUsage.last);
+      const state = this.codexUsage.get(id) || { previous: {}, totals: {} };
+      for (const [field, key] of Object.entries({
+        inputTokens: "input_tokens",
+        cachedInputTokens: "cached_input_tokens",
+        outputTokens: "output_tokens",
+        reasoningOutputTokens: "reasoning_tokens",
+        totalTokens: "total_tokens",
+      })) {
+        const count = current[field];
+        const previous = state.previous[field];
+
+        const delta =
+          typeof count === "number" && typeof previous === "number" && count >= previous
+            ? count - previous
+            : last[field];
+
+        if (typeof delta === "number" && Number.isSafeInteger(delta) && delta >= 0)
+          state.totals[key] = (state.totals[key] || 0) + delta;
+      }
+
+      state.previous = current;
+      this.codexUsage.set(id, state);
+      usage = state.totals;
+    }
+
     // Official agy stream emits per-step usage and a final aggregate. Keep step
     // updates idempotent; sum only reported fields, then use the final aggregate.
     if (
@@ -111,6 +174,7 @@ export class Usage {
 
   finish = (id: string, start: number, status: string, error: string | null = null) => {
     this.steps.delete(id);
+    this.codexUsage.delete(id);
     return this.db.run(
       "UPDATE ai_usage SET ended_at=?,duration_ms=?,status=?,error=? WHERE id=?",
       now(),

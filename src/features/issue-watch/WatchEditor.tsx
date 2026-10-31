@@ -59,14 +59,12 @@ export const WatchEditor = ({
     },
   );
 
-  const [limits, setLimits] = useState(
-    original?.limits || {
-      max_candidates: 200,
-      max_context_candidates: 40,
-      max_semantic_candidates: 20,
-      max_requests: 400,
-    },
-  );
+  const [limits, setLimits] = useState({
+    max_candidates: Math.min(10, original?.limits.max_candidates ?? 10),
+    max_context_candidates: Math.min(10, original?.limits.max_context_candidates ?? 10),
+    max_semantic_candidates: Math.min(10, original?.limits.max_semantic_candidates ?? 10),
+    max_requests: Math.min(80, original?.limits.max_requests ?? 80),
+  });
 
   const [preview, setPreview] = useState<ReturnType<typeof previewRules> | null>(null);
 
@@ -569,10 +567,10 @@ export const WatchEditor = ({
             <div className="watch-limits-grid">
               {(
                 [
-                  ["max_candidates", "Candidate identities", 200],
-                  ["max_context_candidates", "Detailed contexts", 40],
-                  ["max_semantic_candidates", "AI candidates", 20],
-                  ["max_requests", "GitHub requests", 400],
+                  ["max_candidates", "Candidate identities", 10],
+                  ["max_context_candidates", "Detailed contexts", 10],
+                  ["max_semantic_candidates", "AI candidates", 10],
+                  ["max_requests", "GitHub requests", 80],
                 ] as const
               ).map(([key, label, max]) => (
                 <label key={key}>

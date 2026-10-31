@@ -70,13 +70,16 @@ export const callTasks = async (
         content: string;
         configuration: string | null;
         status: string;
+        purpose: string;
       }>(
-        "SELECT content,configuration,status FROM task_messages WHERE id=? AND task_id=?",
+        "SELECT content,configuration,status,purpose FROM task_messages WHERE id=? AND task_id=?",
         p.message_id,
         p.id,
       )[0];
 
       if (!message) throw new AdeError("not_found", "Message not found");
+      if (message.purpose === "chat")
+        throw new AdeError("invalid_input", "Send a new chat message to retry a conversation.");
       if (message.status !== "delivered" && (!p.content || p.content === message.content))
         return e.sendSavedMessage(p.id, p.message_id);
       return e.followUp(
@@ -147,7 +150,7 @@ export const callTasks = async (
       if (
         task.stage > p.stage ||
         e.db.all(
-          "SELECT id FROM agent_runs WHERE task_id=? AND stage=? AND purpose!='Read-only conversation' LIMIT 1",
+          "SELECT id FROM agent_runs WHERE task_id=? AND stage=? AND purpose NOT IN ('Read-only conversation','Workspace conversation') LIMIT 1",
           p.id,
           p.stage,
         ).length

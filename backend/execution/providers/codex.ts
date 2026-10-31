@@ -9,6 +9,7 @@ import {
 import type { NormalizedEvent } from "../../domain";
 import { discoverCodexModels } from "./codex-models";
 import { codexSchema, codexResult } from "./codex-schema";
+import { codexConversation, codexSessionEvent } from "./codex-conversation";
 
 export class CodexProvider implements AgentProvider {
   readonly name = "codex";
@@ -69,42 +70,52 @@ export class CodexProvider implements AgentProvider {
     return d;
   };
 
-  invocation = (r: AgentRunRequest) => ({
-    program: "codex",
-    args: [
-      "--no-daemon",
-      "exec",
-      "--ignore-user-config",
-      "--ignore-rules",
-      ...(r.workspaceType === "utility" ? ["--skip-git-repo-check"] : []),
-      "--json",
-      "--color",
-      "never",
-      "--sandbox",
-      r.stage === 3 ? "workspace-write" : "read-only",
-      "-C",
-      r.cwd,
-      "-c",
-      `model_reasoning_effort=${JSON.stringify(r.config.effort)}`,
-      "-c",
-      'approval_policy="never"',
-      "-c",
-      'forced_login_method="chatgpt"',
-      "-c",
-      "analytics.enabled=false",
-      "-c",
-      `sandbox_workspace_write.network_access=${r.stage === 3}`,
-      "--output-schema",
-      r.schemaPath,
-      ...(r.config.model ? ["--model", r.config.model] : []),
-      "-",
-    ],
-    input: r.prompt,
-  });
+  invocation = (r: AgentRunRequest) =>
+    r.conversation
+      ? codexConversation(r)
+      : {
+          program: "codex",
+          args: [
+            "--no-daemon",
+            "exec",
+            "--ignore-user-config",
+            "--ignore-rules",
+            ...(r.workspaceType === "utility" ? ["--skip-git-repo-check"] : []),
+            "--json",
+            "--color",
+            "never",
+            "--sandbox",
+            r.stage === 3 ? "workspace-write" : "read-only",
+            "-C",
+            r.cwd,
+            "-c",
+            `model_reasoning_effort=${JSON.stringify(r.config.effort)}`,
+            "-c",
+            'approval_policy="never"',
+            "-c",
+            'forced_login_method="chatgpt"',
+            "-c",
+            "analytics.enabled=false",
+            "-c",
+            `sandbox_workspace_write.network_access=${r.stage === 3}`,
+            "--output-schema",
+            r.schemaPath,
+            ...(r.config.model ? ["--model", r.config.model] : []),
+            "-",
+          ],
+          input: r.prompt,
+        };
 
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {
+    if (typeof raw.method === "string" || raw.result) {
+      const translated = codexSessionEvent(raw);
+      if (translated === raw) return [];
+      raw = translated;
+    }
+
     const event = raw.type;
     const item = object(raw.item);
+    if (["userMessage", "user_message", "user_input"].includes(String(item.type))) return [];
     let kind: NormalizedEvent["kind"] = "analysis.status";
     if (event === "thread.started") kind = "run.started";
     else if (event === "turn.completed") kind = "run.completed";
@@ -132,8 +143,11 @@ export class CodexProvider implements AgentProvider {
               query: item.query,
               path: item.path,
               text: item.text,
+              text_delta: item.text_delta,
+              phase: item.phase,
               command: item.command,
               stdout: item.stdout ?? item.aggregated_output,
+              stdout_delta: item.stdout_delta,
               output_source:
                 item.stdout !== undefined
                   ? "stdout"
@@ -154,6 +168,7 @@ export class CodexProvider implements AgentProvider {
   };
 
   result = (raw: Record<string, unknown>) => {
+    if (typeof raw.method === "string") raw = codexSessionEvent(raw);
     const item = object(raw.item);
     if (
       raw.type === "item.completed" &&
@@ -170,6 +185,8 @@ export class CodexProvider implements AgentProvider {
     return undefined;
   };
 
-  conversationId = (raw: Record<string, unknown>) =>
-    typeof raw.thread_id === "string" ? raw.thread_id : null;
+  conversationId = (raw: Record<string, unknown>) => {
+    if (typeof raw.method === "string" || raw.result) raw = codexSessionEvent(raw);
+    return typeof raw.thread_id === "string" ? raw.thread_id : null;
+  };
 }
