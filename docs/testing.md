@@ -147,6 +147,6 @@ Maintainers can later require all eight named statuses in branch protection. No
 repository settings are changed by this work. YAML and local commands can be validated
 locally; actual GitHub-hosted status execution requires a separately authorized push.
 
-Current milestone evidence belongs in [the restructuring record](architecture/restructuring.md).
-[Historical verification](architecture/verification-history.md) is retained as evidence,
-not as a statement that all old live/native checks were rerun for this refactor.
+The [verification record](architecture/verification-history.md) captures the latest local
+acceptance run. [Workflow contracts](architecture/workflows.md) describe current execution
+behavior; this guide defines how the test suites exercise it.

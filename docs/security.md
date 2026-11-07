@@ -114,6 +114,5 @@ channel when available. Include affected behavior and a minimal isolated reprodu
 do not attach real credentials, private issue data or personal SQLite/log files.
 There is no promised response SLA or claimed formal disclosure program.
 
-The [historical security audit](architecture/security-audit-history.md) retains earlier
-findings, remediation reasoning and experiment limits. It is historical evidence;
-current code and regression results determine present behavior.
+The [architecture overview](../ARCHITECTURE.md) maps the trusted modules, and the
+[testing guide](testing.md) describes the isolated security and integration fixtures.

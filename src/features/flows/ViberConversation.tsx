@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 
 import type { AgentProfile, FlowNode, InputBindingSchema } from "../../../backend/flows/contracts";
-import type { FlowWorkspace } from "../../../backend/rpc/flows";
+import type { FlowWorkspace } from "../../../backend/flows/workspace";
 import type { z } from "zod";
 import type { Detail } from "../../lib/types";
 import { getTaskView, updateTaskView, useTaskView } from "../../lib/taskView";
@@ -11,7 +11,7 @@ import { Composer, composerContent } from "../chat/Composer";
 import { AgentTimeline } from "../chat/AgentTimeline";
 import { CurrentRun } from "../chat/CurrentRun";
 import { useOptimisticMessages } from "../chat/useOptimisticMessages";
-import { ViberFace } from "./FlowCanvas";
+import { ViberFace } from "./ViberFace";
 
 type Binding = z.infer<typeof InputBindingSchema>;
 

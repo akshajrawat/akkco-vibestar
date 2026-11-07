@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import { Rpc } from "../../backend/rpc";
-import type { FlowWorkspace } from "../../backend/rpc/flows";
+import type { FlowWorkspace } from "../../backend/flows/workspace";
 import type { AgentProfile } from "../../backend/flows/contracts";
 import { FlowDefinitionSchema } from "../../backend/flows/contracts";
 import { builtInProfiles, flowTemplates, instantiateTemplate } from "../../backend/flows/templates";

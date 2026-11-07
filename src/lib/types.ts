@@ -1,6 +1,7 @@
 import type { Task as CoreTask } from "../../backend/domain";
 import type { DiffFile as CoreDiffFile } from "../../backend/workspace/git";
 import type { Repository, Settings } from "../../backend/domain";
+import type { taskFlowSummaries } from "../../backend/flows/workspace";
 
 export type { Repository, Settings, StageConfig } from "../../backend/domain";
 export type Detection = import("../../backend/execution/providers/contracts").ProviderDetection;
@@ -51,7 +52,7 @@ export interface Task
 }
 
 export interface Snapshot {
-  flow_states?: ReturnType<typeof import("../../backend/rpc/flows").taskFlowSummaries>;
+  flow_states?: ReturnType<typeof taskFlowSummaries>;
   pr_batches?: import("../../backend/review/pr/batches").PRBatch[];
   pr_watch?: import("../../backend/review/pr/watch-contracts").PRWatchState | null;
   capabilities?: {

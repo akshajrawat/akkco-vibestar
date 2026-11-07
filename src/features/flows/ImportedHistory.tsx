@@ -1,4 +1,4 @@
-import type { HistoricalWorkspace } from "../../../backend/rpc/flows";
+import type { HistoricalWorkspace } from "../../../backend/flows/workspace";
 import type { Detail } from "../../lib/types";
 import { useTaskView } from "../../lib/taskView";
 import { AgentTimeline } from "../chat/AgentTimeline";

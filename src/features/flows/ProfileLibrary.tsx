@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { AgentProfile } from "../../../backend/flows/contracts";
-import type { ViberInstance } from "../../../backend/rpc/flows";
+import type { ViberInstance } from "../../../backend/flows/workspace";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { ProfileEditor } from "./ProfileEditor";
-import { ViberFace } from "./FlowCanvas";
+import { ViberFace } from "./ViberFace";
 
 export const ProfileLibrary = ({
   chat,

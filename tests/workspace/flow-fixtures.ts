@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { AgentProfile } from "../../backend/flows/contracts";
-import type { FlowWorkspace } from "../../backend/rpc/flows";
+import type { FlowWorkspace } from "../../backend/flows/workspace";
 import type { Detail } from "../../src/lib/types";
 import { builtInProfiles } from "../../backend/flows/templates";
 

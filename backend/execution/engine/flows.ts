@@ -1,27 +1,23 @@
 import { z } from "zod";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import { AdeError, now, type Task } from "../../domain";
+import type { ViberChatSchema } from "../../flows/run-contracts";
 import {
-  agentNodePrompt,
   ApprovalDecisionSchema,
   FlowStartSchema,
-  ViberChatSchema,
-  ConversationScopeSchema,
   type ApprovalDecision,
   type FlowRun,
-  type NodeAttempt,
 } from "../../flows/run-contracts";
 import { FlowDispatchStore, type DispatchRequest } from "../../flows/dispatch-store";
 import { resolveNodeInputs } from "../../flows/context";
 import { prepareManagedWorkspace } from "../../workspace/managed";
+import { taskRuntime } from "../../workspace/runtime";
 import type { Engine } from "../engine";
 import type { AgentRunner } from "../agents/agent-runner";
-import { taskRuntime } from "../../workspace/runtime";
 import { redact } from "../runtime/process";
 import type { ExecutionState } from "./state";
 import type { EngineScheduling } from "./scheduling";
-import { observedVerification } from "../../flows/verification";
 import {
   continuationPlan,
   continuationRequestDigest,
@@ -30,6 +26,8 @@ import {
   ContinuationPlanSchema,
 } from "../../flows/continuation";
 import { legacyMigration } from "../../flows/legacy-migration";
+import { FlowNodeExecutor } from "./flow-node";
+import { ViberConversationRequests } from "./viber-conversations";
 
 const runInput = z.object({ run_id: z.string().uuid(), request_id: z.string().uuid() }).strict();
 const nodeInput = runInput.extend({ node_id: z.string().uuid() }).strict();
@@ -41,6 +39,10 @@ const message = (error: unknown) =>
 /** Explicit graph execution uses the same slots, cancellation state, runner and workspace ownership. */
 export class FlowExecution {
   readonly dispatches: FlowDispatchStore;
+
+  private readonly nodeExecutor: FlowNodeExecutor;
+
+  private readonly viberConversations: ViberConversationRequests;
 
   constructor(
     private readonly host: Pick<
@@ -60,10 +62,18 @@ export class FlowExecution {
       | "manual"
     >,
     private readonly state: ExecutionState,
-    private readonly runner: AgentRunner,
+    runner: AgentRunner,
     private readonly slots: { withExecutionSlot: EngineScheduling["withExecutionSlot"] },
   ) {
     this.dispatches = new FlowDispatchStore(host.db);
+    this.nodeExecutor = new FlowNodeExecutor(host, state, runner, this.dispatches);
+
+    this.viberConversations = new ViberConversationRequests(
+      host,
+      state,
+      this.dispatches,
+      this.assertTaskOpen,
+    );
   }
 
   previewContinuation = (raw: z.input<typeof ContinuationTargetSchema>) =>
@@ -227,138 +237,7 @@ export class FlowExecution {
       );
     });
 
-  /** Chat captures one existing Viber. Graph revisions and predecessor completion remain unchanged. */
-  chatViber = (raw: z.input<typeof ViberChatSchema>) => {
-    const { content, ...configuration } = ViberChatSchema.parse(raw);
-    const input = { ...configuration, content };
-    this.host.assertAvailable();
-
-    const run = this.host.db.transaction(() => {
-      const previous = this.host.db.all<{
-        task_id: string;
-        content: string;
-        configuration: string;
-      }>("SELECT task_id,content,configuration FROM task_messages WHERE id=?", input.request_id)[0];
-
-      if (previous) {
-        if (
-          previous.task_id !== input.task_id ||
-          previous.content !== redact(input.content) ||
-          previous.configuration !== JSON.stringify(configuration)
-        )
-          throw new AdeError(
-            "request_conflict",
-            "This conversation request belongs to a different message.",
-          );
-
-        const saved = this.host.db.all<{ id: string }>(
-          "SELECT id FROM flow_runs WHERE request_id=? AND task_id=?",
-          input.request_id,
-          input.task_id,
-        )[0];
-
-        if (!saved)
-          throw new AdeError(
-            "request_completed",
-            "This message has no retained execution. Send a new explicit message.",
-          );
-        return this.host.flowRuns.run(saved.id);
-      }
-
-      this.assertTaskOpen(input.task_id);
-      if (this.state.taskMaintenance.has(input.task_id))
-        throw new AdeError("busy", "Wait for task maintenance before starting a conversation.");
-      const task = this.host.db.task(input.task_id);
-      if (!task.flow_id || !task.goal)
-        throw new AdeError(
-          "invalid_state",
-          "Select a task with a saved Viber graph before sending a message.",
-        );
-      const saved = this.host.flows.definition(task.flow_id);
-      if (saved.revision !== input.expected_revision)
-        throw new AdeError(
-          "revision_conflict",
-          "Reload the saved flow before sending this message.",
-        );
-      const node = saved.definition.nodes.find((node) => node.id === input.node_id);
-      if (node?.type !== "agent")
-        throw new AdeError("invalid_state", "Select an agent Viber from this task's saved graph.");
-      if (input.profile_id !== node.profile_id)
-        throw new AdeError(
-          "revision_conflict",
-          "This graph instance now uses a different Viber. Reload its conversation before sending.",
-        );
-      const profile = this.host.flows.profile(node.profile_id);
-      for (const id of input.history_ids) {
-        if (
-          !this.host.db.all(
-            "SELECT id FROM task_messages WHERE id=? AND task_id=? AND flow_node_id=? AND viber_profile_id=? AND purpose='chat' AND status='chat_completed'",
-            id,
-            task.id,
-            node.id,
-            profile.id,
-          ).length
-        )
-          throw new AdeError(
-            "context",
-            "Select completed conversation messages from this task and Viber instance.",
-          );
-      }
-
-      const inputs = [
-        ...input.inputs,
-        ...input.history_ids.map((message_id) => ({ kind: "message" as const, message_id })),
-        { kind: "message" as const, message_id: input.request_id },
-      ];
-
-      const scope = ConversationScopeSchema.parse({
-        node_id: node.id,
-        inputs: inputs.filter(
-          (binding, index) =>
-            inputs.findIndex((other) => JSON.stringify(other) === JSON.stringify(binding)) ===
-            index,
-        ),
-      });
-
-      this.host.db.run(
-        "INSERT INTO task_messages(id,task_id,role,content,created_at,status,configuration,purpose,flow_node_id,viber_profile_id) VALUES(?,?,'user',?,?,'chat_pending',?,'chat',?,?)",
-        input.request_id,
-        task.id,
-        redact(input.content),
-        now(),
-        JSON.stringify(configuration),
-        node.id,
-        profile.id,
-      );
-
-      const parent = this.host.db.all<{ id: string }>(
-        "SELECT id FROM flow_runs WHERE task_id=? AND flow_id=? AND kind='flow' ORDER BY rowid DESC LIMIT 1",
-        task.id,
-        task.flow_id,
-      )[0];
-
-      const captured = this.host.flowRuns.createRun(
-        {
-          task_id: task.id,
-          flow_id: task.flow_id,
-          revision: saved.revision,
-          goal: task.goal,
-          request_id: input.request_id,
-          parent_run_id: parent?.id || null,
-        },
-        "user",
-        scope,
-      );
-
-      resolveNodeInputs(this.host.db, this.host.flowRuns, captured.id, node.id);
-      this.dispatches.enqueue({ id: input.request_id, run_id: captured.id, kind: "flow" });
-      return captured;
-    });
-
-    this.host.changed(run.task_id);
-    void this.host.drain();
-    return run;
-  };
+  chatViber = (raw: z.input<typeof ViberChatSchema>) => this.viberConversations.chat(raw);
 
   start = (raw: z.input<typeof FlowStartSchema>) => {
     this.host.assertAvailable();
@@ -527,7 +406,7 @@ export class FlowExecution {
       active?.controller.abort();
       this.host.changed(run.task_id);
       await active?.promise;
-      this.finishConversationMessage(run.id);
+      this.nodeExecutor.finishConversationMessage(run.id);
       return this.host.flowRuns.run(run.id);
     });
 
@@ -597,7 +476,7 @@ export class FlowExecution {
                 "A required approval was rejected.",
               );
             else if (current.status !== "paused") {
-              if (this.complete(run.id))
+              if (this.nodeExecutor.complete(run.id))
                 this.host.flowRuns.setRunStatus(run.id, current.status, "completed");
               else if (control?.kind === "flow")
                 this.dispatches.enqueue({ id: saved.request_id, run_id: run.id, kind: "flow" });
@@ -783,7 +662,7 @@ export class FlowExecution {
 
         const node = ready[0];
         if (!node) {
-          const complete = this.complete(run.id);
+          const complete = this.nodeExecutor.complete(run.id);
           const waiting = attempts.some((attempt) => attempt.status === "waiting");
 
           const failed = attempts.some(
@@ -848,7 +727,7 @@ export class FlowExecution {
         );
 
         this.host.changed(task.id);
-        if (node.type !== "approval") await this.executeNode(task, attempt, signal);
+        if (node.type !== "approval") await this.nodeExecutor.execute(task, attempt, signal);
         if (dispatch.node_id) {
           const result = this.host.flowRuns.attempt(attempt.id);
           const state = this.host.flowRuns.run(run.id);
@@ -858,7 +737,7 @@ export class FlowExecution {
                 ? "waiting"
                 : result.status === "failed"
                   ? "failed"
-                  : this.complete(run.id)
+                  : this.nodeExecutor.complete(run.id)
                     ? "completed"
                     : "paused";
 
@@ -883,159 +762,9 @@ export class FlowExecution {
         this.host.flowRuns.setRunStatus(run.id, current.status, status, message(error));
       this.dispatches.settle(dispatch.id, status, message(error));
     } finally {
-      this.finishConversationMessage(run.id);
+      this.nodeExecutor.finishConversationMessage(run.id);
       this.host.changed(run.task_id);
     }
-  };
-
-  private executeNode = async (task: Task, attempt: NodeAttempt, signal: AbortSignal) => {
-    const node = attempt.configuration.node;
-    try {
-      let output: string;
-      if (node.type === "agent") {
-        if (!attempt.configuration.agent)
-          throw new AdeError("invalid_state", "The captured agent settings are missing.");
-
-        const result = await this.runner.runConfigured(
-          task,
-          signal,
-          attempt.configuration.agent.execution,
-          { prompt: agentNodePrompt(attempt), purpose: node.name, nodeAttemptId: attempt.id },
-        );
-
-        output = JSON.stringify(result);
-      } else if (node.type === "command") {
-        const result = await this.host.manual(task.id, node.argv, signal, true, undefined, {
-          readOnly: node.access === "read-only",
-          timeoutMs: node.timeout_secs * 1000,
-          nodeAttemptId: attempt.id,
-        });
-
-        const linked = this.host.flowRuns.attempt(attempt.id);
-        output = JSON.stringify({ command_run_id: linked.command_run_id });
-        if (result.code !== 0) {
-          this.host.flowRuns.finishAttempt(
-            attempt.id,
-            "failed",
-            output,
-            observedVerification(this.host.db, linked),
-            "The configured command failed.",
-          );
-
-          return;
-        }
-      } else return;
-      if (output.length > 1048576)
-        throw new AdeError(
-          "output_limit",
-          "The node result exceeds 1 MiB. The full execution record is retained; reduce the requested output before retrying.",
-        );
-      const linked = this.host.flowRuns.attempt(attempt.id);
-
-      const verification = observedVerification(this.host.db, linked);
-
-      await this.host.git.assertOwnedTask(task);
-      const fingerprint = await this.host.git.fingerprint(task);
-      signal.throwIfAborted();
-
-      this.host.flowRuns.finishAttempt(
-        attempt.id,
-        "completed",
-        output,
-        verification,
-        null,
-        fingerprint,
-      );
-    } catch (error) {
-      const current = this.host.flowRuns.attempt(attempt.id);
-      if (current.status === "running")
-        this.host.flowRuns.finishAttempt(
-          attempt.id,
-          signal.aborted ? (this.state.closed ? "interrupted" : "cancelled") : "failed",
-          null,
-          observedVerification(this.host.db, current),
-          message(error),
-        );
-      if (signal.aborted) throw error;
-    } finally {
-      const linked = this.host.flowRuns.attempt(attempt.id);
-      const run = this.host.flowRuns.run(attempt.run_id);
-
-      const chat = this.host.db.all<{
-        id: string;
-        flow_node_id: string | null;
-        viber_profile_id: string | null;
-      }>(
-        "SELECT id,flow_node_id,viber_profile_id FROM task_messages WHERE id=? AND task_id=? AND purpose='chat' AND status='chat_pending'",
-        run.request_id,
-        task.id,
-      )[0];
-
-      if (chat) {
-        this.host.db.transaction(() => {
-          this.host.db.run(
-            "UPDATE task_messages SET status=?,run_id=? WHERE id=?",
-            linked.status === "completed"
-              ? "chat_completed"
-              : linked.status === "interrupted"
-                ? "chat_interrupted"
-                : linked.status === "cancelled"
-                  ? "chat_cancelled"
-                  : "chat_failed",
-            linked.agent_run_id,
-            chat.id,
-          );
-
-          if (linked.status === "completed" && linked.output)
-            this.host.db.run(
-              "INSERT INTO task_messages(id,task_id,role,content,created_at,status,run_id,purpose,flow_node_id,viber_profile_id) VALUES(?,?,'assistant',?,?,'chat_completed',?,'chat',?,?)",
-              randomUUID(),
-              task.id,
-              linked.output,
-              now(),
-              linked.agent_run_id,
-              chat.flow_node_id,
-              chat.viber_profile_id,
-            );
-        });
-      }
-
-      if (
-        run.kind === "conversation" &&
-        run.parent_run_id &&
-        attempt.configuration.agent?.execution.access === "workspace-write"
-      ) {
-        let reason: string | null = null;
-        try {
-          if (
-            (await this.host.git.fingerprint(this.host.db.task(task.id))) !==
-            attempt.workspace_fingerprint
-          )
-            reason =
-              "A Viber conversation changed the shared workspace. Apply a saved revision or start a fresh graph run before continuing.";
-        } catch {
-          reason =
-            "Workspace evidence became unavailable after a Viber conversation. Restore ownership and apply a saved revision before continuing the graph.";
-        }
-
-        if (reason) {
-          this.host.flowRuns.invalidateWorkspace(run.parent_run_id, reason);
-          this.dispatches.stopRun(run.parent_run_id, "cancelled");
-        }
-      }
-
-      this.host.changed(task.id);
-    }
-  };
-
-  private complete = (runId: string) => {
-    const attempts = this.host.flowRuns.results(runId);
-    return this.host.flowRuns
-      .definition(runId)
-      .nodes.every(
-        (node) =>
-          attempts.filter((attempt) => attempt.node_id === node.id).at(-1)?.status === "completed",
-      );
   };
 
   private assertTaskOpen = (taskId: string) => {
@@ -1070,29 +799,6 @@ export class FlowExecution {
       throw new AdeError(
         "busy",
         "Finish or stop the Viber conversation before continuing the graph.",
-      );
-  };
-
-  private finishConversationMessage = (runId: string) => {
-    const run = this.host.flowRuns.run(runId);
-
-    const status =
-      run.status === "completed"
-        ? "chat_completed"
-        : run.status === "cancelled"
-          ? "chat_cancelled"
-          : run.status === "interrupted"
-            ? "chat_interrupted"
-            : run.status === "failed"
-              ? "chat_failed"
-              : null;
-
-    if (status)
-      this.host.db.run(
-        "UPDATE task_messages SET status=? WHERE id=? AND task_id=? AND purpose='chat' AND status='chat_pending'",
-        status,
-        run.request_id,
-        run.task_id,
       );
   };
 }

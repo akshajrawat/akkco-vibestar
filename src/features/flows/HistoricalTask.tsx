@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 
-import type { HistoricalWorkspace } from "../../../backend/rpc/flows";
+import type { HistoricalWorkspace } from "../../../backend/flows/workspace";
 import type { Detail } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";

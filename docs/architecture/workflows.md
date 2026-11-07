@@ -104,110 +104,31 @@ revisions, runs, attempts, migration sources and managed files. Executed graph h
 blocks destructive cleanup; unused drafts may be explicitly removed with their
 request tombstones retained.
 
-The sections below document older saved records. Their numeric-stage execution,
-chat, follow-up, approval and verification-recovery controls have been removed.
-Use explicit profiles, graph inputs, node attempts and approval decisions. The
-bridge rejects these retired mutations before forwarding to any helper; historical
-readers and migrations preserve saved evidence. See the [implementation record](agent-flows.md).
+## Legacy task records
 
-## Historical issue creation, chat and startup
+Tasks created before saved graphs remain readable through the storage compatibility path. Historical
+conversion preserves task, run, message, artifact, command and usage identities, along with the exact
+source records needed for recovery. A saved execution boundary becomes an idle checkpoint; startup
+never resumes an old provider operation.
 
-The repository picker searches connected repository names and shows environment/base
-branch information. Source paths and worktree ownership remain in Details. Selecting a
-connected GitHub repository reuses its registration instead of offering it for import.
-Discovery defaults to configured project folders, skips temporary/generated/managed
-subtrees, and allows explicit unusual paths. Broad home scans are an advanced opt-in.
+The reader does not invent missing settings, context packets, approvals or completion evidence.
+Users inspect the retained graph and choose a fresh explicit action to continue. Corrupt or
+incomplete records remain available with recovery diagnostics. Retired fixed-stage mutations are
+rejected by RPC and bridge compatibility checks; historical schemas and migrations remain in place
+for existing user data.
 
-Creating a task writes an idle `not_started` record. It does not drain the queue,
-prepare a worktree or invoke a provider. Whole-issue scope and claimed partial scope
-retain their distinct meanings. Requests bind UUIDs to a canonical payload digest;
-a repeated matching request returns its original task, including after transport failure.
-Tombstones prevent history deletion from turning a retry into a new task.
+## Verification evidence
 
-A read-only question is persisted before execution. It may prepare the owned worktree,
-uses the existing runner/logs/events/usage and leaves the workflow idle. Only completed
-chat messages explicitly selected at startup, or a user-reviewed summary, enter the
-implementation pipeline. Historical instruction messages retain their original purpose.
+A completed process, a provider's report and an observed passing check are separate outcomes. Node
+attempts link to actual command records and retain missing, failed or stale evidence. Approval binds
+the saved node settings and workspace evidence. Conversation writes to a shared workspace invalidate
+parent graph authority even when a turn fails or is cancelled. Task completion does not manufacture a
+passing check or review.
 
-Explicit startup validates current repository identity, provider capabilities and
-selected conversation ownership, then atomically saves durable startup authority.
-Concurrent identical requests share settlement. Shutdown aborts and awaits validation.
-Historical queued entries retain the authorization they already had.
-
-## Historical stage gates, instructions and drafts
-
-Preparation pins base identity and records real Git activity.
-Each issue gets a dedicated branch. An explicitly started workflow may use a clean,
-unreserved source checkout already on its up-to-date base branch; otherwise it gets
-an isolated worktree. Another task never commits, stashes or moves existing edits to
-make room. Both providers receive the assigned directory and branch through the same
-host ownership boundary. Source checkout files and branches are retained by task cleanup.
-
-Plan, Plan refinement and Implementation with its checks pause for human approval.
-Independent Review ends the workflow with a verdict and numbered next steps, on either
-success or findings. Queued feedback remains saved, never an automatic fix loop.
-No future stage is shown as running merely
-because approval is waiting. Provider/model/effort display comes from actual saved runs;
-composer settings affect the next requested message.
-
-Planning prompts contain the issue, comments and scoped instructions; refinement adds
-the original plan. Implementation receives the refined plan directly. Workflow prompts
-are shown as user messages and provider replies remain visible in chat. Completed
-activity is collapsed under “Worked for…”; technical protocol details remain in Raw logs.
-
-After the final verdict, the ordinary composer can request one independent workspace
-conversation turn with the selected model. It can edit only the assigned task workspace,
-does not advance workflow stages, and invalidates the review fingerprint if content
-changes even when the provider fails. Greetings and complete app-identity questions
-use an empty read-only workspace with host-app context and skip source preparation.
-
-Approval binds the artifact the user viewed. Pending saved instructions need an explicit
-keep-saved/include-next-stage choice bound to current message IDs. Retry does not consume
-unsent drafts. Feedback reruns the appropriate stage in the same worktree; it does not
-silently discard source changes or reset the pinned base.
-
-Streamed schema-valid plans are drafts, separate from canonical successful artifacts.
-Recovering a draft stops its run, preserves the real outcome and checks schema plus
-versioned worktree fingerprint before presenting approval. Legacy incomparable hashes
-require fresh explicit planning/review. Unknown provider metadata remains rejected;
-only known adapter envelope fields are removed before strict domain validation.
-
-## Verification and independent review
-
-Verification distinguishes application failures, environmental prerequisites and evidence
-gaps. Observed command records retain argv, streams, exit and attempt identity. Provider
-reports are separately attributed; unknown/skipped tests cannot become passing coverage.
-Historical requirements and unresolved failures remain additive across repairs.
-
-Implementation reuses existing dependencies and runs all applicable test, lint, formatting
-and required platform/stress commands. Agents do not install, upgrade or download packages,
-browsers or toolchains. Existing ignored nested package dependencies are connected read-only;
-missing prerequisites are reported with unrun checks. Package runners use offline/no-fetch
-operation. It pauses at implementation approval, then independent review
-runs the applicable checks again in its read-only source boundary. Missing implementation
-evidence is supplied to the reviewer; it does not require a separate validation action or
-gap-acknowledgment dialog before review. Genuine failures still prevent final acceptance.
-The Checks tab records evidence rather than scheduling another workflow stage.
-
-Legacy stage 4 remains readable and an explicit approval can continue its saved
-implementation to review. Recovery RPCs remain compatible for older clients and retained
-history; they are not offered as an additional user workflow. No change replays providers
-on restart or discards saved instructions.
-
-Repository policy requires automated checks and explicit issue requirements while extra
-unexecuted manual browser checks can remain optional. Existing tasks change policy only
-through an explicit journaled operation. Reports cannot downgrade protected requirements.
-Passing optional evidence does not substitute for missing required execution.
-
-The read-only final reviewer receives a complete retained evidence packet. Its source
-verdict and coverage are distinct. `reviewed_with_gaps` retains findings or unavailable
-checks and blocks task completion. Completion binds the current review fingerprint; edits invalidate it.
-An unchanged recheck preserves an accepted review rather than starting inference again.
-
-Browser diagnostics have strict environment/report contracts. Opening the panel runs
-nothing. Explicit selection may mount validated installed browser/cache paths read-only
-for supported manual checks; provider-internal sandbox rules are unchanged. Capability
-success proves tooling availability, not application correctness. No automatic download occurs.
+Verification commands run through the existing sandbox. Installed browser capability checks are
+explicit and report prerequisites; opening the panel starts no command, and missing tooling is not
+downloaded automatically. See [Testing](../testing.md) for suite ownership and [Security](../security.md)
+for execution boundaries.
 
 ## PR discovery, analysis and batches
 

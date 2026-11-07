@@ -15,7 +15,7 @@ import {
   migrateLegacyTasks,
 } from "../../backend/flows/legacy-migration";
 import { Rpc } from "../../backend/rpc";
-import type { FlowWorkspace } from "../../backend/rpc/flows";
+import type { FlowWorkspace } from "../../backend/flows/workspace";
 import {
   createFixtureEngine,
   fixtureRepository,

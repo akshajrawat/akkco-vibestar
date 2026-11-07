@@ -11,7 +11,7 @@ import { reviewActionState } from "../review/pr/inbox";
 import { Editors } from "../workspace/editors";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
-import { taskFlowSummaries } from "./flows";
+import { taskFlowSummaries } from "../flows/workspace";
 
 export const systemMethods = [
   "editors.list",

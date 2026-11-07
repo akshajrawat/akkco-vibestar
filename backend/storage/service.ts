@@ -9,6 +9,7 @@ import { AdeError, now, type Task, type Repository } from "../domain";
 import type { Engine } from "../execution/engine";
 import { inside, exists, managedPath, taskRoot } from "../workspace/paths";
 import type { TaskDisposalPreview } from "./disposal";
+import { inspectStorage } from "./inspection";
 
 const preparationEvidence = z
   .object({
@@ -18,20 +19,6 @@ const preparationEvidence = z
     duration_ms: z.number().nonnegative(),
   })
   .loose();
-
-const directorySize = async (path: string): Promise<number> => {
-  try {
-    const entry = await lstat(path);
-    if (entry.isSymbolicLink()) return entry.size;
-    if (!entry.isDirectory()) return entry.size;
-    let size = 0;
-    for (const name of await readdir(path)) size += await directorySize(join(path, name));
-    return size;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
-    throw error;
-  }
-};
 
 export class StorageService {
   constructor(private readonly engine: Engine) {}
@@ -50,55 +37,7 @@ export class StorageService {
     }
   };
 
-  info = async () => {
-    const names = [
-      "state",
-      "repos",
-      "worktrees",
-      "workspaces",
-      "logs",
-      "artifacts",
-      "cache",
-      "runtime",
-      "telemetry",
-    ];
-
-    const sizes = Object.fromEntries(
-      await Promise.all(
-        names.map(
-          async (name) => [name, await directorySize(join(this.engine.root, name))] as const,
-        ),
-      ),
-    );
-
-    return {
-      root: this.engine.root,
-      sizes,
-      database:
-        (await directorySize(join(this.engine.root, "state", "vibestar.sqlite"))) +
-        (await directorySize(join(this.engine.root, "state", "vibestar.sqlite-wal"))) +
-        (await directorySize(join(this.engine.root, "state", "vibestar.sqlite-shm"))),
-      total: Object.values(sizes).reduce((n, value) => n + value, 0),
-      measured_at: now(),
-      external_repositories: this.engine.db.repositories().filter((r) => r.source === "imported")
-        .length,
-      flows: Object.fromEntries(
-        [
-          "agent_profiles",
-          "flow_definitions",
-          "flow_revisions",
-          "flow_runs",
-          "flow_run_invalidations",
-          "flow_node_attempts",
-          "flow_task_migrations",
-          "flow_migration_sources",
-        ].map((table) => [
-          table,
-          this.engine.db.all<{ count: number }>(`SELECT count(*) count FROM ${table}`)[0].count,
-        ]),
-      ),
-    };
-  };
+  info = async () => inspectStorage(this.engine);
 
   clear = (kind: "logs" | "cache") =>
     this.engine.withStorageMaintenance(() => this.clearData(kind));

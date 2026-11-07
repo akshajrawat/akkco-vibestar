@@ -4,16 +4,12 @@ import {
   ReactFlowProvider,
   Background,
   Controls,
-  Handle,
-  Position,
   MarkerType,
   applyNodeChanges,
   useReactFlow,
-  type Node,
-  type NodeProps,
   type Viewport,
 } from "@xyflow/react";
-import { Check, CircleAlert, Clock3, TerminalSquare, ShieldCheck, Plus } from "lucide-react";
+import { Plus, TerminalSquare, ShieldCheck } from "lucide-react";
 
 import type {
   AgentProfile,
@@ -21,96 +17,15 @@ import type {
   FlowDefinition,
   FlowNode,
 } from "../../../backend/flows/contracts";
-import type { FlowWorkspace } from "../../../backend/rpc/flows";
+import type { FlowWorkspace } from "../../../backend/flows/workspace";
 import { flowTemplates, instantiateTemplate } from "../../../backend/flows/templates";
 import type { NodeAttempt } from "../../../backend/flows/run-contracts";
 import type { z } from "zod";
 import { Button } from "../../components/ui/button";
-import { ProviderIcon } from "../../components/ui/ProviderIcon";
 import { FlowInspector, type FlowInputChoice } from "./FlowInspector";
 import { graphError, pruneBindings, staleNodes } from "./graph";
-
-type ViberNode = Node<
-  {
-    node: FlowNode;
-    profile?: AgentProfile;
-    attempt?: NodeAttempt;
-    stale: boolean;
-    reused?: boolean;
-    conversation?: string;
-  },
-  "viber"
->;
-
-export const ViberFace = ({ className = "" }: { className?: string }) => (
-  <span className={`viber-face ${className}`} aria-hidden="true">
-    <i />
-    <i />
-  </span>
-);
-
-const Viber = ({ data, selected }: NodeProps<ViberNode>) => {
-  const { node, profile, attempt, stale } = data;
-  const observed = attempt?.status || "draft";
-  const status = stale && !["running", "waiting"].includes(observed) ? "stale" : observed;
-
-  const execution =
-    attempt?.configuration.agent?.execution ||
-    (node.type === "agent" && profile ? { ...profile.execution, ...node.overrides } : null);
-
-  return (
-    <div
-      className={`viber-node ${node.type} ${status} ${data.conversation ? "chatting" : ""} ${stale ? "stale" : ""} ${selected ? "selected" : ""}`}
-    >
-      <div className="viber-shell">
-        <Handle type="target" position={Position.Left} aria-label="Input connection" />
-        {node.type === "agent" ? (
-          <ViberFace />
-        ) : node.type === "command" ? (
-          <TerminalSquare size={30} />
-        ) : (
-          <ShieldCheck size={30} />
-        )}
-        <Handle type="source" position={Position.Right} aria-label="Output connection" />
-      </div>
-      <strong>{node.name}</strong>
-      <span className="viber-identity">
-        {execution ? (
-          <>
-            <ProviderIcon provider={execution.provider} model={execution.model} size={12} />
-            {execution.provider} · {execution.model || "CLI default"}
-          </>
-        ) : node.type === "command" ? (
-          node.argv[0]
-        ) : (
-          "Your decision"
-        )}
-      </span>
-      {data.conversation && <small className="viber-chat-state">Chat · {data.conversation}</small>}
-      <span className={`viber-state ${status}`}>
-        {status === "completed" ? (
-          <Check size={11} />
-        ) : ["failed", "rejected", "interrupted"].includes(status) ? (
-          <CircleAlert size={11} />
-        ) : (
-          <Clock3 size={11} />
-        )}
-        {data.reused && status === "completed"
-          ? "Reused · completed"
-          : status === "running"
-            ? "Working"
-            : status === "waiting"
-              ? "Needs approval"
-              : status === "stale"
-                ? "Draft changed"
-                : status}
-        {stale && ["running", "waiting"].includes(observed) && " · draft changed"}
-      </span>
-    </div>
-  );
-};
-
-const nodeTypes = { viber: Viber };
+import { ViberFace } from "./ViberFace";
+import { viberNodeTypes, type ViberCanvasNode } from "./ViberNode";
 
 type Layout = z.infer<typeof CanvasLayoutSchema>;
 
@@ -153,10 +68,10 @@ const Canvas = ({
   activityFor,
   contextChoices,
 }: CanvasProps) => {
-  const flow = useReactFlow<ViberNode>();
+  const flow = useReactFlow<ViberCanvasNode>();
   const run = workspace.runs[0];
   const [error, setError] = useState("");
-  const [nodes, setNodes] = useState<ViberNode[]>([]);
+  const [nodes, setNodes] = useState<ViberCanvasNode[]>([]);
   const [selectedEdges, setSelectedEdges] = useState(new Set<string>());
 
   const [viewport, setViewport] = useState<Viewport>(
@@ -412,7 +327,7 @@ const Canvas = ({
             );
         }}
       >
-        <ReactFlow<ViberNode>
+        <ReactFlow<ViberCanvasNode>
           nodes={nodes}
           edges={draft.edges.map((edge) => ({
             ...edge,
@@ -421,7 +336,7 @@ const Canvas = ({
             markerEnd: { type: MarkerType.ArrowClosed },
             type: "smoothstep",
           }))}
-          nodeTypes={nodeTypes}
+          nodeTypes={viberNodeTypes}
           onNodesChange={(changes) => {
             const deleted = changes
               .filter((change) => change.type === "remove")

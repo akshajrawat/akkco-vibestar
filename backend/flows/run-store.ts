@@ -28,6 +28,7 @@ import {
   type ResolvedInputs,
 } from "./run-contracts";
 import { observedVerification } from "./verification";
+import { FlowRunResults } from "./run-results";
 
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const identity = z.string().uuid();
@@ -72,8 +73,17 @@ const runTransitions: Record<FlowRun["status"], FlowRun["status"][]> = {
 export class FlowRunStore {
   private readonly definitions: FlowStore;
 
+  private readonly resultViews: FlowRunResults;
+
   constructor(private readonly db: Database) {
     this.definitions = new FlowStore(db);
+
+    this.resultViews = new FlowRunResults(db, {
+      run: this.run,
+      definition: this.definition,
+      attempts: this.attempts,
+      attempt: this.attempt,
+    });
   }
 
   createRun = (
@@ -247,72 +257,12 @@ export class FlowRunStore {
       .map((row) => this.attempt(row.id));
   };
 
-  /** Reuse refers to the original attempt and telemetry; its identity and captured owner never change. */
-  results = (runId: string, options: { includeStale?: boolean } = {}): NodeAttempt[] => {
-    const run = this.run(runId);
-    const graph = this.definition(run.id);
+  results = (runId: string, options: { includeStale?: boolean } = {}) =>
+    this.resultViews.results(runId, options);
 
-    const reused = this.db
-      .all<{ node_id: string; source_attempt_id: string; workspace_fingerprint: string }>(
-        "SELECT node_id,source_attempt_id,workspace_fingerprint FROM flow_result_links l WHERE run_id=? AND (? OR NOT EXISTS(SELECT 1 FROM flow_result_invalidations i WHERE i.run_id=l.run_id AND i.node_id=l.node_id)) ORDER BY rowid",
-        runId,
-        options.includeStale ? 1 : 0,
-      )
-      .map((row) => {
-        const source = this.attempt(row.source_attempt_id);
-        const sourceRun = this.run(source.run_id);
-        const node = graph.nodes.find((node) => node.id === row.node_id);
-        if (
-          !node ||
-          run.kind !== "flow" ||
-          sourceRun.kind !== "flow" ||
-          source.node_id !== row.node_id ||
-          source.status !== "completed" ||
-          source.completed_fingerprint !== row.workspace_fingerprint ||
-          sourceRun.task_id !== run.task_id ||
-          sourceRun.flow_id !== run.flow_id ||
-          source.run_id === runId ||
-          source.configuration_hash !==
-            digest({ node, agent: node.type === "agent" ? run.snapshot.agents[node.id] : null })
-        )
-          throw new AdeError(
-            "corrupt_record",
-            "A reused result no longer matches its captured source and owner. Original history was preserved.",
-          );
-        return source;
-      });
+  staleResults = (runId: string) => this.resultViews.staleResults(runId);
 
-    return [...reused, ...this.attempts(runId)];
-  };
-
-  staleResults = (runId: string) => {
-    this.run(runId);
-    const invalidation = this.invalidation(runId);
-    if (invalidation)
-      return this.results(runId, { includeStale: true }).map((attempt) => ({
-        node_id: attempt.node_id,
-        reason: invalidation.reason,
-      }));
-    return this.db.all<{ node_id: string; reason: string }>(
-      "SELECT node_id,reason FROM flow_result_invalidations WHERE run_id=? ORDER BY rowid",
-      runId,
-    );
-  };
-
-  invalidation = (runId: string) => {
-    this.run(runId);
-
-    const row = this.db.all<z.infer<typeof FlowRunInvalidationSchema>>(
-      "SELECT * FROM flow_run_invalidations WHERE run_id=?",
-      runId,
-    )[0];
-
-    if (!row) return null;
-    return this.db.records.decode(
-      { table: "flow_run_invalidations", id: runId, column: "reason", source: JSON.stringify(row) },
-      FlowRunInvalidationSchema.parse,
-    );
-  };
+  invalidation = (runId: string) => this.resultViews.invalidation(runId);
 
   /** External conversation writes stop pending graph authority without rewriting any past result or decision. */
   invalidateWorkspace = (runId: string, reason: string) =>
