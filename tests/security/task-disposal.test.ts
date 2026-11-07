@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import * as gitCommands from "../../backend/workspace/git-command";
 import { checked, capture } from "../../backend/execution/runtime/process";
 import { StorageService } from "../../backend/storage/service";
+import { FlowStore } from "../../backend/flows/store";
 import { exists } from "../../backend/workspace/paths";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
@@ -30,6 +31,42 @@ const fixture = async () => {
   const task = await prepareFixtureTask(engine, repo, "discard-fixture");
   return { repo, task, storage: new StorageService(engine) };
 };
+
+it("preserves workspaces and evidence referenced by saved flows before any cleanup mutation", async () => {
+  const { task, storage } = await fixture();
+  const flowId = randomUUID();
+  const store = new FlowStore(engine.db);
+
+  const saved = store.saveDefinition(
+    flowId,
+    { name: "Retained flow", nodes: [], edges: [] },
+    null,
+    task.id,
+  );
+
+  const preview = await storage.previewTaskDisposal(task.id);
+
+  await expect(storage.discardTask(task.id, preview.fingerprint, true)).rejects.toMatchObject({
+    kind: "flow_history",
+  });
+
+  await expect(
+    storage.cleanupTask(task.id, { worktree: true, history: true, artifacts: true, logs: true }),
+  ).rejects.toMatchObject({ kind: "flow_history" });
+
+  await expect(storage.preserveTaskWork(task.id)).rejects.toMatchObject({ kind: "flow_history" });
+  const reset = await storage.previewReset();
+
+  expect(reset.tasks.find((entry) => entry.id === task.id)).toMatchObject({
+    eligible: false,
+    reason: expect.stringContaining("Saved agent flows"),
+  });
+
+  expect(await exists(task.worktree_path)).toBe(true);
+  expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
+  expect(store.definition(flowId)).toEqual(saved);
+  expect(engine.db.task(task.id).worktree_path).toBe(task.worktree_path);
+});
 
 it.each(["modified", "staged", "untracked", "ignored"])(
   "deliberately discards %s files only from the confirmed owned workspace",
@@ -137,7 +174,15 @@ it.each(["hidden-index", "merge", "wrong-owner", "symlink"])(
 it("preserves files, branch and ownership across restart when removing task history", async () => {
   const { repo, task, storage } = await fixture();
   await writeFile(join(task.worktree_path, "source.txt"), "retain my work\n");
-  engine.followUp(task.id, "A saved instruction", undefined, true);
+
+  engine.db.run(
+    "INSERT INTO task_messages(id,task_id,role,content,status,created_at) VALUES(?,?,'user',?,'draft',?)",
+    randomUUID(),
+    task.id,
+    "A saved instruction",
+    new Date().toISOString(),
+  );
+
   await storage.preserveTaskWork(task.id);
   expect(engine.db.detail(task.id).messages).toEqual([]);
 
@@ -156,7 +201,13 @@ it("preserves files, branch and ownership across restart when removing task hist
     task.base_commit_sha,
   );
 
-  await expect(engine.retry(task.id)).rejects.toThrow();
+  const { Rpc } = await import("../../backend/rpc");
+  const rpc = new Rpc(engine);
+  try {
+    await expect(rpc.call("task.retry", { id: task.id })).rejects.toThrow("Unknown method");
+  } finally {
+    await rpc.close();
+  }
 });
 
 it("refuses concurrent task operations and finalization dependencies before removing data", async () => {

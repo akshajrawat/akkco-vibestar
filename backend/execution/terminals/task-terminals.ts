@@ -11,6 +11,7 @@ import { redact, processIdentity } from "../runtime/process";
 import { StreamRedactor } from "../output/stream-redactor";
 import { BoundedWriter, OutputBudget } from "../output/bounded-output";
 import { gitChecked } from "../../workspace/git-command";
+import { prepareManagedWorkspace } from "../../workspace/managed";
 
 export interface TaskTerminalSnapshot {
   session_id: string;
@@ -67,8 +68,22 @@ export class TaskTerminals {
   };
 
   /** Adds only a missing alias in an owned managed clone; user-owned remotes stay untouched. */
-  private directory = (task: WorkspaceAssignment) =>
-    this.engine.git.withLock(task.repo_id, async () => {
+  private directory = async (task: WorkspaceAssignment) => {
+    if (task.workspace_kind === "managed") {
+      if (!task.worktree_path) {
+        const prepared = await prepareManagedWorkspace(
+          this.engine.root,
+          this.engine.db.task(task.id),
+        );
+
+        this.engine.db.saveTask(prepared);
+        return this.engine.git.assertTask(prepared);
+      }
+
+      return this.engine.git.assertTask(task);
+    }
+
+    return this.engine.git.withLock(task.repo_id, async () => {
       const cwd = await this.engine.git.assertTask(task);
       const repository = this.engine.db.repository(task.repo_id);
       if (repository.source !== "imported") {
@@ -82,6 +97,7 @@ export class TaskTerminals {
 
       return cwd;
     });
+  };
 
   private start = async (id: string, cols: number, rows: number): Promise<TaskTerminalSnapshot> => {
     const releaseLease = this.repair

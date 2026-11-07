@@ -21,6 +21,13 @@ New third-party assets or vendored code need explicit provenance and retained no
 
 The root text follows the [standard MIT License](https://opensource.org/license/mit).
 
+## React Flow
+
+The Viber canvas uses `@xyflow/react` and `@xyflow/system`. Their installed MIT
+notices match and retain `Copyright (c) 2019-2025 webkid GmbH`. The complete notice
+is preserved in [`public/xyflow-MIT.txt`](../public/xyflow-MIT.txt), which Vite copies
+into the packaged renderer alongside the font notice.
+
 ## Provider and GitHub marks
 
 The provider SVGs in `src/assets/brands/` were supplied for this milestone and

@@ -8,9 +8,9 @@ import { SettingsPage } from "../../src/features/settings/SettingsPage";
 import { UsageCharts } from "../../src/features/usage/UsageCharts";
 import { UsageView } from "../../src/features/usage/UsageView";
 import { defaultSettings } from "../../backend/domain";
+import { viberProfile } from "../workspace/flow-fixtures";
 import type { UsageRecord } from "../../backend/execution/output/usage";
 import { AgentResponse } from "../../src/features/chat/AgentResponse";
-import { PipelineView } from "../../src/features/workflow/TaskEngineering";
 import { workspaceDetail } from "../workspace/fixtures";
 import { BrowserEnvironment } from "../../src/features/verification/BrowserEnvironment";
 import type { BrowserEnvironmentReport } from "../../backend/execution/verification/browser/contracts";
@@ -133,54 +133,6 @@ it("copies exact fenced source and keeps repository HTML inert while highlightin
   expect(writeText).toHaveBeenCalledWith(code);
 });
 
-it("keeps completed runs without exit evidence neutral and represents cancellation separately", () => {
-  const detail = workspaceDetail("pipeline-evidence");
-  detail.task.stage = 4;
-  detail.task.status = "verification_blocked";
-
-  detail.runs = [
-    {
-      id: "run",
-      provider: "codex",
-      model: "fixture-model",
-      effort: "low",
-      stage: 3,
-      status: "completed",
-      started_at: detail.task.created_at,
-      ended_at: detail.task.updated_at,
-      exit_code: null,
-      pid: null,
-      prompt: "",
-      conversation_id: null,
-      output: null,
-      error: null,
-    },
-  ];
-
-  const ui = render(
-    <PipelineView detail={detail} busy={false} action={vi.fn()} terminal={vi.fn()} />,
-  );
-
-  const implementation = screen.getByText(/fixture-model/).closest("li");
-  expect(implementation?.textContent).toContain("Evidence unavailable");
-  expect(implementation?.querySelector(".success")).toBeNull();
-
-  ui.rerender(
-    <PipelineView
-      detail={{
-        ...detail,
-        task: { ...detail.task, stage: 3, status: "cancelled" },
-        runs: [{ ...detail.runs[0], status: "cancelled" }],
-      }}
-      busy={false}
-      action={vi.fn()}
-      terminal={vi.fn()}
-    />,
-  );
-
-  expect(screen.getByText(/fixture-model/).closest("li")?.className).toContain("cancelled");
-});
-
 it("keeps busy actions labelled and prevents duplicate activation or accidental form submission", () => {
   const action = vi.fn();
   const submit = vi.fn((event) => event.preventDefault());
@@ -200,8 +152,10 @@ it("keeps busy actions labelled and prevents duplicate activation or accidental 
   expect(submit).not.toHaveBeenCalled();
 });
 
-it("retains dirty settings through background snapshots and separates utility models from the coding pipeline", async () => {
-  const rpc = vi.fn(async (method: string) => (method === "editors.list" ? { editors: [] } : {}));
+it("retains dirty utility settings through background snapshots and keeps Viber profiles independent", async () => {
+  const rpc = vi.fn(async (method: string) =>
+    method === "editors.list" ? { editors: [] } : method === "profile.list" ? [viberProfile] : {},
+  );
 
   Object.defineProperty(window, "vibestar", {
     configurable: true,
@@ -229,7 +183,8 @@ it("retains dirty settings through background snapshots and separates utility mo
   expect(screen.getByText("Unsaved changes")).toBeTruthy();
   ui.rerender(<SettingsPage settings={{ ...defaultSettings }} refresh={refresh} />);
   expect((screen.getAllByLabelText("Timeout (seconds)")[0] as HTMLInputElement).value).toBe("1234");
-  expect(models).toHaveLength(5);
+  expect(models).toHaveLength(1);
+  expect(await screen.findByRole("heading", { name: "Viber profiles" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Models" })).toBeNull();
   expect(screen.getByRole("button", { name: "Agents & Models" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "GitHub & PR Watch" })).toBeNull();
@@ -240,11 +195,8 @@ it("retains dirty settings through background snapshots and separates utility mo
     expect(rpc).toHaveBeenCalledWith(
       "settings.save",
       expect.objectContaining({
-        antigravity: {
-          ...defaultSettings.antigravity,
-          provider: "antigravity",
-          timeout_secs: 1234,
-        },
+        utility_ai: { ...defaultSettings.utility_ai, timeout_secs: 1234 },
+        antigravity: defaultSettings.antigravity,
       }),
     ),
   );
@@ -346,4 +298,4 @@ it("keeps missing totals unavailable and pages every saved run while charts repo
   ).toBe(true);
 
   expect(screen.getByRole("cell", { name: "Fixture 201" })).toBeTruthy();
-});
+}, 10000);

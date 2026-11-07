@@ -1,5 +1,6 @@
 import { readWorktreeOwner, writeWorktreeOwner } from "./ownership";
 import { prepareSourceCheckout, sourceCheckout } from "./source-checkout";
+import { assertManagedWorkspace, managedWorkspaceFingerprint } from "./managed";
 import { gitChecked, gitExecute, gitCapture } from "./git-command";
 import {
   mkdir,
@@ -41,7 +42,9 @@ export class GitWorkspace {
     private readonly transport?: (url: string) => string,
   ) {}
 
-  private registeredPath = async (id: string) => {
+  private registeredPath = async (id: string | null) => {
+    if (!id)
+      throw new AdeError("repository_required", "Git operations require an attached repository.");
     const repo = this.repository?.(id);
     if (repo && repo.source !== "imported") {
       if (!inside(join(this.root, "repos"), repo.path))
@@ -76,8 +79,8 @@ export class GitWorkspace {
     }
   };
 
-  withLock = async <T>(repoId: string, operation: () => Promise<T>) => {
-    if (!/^[\w-]+$/.test(repoId))
+  withLock = async <T>(repoId: string | null, operation: () => Promise<T>) => {
+    if (!repoId || !/^[\w-]+$/.test(repoId))
       throw new AdeError("invalid_input", "Invalid repository lock key");
     const repository = await this.registeredPath(repoId);
 
@@ -208,18 +211,22 @@ export class GitWorkspace {
       if (!/^[a-f0-9]{40,64}$/.test(base))
         throw new AdeError("git_base", "Invalid base commit SHA");
       const primary = source ? await sourceCheckout(repo, base, source.reusableOwners) : null;
+
+      const scope =
+        t.kind === "general"
+          ? t.goal || "task"
+          : t.scope_mode === "whole_issue"
+            ? "whole-issue"
+            : t.claimed_scope;
+
       for (let suffix = 0; suffix < 10000; suffix++) {
-        const branch = branchName(
-          t.issue_number,
-          t.scope_mode === "whole_issue" ? "whole-issue" : t.claimed_scope,
-          suffix,
-        );
+        const branch = branchName(t.issue_number ?? `task-${t.id}`, scope, suffix);
 
         const path = worktreePath(
           this.root,
           repo.id,
-          t.issue_number,
-          t.scope_mode === "whole_issue" ? "whole-issue" : t.claimed_scope,
+          t.issue_number ?? `task-${t.id}`,
+          scope,
           suffix,
         );
 
@@ -516,6 +523,9 @@ export class GitWorkspace {
   };
 
   assertTask = async (t: WorkspaceAssignment) => {
+    if (t.workspace_kind === "managed") return assertManagedWorkspace(this.root, t);
+    if (!t.repo_id)
+      throw new AdeError("repository_required", "Git worktrees require an attached repository.");
     await this.registeredPath(t.repo_id);
     const cwd = await taskRoot(this.root, t, this.repository?.(t.repo_id));
     const branch = await gitChecked(["symbolic-ref", "--short", "HEAD"], cwd);
@@ -527,8 +537,37 @@ export class GitWorkspace {
     return cwd;
   };
 
+  /** New task flows require positive ownership, including the Git metadata behind the worktree. */
+  assertOwnedTask = async (task: Task) => {
+    const cwd = await this.assertTask(task);
+    if (task.workspace_kind === "managed" || task.workspace_mode === "source") return cwd;
+    if (!task.repo_id || !this.repository)
+      throw new AdeError("ownership", "The task's registered repository is unavailable.");
+    const repo = this.repository(task.repo_id);
+    const common = await this.commonDirectory(repo.path);
+    const gitdir = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], cwd));
+    if (
+      !task.branch_owned ||
+      task.workspace_checkpoint?.git_common_dir !== common ||
+      (await this.commonDirectory(cwd)) !== common ||
+      !inside(join(common, "worktrees"), gitdir) ||
+      (await readWorktreeOwner(gitdir, "vibestar-task-owner")) !== task.id ||
+      (await gitChecked(
+        ["config", "--local", "--get", `branch.${task.branch_name}.vibestarTask`],
+        repo.path,
+      )) !== task.id
+    )
+      throw new AdeError(
+        "ownership",
+        "Task branch or Git metadata ownership changed; its workspace was preserved.",
+      );
+    return cwd;
+  };
+
   fingerprint = async (t: WorkspaceAssignment) =>
-    `issue-v2:${await this.workspaceFingerprint(t, true, true)}`;
+    t.workspace_kind === "managed"
+      ? managedWorkspaceFingerprint(this.root, t)
+      : `issue-v2:${await this.workspaceFingerprint(t, true, true)}`;
 
   repairFingerprint = (t: WorkspaceAssignment, includeHistory = true) =>
     this.workspaceFingerprint(t, includeHistory);

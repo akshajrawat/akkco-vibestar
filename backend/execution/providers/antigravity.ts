@@ -77,7 +77,7 @@ export class AntigravityProvider implements AgentProvider {
     program: "agy",
     args: [
       "--mode",
-      r.stage === 3 ? "accept-edits" : "plan",
+      r.access === "workspace-write" ? "accept-edits" : "plan",
       "--sandbox",
       "--input-format",
       "stream-json",

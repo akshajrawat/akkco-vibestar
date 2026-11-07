@@ -128,13 +128,14 @@ export const callStorage = async (
     }
 
     case "task.archive": {
+      e.assertAvailable();
       const p = idInput.extend({ archived: z.boolean() }).parse(input);
       if (!p.archived && e.db.task(p.id).status === "preserved")
         throw new AdeError(
           "invalid_state",
           "This retained worktree keeps its ownership record, but its conversation history has been removed.",
         );
-      if (e.isActive(p.id) || e.db.task(p.id).status === "queued")
+      if (e.cleanupBlockers(p.id).length || e.db.task(p.id).status === "queued")
         throw new AdeError("busy", "Stop this task before archiving it.");
       e.db.saveTask({ ...e.db.task(p.id), archived: p.archived });
       e.changed(p.id);

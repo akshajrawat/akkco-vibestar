@@ -13,6 +13,19 @@ export const workspaceSections = {
 
 export type SecondarySection = keyof typeof workspaceSections;
 
+export const flowWorkspaceSections = {
+  canvas: "Flow",
+  chat: "Chat",
+  files: "Files",
+  checks: "Checks",
+  usage: "Usage",
+  logs: "Logs",
+  history: "History",
+  activity: "Node activity",
+} as const;
+
+export type FlowWorkspaceSection = keyof typeof flowWorkspaceSections;
+
 export interface ContextAttachment {
   id: string;
   label: string;
@@ -20,6 +33,8 @@ export interface ContextAttachment {
 }
 
 interface TaskView {
+  flowSection: FlowWorkspaceSection;
+  flowNode: string;
   draft: string;
   draftContext: ContextAttachment[];
   messageRequest: { id: string; signature: string } | null;
@@ -109,6 +124,13 @@ const savedLayout = (id: string): Partial<TaskView> => {
       legacySection(saved.tab) || (saved.terminalDock ? legacySection(saved.dockTab) : null);
 
     return {
+      flowSection:
+        typeof saved.flowSection === "string" &&
+        Object.hasOwn(flowWorkspaceSections, saved.flowSection)
+          ? (saved.flowSection as FlowWorkspaceSection)
+          : "canvas",
+      flowNode:
+        typeof saved.flowNode === "string" && saved.flowNode.length <= 100 ? saved.flowNode : "",
       savedInstruction:
         saved.savedInstruction &&
         typeof saved.savedInstruction === "object" &&
@@ -237,6 +259,8 @@ const state = (id: string) => {
   let value = views.get(id);
   if (!value) {
     value = {
+      flowSection: "canvas",
+      flowNode: "",
       draft: read(`vibestar.draft.${id}`) || "",
       draftContext: [],
       messageRequest: null,

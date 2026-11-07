@@ -59,24 +59,105 @@ historical fields where required. Security canonicalizers stay in trusted backen
 `backend/execution/engine.ts` is the stable façade and startup/shutdown coordinator.
 Its internal collaborators are grouped under `backend/execution/engine/`:
 
-| Module            | Responsibility                                                          |
-| ----------------- | ----------------------------------------------------------------------- |
-| `state.ts`        | One authoritative set of execution slots, leases and cancellation state |
-| `scheduling.ts`   | Queue draining, active runs, terminal leases and maintenance exclusion  |
-| `tasks.ts`        | Idempotent issue-task creation, request digests and initial persistence |
-| `repositories.ts` | Registration, clone preparation, verified local connections and remotes |
-| `workflow.ts`     | Explicit startup, task conversations, preparation and stage sequence    |
-| `approvals.ts`    | Review gates, retries, draft recovery and explicit follow-ups           |
-| `verification.ts` | Evidence rechecks, policy transitions and content-bound gap review      |
-| `commands.ts`     | Sandboxed manual argv execution and observed command records            |
-| `agents.ts`       | Existing runner coordination for utility and repair work                |
+| Module            | Responsibility                                                                  |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `state.ts`        | One authoritative set of execution slots, leases and cancellation state         |
+| `scheduling.ts`   | Queue draining, active runs, terminal leases and maintenance exclusion          |
+| `flows.ts`        | Durable graph dispatch, Viber conversations, node attempts and approval control |
+| `tasks.ts`        | Idempotent issue/general task creation, request digests and initial persistence |
+| `repositories.ts` | Registration, clone preparation, verified local connections and remotes         |
+| `commands.ts`     | Sandboxed manual argv execution and observed command records                    |
+| `agents.ts`       | Existing runner coordination for utility and repair work                        |
 
 Collaborators share state rather than keeping independent concurrency counters.
 They receive only the Engine methods and internal capabilities they need. Their
 imports of Engine contracts are type-only; the façade remains the composition root.
-Repository operations and workflow startup settle before shutdown closes SQLite.
+Repository operations and captured flow requests settle before shutdown closes SQLite.
 
-`execution/agents` owns AgentRunner, prompts, continuations, streamed plans and UtilityAI.
+`execution/contracts.ts` defines explicit invocation access, provider configuration
+and output contracts. `AgentRunner.runConfigured` uses those settings through the
+existing process, sandbox, events, command evidence and usage path. Provider adapters
+and the outer sandbox use explicit access; numeric stages do not grant permissions.
+Task flows, PR repair and utility work all call that explicit executor. Repair phases
+retain stage 3/5 solely as saved telemetry; the phase explicitly selects access and
+output contracts. There is no fixed-stage task runner or legacy queue consumer.
+Historical stage metadata and artifact readers remain supported. Migration 28 adds nullable execution
+snapshots to existing run tables; it does not invent settings for historical runs.
+
+`backend/flows/contracts.ts` owns shared validated profiles, DAG definitions, explicit
+input bindings and separate canvas layout. `backend/flows/store.ts` saves immutable
+profile/flow revisions with optimistic revision checks and owner-bound layouts
+(migration 29). `run-store.ts` owns captured run/node inputs, execution links, transitions,
+approval decisions and linked continuations (migration 30). Engine startup interrupts
+unfinished runs without replay. `context.ts` resolves only selected owned sources and
+rejects missing or oversized context. Agent and command invocations must match the
+captured node settings, inputs and workspace evidence.
+
+Task repository/issue context is nullable (migration 31). General tasks use the same
+task/message/run tables as issue tasks. Repository-free files live in owned
+`workspaces/<task-id>/files` directories; their owner markers remain outside the
+agent's writable mount. `workspace/managed.ts` validates ownership and computes bounded
+file integrity, rejecting aliases and special files. Explicit terminals can prepare
+these directories without inference and share the existing task lease. Cache clearing
+preserves them; data-root migration copies and revalidates them without deleting the
+source. Saving profiles/tasks/configurations starts no process. Migration 32 stores
+the scope and identity of each explicit graph execution request. The flow controller
+uses shared slots and serializes branches in one workspace. Joins wait for every
+predecessor, pause stops at a node boundary, cancellation aborts the current process,
+and retries authorize only their selected node. Fresh approvals acquire a maintenance
+lease and validate captured configuration, inputs and actual workspace evidence.
+
+`backend/rpc/flows.ts` exposes validated profiles, drafts, layout, Viber turns and
+execution controls, negotiated through `agent_flows: 1`. `src/features/flows` owns
+the React Flow editor, Viber characters, inspector, profile library and task
+workspace for general and issue tasks. Solo turns use existing task messages and explicit history bindings. Node
+attempts reference the existing event/command/usage records. Task lifecycle is separate
+from flow execution and verification. Migrations 33–34 retain completion
+fingerprints, source-result links, continuation request plans and invalidation
+evidence. `flows/continuation.ts` previews reuse against exact configurations,
+dependencies, selected inputs and observed workspace state. Apply recomputes and
+checks that plan under a task lease, creates a linked immutable run, and starts only
+through a new explicit request. Reused telemetry keeps its original IDs. Missing
+historical completion evidence is never reconstructed. Queued workspace changes
+invalidate links before inference, and changed nodes invalidate downstream results
+in the canvas. `flow_continuations: 1` is negotiated independently of initial flow
+support. Migration 35 preserves exact historical task bytes and migration provenance.
+`flows/legacy-migration.ts` retains the complete historical graph and translates the
+saved boundary into an idle suffix checkpoint. Old approvals, exact input packets and
+invocation settings remain unknown; no attempts, dispatches or decisions are invented.
+Cancelled/failed/interrupted checkpoints retain their state. Missing or corrupt
+context produces an inspectable recovery diagnostic with original source bytes. Missing
+historical execution settings cannot be replaced with current defaults.
+Explicit continuation captures current inputs; final-review inspection also requires
+the original integrity fingerprint to match.
+
+Migration 36 separates graph runs and conversation turns while sharing the same
+runner, ownership, slots and telemetry. `viber_conversations: 1` negotiates the unified
+`viber.chat` route and reusable identity/instance library independently. A conversation
+captures one task/node/profile, keeps its access and instructions, and supplies only
+selected inputs/history. It cannot complete graph nodes. Paused/waiting graphs can
+coexist with a conversation; active execution remains serialized. Writes that change
+the shared workspace invalidate parent graph authority, including partial writes on
+failure or cancellation. Pending gates become interrupted without accepted decisions.
+Graph resume rechecks the last node's workspace evidence. Message attribution is
+backfilled only from proven same-task attempts; unassigned records remain readable
+in History. Renderer drafts and scroll positions follow the task/node/profile scope. Ordinary
+chat includes that instance’s completed conversation by default, with visible message
+selection. More than 50 messages requires an explicit smaller selection; the 128 KiB
+context limit still fails before inference. No conversation is silently truncated.
+
+New issue creation uses `task.createIssue`, selected profiles/templates and explicit
+goal/brief/repository/issue bindings. It starts no inference. `flow.workspace` exposes
+original history separately from current attempts. The retired fixed-workflow RPCs
+are unregistered, and the desktop bridge refuses to forward them even to an older
+helper. New issue tasks always require an explicit profile/template and retain the
+existing issue-request digest and tombstone contract. Snapshot navigation reports saved flow
+status and recorded checks independently from task lifecycle. Storage exposes graph
+record counts and managed-file sizes; executed flow evidence is retained, while
+explicit deletion of an idle draft preserves request tombstones. See the
+[agent-flow implementation record](docs/architecture/agent-flows.md) for the remaining work.
+
+`execution/agents` owns AgentRunner, explicit output contracts and UtilityAI.
 `execution/providers` adapts official Codex and Antigravity CLI capabilities and output.
 Ordinary Codex conversation uses app-server initialization, thread and turn messages
 inside the mandatory outer sandbox. Completed conversations can resume their saved
@@ -97,7 +178,7 @@ the new user message. Workflow schemas and instructions remain exclusive to work
 `execution/runtime` owns process execution and the outer sandbox. `execution/output`
 owns bounded output, streaming redaction and reported usage. `execution/terminals`
 separates ephemeral login PTYs from owned task/repair shells. `execution/verification`
-owns command evidence, policy, recovery and browser capability diagnostics.
+owns observed command evidence, historical policy summaries and browser capability diagnostics.
 
 ## Issue tasks and approval flow
 
@@ -230,19 +311,17 @@ Observed host/provider command records, provider-reported tests and environmenta
 prerequisites retain separate provenance. A model claim does not prove a check passed.
 Unknown exits, skipped commands and missing evidence remain unverified.
 
-Verification recovery can recheck saved evidence, run supported recorded argv, or
-perform one explicitly authorized iteration with the saved implementation provider. It does not silently
-install tools or reinterpret shell programs. Browser capability diagnostics are
-separate from application-check results and require explicit selection/execution.
+Node completion records process outcome separately from observed checks and required
+independent review. A failed assertion stays failed even if the model reports success
+or its process later fails. Explicit retries append attempts; command nodes and the
+manual command form run selected argv through the existing sandbox. Browser capability
+diagnostics require an explicit request and remain separate from actual check results.
 
-Implementation runs the required tests, lint, formatting and project-specific platform or
-stress checks. Its result pauses for approval directly before independent review; there is
-no separate validation stage or prerequisite checklist blocking that approval. Review runs
-the applicable checks independently and receives unresolved implementation evidence.
-Missing checks remain unverified, real test failures prevent final acceptance, and code
-approved with gaps retains incomplete verification. Historical requirements and failures
-survive later attempts. Legacy stage-4 tasks can enter implementation approval explicitly
-without replaying implementation. Saved stage IDs and recovery RPCs remain compatible.
+The full template pauses at configured approval nodes. Its implementation requires
+observed passing checks; the reviewer stays read-only. Other saved profiles may use
+record-only verification. Lifecycle completion/archive does not manufacture passing
+checks or an approved review. Historical stage-4 records and their verification
+summaries remain readable; the old stage-specific recovery mutations are retired.
 
 Codex implementation commands have network access for test servers within the mandatory
 filesystem sandbox; it does not authorize dependency installation. Planning and review retain their
@@ -342,8 +421,8 @@ optional quality checks installed without overwriting existing private hook poli
 
 ## Renderer and styles
 
-`src/app` owns composition and navigation. `src/features` groups tasks, chat,
-workflow, verification, repositories, pull requests/repair, Issue Watch,
+`src/app` owns composition and navigation. `src/features` groups tasks, flows, chat,
+verification, repositories, pull requests/repair, Issue Watch,
 providers, settings and usage. Task completion and repair review provide direct
 access to the shared terminal dock for manual commands.
 
@@ -356,12 +435,31 @@ Shared primitives live in `components/ui`; shared workspace and diff controls li
 in `components/shared` and `components/diff`. Reusable hooks live in `src/hooks`;
 feature hooks stay with their owners.
 
-Task approval controls and check summaries live in the secondary workspace. Approval
-opens that sidebar once and keeps its actions available while inspecting other tool tabs;
-the conversation contains agent output and the composer. Expanded tool content aligns
-with the tool heading, and repository rows separate identity, metadata and actions.
-The task composer has one agent conversation, with no Ask/Work mode switch. Explicit
-Send to workflow and workflow-panel controls authorize pipeline feedback and execution.
+Task approval controls live in the selected node inspector. Flow, chat, files, checks,
+logs, usage and imported history share the task workspace. Explicit saved input
+bindings replace implicit stage handoffs. Profile edits apply to future runs; node
+attempts retain their captured settings. PR repair retains its shared secondary
+workspace and dock. Repository rows separate identity, metadata and actions.
+
+Flow navigation stores the selected view and node in `lib/taskView.ts`. Command-palette
+commands and global usage links open the corresponding flow view and actual run.
+`FlowWorkspace` reuses `components/shared/BottomDock` and `useWorkspaceKeys`, retaining an
+attached terminal while its dock is hidden or another utility tab is selected. These
+view operations authorize no agent execution.
+
+The unmounted fixed-pipeline `TaskWorkspace`, stage engineering/plan/recovery views
+and stage settings/composer model picker have been removed. `AgentConfiguration`
+remains a general provider control for Settings and Issue Watch. Repair owns its
+secondary panel, action tray and context picker; the dock remains shared with flows.
+Historical verification and exact command transcripts are read-only flow/history
+views. Legacy local drafts and saved instruction selections remain inspectable in
+History without assigning them to a Viber or authorizing execution.
+
+Command filters use recorded run/attempt identity, including direct command nodes,
+instead of fixed stage numbers. The node inspector also shows actual activity from
+an active conversation without completing its graph node. The unused `review.send`
+mutation was removed; local review notes, source hashes and read-only inspection
+remain available. The renderer contains no fixed-pipeline task execution controls.
 
 Task and PR repair share the chat surface, composer, optimistic-message reconciliation
 and event timeline. Server echoes replace optimistic rows by identity; submission failures
@@ -375,8 +473,7 @@ raw logs retain the technical evidence. Preparation commands stay in workflow/ru
 message caches retain real deltas across the bounded detail window and recover missing
 prefixes through existing paginated event reads, without starting providers. Changed-file summaries
 belong to implementation turns; final review messages distinguish code approval from
-observed verification and explain the remaining manual step. Historical stage 4 records,
-validation recovery and their persisted identifiers remain supported.
+observed verification and explain the remaining manual step. Historical stage 4 records and their saved evidence retain their original identifiers.
 
 `src/lib/api.ts` owns transport and error presentation. Display formatting lives in
 `lib/format.ts`; chat event decoding and verification argv parsing live in their

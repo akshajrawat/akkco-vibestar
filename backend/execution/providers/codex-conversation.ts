@@ -4,7 +4,7 @@ import { object, type AgentRunRequest } from "./contracts";
 
 /** One authorized turn on the official app-server protocol; EOF ends the owned process. */
 export const codexConversation = (request: AgentRunRequest) => {
-  const writable = request.stage === 3;
+  const writable = request.access === "workspace-write";
   let send: (message: unknown) => void;
   let end: () => void;
   let phase: "initialize" | "thread" | "turn" | "finished" = "initialize";

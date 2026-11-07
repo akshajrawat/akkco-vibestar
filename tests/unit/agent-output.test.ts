@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
 import { Rpc } from "../../backend/rpc";
-import { defaultSettings, now, type Task } from "../../backend/domain";
+import { now, type Task } from "../../backend/domain";
 import { readLogTail } from "../../backend/storage/logs";
 import { CommandExecutions } from "../../backend/execution/verification/command-executions";
 import { AgentRunner } from "../../backend/execution/agents/agent-runner";
@@ -261,13 +261,18 @@ it("persists actual emitted model/effort and separate redacted streams without t
       }),
     );
 
-    await runner.run(
+    await runner.runConfigured(
       task,
-      {
-        ...defaultSettings,
-        antigravity: { model: "next-model", effort: "low", timeout_secs: 30 },
-      },
       new AbortController().signal,
+      {
+        provider: "antigravity",
+        model: "next-model",
+        effort: "low",
+        timeout_secs: 30,
+        access: "read-only",
+        output: "plan",
+      },
+      { purpose: "Planning telemetry", prompt: "Inspect the selected source." },
     );
 
     const detail = engine.db.detail(task.id);

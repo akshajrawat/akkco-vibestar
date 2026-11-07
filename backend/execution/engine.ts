@@ -12,19 +12,22 @@ import { GitWorkspace } from "../workspace/git";
 import { createLayout, exists } from "../workspace/paths";
 import { AgentRunner } from "./agents/agent-runner";
 import { AgentOperations } from "./engine/agents";
-import { ApprovalTransitions } from "./engine/approvals";
 import { CommandExecution } from "./engine/commands";
 import { RepositoryOperations } from "./engine/repositories";
 import { EngineScheduling } from "./engine/scheduling";
 import { ExecutionState } from "./engine/state";
 import { TaskLifecycle } from "./engine/tasks";
-import { VerificationTransitions } from "./engine/verification";
-import { WorkflowOrchestrator } from "./engine/workflow";
 import { processIdentity, redact, terminateGroup } from "./runtime/process";
 import { AntigravityProvider } from "./providers/antigravity";
 import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
 import { UtilityAI } from "./agents/utility-ai";
+import { FlowStore } from "../flows/store";
+import { FlowRunStore } from "../flows/run-store";
+import { assertManagedWorkspace } from "../workspace/managed";
+import { FlowExecution } from "./engine/flows";
+import { initializeProfiles } from "../flows/defaults";
+import { migrateLegacyTasks } from "../flows/legacy-migration";
 
 export class Engine extends EventEmitter {
   private readonly state = new ExecutionState();
@@ -33,17 +36,13 @@ export class Engine extends EventEmitter {
 
   private readonly commands: CommandExecution;
 
-  private readonly approvals: ApprovalTransitions;
-
-  private readonly verification: VerificationTransitions;
-
-  private readonly workflow: WorkflowOrchestrator;
-
   private readonly scheduling: EngineScheduling;
 
   private readonly tasks: TaskLifecycle;
 
   private readonly repositories: RepositoryOperations;
+
+  private readonly flowExecution: FlowExecution;
 
   readonly db: Database;
 
@@ -52,6 +51,10 @@ export class Engine extends EventEmitter {
   readonly repositoryIndex: RepositoryIndex;
 
   readonly utility: UtilityAI;
+
+  readonly flows: FlowStore;
+
+  readonly flowRuns: FlowRunStore;
 
   private readonly runner: AgentRunner;
 
@@ -102,6 +105,9 @@ export class Engine extends EventEmitter {
   ) {
     super();
     this.db = database;
+    this.flows = new FlowStore(database);
+    this.flowRuns = new FlowRunStore(database);
+    initializeProfiles(database);
     this.git = new GitWorkspace(root, (id) => this.db.repository(id), gitTransport);
 
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>
@@ -122,10 +128,8 @@ export class Engine extends EventEmitter {
       this.git,
       this.publish,
       providers ??
-        ((stage, provider) =>
-          provider === "antigravity" || (stage === 1 && !provider)
-            ? new AntigravityProvider()
-            : new CodexProvider()),
+        ((_stage, provider) =>
+          provider === "antigravity" ? new AntigravityProvider() : new CodexProvider()),
     );
 
     this.utility = new UtilityAI(this.db, this.runUtility);
@@ -142,19 +146,19 @@ export class Engine extends EventEmitter {
       this.state.repositoryController.signal,
     );
 
-    this.scheduling = new EngineScheduling(this, this.state, { pipeline: this.pipeline });
-
-    this.workflow = new WorkflowOrchestrator(this, this.state, this.runner, {
-      withExecutionSlot: this.withExecutionSlot,
-      verificationEvidenceHash: this.verificationEvidenceHash,
-      savedReviewVerdict: this.savedReviewVerdict,
+    this.scheduling = new EngineScheduling(this, this.state, {
+      drainFlows: () => this.flowExecution.drain(),
+      queuedFlows: () => this.flowExecution.queuedTasks(),
+      cancelFlow: (id) => this.flowExecution.cancel(id),
     });
 
-    this.verification = new VerificationTransitions(this, this.state);
-    this.approvals = new ApprovalTransitions(this, this.state);
     this.commands = new CommandExecution(this, this.state);
 
     this.agents = new AgentOperations(this, this.state, this.runner, {
+      withExecutionSlot: this.withExecutionSlot,
+    });
+
+    this.flowExecution = new FlowExecution(this, this.state, this.runner, {
       withExecutionSlot: this.withExecutionSlot,
     });
   }
@@ -197,32 +201,36 @@ export class Engine extends EventEmitter {
         const operation = task.workspace_checkpoint?.operation;
         if (operation?.identity && (await processIdentity(operation.pid)) === operation.identity)
           terminateGroup(operation.pid, "SIGKILL");
-        if (task.workspace_checkpoint) task.workspace_checkpoint.operation = null;
-        if (task.status === "preserved") {
+      }
+
+      migrateLegacyTasks(engine.db);
+
+      for (const task of engine.db.tasks()) {
+        if (task.workspace_checkpoint?.operation) {
+          task.workspace_checkpoint.operation = null;
           engine.db.saveTask(task);
-          continue;
         }
 
-        if (task.workflow_version === 1 && !task.workflow_start) {
-          engine.db.saveTask({ ...task, stage: 0, status: "not_started" });
-          continue;
-        }
-
-        if (task.stage === 0 && task.worktree_path) {
+        if (
+          task.worktree_path &&
+          !["removing", "removed"].includes(task.workspace_checkpoint?.state || "")
+        ) {
           try {
-            if (!(await exists(task.worktree_path)))
-              throw new AdeError(
-                "recovery",
-                "The task preparation worktree is missing. Resume explicitly to reconcile its owned branch; the checkpoint was retained.",
-              );
-
-            const ready = await engine.git.recoverTaskPreparation(
-              engine.db.repository(task.repo_id),
-              task,
-              (value) => engine.db.saveTask(value),
-            );
-
-            engine.db.saveTask({ ...task, stage: ready ? 1 : 0 });
+            if (task.workspace_kind === "managed") await assertManagedWorkspace(root, task);
+            else {
+              const repo = engine.db.repository(task.repo_id);
+              if (!(await exists(repo.path)) || !(await exists(task.worktree_path)))
+                throw new AdeError(
+                  "recovery",
+                  "Saved workspace preparation is missing. Restore the owned checkpoint explicitly; no creation was replayed.",
+                );
+              if (task.workspace_checkpoint?.state === "ready")
+                await engine.git.assertOwnedTask(task);
+              else
+                await engine.git.recoverTaskPreparation(repo, task, (value) =>
+                  engine.db.saveTask(value),
+                );
+            }
           } catch (error) {
             engine.db.saveTask({
               ...task,
@@ -231,8 +239,6 @@ export class Engine extends EventEmitter {
               updated_at: now(),
             });
           }
-        } else if (task.workspace_checkpoint) {
-          engine.db.saveTask(task);
         }
       }
 
@@ -252,6 +258,8 @@ export class Engine extends EventEmitter {
         }
 
       engine.db.recover();
+      engine.flowRuns.interruptUnfinished();
+      engine.flowExecution.dispatches.interruptUnfinished();
       return engine;
     } catch (error) {
       database?.close();
@@ -290,7 +298,38 @@ export class Engine extends EventEmitter {
   prepareClone = (...args: Parameters<RepositoryOperations["prepareClone"]>) =>
     this.repositories.prepareClone(...args);
 
-  createTask = (...args: Parameters<TaskLifecycle["createTask"]>) => this.tasks.createTask(...args);
+  createGeneralTask = (...args: Parameters<TaskLifecycle["createGeneralTask"]>) =>
+    this.tasks.createGeneralTask(...args);
+
+  createIssueTask = (...args: Parameters<TaskLifecycle["createIssueTask"]>) =>
+    this.tasks.createIssueTask(...args);
+
+  startFlow = (...args: Parameters<FlowExecution["start"]>) => this.flowExecution.start(...args);
+
+  chatViber = (...args: Parameters<FlowExecution["chatViber"]>) =>
+    this.flowExecution.chatViber(...args);
+
+  pauseFlow = (...args: Parameters<FlowExecution["pause"]>) => this.flowExecution.pause(...args);
+
+  continueFlow = (...args: Parameters<FlowExecution["continue"]>) =>
+    this.flowExecution.continue(...args);
+
+  previewFlowContinuation = (...args: Parameters<FlowExecution["previewContinuation"]>) =>
+    this.flowExecution.previewContinuation(...args);
+
+  applyFlowContinuation = (...args: Parameters<FlowExecution["applyContinuation"]>) =>
+    this.flowExecution.applyContinuation(...args);
+
+  runFlowNode = (...args: Parameters<FlowExecution["runNode"]>) =>
+    this.flowExecution.runNode(...args);
+
+  retryFlowNode = (...args: Parameters<FlowExecution["retryNode"]>) =>
+    this.flowExecution.retryNode(...args);
+
+  approveFlowNode = (...args: Parameters<FlowExecution["approve"]>) =>
+    this.flowExecution.approve(...args);
+
+  cancelFlow = (...args: Parameters<FlowExecution["cancel"]>) => this.flowExecution.cancel(...args);
 
   taskRepository = (...args: Parameters<TaskLifecycle["taskRepository"]>) =>
     this.tasks.taskRepository(...args);
@@ -310,56 +349,26 @@ export class Engine extends EventEmitter {
   verifyRepository = (...args: Parameters<RepositoryOperations["verifyRepository"]>) =>
     this.repositories.verifyRepository(...args);
 
-  enqueue = (...args: Parameters<TaskLifecycle["enqueue"]>) => this.tasks.enqueue(...args);
+  cancel = async (id: string) => {
+    this.db.task(id);
+    if (this.state.interactive.has(id))
+      throw new AdeError("busy", "Close the task terminal before changing execution state");
 
-  /** Persists explicit startup authority once, after read-only identity and capability checks. */
-  startWorkflow = (...args: Parameters<WorkflowOrchestrator["startWorkflow"]>) =>
-    this.workflow.startWorkflow(...args);
+    const current = this.db.all<{ id: string }>(
+      "SELECT id FROM flow_runs WHERE task_id=? AND status IN ('queued','running','pausing','paused','waiting') ORDER BY rowid DESC",
+      id,
+    );
 
-  /** Runs a persisted read-only question through AgentRunner without advancing workflow authority. */
-  chat = (...args: Parameters<WorkflowOrchestrator["chat"]>) => this.workflow.chat(...args);
+    for (const run of current) await this.flowExecution.cancel(run.id);
 
-  private pipeline = (...args: Parameters<WorkflowOrchestrator["pipeline"]>) =>
-    this.workflow.pipeline(...args);
+    const active = [...this.state.active.entries()].filter(
+      ([key, value]) => key === id || value.taskId === id,
+    );
 
-  cancel = (...args: Parameters<EngineScheduling["cancel"]>) => this.scheduling.cancel(...args);
-
-  retry = (...args: Parameters<ApprovalTransitions["retry"]>) => this.approvals.retry(...args);
-
-  approveStage = (...args: Parameters<ApprovalTransitions["approveStage"]>) =>
-    this.approvals.approveStage(...args);
-
-  private verificationEvidenceHash = (
-    ...args: Parameters<VerificationTransitions["verificationEvidenceHash"]>
-  ) => this.verification.verificationEvidenceHash(...args);
-
-  reviewGapsPreview = (...args: Parameters<VerificationTransitions["reviewGapsPreview"]>) =>
-    this.verification.reviewGapsPreview(...args);
-
-  private savedReviewVerdict = (
-    ...args: Parameters<VerificationTransitions["savedReviewVerdict"]>
-  ) => this.verification.savedReviewVerdict(...args);
-
-  recheckEvidence = (...args: Parameters<VerificationTransitions["recheckEvidence"]>) =>
-    this.verification.recheckEvidence(...args);
-
-  setVerificationPolicy = (...args: Parameters<VerificationTransitions["setVerificationPolicy"]>) =>
-    this.verification.setVerificationPolicy(...args);
-
-  runMissingCheck = (...args: Parameters<VerificationTransitions["runMissingCheck"]>) =>
-    this.verification.runMissingCheck(...args);
-
-  fixVerification = (...args: Parameters<VerificationTransitions["fixVerification"]>) =>
-    this.verification.fixVerification(...args);
-
-  acceptDraft = (...args: Parameters<ApprovalTransitions["acceptDraft"]>) =>
-    this.approvals.acceptDraft(...args);
-
-  followUp = (...args: Parameters<ApprovalTransitions["followUp"]>) =>
-    this.approvals.followUp(...args);
-
-  sendSavedMessage = (...args: Parameters<ApprovalTransitions["sendSavedMessage"]>) =>
-    this.approvals.sendSavedMessage(...args);
+    for (const [, value] of active) value.controller.abort();
+    await Promise.allSettled(active.map(([, value]) => value.promise));
+    this.changed(id);
+  };
 
   manual = (...args: Parameters<CommandExecution["manual"]>) => this.commands.manual(...args);
 
@@ -382,9 +391,9 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.active.values()].map((a) => a.promise));
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
-        await Promise.allSettled(
-          [...this.state.startingWorkflows.values()].map((operation) => operation.promise),
-        );
+        await Promise.allSettled([...this.state.flowRequests]);
+        this.flowRuns.interruptUnfinished();
+        this.flowExecution.dispatches.interruptUnfinished();
 
         await this.repositoryIndex.close();
       } finally {

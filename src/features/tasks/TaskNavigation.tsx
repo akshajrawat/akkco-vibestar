@@ -10,7 +10,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-import type { Repository, Task } from "../../lib/types";
+import type { Repository, Task, Snapshot } from "../../lib/types";
 import { activeStatuses } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { TaskCleanup } from "./TaskCleanup";
@@ -21,12 +21,14 @@ export const TaskNavigation = ({
   selected,
   open,
   onError,
+  flowStates,
 }: {
   repositories: Repository[];
   tasks: Task[];
   selected: string | null;
   open: (id: string) => void;
   onError?: (message: string) => void;
+  flowStates?: Snapshot["flow_states"];
 }) => {
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [archived, setArchived] = useState(false);
@@ -76,15 +78,54 @@ export const TaskNavigation = ({
   };
 
   const status = (task: Task) =>
-    task.final_review_verdict === "changes_requested"
-      ? "Changes requested"
-      : task.status === "awaiting_approval"
-        ? "Review needed"
-        : task.status.replaceAll("_", " ");
+    flowStates?.[task.id]
+      ? `${flowStates[task.id].status} · checks ${flowStates[task.id].verification} · task ${task.status.replaceAll("_", " ")}`
+      : task.final_review_verdict === "changes_requested"
+        ? "Changes requested"
+        : task.status === "awaiting_approval"
+          ? "Review needed"
+          : task.status.replaceAll("_", " ");
 
-  const running = !!task && (activeStatuses.includes(task.status) || task.status === "queued");
+  const running =
+    !!task &&
+    (flowStates?.[task.id]
+      ? ["queued", "running", "pausing", "waiting", "paused"].includes(flowStates[task.id].status)
+      : activeStatuses.includes(task.status) || task.status === "queued");
+
   return (
     <div className="sidebar-tasks">
+      {tasks.some((task) => !task.repo_id && (archived || !task.archived)) && (
+        <section>
+          <div className="tree-group-toggle">Your workspace</div>
+          {tasks
+            .filter((task) => !task.repo_id && (archived || !task.archived))
+            .map((task) => (
+              <div key={task.id} className="tree-task-entry">
+                <button
+                  className={`tree-task ${task.id === selected ? "selected" : ""}`}
+                  aria-current={task.id === selected ? "page" : undefined}
+                  onClick={() => open(task.id)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    context(task, event.currentTarget, event.clientX, event.clientY);
+                  }}
+                >
+                  <span>
+                    {task.goal || "Viber task"}
+                    <small>{status(task)}</small>
+                  </span>
+                </button>
+                <button
+                  className="tree-task-menu"
+                  aria-label={`Actions for ${task.goal || "Viber task"}`}
+                  onClick={(event) => context(task, event.currentTarget)}
+                >
+                  <MoreHorizontal size={14} />
+                </button>
+              </div>
+            ))}
+        </section>
+      )}
       {repositories
         .filter((repo) =>
           tasks.some((task) => task.repo_id === repo.id && (archived || !task.archived)),
@@ -131,15 +172,38 @@ export const TaskNavigation = ({
                       title={`${status(task)}\n${task.issue?.title || task.claimed_scope}\n${task.branch_name}`}
                     >
                       <span>
-                        <small>Issue #{task.issue_number} ·</small>{" "}
-                        {task.claimed_scope || task.issue?.title || "Entire issue"}
+                        {task.issue_number && (
+                          <>
+                            <small>Issue #{task.issue_number} ·</small>{" "}
+                          </>
+                        )}
+                        {task.goal || task.claimed_scope || task.issue?.title || "Entire issue"}
                       </span>
 
                       <span
                         className={`task-status-icon ${task.final_review_verdict === "changes_requested" ? "failed" : task.status}`}
                         aria-hidden="true"
                       >
-                        {task.final_review_verdict === "changes_requested" ? (
+                        {flowStates?.[task.id] ? (
+                          ["failed", "needs_recovery"].includes(flowStates[task.id].status) ? (
+                            <XCircle size={12} />
+                          ) : ["waiting", "paused", "interrupted", "cancelled"].includes(
+                              flowStates[task.id].status,
+                            ) ? (
+                            <AlertCircle size={12} />
+                          ) : (
+                            <Circle
+                              size={9}
+                              fill={
+                                ["queued", "running", "pausing"].includes(
+                                  flowStates[task.id].status,
+                                )
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
+                          )
+                        ) : task.final_review_verdict === "changes_requested" ? (
                           <XCircle size={12} />
                         ) : ["ready_for_review", "completed"].includes(task.status) ? (
                           <CheckCircle2 size={12} />
@@ -199,7 +263,11 @@ export const TaskNavigation = ({
           ref={surface}
           className="task-context-menu"
           role="menu"
-          aria-label={`Task #${task.issue_number} actions`}
+          aria-label={
+            task.issue_number
+              ? `Task #${task.issue_number} actions`
+              : `${task.goal || "Viber task"} actions`
+          }
           style={{ left: menu.x, top: menu.y }}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
@@ -257,7 +325,11 @@ export const TaskNavigation = ({
 
           <button
             role="menuitem"
-            onClick={() => action(() => navigator.clipboard.writeText(task.issue_url))}
+            disabled={!task.issue_url}
+            onClick={() => {
+              const url = task.issue_url;
+              if (url) action(() => navigator.clipboard.writeText(url));
+            }}
           >
             Copy issue URL
           </button>

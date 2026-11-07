@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { NormalizedEvent, StageConfig } from "../../domain";
 import { VerificationCheckSchema } from "../verification/verification";
 import type { ProcessInputProtocol } from "../runtime/process";
+import type { WorkspaceAccess } from "../contracts";
 
 export interface ProviderDetection {
   provider: string;
@@ -49,6 +50,7 @@ export interface AgentRunRequest {
   runId: string;
   cwd: string;
   stage: number;
+  access: WorkspaceAccess;
   config: StageConfig;
   prompt: string;
   schemaPath: string;
@@ -139,12 +141,6 @@ export const planSchemas = {
         .optional(),
     })
     .strict(),
-};
-
-export const schemaFor = (stage: number) => {
-  const schema = planSchemas[stage as keyof typeof planSchemas];
-  if (!schema) throw new Error("No schema for stage");
-  return z.toJSONSchema(schema) as Record<string, unknown>;
 };
 
 export const validatePlan = (stage: number, value: unknown) =>

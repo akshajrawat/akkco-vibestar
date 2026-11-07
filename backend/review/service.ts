@@ -349,13 +349,4 @@ export class ReviewService {
     this.engine.db.run("DELETE FROM task_review_notes WHERE id=?", id);
     this.engine.changed();
   };
-
-  send = (id: string) => {
-    const notes = this.list(id);
-    if (!notes.length) throw new AdeError("invalid_state", "No saved local review notes");
-    return this.engine.followUp(
-      id,
-      `Apply my local diff review feedback within this task's claimed scope. Notes are local, not GitHub comments. Their paths, line ranges, side and source hashes describe the version reviewed; inspect current files and account for any drift before acting. Do not push, post comments, create PRs or merge.\n${JSON.stringify(notes)}`,
-    );
-  };
 }

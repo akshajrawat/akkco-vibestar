@@ -6,6 +6,16 @@ import { CleanupError } from "../../components/shared/CleanupError";
 import type { StorageService } from "../../../backend/storage/service";
 import { StorageReset } from "./StorageReset";
 
+const flowRecordLabels: Record<string, string> = {
+  agent_profiles: "Viber profiles",
+  flow_definitions: "Task flows",
+  flow_revisions: "Saved revisions",
+  flow_runs: "Flow runs",
+  flow_node_attempts: "Node attempts",
+  flow_task_migrations: "Imported tasks",
+  flow_migration_sources: "Preserved historical sources",
+};
+
 const bytes = (value: number) =>
   value >= 1024 ** 3
     ? `${(value / 1024 ** 3).toFixed(2)} GB`
@@ -87,6 +97,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
             ["Database", info.database],
             ["Repositories", info.sizes.repos],
             ["Task worktrees", info.sizes.worktrees],
+            ["Managed task files", info.sizes.workspaces],
             ["Logs", info.sizes.logs],
             ["Artifacts / cache", info.sizes.artifacts + info.sizes.cache],
             [
@@ -101,6 +112,23 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
             </div>
           ))}
         </dl>
+      )}
+      {info?.flows && (
+        <details>
+          <summary>Saved profiles, flow history and migration records</summary>
+          <dl className="storage-sizes">
+            {Object.entries(info.flows).map(([table, count]) => (
+              <div key={table}>
+                <dt>{flowRecordLabels[table] || table}</dt>
+                <dd>{count}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="subtle">
+            These records retain captured inputs and source evidence. Archive tasks to keep their
+            files and history available.
+          </p>
+        </details>
       )}
 
       <p className="subtle">

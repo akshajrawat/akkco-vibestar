@@ -23,7 +23,7 @@ export class AgentOperations {
 
   runRepair = (
     assignment: WorkspaceAssignment,
-    stage: 3 | 5,
+    phase: "implementation" | "review",
     provider: "codex" | "antigravity",
     config: StageConfig,
     prompt: string,
@@ -32,15 +32,25 @@ export class AgentOperations {
     signal: AbortSignal,
   ) =>
     this.operations.withExecutionSlot(`repair:${assignment.id}`, "PR repair", signal, (combined) =>
-      this.runner.run({ id: assignment.id, stage }, this.host.db.settings(), combined, {
-        repair: assignment,
-        prompt,
-        purpose: stage === 3 ? "PR Repair Implementation" : "PR Repair Verification",
-        provider,
-        config,
-        schema,
-        contextPaths,
-      }),
+      this.runner.runConfigured(
+        { id: assignment.id },
+        combined,
+        {
+          ...config,
+          provider,
+          access: phase === "implementation" ? "workspace-write" : "read-only",
+          output: "custom",
+        },
+        {
+          repair: assignment,
+          repairStage: phase === "implementation" ? 3 : 5,
+          prompt,
+          purpose:
+            phase === "implementation" ? "PR Repair Implementation" : "PR Repair Verification",
+          schema,
+          contextPaths,
+        },
+      ),
     );
 
   runUtility = async (
@@ -60,8 +70,7 @@ export class AgentOperations {
       this.state.maintenance ||
       (request.context?.taskId && this.state.taskMaintenance.has(request.context.taskId)) ||
       this.host.isActive(key) ||
-      this.state.active.size >= this.host.db.settings().concurrency ||
-      this.host.db.tasks().some((t) => t.status === "queued" && !t.archived)
+      this.state.active.size >= this.host.db.settings().concurrency
     )
       throw new AdeError("busy", "Utility analysis is waiting for task execution capacity");
     const workspace = request.workspace || join(this.host.root, "cache", "utility", id);
@@ -76,10 +85,10 @@ export class AgentOperations {
         await managedPath(this.host.root, workspace);
       }
 
-      return this.runner.run(
-        task ? { ...task, stage: 1 } : { id, stage: 1 },
-        this.host.db.settings(),
+      return this.runner.runConfigured(
+        task || { id },
         request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
+        { ...config, access: "read-only", output: "custom" },
         {
           prompt: request.prompt,
           purpose: request.purpose,
@@ -92,8 +101,6 @@ export class AgentOperations {
           telemetryTaskId: request.context?.taskId,
           questionId: request.context?.questionId,
           telemetryRepository: request.context?.repository,
-          provider: config.provider,
-          config,
         },
       );
     });

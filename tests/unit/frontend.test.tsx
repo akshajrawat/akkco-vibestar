@@ -1,18 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-vi.mock("../../src/components/shared/TaskTerminal", () => ({
-  TaskTerminal: () => <p>Terminal fixture view</p>,
-}));
-
 import { afterEach, expect, it, vi } from "vitest";
 
 import { defaultSettings } from "../../backend/domain";
-import { StageSettings } from "../../src/features/providers/StageSettings";
 import { NewTask } from "../../src/features/tasks/NewTask";
 import { parseArgv } from "../../src/features/verification/commands";
-import { PlanView } from "../../src/features/workflow/PlanView";
 import { tokenUsage } from "../../src/lib/format";
+import { viberProfile } from "../workspace/flow-fixtures";
 
 afterEach(cleanup);
 
@@ -57,86 +52,6 @@ it("shows independently reported token fields without inventing a total", () => 
   expect(tokenUsage({ ...unreported, total_tokens: 49 })).toContain("total 49");
 });
 
-it("sends Enter, preserves Shift+Enter and IME composition, and prevents form navigation", async () => {
-  const { TaskWorkspace } = await import("../../src/features/tasks/TaskWorkspace");
-
-  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
-    value: () => {},
-    configurable: true,
-  });
-
-  const rpc = vi.fn(async (method: string, params: Record<string, unknown>) =>
-    method === "providers.detect"
-      ? []
-      : {
-          message: {
-            id: "saved",
-            role: "user",
-            content: params.content,
-            created_at: new Date().toISOString(),
-            status: "delivered",
-          },
-        },
-  );
-
-  Object.defineProperty(window, "vibestar", {
-    value: { rpc },
-    configurable: true,
-  });
-
-  const ui = render(
-    <TaskWorkspace
-      detail={{
-        task: {
-          id: "keyboard-test",
-          repo_id: "repo",
-          issue_number: 1,
-          issue_url: "https://github.com/a/b/issues/1",
-          claimed_scope: "scope",
-          notes: "",
-          issue: {},
-          branch_name: "",
-          base_branch: "main",
-          base_commit_sha: "",
-          worktree_path: "",
-          created_at: "now",
-          updated_at: "now",
-          status: "cancelled",
-          stage: 1,
-          error: null,
-        },
-        runs: [],
-        events: [],
-        messages: [],
-        artifacts: [],
-        tests: [],
-      }}
-      revision={0}
-      onError={() => {}}
-      back={() => {}}
-    />,
-  );
-
-  const composer = screen.getByLabelText("Task conversation");
-  fireEvent.change(composer, { target: { value: "Resume planning" } });
-  expect(fireEvent.keyDown(composer, { key: "Enter", shiftKey: true })).toBe(true);
-  expect(fireEvent.keyDown(composer, { key: "Enter", isComposing: true })).toBe(true);
-  expect(rpc.mock.calls.filter(([method]) => method === "task.chat")).toHaveLength(0);
-  expect(fireEvent.keyDown(composer, { key: "Enter" })).toBe(false);
-
-  await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith(
-      "task.chat",
-      expect.objectContaining({ content: "Resume planning" }),
-    ),
-  );
-
-  expect(await screen.findByText("Resume planning")).toBeTruthy();
-  expect((composer as HTMLTextAreaElement).value).toBe("");
-  expect(fireEvent.submit(ui.container.querySelector("form")!)).toBe(false);
-  expect(ui.container.querySelector("form button:not([type])")).toBeNull();
-}, 15000);
-
 it("shows an agent's actual structured summary without dumping JSON into the conversation", async () => {
   const { AgentResponse } = await import("../../src/features/chat/AgentResponse");
 
@@ -152,63 +67,6 @@ it("shows an agent's actual structured summary without dumping JSON into the con
   expect(screen.getByText("Inspect the claimed spec")).toBeTruthy();
   expect(screen.getByText("View result details")).toBeTruthy();
   expect(screen.getByText(/relevant Files/)).toBeTruthy();
-});
-
-it("keeps implementation config independent of planning", () => {
-  const changed = vi.fn();
-
-  render(
-    <StageSettings
-      settings={defaultSettings}
-      onChange={changed}
-      providers={[
-        {
-          provider: "codex",
-          installed: true,
-          connected: true,
-          version: "fixture",
-          models: [{ id: "requested-plan-model", supportedEfforts: ["high"] }],
-          efforts: ["high"],
-          capabilities: [],
-          error: null,
-        },
-      ]}
-    />,
-  );
-
-  const models = screen.getAllByRole("combobox").filter((e) => e.id.endsWith("-models"));
-  fireEvent.click(models[1]);
-  fireEvent.click(screen.getByRole("option", { name: "requested-plan-model" }));
-  const settings = changed.mock.calls[0][0];
-  expect(settings.codex_plan.model).toBe("requested-plan-model");
-  expect(settings.codex_implementation.model).toBe("");
-  expect(screen.getAllByText(/Models not loaded/)).toHaveLength(2);
-});
-
-it("shows both locally persisted plans", () => {
-  render(
-    <PlanView
-      artifacts={[
-        {
-          id: "a",
-          stage: 1,
-          kind: "plan",
-          content: '{"summary":"original proposal"}',
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: "b",
-          stage: 2,
-          kind: "plan",
-          content: '{"goal":"independent refinement"}',
-          created_at: new Date().toISOString(),
-        },
-      ]}
-    />,
-  );
-
-  expect(screen.getByText("original proposal")).toBeTruthy();
-  expect(screen.getByText("independent refinement")).toBeTruthy();
 });
 
 it("resolves a pasted issue and sends distinct whole/partial scope semantics", async () => {
@@ -245,9 +103,11 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
             root: "/home/aksha/.akkco-vibestar",
             repositories: [preview.repository],
           }
-        : method === "task.create"
-          ? { id: "task" }
-          : preview,
+        : method === "profile.list"
+          ? [viberProfile]
+          : method === "task.createIssue"
+            ? { id: "task" }
+            : preview,
     ),
   );
 
@@ -268,7 +128,7 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
   await vi.waitFor(() => expect(created).toHaveBeenCalledWith("task"));
 
   expect(rpc).toHaveBeenCalledWith(
-    "task.create",
+    "task.createIssue",
     expect.objectContaining({
       repository_id: "selected-local",
       scope_mode: "whole_issue",
@@ -286,7 +146,7 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
 
   await vi.waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
-      "task.create",
+      "task.createIssue",
       expect.objectContaining({
         scope_mode: "partial",
         claimed_scope: "check-improvements-tab.spec.ts",
@@ -858,90 +718,7 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
     ).disabled,
   ).toBe(true);
 
-  expect(rpc).not.toHaveBeenCalledWith("task.create", expect.anything());
+  expect(rpc).not.toHaveBeenCalledWith("task.createIssue", expect.anything());
   fireEvent.click(screen.getByRole("button", { name: "Switch to oppia/oppia" }));
   expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain("oppia/oppia");
-});
-
-it("opens the manual terminal without Git actions and keeps task completion explicit", async () => {
-  const { TaskWorkspace } = await import("../../src/features/tasks/TaskWorkspace");
-
-  const rpc = vi.fn(async (method: string) =>
-    method === "providers.detect"
-      ? []
-      : method === "task.diff"
-        ? {
-            files: [{ path: "source.txt" }],
-            insertions: 1,
-            deletions: 1,
-            base: "sha",
-          }
-        : null,
-  );
-
-  Object.defineProperty(window, "vibestar", {
-    value: { rpc },
-    configurable: true,
-  });
-
-  render(
-    <TaskWorkspace
-      detail={{
-        task: {
-          id: "finalize-test",
-          repo_id: "source",
-          issue_number: 26831,
-          issue_url: "https://github.com/oppia/oppia/issues/26831",
-          claimed_scope: "Task A",
-          notes: "",
-          issue: { title: "Task" },
-          branch_name: "akkco/26831-task-a",
-          base_branch: "develop",
-          base_commit_sha: "sha",
-          worktree_path: "/data/worktrees/source/task",
-          created_at: "now",
-          updated_at: "now",
-          status: "ready_for_review",
-          stage: 5,
-          error: null,
-        },
-        runs: [],
-        events: [],
-        messages: [],
-        artifacts: [],
-        tests: [],
-      }}
-      repository={{
-        id: "source",
-        owner: "oppia",
-        name: "oppia",
-        path: "/home/aksha/oppia",
-        upstream_url: "https://github.com/oppia/oppia.git",
-        origin_url: null,
-        source: "imported",
-        base_branch: "develop",
-        last_fetched: null,
-        created_at: "now",
-      }}
-      revision={0}
-      onError={vi.fn()}
-      back={vi.fn()}
-    />,
-  );
-
-  expect(screen.queryByRole("button", { name: "Git Changes" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Toggle secondary workspace" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open terminal" }));
-  expect(screen.getByRole("tab", { name: "Terminal" }).getAttribute("aria-selected")).toBe("true");
-  expect(rpc).not.toHaveBeenCalledWith("task.complete", expect.anything());
-  expect(rpc.mock.calls.some(([method]) => method.startsWith("git."))).toBe(false);
-
-  fireEvent.click(screen.getByRole("tab", { name: "Workflow" }));
-  fireEvent.click(screen.getByRole("button", { name: "Mark task complete" }));
-
-  await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith("task.complete", { id: "finalize-test" }),
-  );
-
-  expect(rpc.mock.calls.some(([method]) => /commit|checkout|remove/.test(method))).toBe(false);
 });

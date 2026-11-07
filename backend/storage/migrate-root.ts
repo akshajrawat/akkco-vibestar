@@ -8,8 +8,10 @@ import { Database } from "./database";
 import { AdeError } from "../domain";
 import { createLayout, exists, inside, managedPath } from "../workspace/paths";
 import { RepairStore } from "../review/repair/store";
+import { assertManagedWorkspace } from "../workspace/managed";
 
-const promotedDirectories = ["state", "repos", "worktrees", "logs", "artifacts", "telemetry"];
+const legacyPromotedDirectories = ["state", "repos", "worktrees", "logs", "artifacts", "telemetry"];
+const promotedDirectories = [...legacyPromotedDirectories, "workspaces"];
 const journalPath = (target: string) => join(target, "runtime", "migration-pending.json");
 
 const recoverMigration = async (source: string, target: string) => {
@@ -28,7 +30,16 @@ const recoverMigration = async (source: string, target: string) => {
       "Interrupted migration metadata could not be verified. Original data was preserved.",
     );
   await managedPath(target, journal.staging);
-  for (const dir of promotedDirectories) {
+  const directories = journal.directories ?? legacyPromotedDirectories;
+  if (
+    JSON.stringify(directories) !== JSON.stringify(legacyPromotedDirectories) &&
+    JSON.stringify(directories) !== JSON.stringify(promotedDirectories)
+  )
+    throw new AdeError(
+      "migration",
+      "The migration directory journal could not be verified. Existing data was preserved.",
+    );
+  for (const dir of directories) {
     if (!(await exists(join(journal.staging, dir)))) {
       await rename(join(target, dir), join(journal.staging, dir));
       await mkdir(join(target, dir), { recursive: true, mode: 0o700 });
@@ -92,7 +103,15 @@ export const migrateDataRoot = async (source: string, target: string) => {
       original.close();
     }
 
-    for (const dir of ["repos", "worktrees", "logs", "artifacts", "cache", "telemetry"]) {
+    for (const dir of [
+      "repos",
+      "worktrees",
+      "workspaces",
+      "logs",
+      "artifacts",
+      "cache",
+      "telemetry",
+    ]) {
       if (await exists(join(source, dir)))
         await cp(join(source, dir), join(staging, dir), {
           recursive: true,
@@ -146,6 +165,18 @@ export const migrateDataRoot = async (source: string, target: string) => {
 
     for (const task of db.tasks()) {
       if (!task.worktree_path) continue;
+      if (task.workspace_kind === "managed") {
+        await assertManagedWorkspace(source, task);
+
+        await assertManagedWorkspace(staging, {
+          ...task,
+          worktree_path: await stagedPath(task.worktree_path),
+        });
+
+        db.saveTask({ ...task, worktree_path: translated(task.worktree_path) });
+        continue;
+      }
+
       if (task.workspace_mode === "source") {
         const repository = db.repository(task.repo_id);
         if (repository.path !== translated(task.worktree_path))
@@ -264,9 +295,13 @@ export const migrateDataRoot = async (source: string, target: string) => {
           `Destination ${dir} is not empty. Original data was preserved.`,
         );
 
-    await writeFile(journalPath(target), JSON.stringify({ source, target, staging }), {
-      mode: 0o600,
-    });
+    await writeFile(
+      journalPath(target),
+      JSON.stringify({ source, target, staging, directories: promotedDirectories }),
+      {
+        mode: 0o600,
+      },
+    );
 
     for (const dir of promotedDirectories) {
       await managedPath(staging, dir);
@@ -277,6 +312,11 @@ export const migrateDataRoot = async (source: string, target: string) => {
 
     const verify = await Database.open(join(target, "state", "vibestar.sqlite"));
     try {
+      for (const task of verify
+        .tasks()
+        .filter((entry) => entry.workspace_kind === "managed" && entry.worktree_path))
+        await assertManagedWorkspace(target, task);
+
       const repairAssignments = new RepairStore(verify)
         .list()
         .filter((session) => session.workspace.preparation !== "removed")
@@ -285,7 +325,10 @@ export const migrateDataRoot = async (source: string, target: string) => {
           worktree_path: session.workspace.worktree_path,
         }));
 
-      for (const task of [...verify.tasks(), ...repairAssignments].filter((t) => t.worktree_path)) {
+      for (const task of [
+        ...verify.tasks().filter((entry) => entry.workspace_kind !== "managed"),
+        ...repairAssignments,
+      ].filter((t) => t.worktree_path)) {
         if (!(await exists(task.worktree_path))) continue;
 
         const common = await gitChecked(

@@ -55,6 +55,7 @@ export class StorageService {
       "state",
       "repos",
       "worktrees",
+      "workspaces",
       "logs",
       "artifacts",
       "cache",
@@ -81,6 +82,21 @@ export class StorageService {
       measured_at: now(),
       external_repositories: this.engine.db.repositories().filter((r) => r.source === "imported")
         .length,
+      flows: Object.fromEntries(
+        [
+          "agent_profiles",
+          "flow_definitions",
+          "flow_revisions",
+          "flow_runs",
+          "flow_run_invalidations",
+          "flow_node_attempts",
+          "flow_task_migrations",
+          "flow_migration_sources",
+        ].map((table) => [
+          table,
+          this.engine.db.all<{ count: number }>(`SELECT count(*) count FROM ${table}`)[0].count,
+        ]),
+      ),
     };
   };
 
@@ -112,6 +128,32 @@ export class StorageService {
       id,
     ).length,
   });
+
+  private assertNoFlowDependencies = (id: string, removingIdleHistory = false) => {
+    const task = this.engine.db.task(id);
+
+    const definitions = this.engine.db.all<{ id: string }>(
+      "SELECT id FROM flow_definitions WHERE task_id=?",
+      id,
+    );
+
+    if (!definitions.length) return;
+    if (
+      removingIdleHistory &&
+      !task.worktree_path &&
+      definitions.every((definition) => definition.id === task.flow_id) &&
+      !this.engine.db.all(
+        "SELECT id FROM flow_runs WHERE task_id=? OR flow_id IN (SELECT id FROM flow_definitions WHERE task_id=?) LIMIT 1",
+        id,
+        id,
+      ).length
+    )
+      return;
+    throw new AdeError(
+      "flow_history",
+      "Saved agent flows retain this task's workspace and history. Archive the task instead of deleting its data.",
+    );
+  };
 
   /** Reuses removal's ownership checks without mutating files, binding any later discard to this content. */
   previewTaskDisposal = (id: string) =>
@@ -174,6 +216,7 @@ export class StorageService {
     this.engine.withTaskMaintenance(id, async () => {
       const task = this.engine.db.task(id);
       const repo = this.engine.db.repository(task.repo_id);
+      this.assertNoFlowDependencies(id);
       const dependencies = this.disposalDependencies(id);
       if (dependencies.finalizations || dependencies.repairs)
         throw new AdeError(
@@ -715,14 +758,21 @@ export class StorageService {
     let task = e.db.task(id);
     if (e.isActive(id) || (task.status === "queued" && !task.archived))
       throw new AdeError("busy", "Stop or dequeue this task before deleting its data.");
-    const repo = e.db.repository(task.repo_id);
+    if (options.worktree || options.history || options.artifacts || options.logs)
+      this.assertNoFlowDependencies(id, options.history && options.artifacts);
+    const repo = task.repo_id ? e.db.repository(task.repo_id) : null;
+    if (!repo && task.worktree_path)
+      throw new AdeError(
+        "flow_history",
+        "This managed workspace retains owned files. Archive the task to preserve its work.",
+      );
     if (!preserveWork && (options.worktree || options.history)) {
       if (e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", id).length)
         throw new AdeError(
           "git_history",
           "Remove this task's owned Git Finalization previews explicitly before deleting its workspace or history.",
         );
-      await this.removeTaskWorkspace(task, repo, false, protectUnpushed);
+      if (repo) await this.removeTaskWorkspace(task, repo, false, protectUnpushed);
 
       task = {
         ...task,
@@ -740,6 +790,24 @@ export class StorageService {
 
     e.db.transaction(() => {
       if (options.history) {
+        if (options.artifacts) {
+          e.db.run("DELETE FROM flow_task_migrations WHERE task_id=?", id);
+          e.db.run("DELETE FROM flow_migration_sources WHERE task_id=?", id);
+
+          e.db.run(
+            "DELETE FROM flow_canvas_layouts WHERE flow_id IN (SELECT id FROM flow_definitions WHERE task_id=?)",
+            id,
+          );
+
+          e.db.run(
+            "DELETE FROM flow_revisions WHERE flow_id IN (SELECT id FROM flow_definitions WHERE task_id=?)",
+            id,
+          );
+
+          e.db.run("DELETE FROM flow_definitions WHERE task_id=?", id);
+          task = { ...task, flow_id: undefined };
+        }
+
         for (const table of [
           "agent_events",
           "agent_runs",
@@ -902,6 +970,7 @@ export class StorageService {
       try {
         if (e.cleanupBlockers(task.id).some((blocker) => blocker.id !== "storage-maintenance"))
           throw new AdeError("busy", "Active task processes must stop before resetting.");
+        this.assertNoFlowDependencies(task.id);
         if (e.db.all("SELECT id FROM git_finalizations WHERE task_id=?", task.id).length)
           throw new AdeError(
             "git_history",
@@ -958,6 +1027,7 @@ export class StorageService {
       "runtime",
       "telemetry",
       "worktrees",
+      "workspaces",
       "repos",
     ]) {
       const path = await managedPath(e.root, category);

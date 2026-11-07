@@ -6,12 +6,15 @@ import { join } from "node:path";
 
 import { TaskTerminals } from "../../backend/execution/terminals/task-terminals";
 import { checked } from "../../backend/execution/runtime/process";
-import { parseIssue } from "../../backend/domain";
+import { randomUUID } from "node:crypto";
+import { AgentProfileSchema } from "../../backend/flows/contracts";
 import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
-  finishFixtureTask as waitForTask,
+  fixtureFlowTask,
+  startFixtureFlow,
+  waitForFixtureFlow,
   prepareFixtureTask,
 } from "../helpers/fixtures";
 
@@ -28,15 +31,8 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
   try {
     const { repo } = await fixtureRepository(engine, dir);
 
-    const a = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/12"),
-      "Task A",
-      "",
-      {},
-    );
-
-    await waitForTask(engine, a.id, (s) => s === "ready_for_review" || s === "failed");
+    const a = fixtureFlowTask(engine, repo, "Task A");
+    await waitForFixtureFlow(engine, startFixtureFlow(engine, a));
     const task = engine.db.task(a.id);
 
     const [session, duplicate] = await Promise.all([
@@ -64,22 +60,14 @@ it("runs a real task-scoped PTY, retains the session and excludes simultaneous a
 
     expect((await terminals.open(a.id, 120, 25)).session_id).toBe(session.session_id);
 
-    expect(engine.followUp(a.id, "Save during this terminal")).toMatchObject({
-      disposition: "draft",
-    });
+    const blocked = startFixtureFlow(engine, a);
+    expect(engine.flowRuns.run(blocked.id).status).toBe("queued");
+    expect(engine.flowRuns.attempts(blocked.id)).toEqual([]);
+    await engine.cancelFlow(blocked.id);
 
-    expect(engine.db.detail(a.id).messages.at(-1)?.content).toBe("Save during this terminal");
-
-    const b = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/13"),
-      "Task B",
-      "",
-      {},
-    );
-
-    await waitForTask(engine, b.id, (s) => s === "ready_for_review" || s === "failed");
-    expect(engine.db.task(b.id).status).toBe("ready_for_review");
+    const b = fixtureFlowTask(engine, repo, "Task B");
+    await waitForFixtureFlow(engine, startFixtureFlow(engine, b));
+    expect(engine.flowRuns.attempts(blocked.id)).toEqual([]);
 
     const done = new Promise<void>((resolve, reject) => {
       let output = "";
@@ -307,3 +295,79 @@ it.each(["imported", "managed-with-origin"])(
     }
   },
 );
+
+it("opens a normal repository-free task shell under the same task lease without starting a Viber", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-general-terminal-"));
+
+  const engine = await createFixtureEngine(join(dir, "data"), () => {
+    throw new Error("Opening a shell cannot invoke a provider");
+  });
+
+  const terminals = new TaskTerminals(engine, undefined, {
+    PATH: process.env.PATH,
+    HOME: dir,
+    SHELL: "/bin/bash",
+  });
+
+  try {
+    const profile = AgentProfileSchema.parse({
+      id: randomUUID(),
+      revision: 1,
+      name: "Viber",
+      instructions: "",
+      supported_access: ["read-only"],
+      execution: {
+        provider: "codex",
+        model: "",
+        effort: "low",
+        timeout_secs: 30,
+        access: "read-only",
+        output: "conversation",
+      },
+    });
+
+    engine.flows.saveProfile(profile, null);
+
+    const task = engine.createGeneralTask({
+      request_id: randomUUID(),
+      profile_id: profile.id,
+      goal: "Start a local project",
+    });
+
+    expect(task.worktree_path).toBe("");
+    const session = await terminals.open(task.id, 100, 25);
+    const prepared = engine.db.task(task.id);
+    expect(session.cwd).toBe(prepared.worktree_path);
+    expect(prepared.worktree_path).toBe(join(engine.root, "workspaces", task.id, "files"));
+    expect(session.branch).toBe("");
+    expect(engine.isActive(task.id)).toBe(true);
+
+    await expect(
+      engine.runCommand(task.id, [process.execPath, "-e", "process.exit(0)"]),
+    ).rejects.toMatchObject({ kind: "invalid_state" });
+
+    terminals.input(
+      task.id,
+      session.session_id,
+      "printf 'user shell' > manual.txt; printf 'GENERAL_'; printf 'TERMINAL_DONE\\n'\r",
+    );
+
+    await expect.poll(() => terminals.current(task.id)?.output).toContain("GENERAL_TERMINAL_DONE");
+    expect(await readFile(join(prepared.worktree_path, "manual.txt"), "utf8")).toBe("user shell");
+    expect(engine.db.all("SELECT * FROM agent_runs")).toEqual([]);
+
+    expect(engine.db.task(task.id)).toMatchObject({
+      stage: 0,
+      status: "not_started",
+      repo_id: null,
+      issue_url: null,
+    });
+
+    await terminals.close(task.id);
+    expect(engine.isActive(task.id)).toBe(false);
+  } finally {
+    await terminals.dispose();
+    await engine.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

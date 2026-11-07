@@ -24,7 +24,7 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
     const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-repair-desktop-"));
 
     const engine = await createFixtureEngine(join(dir, "fixture"), (stage, provider) =>
-      stage === 1
+      stage === 0
         ? new PRFixtureProvider()
         : new RepairFixtureProvider(provider!, {
             readonlyProbe: provider === "antigravity",

@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
 import { Rpc } from "../../backend/rpc";
-import { defaultSettings, parseIssue } from "../../backend/domain";
+import { builtInProfiles } from "../../backend/flows/templates";
 import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
 import {
   createFixtureEngine,
@@ -56,10 +56,16 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
 
     const rpc = new Rpc(engine);
 
-    engine.db.saveSettings({
-      ...defaultSettings,
-      antigravity: { model: "next-model", effort: "low", timeout_secs: 30 },
-    });
+    const profile = engine.flows.profile(builtInProfiles.planner);
+
+    engine.flows.saveProfile(
+      {
+        ...profile,
+        revision: 2,
+        execution: { ...profile.execution, model: "next-model", effort: "low", timeout_secs: 30 },
+      },
+      1,
+    );
 
     const { repo } = await fixtureRepository(engine, dir);
     const emptyRoot = join(dir, "empty-core");
@@ -138,13 +144,20 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
 
       engine.on("event", forward);
 
-      const task = engine.enqueue(
-        repo,
-        parseIssue("https://github.com/fixture/fixture/issues/1"),
-        "Harness fixture",
-        "",
-        { title: "Output harness", body: "Fixture only" },
-      );
+      const task = engine.createGeneralTask({
+        request_id: randomUUID(),
+        goal: "Harness fixture",
+        repository_id: repo.id,
+        profile_id: profile.id,
+      });
+
+      const flowRun = engine.startFlow({
+        task_id: task.id,
+        flow_id: task.flow_id!,
+        revision: 1,
+        goal: task.goal!,
+        request_id: randomUUID(),
+      });
 
       const historic = randomUUID();
 
@@ -171,20 +184,22 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       await writeFile(join(logDir, `${historic}.stderr.log`), "historical stderr only\n");
       await page.locator(".tree-task").first().click();
 
+      await page.getByRole("button", { name: "Logs", exact: true }).click();
+
       await expect
-        .poll(() => page.getByLabel("Current agent run").innerText(), {
-          timeout: 10000,
-        })
+        .poll(() => page.locator(".run-metadata").innerText(), { timeout: 10000 })
         .toContain("reported-fixture-model");
 
-      if (await page.getByLabel("Collapse secondary workspace").count())
-        await page.getByLabel("Collapse secondary workspace").click();
-      expect(await page.locator("aside.context-pane").count()).toBe(0);
-      await page.getByLabel("Toggle secondary workspace").click();
-      await page.getByRole("tab", { name: "Plans", exact: true }).click();
-      expect(await page.getByLabel("Current agent run").innerText()).toContain("high");
-      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
+      expect(await page.locator(".viber-workspace-header").innerText()).toContain("Run running");
       await page.getByRole("button", { name: "Readable", exact: true }).click();
+      await page.locator(".agent-turn-heading").getByText("Planner", { exact: true }).waitFor();
+
+      expect(
+        await page
+          .locator(".agent-turn-heading")
+          .getByText("Implementation", { exact: true })
+          .count(),
+      ).toBe(0);
 
       await page
         .locator(".logs-panel .tool-event")
@@ -199,7 +214,7 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         })
         .toContain("second check passed");
 
-      expect(await page.getByLabel("Current agent run").isVisible()).toBe(true);
+      expect(await page.locator(".viber-workspace-header").innerText()).toContain("Run running");
       await page.screenshot({ path: join(evidence, "active-readable.png") });
       await page.getByRole("button", { name: "Raw", exact: true }).click();
 
@@ -234,10 +249,13 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         .toContain("[REDACTED]");
 
       await page.screenshot({ path: join(evidence, "active-raw-stderr.png") });
-      await page.getByRole("button", { name: "Approve → Plan refinement", exact: true }).waitFor();
-      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
+
+      await expect
+        .poll(() => engine.flowRuns.run(flowRun.id).status, { timeout: 15000 })
+        .toBe("completed");
+
+      await page.getByRole("button", { name: "Logs", exact: true }).click();
       await page.getByRole("button", { name: "Readable", exact: true }).click();
-      await page.getByLabel("Expand workspace tool").click();
 
       const interrupted = page
         .locator(".logs-panel .tool-event[data-state=interrupted]")
@@ -293,17 +311,16 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
         path: join(evidence, "historical-raw-paused.png"),
       });
 
-      await page.getByLabel("Return to chat").click();
-      await page.getByRole("tab", { name: "Usage", exact: true }).first().click();
+      await page.getByRole("button", { name: "Usage", exact: true }).last().click();
       const usageRun = page.locator(".usage-panel .usage-run summary").filter({ hasText: /^Plan/ });
       await usageRun.waitFor();
       await usageRun.scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(evidence, "reported-usage.png") });
-      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
+      await page.getByRole("button", { name: "Logs", exact: true }).click();
       await page.reload();
       await page.locator(".tree-task").first().waitFor();
       expect(await page.locator(".tree-task.selected").count()).toBe(1);
-      await page.getByRole("tab", { name: "Raw logs", exact: true }).click();
+      await page.getByRole("button", { name: "Logs", exact: true }).click();
 
       expect(
         await page

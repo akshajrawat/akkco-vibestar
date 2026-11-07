@@ -3,11 +3,10 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseIssue } from "../../backend/domain";
 import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
 import { execute } from "../../backend/execution/runtime/process";
 import { gitChecked } from "../../backend/workspace/git-command";
-import { createFixtureEngine, fixtureRepository } from "../helpers/fixtures";
+import { createFixtureEngine, fixtureRepository, historicalTaskFixture } from "../helpers/fixtures";
 
 let directory: string;
 let engine: Awaited<ReturnType<typeof createFixtureEngine>>;
@@ -25,17 +24,7 @@ afterEach(async () => {
 const prepare = async () => {
   const { repo } = await fixtureRepository(engine, directory);
 
-  const task = engine.enqueue(
-    repo,
-    parseIssue("https://github.com/fixture/fixture/issues/1"),
-    "Task A",
-    "",
-    {},
-    "partial",
-    undefined,
-    undefined,
-    "not_started",
-  );
+  const task = historicalTaskFixture(engine, repo);
 
   await engine.git.prepare(repo, task, undefined, (value) => engine.db.saveTask(value), undefined, {
     reusableOwners: [],

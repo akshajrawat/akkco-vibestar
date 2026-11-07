@@ -1,12 +1,12 @@
 import { expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   commandVerification,
   verificationSummary,
 } from "../../backend/execution/verification/verification";
-import { validatePlan } from "../../backend/execution/providers/contracts";
+import { validatePlan, planSchemas } from "../../backend/execution/providers/contracts";
 import { codexResult, codexSchema } from "../../backend/execution/providers/codex-schema";
-import { schemaFor } from "../../backend/execution/providers/contracts";
 
 const check = (
   name: string,
@@ -195,7 +195,7 @@ it("retains historical reports as ambiguous provider evidence without rewriting 
 });
 
 it("supports optional verification through the official Codex nullable schema transport", () => {
-  const schema = schemaFor(3);
+  const schema = z.toJSONSchema(planSchemas[3]);
   const transported = codexSchema(schema);
   expect(transported.required).toContain("verification");
   const restored = codexResult(schema, { ...report, verification: null });

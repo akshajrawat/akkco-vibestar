@@ -1,9 +1,13 @@
 import { activeStatuses } from "../../lib/types";
 
 export const Status = ({ status }: { status: string }) => {
-  const running = [...activeStatuses, "codex_implementing", "antigravity_verifying"].includes(
-    status,
-  );
+  const running = [
+    ...activeStatuses,
+    "codex_implementing",
+    "antigravity_verifying",
+    "running",
+    "pausing",
+  ].includes(status);
 
   const color = running
     ? "running"
@@ -22,6 +26,9 @@ export const Status = ({ status }: { status: string }) => {
               "reviewed_with_gaps",
               "blocked",
               "not_run",
+              "waiting",
+              "paused",
+              "needs_recovery",
             ].includes(status)
           ? "warning"
           : "muted";
@@ -31,7 +38,7 @@ export const Status = ({ status }: { status: string }) => {
       <i />
       {running
         ? "Running"
-        : status === "awaiting_approval"
+        : status === "awaiting_approval" || status === "waiting"
           ? "Review needed"
           : status === "ready_for_review"
             ? "Ready"

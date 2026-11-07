@@ -11,6 +11,7 @@ import { reviewActionState } from "../review/pr/inbox";
 import { Editors } from "../workspace/editors";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
+import { taskFlowSummaries } from "./flows";
 
 export const systemMethods = [
   "editors.list",
@@ -57,6 +58,9 @@ export const callSystem = async (
       return {
         root: e.root,
         capabilities: {
+          agent_flows: 1,
+          flow_continuations: 1,
+          viber_conversations: 1,
           manual_issue_watch: true,
           issue_watch_contract: 1,
           issue_watch_batches: 1,
@@ -71,9 +75,13 @@ export const callSystem = async (
       const snapshot = {
         repositories: e.db.repositories(),
         tasks: e.db.tasks(),
+        flow_states: taskFlowSummaries(e),
         settings: e.db.displaySettings(),
         root: e.root,
         capabilities: {
+          agent_flows: 1,
+          flow_continuations: 1,
+          viber_conversations: 1,
           manual_issue_watch: true,
           issue_watch_contract: 1,
           issue_watch_batches: 1,

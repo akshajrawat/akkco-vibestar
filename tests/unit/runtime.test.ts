@@ -4,12 +4,13 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { parseIssue } from "../../backend/domain";
 import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
-  waitForTask,
+  fixtureFlowTask,
+  startFixtureFlow,
+  waitForFixtureFlow,
 } from "../helpers/fixtures";
 import { checked, execute } from "../../backend/execution/runtime/process";
 import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
@@ -77,17 +78,13 @@ it("uses an installed source virtualenv and ignored dependencies read-only witho
       "VALUE = 'installed in source virtualenv'\n",
     );
 
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      {},
-    );
+    const task = fixtureFlowTask(engine, repo, "Inspect installed dependencies", {
+      access: "read-only",
+      output: "plan",
+    });
 
-    await waitForTask(engine, task.id, (s) => ["awaiting_approval", "failed"].includes(s));
+    await waitForFixtureFlow(engine, startFixtureFlow(engine, task));
     const saved = engine.db.task(task.id);
-    expect(saved.status, saved.error || "").toBe("awaiting_approval");
 
     expect(saved.runtime?.dependencies).toEqual([
       "node_modules",
@@ -154,7 +151,7 @@ it("uses an installed source virtualenv and ignored dependencies read-only witho
   }
 }, 30000);
 
-it("blocks task execution on a core without approval support while preserving reads and cancellation", async () => {
+it("blocks flow execution on a core without Viber support while preserving reads and cancellation", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-old-core-"));
 
   await writeFile(
@@ -171,16 +168,14 @@ it("blocks task execution on a core without approval support while preserving re
   bridge.start();
   try {
     expect(await bridge.request("snapshot")).toMatchObject({
-      warning: expect.stringContaining("cannot enforce plan review approvals"),
+      warning: expect.stringContaining("cannot run Viber profiles and flows"),
     });
 
-    await expect(bridge.request("task.create", {})).rejects.toThrow(
-      "cannot enforce plan review approvals",
+    await expect(bridge.request("task.createGeneral", {})).rejects.toThrow(
+      "Viber profiles and flows",
     );
 
-    await expect(bridge.request("task.retry", {})).rejects.toThrow(
-      "cannot enforce plan review approvals",
-    );
+    await expect(bridge.request("flow.node.retry", {})).rejects.toThrow("Viber profiles and flows");
 
     await expect(bridge.request("task.cancel", {})).resolves.toEqual({
       tasks: [],

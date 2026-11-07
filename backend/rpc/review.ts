@@ -12,7 +12,6 @@ export const reviewMethods = [
   "review.list",
   "review.add",
   "review.remove",
-  "review.send",
 ] as const;
 
 /** Validates and dispatches review requests through their existing domain services. */
@@ -43,8 +42,6 @@ export const callReview = async (
     case "review.remove":
       return services.review.remove(idInput.extend({ confirmed: z.literal(true) }).parse(input).id);
 
-    case "review.send":
-      return services.review.send(idInput.parse(input).id);
     default:
       throw new AdeError("invalid_method", `Unknown method: ${method}`);
   }

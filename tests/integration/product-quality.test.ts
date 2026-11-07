@@ -1,15 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { it, expect, vi } from "vitest";
 
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings, parseIssue, now } from "../../backend/domain";
+import { defaultSettings, now } from "../../backend/domain";
 import {
   createFixtureEngine,
   FixtureProvider,
   fixtureRepository,
-  finishFixtureTask as waitForTask,
+  prepareFixtureTask,
+  plan1,
 } from "../helpers/fixtures";
 import { ReviewService } from "../../backend/review/service";
 import { Usage } from "../../backend/execution/output/usage";
@@ -277,16 +279,18 @@ it("persists content-bound reviewed state, invalidates modified files and links 
   try {
     const { repo } = await fixtureRepository(engine, dir);
 
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      { title: "Scoped review" },
+    const task = await prepareFixtureTask(engine, repo, randomUUID());
+    await writeFile(join(task.worktree_path, "source.txt"), "A\n");
+
+    engine.db.run(
+      "INSERT INTO task_artifacts VALUES(?,?,1,'plan',?,?)",
+      randomUUID(),
+      task.id,
+      JSON.stringify(plan1),
+      now(),
     );
 
     taskId = task.id;
-    await waitForTask(engine, task.id, (s) => s === "ready_for_review");
     const service = new ReviewService(engine);
     const file = (await service.files(task.id))[0];
 
@@ -323,7 +327,8 @@ it("persists content-bound reviewed state, invalidates modified files and links 
     });
 
     expect(requests[0]).toMatchObject({
-      stage: 1,
+      stage: 0,
+      access: "read-only",
       cwd: current.worktree_path,
       config: { model: "next-model", effort: "low" },
     });
@@ -394,7 +399,7 @@ it("persists content-bound reviewed state, invalidates modified files and links 
     });
 
     expect(engine.db.detail(task.id).messages).toHaveLength(2);
-    expect(new Usage(engine.db).list(task.id)).toHaveLength(6);
+    expect(new Usage(engine.db).list(task.id)).toHaveLength(2);
 
     engine.db.run(
       "UPDATE task_artifacts SET content='invalid saved JSON' WHERE task_id=? AND stage=1",
@@ -417,7 +422,8 @@ it("persists content-bound reviewed state, invalidates modified files and links 
     });
 
     expect(engine.db.detail(task.id).messages).toHaveLength(3);
-    expect(new Usage(engine.db).list(task.id)).toHaveLength(7);
+    expect(new Usage(engine.db).list(task.id)).toHaveLength(2);
+    expect(engine.db.detail(task.id).runs).toHaveLength(2);
   } finally {
     await engine.close();
   }
@@ -425,7 +431,7 @@ it("persists content-bound reviewed state, invalidates modified files and links 
   const reopened = await createFixtureEngine(root);
   try {
     expect(new ReviewService(reopened).questions(taskId)).toHaveLength(3);
-    expect(new Usage(reopened.db).list(taskId)).toHaveLength(7);
+    expect(new Usage(reopened.db).list(taskId)).toHaveLength(2);
   } finally {
     await reopened.close();
     await rm(dir, { recursive: true, force: true });
@@ -445,7 +451,7 @@ const {createHash}=require('node:crypto');
 (async()=>{
 const build=${stale ? "'older-bundle'" : "createHash('sha256').update(await readFile(__filename)).digest('hex')"};
 const lines=createInterface({input:process.stdin});
-lines.on('line',line=>{const request=JSON.parse(line);const result=request.method==='core.info'?{build,pipeline_approvals:true,manual_pr_analysis:true}:request.method==='snapshot'?{tasks:[]}:request.method==='usage.info'?{database:'test.sqlite'}:null;process.stdout.write(JSON.stringify(result?{id:request.id,result}:{id:request.id,error:{message:'Unknown method: '+request.method}})+'\\n');});
+lines.on('line',line=>{const request=JSON.parse(line);const result=request.method==='core.info'?{build,agent_flows:1,manual_pr_analysis:true}:request.method==='snapshot'?{tasks:[]}:request.method==='usage.info'?{database:'test.sqlite'}:null;process.stdout.write(JSON.stringify(result?{id:request.id,result}:{id:request.id,error:{message:'Unknown method: '+request.method}})+'\\n');});
 lines.on('close',()=>process.exit(0));
 })();
 `,
@@ -487,15 +493,7 @@ it("discovers editor CLIs and opens task worktrees separately from source checko
   try {
     const { repo } = await fixtureRepository(engine, dir);
 
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      {},
-    );
-
-    await waitForTask(engine, task.id, (s) => s === "ready_for_review");
+    const task = await prepareFixtureTask(engine, repo, randomUUID());
     const bin = join(dir, "bin");
     await mkdir(bin);
     const output = join(dir, "editor-args.json");

@@ -18,9 +18,13 @@ import {
 export const TaskRecordSchema = z
   .object({
     id: z.string(),
-    repo_id: z.string().optional(),
-    issue_number: z.number().int().positive().optional(),
-    issue_url: z.string().optional(),
+    repo_id: z.string().nullable().optional(),
+    issue_number: z.number().int().positive().nullable().optional(),
+    issue_url: z.string().nullable().optional(),
+    kind: z.enum(["general", "issue"]).optional(),
+    goal: z.string().max(32000).optional(),
+    flow_id: z.string().uuid().optional(),
+    workspace_kind: z.literal("managed").optional(),
     claimed_scope: z.string().optional(),
     notes: z.string().optional(),
     scope_mode: z.enum(["whole_issue", "partial"]).optional(),
@@ -114,6 +118,22 @@ export const TaskRecordSchema = z
       .optional(),
   })
   .loose()
+  .superRefine((record, context) => {
+    if (record.kind !== "general") return;
+    if (
+      !record.goal?.trim() ||
+      record.repo_id === undefined ||
+      record.issue_number !== null ||
+      record.issue_url !== null ||
+      (!record.repo_id && record.workspace_kind !== "managed") ||
+      (record.repo_id && record.workspace_kind === "managed")
+    )
+      context.addIssue({
+        code: "custom",
+        message:
+          "General tasks require a goal, explicit optional repository context and a consistent workspace kind.",
+      });
+  })
   .transform((value) => value as Task);
 
 export const RepositoryRecordSchema = z

@@ -1,23 +1,16 @@
 import { z } from "zod";
-import { StreamedPlan } from "./streamed-plan";
 import { CommandExecutions } from "../verification/command-executions";
-import { ActionSchema } from "../../scheduled/action";
 import { Usage } from "../output/usage";
 import { discoverCodexModels } from "../providers/codex-models";
 import { sandboxInvocation } from "../runtime/sandbox";
 import { mkdir, open, writeFile, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { managedPath } from "../../workspace/paths";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   AdeError,
   now,
-  stageStatus,
-  pipelineConfiguration,
   type Task,
-  type Settings,
   type CoreEvent,
-  type StageConfig,
   type WorkspaceAssignment,
   type NormalizedEvent,
 } from "../../domain";
@@ -25,16 +18,34 @@ import type { Database } from "../../storage/database";
 import type { GitWorkspace } from "../../workspace/git";
 import { execute, redact } from "../runtime/process";
 import { BoundedWriter } from "../output/bounded-output";
-import { buildPrompt } from "./prompt";
-import { taskVerification } from "../verification/task-verification";
+import { AgentExecutionSchema, type AgentExecution } from "../contracts";
+import { executionSchema } from "./execution-output";
+import { FlowRunStore } from "../../flows/run-store";
 import {
-  schemaFor,
-  validatePlan,
   object,
   type AgentProvider,
   configurationError,
   type ProviderDetection,
 } from "../providers/contracts";
+
+interface AgentRunOptions {
+  prompt: string;
+  purpose: string;
+  workspace?: string;
+  schema?: z.ZodType;
+  jobId?: string;
+  analysisId?: string;
+  watchId?: string;
+  scanId?: string;
+  telemetryTaskId?: string;
+  telemetryRepository?: string;
+  questionId?: string;
+  repair?: WorkspaceAssignment;
+  repairStage?: 3 | 5;
+  contextPaths?: string[];
+  conversation?: { threadId?: string };
+  nodeAttemptId?: string;
+}
 
 export class AgentRunner {
   private readonly detections = new Map<string, { at: number; value: ProviderDetection }>();
@@ -69,62 +80,45 @@ export class AgentRunner {
     return value;
   };
 
-  /** Checks the saved pipeline's provider capabilities without consuming inference or starting a stage. */
-  validateWorkflow = async (task: Task, signal: AbortSignal) => {
-    const settings = task.execution_settings || this.db.settings();
-    for (const stage of [1, 2, 3, 5]) {
-      const config = pipelineConfiguration(settings, stage, task.stage_settings);
-      const provider = this.providers(stage, config.provider);
-      const detection = await this.detect(provider, signal);
-      signal.throwIfAborted();
-      if (!detection.installed || !detection.connected || !detection.capabilities.length)
-        throw new AdeError(
-          "provider_unavailable",
-          detection.error || `Connect ${provider.name} before starting the workflow.`,
-        );
-      const invalid = configurationError(detection, config);
-      if (invalid) throw new AdeError("model", invalid);
-    }
-  };
-
-  run = async (
-    t: Task | { id: string; stage: 1 | 2 | 3 | 5 },
-    settings: Settings,
+  /** All callers provide resolved settings; saved repair stages are telemetry only. */
+  runConfigured = (
+    owner: Task | { id: string },
     signal: AbortSignal,
-    options?: {
-      prompt: string;
-      purpose: string;
-      workspace?: string;
-      provider?: "codex" | "antigravity";
-      config?: StageConfig;
-      schema?: z.ZodType;
-      jobId?: string;
-      analysisId?: string;
-      watchId?: string;
-      scanId?: string;
-      telemetryTaskId?: string;
-      telemetryRepository?: string;
-      messageId?: string;
-      questionId?: string;
-      repair?: WorkspaceAssignment;
-      contextPaths?: string[];
-      conversation?: { threadId?: string };
-      contextOnly?: boolean;
-    },
+    execution: AgentExecution,
+    options: AgentRunOptions,
+  ) => this.execute(owner, signal, execution, options);
+
+  private execute = async (
+    t: Task | { id: string },
+    signal: AbortSignal,
+    settings: AgentExecution,
+    options: AgentRunOptions,
   ) => {
+    const execution = AgentExecutionSchema.parse(settings);
+    const resultSchema = executionSchema(execution, options.schema);
+    const schema = z.toJSONSchema(resultSchema);
+    const conversation = execution.output === "conversation";
+    if (options.conversation && !conversation)
+      throw new AdeError("invalid_state", "Provider threads require conversation output.");
+    if (options.repairStage !== undefined && !options.repair)
+      throw new AdeError("isolation", "Recorded repair stages require a repair assignment.");
+    const stage = options.repairStage ?? 0;
     const task = "repo_id" in t ? t : null;
+    if (options.nodeAttemptId) {
+      if (!task || options.repair || options.conversation?.threadId)
+        throw new AdeError("isolation", "Flow nodes require their own task execution snapshot.");
+
+      new FlowRunStore(this.db).assertAgentExecution(
+        options.nodeAttemptId,
+        task.id,
+        execution,
+        options.prompt,
+      );
+    }
+
     const repair = options?.repair;
     const owner = task || repair || null;
-    if (
-      options?.contextOnly &&
-      (!task || t.stage !== 1 || options.purpose !== "Read-only conversation")
-    )
-      throw new AdeError(
-        "invalid_state",
-        "Conversation-only workspaces cannot execute workflow stages.",
-      );
-    // Conversational turns keep task history while mounting an empty utility workspace.
-    const assignment = options?.contextOnly ? null : owner;
+    const assignment = owner;
     const fingerprint = repair ? this.git.repairFingerprint : this.git.fingerprint;
     if (!assignment && !options?.workspace)
       throw new AdeError("invalid_state", "Detached analysis requires a managed PR workspace");
@@ -135,17 +129,8 @@ export class AgentRunner {
         ? "scheduled_agent_runs"
         : "utility_runs";
 
-    const followup =
-      t.stage === 3 && task?.continuation === "implementation" ? task.followup_config : undefined;
-
-    const saved = pipelineConfiguration(settings, t.stage, task?.stage_settings);
-
-    const provider = this.providers(
-      t.stage,
-      options?.provider || followup?.provider || saved.provider,
-    );
-
-    const config = options?.config ?? followup?.config ?? saved;
+    const provider = this.providers(stage, execution.provider);
+    const config = execution;
 
     const id = randomUUID();
     if (options?.scanId || options?.watchId) {
@@ -166,21 +151,16 @@ export class AgentRunner {
     }
 
     const started = Date.now();
-    const prompt = options?.prompt ?? buildPrompt(this.db, task!);
+    const prompt = options.prompt;
     const usage = new Usage(this.db);
 
-    const repo = owner
-      ? this.db.repository(owner.repo_id)
-      : options?.telemetryTaskId
-        ? this.db.repository(this.db.task(options.telemetryTaskId).repo_id)
-        : null;
+    const repositoryId =
+      owner?.repo_id ||
+      (options.telemetryTaskId ? this.db.task(options.telemetryTaskId).repo_id : null);
 
-    const purpose =
-      options?.purpose ||
-      (t.stage === 3 && task?.continuation === "implementation"
-        ? "Chat Follow-up"
-        : ["", "Plan", "Plan refinement", "Implementation"][t.stage] ||
-          (t.stage === 5 ? "Review" : "Pipeline"));
+    const repo = repositoryId ? this.db.repository(repositoryId) : null;
+
+    const purpose = options.purpose;
 
     usage.start(id, {
       task_id: task?.id || options?.telemetryTaskId || null,
@@ -212,13 +192,19 @@ export class AgentRunner {
       `INSERT INTO ${table}(id,${parent ? `${parent},` : ""}stage,provider,model,effort,prompt,status,started_at,purpose) VALUES(?${parent ? ",?" : ""},?,?,?,?,?,'running',?,?)`,
       id,
       ...(parent ? [assignment?.id || options?.jobId || t.id] : []),
-      t.stage,
+      stage,
       provider.name,
       config.model,
       config.effort,
       redact(prompt),
       now(),
       purpose,
+    );
+
+    this.db.run(
+      `UPDATE ${table} SET execution=? WHERE id=?`,
+      JSON.stringify({ configuration: execution, output_schema: schema }),
+      id,
     );
 
     if (options?.scanId)
@@ -294,20 +280,6 @@ export class AgentRunner {
       );
     }
 
-    if (task && options?.messageId)
-      this.db.run(
-        "UPDATE task_messages SET run_id=? WHERE id=? AND task_id=? AND purpose='chat'",
-        id,
-        options.messageId,
-        task.id,
-      );
-    if (task && !options)
-      this.db.run(
-        "UPDATE task_messages SET run_id=? WHERE task_id=? AND status='delivered' AND run_id IS NULL",
-        id,
-        task.id,
-      );
-
     const dir = join(
       this.root,
       "logs",
@@ -330,10 +302,7 @@ export class AgentRunner {
       outputAbort.abort();
     });
 
-    const draft = new StreamedPlan(t.stage);
     const commands = new CommandExecutions(this.db);
-    let savedDraft = "";
-    const draftId = randomUUID();
     let final: unknown;
     const conversationMessages = new Map<string, string>();
     let failure: unknown;
@@ -342,6 +311,8 @@ export class AgentRunner {
     let officialCodex = false;
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
+      if (options.nodeAttemptId)
+        new FlowRunStore(this.db).attachExecution(options.nodeAttemptId, id, "agent");
       cwd = assignment ? await this.git.assertTask(assignment) : options!.workspace!;
       const detection = await this.detect(provider, signal);
       if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
@@ -370,79 +341,37 @@ export class AgentRunner {
         this.db.run("UPDATE ai_usage SET model=? WHERE id=?", selectedConfig.model, id);
       }
 
-      await mkdir(dir, { recursive: true });
+      this.db.run(
+        `UPDATE ${table} SET execution=? WHERE id=?`,
+        JSON.stringify({
+          configuration: selectedConfig,
+          output_schema: schema,
+        }),
+        id,
+      );
 
-      const schema = options?.schema
-        ? z.toJSONSchema(options.schema)
-        : options?.purpose === "scheduled"
-          ? z.toJSONSchema(ActionSchema)
-          : schemaFor(t.stage);
+      await mkdir(dir, { recursive: true });
 
       const outputSchema = provider.outputSchema?.(schema) || schema;
 
-      if (!options?.conversation)
+      if (!conversation)
         await writeFile(schemaPath, JSON.stringify(outputSchema), {
           mode: 0o600,
         });
 
-      let sentPrompt = prompt;
-      const contextPaths = [...(options?.contextPaths || [])];
-      if (task && t.stage === 5 && !options) {
-        const evidencePath = await managedPath(
-          join(this.root, "artifacts"),
-          join(t.id, id, "review-evidence.json"),
-        );
-
-        await mkdir(dirname(evidencePath), {
-          recursive: true,
-          mode: 0o700,
-        });
-
-        await managedPath(join(this.root, "artifacts"), evidencePath);
-
-        await writeFile(
-          evidencePath,
-          redact(
-            JSON.stringify(
-              {
-                issue: task.issue,
-                scope: task.scope_mode === "whole_issue" ? "Entire issue" : task.claimed_scope,
-                plan: this.db.artifact(task.id, 2),
-                implementation: this.db.artifact(task.id, 3),
-                verification: taskVerification(this.db, task.id),
-                commands: this.db.all(
-                  "SELECT * FROM test_runs WHERE task_id=? ORDER BY started_at,rowid",
-                  task.id,
-                ),
-                runs: this.db.all(
-                  "SELECT id,stage,provider,status,output,error FROM agent_runs WHERE task_id=? ORDER BY started_at,rowid",
-                  task.id,
-                ),
-                evidenceNote:
-                  "Complete retained command records; output_truncated indicates earlier provider output exceeded retention. Missing output is not proof of success.",
-              },
-              null,
-              2,
-            ),
-          ),
-          { mode: 0o600 },
-        );
-
-        contextPaths.push(evidencePath);
-        sentPrompt += `\nCOMPLETE REVIEW EVIDENCE: ${evidencePath}`;
-        this.db.run(`UPDATE ${table} SET prompt=? WHERE id=?`, redact(sentPrompt), id);
-      }
+      const contextPaths = options.contextPaths || [];
 
       const directInvocation = provider.invocation({
         runId: id,
         cwd,
-        stage: t.stage,
+        stage,
+        access: execution.access,
         config: selectedConfig,
-        prompt: sentPrompt,
+        prompt,
         schemaPath,
         schema: outputSchema,
-        workspaceType: repair ? "task" : options ? "utility" : "task",
-        ...(options?.conversation ? { conversation: options.conversation } : {}),
+        workspaceType: assignment?.repo_id ? "task" : "utility",
+        ...(conversation ? { conversation: options.conversation || {} } : {}),
       });
 
       const invocation = await sandboxInvocation(
@@ -450,8 +379,8 @@ export class AgentRunner {
         this.db,
         assignment,
         directInvocation,
-        t.stage !== 3,
-        options?.conversation ? undefined : schemaPath,
+        execution.access === "read-only",
+        conversation ? undefined : schemaPath,
         (detection.provider === "codex" && directInvocation.program === "codex") ||
           (detection.provider === "antigravity" && directInvocation.program === "agy")
           ? detection.provider
@@ -464,16 +393,12 @@ export class AgentRunner {
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
       const before = assignment ? await fingerprint(assignment) : null;
       if (
-        task &&
-        t.stage === 5 &&
-        !options &&
-        task.review_gap_acknowledgment &&
-        !taskVerification(this.db, task.id).canReview &&
-        before !== task.review_gap_acknowledgment.fingerprint
+        options.nodeAttemptId &&
+        before !== new FlowRunStore(this.db).attempt(options.nodeAttemptId).workspace_fingerprint
       )
         throw new AdeError(
-          "stale_review",
-          "The implementation changed after gap approval. Inspect and acknowledge the current implementation before review.",
+          "stale_context",
+          "The workspace changed after node inputs were captured. Retry explicitly with fresh context.",
         );
       this.emit({ event: "changed", task_id: task?.id, repair_id: repair?.id });
       invoked = true;
@@ -533,15 +458,14 @@ export class AgentRunner {
             this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
           }
 
-          const result =
-            stream === "stdout" ? provider.result(raw, !!options?.conversation) : undefined;
+          const result = stream === "stdout" ? provider.result(raw, conversation) : undefined;
 
           if (result !== undefined) final = result;
 
           for (const event of stream === "stderr"
             ? [{ kind: "command.output" as const, data: { stderr: line } }]
             : provider.normalize(raw)) {
-            if (options?.conversation && event.kind === "message") {
+            if (conversation && event.kind === "message") {
               const data = object(event.data);
               const key = String(data.call_id ?? "answer");
 
@@ -554,23 +478,6 @@ export class AgentRunner {
             }
 
             if (event.kind === "run.failed") failure = event.data;
-            if (task && !options && [1, 2].includes(t.stage) && event.kind === "message") {
-              const plan = draft.observe(event.data);
-              if (plan && JSON.stringify(plan) !== savedDraft) {
-                savedDraft = JSON.stringify(plan);
-
-                this.db.run(
-                  "INSERT INTO task_artifacts VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,created_at=excluded.created_at",
-                  draftId,
-                  t.id,
-                  t.stage,
-                  `draft:${id}`,
-                  JSON.stringify({ plan, source_hash: before }),
-                  now(),
-                );
-              }
-            }
-
             if (!task && !repair) {
               utilityEvent(event, line, stream);
               continue;
@@ -607,34 +514,35 @@ export class AgentRunner {
       if (code !== 0 || failure)
         throw new AdeError(
           "provider_failed",
-          `${provider.name} / ${options?.purpose || stageStatus(t.stage)} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
-          { provider: provider.name, stage: t.stage, code },
+          `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
+          { provider: provider.name, stage, code },
         );
 
       // Workflow stages require schemas; conversation turns use the provider's ordinary prose.
-      if (options?.conversation && !options.schema?.safeParse(final).success) {
+      if (conversation && !resultSchema.safeParse(final).success) {
         const summary = [...conversationMessages.values()].reverse().find((text) => text.trim());
 
         if (summary) final = { summary };
       }
 
-      const value = provider.parseStructuredOutput
-        ? provider.parseStructuredOutput(schema, final)
-        : final;
+      const value =
+        !conversation && provider.parseStructuredOutput
+          ? provider.parseStructuredOutput(schema, final)
+          : final;
 
-      const result = options?.schema
-        ? options.schema.parse(value)
-        : options?.purpose === "scheduled"
-          ? ActionSchema.parse(value)
-          : validatePlan(t.stage, value);
+      const result = resultSchema.parse(value);
 
-      if (assignment && t.stage !== 3 && before !== (await fingerprint(assignment)))
+      if (
+        assignment &&
+        execution.access === "read-only" &&
+        before !== (await fingerprint(assignment))
+      )
         throw new AdeError(
           "planning_violation",
           "A read-only planning or review run modified the worktree. Pipeline stopped. Review the changes before retrying.",
         );
       if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
-      if (task && t.stage === 3) {
+      if (task && execution.output === "implementation") {
         const implementation = object(result);
         for (const [field, status] of [
           ["testsPassed", "passed"],
@@ -677,15 +585,6 @@ export class AgentRunner {
       );
 
       usage.finish(id, started, "completed");
-      if (!options)
-        this.db.run(
-          "INSERT INTO task_artifacts VALUES(?,?,?,'plan',?,?)",
-          randomUUID(),
-          t.id,
-          t.stage,
-          JSON.stringify(result),
-          now(),
-        );
       return result;
     } catch (error) {
       this.detections.delete(provider.name);
@@ -726,9 +625,9 @@ export class AgentRunner {
       } finally {
         await stdout?.close();
         await stderr?.close();
-        if (!options?.conversation) await unlink(schemaPath).catch(() => {});
+        if (!conversation) await unlink(schemaPath).catch(() => {});
         // Discovery reads official allowance only; it never starts a model turn.
-        if (invoked && officialCodex && !signal.aborted && !options?.conversation) {
+        if (invoked && officialCodex && !signal.aborted && !conversation) {
           const after = await discoverCodexModels(
             this.root,
             AbortSignal.any([signal, AbortSignal.timeout(5000)]),

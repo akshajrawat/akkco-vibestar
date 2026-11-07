@@ -26,10 +26,6 @@
     text-overflow: ellipsis;
   }
 
-  .composer-settings input {
-    width: 100px;
-  }
-
   .titlebar-name {
     width: 130px;
   }

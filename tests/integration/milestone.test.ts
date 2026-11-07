@@ -4,9 +4,8 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, stat, readdir, rename } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings, parseIssue, now, type Task } from "../../backend/domain";
+import { defaultSettings, now, type Task } from "../../backend/domain";
 import { Usage } from "../../backend/execution/output/usage";
-import { ActionSchema } from "../../backend/scheduled/action";
 import { StorageService } from "../../backend/storage/service";
 import { Database } from "../../backend/storage/database";
 import { migrateDataRoot } from "../../backend/storage/migrate-root";
@@ -18,237 +17,10 @@ import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
-  finishFixtureTask as waitForTask,
+  fixtureFlowTask,
+  startFixtureFlow,
+  waitForFixtureFlow,
 } from "../helpers/fixtures";
-
-it.each([1, 2])(
-  "persists instructions before execution and resumes cancelled planning stage %i",
-  async (stage) => {
-    const dir = await mkdtemp(join(tmpdir(), "vibestar-chat-"));
-    let release = () => {};
-
-    let notify = () => {};
-
-    const entered = new Promise<void>((resolve) => {
-      notify = resolve;
-    });
-
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-
-    let blocked = false;
-
-    const engine = await createFixtureEngine(
-      join(dir, "data"),
-      (current) =>
-        new FixtureProvider(async () => {
-          if (current === stage && !blocked) {
-            blocked = true;
-            notify();
-            await gate;
-          }
-        }),
-    );
-
-    try {
-      const { repo } = await fixtureRepository(engine, dir);
-
-      const task = engine.enqueue(
-        repo,
-        parseIssue("https://github.com/fixture/fixture/issues/1"),
-        "Task A",
-        "",
-        {},
-      );
-
-      if (stage === 2) {
-        await waitForTask(engine, task.id, (status) => status === "awaiting_approval");
-        await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
-        await engine.approveStage(task.id);
-      }
-
-      await entered;
-
-      expect(engine.followUp(task.id, "Include regression coverage")).toMatchObject({
-        disposition: "queued",
-      });
-
-      expect(engine.db.detail(task.id).messages[0]).toMatchObject({
-        content: "Include regression coverage",
-        status: "queued",
-      });
-
-      engine.cancel(task.id);
-      release();
-      await waitForTask(engine, task.id, (status) => status === "cancelled");
-
-      expect(engine.followUp(task.id, "Resume with the saved instruction")).toMatchObject({
-        disposition: "resume_planning",
-      });
-
-      await waitForTask(engine, task.id, (status) =>
-        ["ready_for_review", "failed"].includes(status),
-      );
-
-      expect(engine.db.task(task.id).status).toBe("ready_for_review");
-
-      const run = engine.db
-        .detail(task.id)
-        .runs.filter((r) => r.stage === stage)
-        .at(-1)!;
-
-      expect(run.prompt).toContain("Resume with the saved instruction");
-      expect(run.prompt).toContain("Include regression coverage");
-      expect(run.status).toBe("completed");
-    } finally {
-      release();
-      await engine.close();
-      await rm(dir, { recursive: true, force: true });
-    }
-  },
-  30000,
-);
-
-it("keeps the provider sequence after explicitly reviewed planning feedback when a different chat provider is queued during planning", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "vibestar-queued-planning-"));
-  let release = () => {};
-
-  let notify = () => {};
-
-  const entered = new Promise<void>((resolve) => {
-    notify = resolve;
-  });
-
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-
-  let blocked = false;
-  const providers: { stage: number; name?: string }[] = [];
-
-  const engine = await createFixtureEngine(join(dir, "data"), (stage, name) => {
-    providers.push({ stage, name });
-    return new FixtureProvider(async () => {
-      if (stage === 1 && !blocked) {
-        blocked = true;
-        notify();
-        await gate;
-      }
-    });
-  });
-
-  try {
-    const { repo } = await fixtureRepository(engine, dir);
-
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      {},
-    );
-
-    await entered;
-
-    engine.followUp(task.id, "Include a regression test", {
-      provider: "antigravity",
-      config: { model: "next-model", effort: "low", timeout_secs: 30 },
-    });
-
-    release();
-    await waitForTask(engine, task.id, (status) => ["ready_for_review", "failed"].includes(status));
-    expect(engine.db.task(task.id).status).toBe("ready_for_review");
-
-    expect(providers).toEqual([
-      { stage: 1, name: "antigravity" },
-      { stage: 1, name: "antigravity" },
-      { stage: 2, name: "codex" },
-      { stage: 3, name: "codex" },
-      { stage: 5, name: "antigravity" },
-    ]);
-
-    expect(engine.db.detail(task.id).runs.find((r) => r.stage === 2)?.prompt).toContain(
-      "Include a regression test",
-    );
-
-    expect(engine.db.detail(task.id).messages[0].status).toBe("delivered");
-  } finally {
-    release();
-    await engine.close();
-    await rm(dir, { recursive: true, force: true });
-  }
-}, 30000);
-
-it("keeps a user message when the selected model fails validation, and records every attempted run", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "vibestar-usage-"));
-  const engine = await createFixtureEngine(join(dir, "data"), () => new FixtureProvider());
-  try {
-    const { repo } = await fixtureRepository(engine, dir);
-
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      {},
-    );
-
-    await waitForTask(engine, task.id, (status) => status === "ready_for_review");
-
-    const saved = engine.followUp(task.id, "Keep this message after failure", {
-      provider: "codex",
-      config: { model: "unknown", effort: "high", timeout_secs: 30 },
-    });
-
-    expect(engine.db.detail(task.id).messages.some((m) => m.id === saved.message.id)).toBe(true);
-    await waitForTask(engine, task.id, (status) => status === "failed");
-
-    expect(engine.db.detail(task.id).messages.at(-1)?.content).toBe(
-      "Keep this message after failure",
-    );
-
-    const usage = new Usage(engine.db).list(task.id);
-    expect(usage).toHaveLength(5);
-
-    expect(usage[0]).toMatchObject({
-      provider: "codex",
-      model: "unknown",
-      purpose: "Chat Follow-up",
-      status: "failed",
-      input_tokens: null,
-      total_tokens: null,
-    });
-
-    expect(usage.every((r) => r.duration_ms !== null && r.duration_ms >= 0)).toBe(true);
-
-    engine.db.saveSettings({
-      ...defaultSettings,
-      utility_ai: {
-        provider: "codex",
-        model: "next-model",
-        effort: "low",
-        timeout_secs: 30,
-      },
-    });
-
-    await engine.utility.run({
-      purpose: "Utility AI",
-      prompt: "Classify review",
-      schema: ActionSchema,
-    });
-
-    expect(new Usage(engine.db).list()[0]).toMatchObject({
-      purpose: "Utility AI",
-      model: "next-model",
-      effort: "low",
-      status: "completed",
-    });
-  } finally {
-    await engine.close();
-    await rm(dir, { recursive: true, force: true });
-  }
-}, 30000);
 
 it("honors the selected checkout for an older deferred clone registration", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-deferred-import-"));
@@ -565,16 +337,9 @@ it("offers legacy data migration and repairs copied Git worktree pointers withou
   try {
     const { repo } = await fixtureRepository(engine, dir);
 
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      {},
-    );
-
+    const task = fixtureFlowTask(engine, repo);
     taskId = task.id;
-    await waitForTask(engine, task.id, (status) => status === "ready_for_review");
+    await waitForFixtureFlow(engine, startFixtureFlow(engine, task));
     oldWorktree = engine.db.task(task.id).worktree_path;
     await writeFile(join(old, "runtime", "migration-fixture.json"), "preserved runtime metadata");
   } finally {
@@ -607,7 +372,7 @@ it("offers legacy data migration and repairs copied Git worktree pointers withou
       expect(task.worktree_path.startsWith(target)).toBe(true);
       await migrated.git.assertTask(task);
       expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("A\n");
-      expect(migrated.db.detail(taskId).usage).toHaveLength(4);
+      expect(migrated.db.detail(taskId).usage).toHaveLength(1);
       expect(await readFile(join(oldWorktree, "source.txt"), "utf8")).toBe("A\n");
       expect(await checked("git", ["rev-parse", "--git-common-dir"], oldWorktree)).toContain(old);
     } finally {

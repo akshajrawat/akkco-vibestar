@@ -12,7 +12,7 @@ export class ValidationBlockerProvider extends FixtureProvider {
   }
 
   invocation = (request: AgentRunRequest) =>
-    request.stage !== 3
+    request.access !== "workspace-write"
       ? new FixtureProvider().invocation(request)
       : {
           program: process.execPath,
@@ -78,33 +78,4 @@ export class ValidationBlockerProvider extends FixtureProvider {
         `,
           ],
         };
-}
-
-export class IndependentReviewProvider extends ValidationBlockerProvider {
-  invocation = (request: AgentRunRequest) => {
-    if (request.stage !== 5)
-      return new ValidationBlockerProvider(false, "dns_socket").invocation(request);
-    const packet = request.prompt.split("COMPLETE REVIEW EVIDENCE: ").at(-1)!;
-    return {
-      program: process.execPath,
-      input: "",
-      args: [
-        "-e",
-        `(async () => {
-        const fs = require('node:fs/promises');
-        const evidence = JSON.parse(await fs.readFile(${JSON.stringify(packet)}, 'utf8'));
-        require('node:assert/strict').ok(evidence.verification.checks.some(c => c.name === 'Browser rendering and accessibility' && c.outcome === 'blocked'));
-        let refused = false;
-        try { await fs.writeFile('script.js', 'unauthorized'); } catch { refused = true; }
-        require('node:assert/strict').ok(refused, 'Reviewer must be read-only');
-        const argv = ['node', '--check', 'script.js'];
-        await require('node:util').promisify(require('node:child_process').execFile)(argv[0], argv.slice(1));
-        const emit = (item) => console.log(JSON.stringify({type:'item.completed',item}));
-        emit({id:'independent-syntax',type:'command_execution',command:JSON.stringify(argv),status:'completed',exit_code:0});
-        emit({type:'agent_message',text:JSON.stringify({approval:'approved',summary:'Code inspected independently; browser checks remain unavailable.',findings:[],testsRun:['node --check script.js'],testsNotRun:['Browser rendering and accessibility','Independent mobile viewport'],verification:[{name:'Independent mobile viewport',command:'npx playwright test --project=mobile',kind:'check',outcome:'blocked',required:true,detail:'Mobile viewport was not executed because browser tooling is unavailable.',prerequisite:'Playwright installation'}],environmentLimitations:['Playwright unavailable'],implementationConcerns:[],recommendedNextActions:['Run browser checks in a supported environment']})});
-        console.log(JSON.stringify({type:'turn.completed'}));
-      })().catch(error => {console.error(error);process.exitCode=1;});`,
-      ],
-    };
-  };
 }

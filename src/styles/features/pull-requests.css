@@ -179,8 +179,7 @@
 }
 
 .modal,
-.compact-dialog,
-.model-picker {
+.compact-dialog {
   background: var(--background-elevated);
   border-color: var(--border-strong);
 }

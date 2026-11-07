@@ -5,7 +5,112 @@ It describes current behavior; historical counts and experiments live in the sep
 evidence records. See [architecture](../../ARCHITECTURE.md) for module ownership and
 [security](../security.md) for trusted boundaries.
 
-## Issue creation, chat and startup
+## Current Viber execution
+
+New invocation code uses explicit provider/model/effort/timeout, workspace access
+and output contracts through `AgentRunner.runConfigured`. Conversation output does
+not imply read-only access, and structured output does not imply write access. Task flows, PR repair and utility operations all call this executor explicitly.
+Repair phase IDs remain telemetry only. Historical task translation runs at startup;
+it cannot dispatch providers or restore the retired fixed-stage queue.
+
+Profiles and DAG definitions now have runtime-validated contracts and immutable
+saved revisions. Connections express dependencies; selected bindings deliver context
+from predecessors. Layout is saved independently of executable revisions. These
+storage operations authorize no execution. Captured runs/attempts and approval
+decisions are persisted separately from draft revisions; retries append attempts,
+and stopped/continued runs cannot retain an actionable pending approval. Process
+success cannot substitute for observed checks or an approved review. Linked telemetry
+continues to use the original agent/command/event/usage records.
+
+General task creation can persist an optional repository and no issue, using the
+same task/history model. Repository-free execution and user shells use an owned
+managed directory outside cache. Selected command inputs are delivered as JSON stdin;
+argv is never interpolated from model output. Node context is bounded to 128 KiB with
+an explicit error when selected sources do not fit. Node execution starts a fresh
+provider conversation rather than sharing a thread through a profile name.
+
+General and issue tasks expose these controls through validated `profile.*`, `flow.*`,
+`task.createGeneral`, `task.createIssue` and `task.lifecycle` RPC methods, negotiated with `agent_flows: 1`.
+The React Flow workspace edits the same definition used by the scheduler. Its Viber
+characters expose real attempt status, selected inputs, output, events, checks and
+usage. Palette clicks support touch/keyboard addition alongside drag/drop; ports
+connect dependencies. Deleting dependencies removes now-invalid predecessor inputs.
+Positions and viewport persist separately without creating executable revisions.
+
+Saving a draft starts no inference. Run flow captures the saved revision and current
+profiles. Pause finishes the current node; continue retains its captured configuration;
+stop aborts the current process. Retry appends an attempt for only the selected node.
+An accepted approval continues a full-flow dispatch, while an approval reached by
+Run node pauses again without authorizing its successors. Duplicate settled actions
+return their original record. Restart marks unfinished execution interrupted and
+requires a new explicit action.
+
+Every agent instance has its own chat in the task. The Vibers library edits reusable
+profiles, creates direct tasks and returns to existing instances. Messages bind the
+task, graph node and profile identity; drafts, scroll and selected completed history
+stay scoped to that instance. `viber.chat` captures only the chosen node for a new
+conversation turn without changing graph revisions or completing connected work.
+Ordinary chat includes only that instance’s completed conversation by default.
+Users can select fewer messages; more than 50 requires that choice before sending.
+The 128 KiB packet limit remains explicit with no silent truncation. Inputs may also
+select retained outputs/checks from the same task.
+
+Read-only chat can run beside a paused/waiting graph. Execution still shares the
+existing workspace lease and slots. A conversation that changes files invalidates
+the parent graph's authority, even if the turn fails or is cancelled after a partial
+write. Pending gates are interrupted without inventing decisions; preview/apply a
+saved revision or explicitly start a fresh graph before proceeding. Resuming a graph
+also checks its last captured workspace evidence. Unknown historical message scopes
+remain unassigned and readable in History. Migration 36 preserves original messages
+and attributes them only when an actual same-task agent attempt proves the instance.
+The existing chat scroll/timeline/composer components remain shared with repair and
+historical tasks. Workspace-write solo profiles can edit immediately; no numeric
+stage grants access. Managed-file inspection reports actual files with no invented
+Git baseline. Task completion is independent of verification and retains missing or
+failed evidence.
+
+After pausing, Apply saved revision previews which completed results remain valid
+and which nodes need explicit recomputation. Settings, dependencies, selected inputs
+and actual workspace evidence bind that preview. Apply creates a linked run without
+rewriting the previous snapshot or duplicating telemetry. Missing historical end
+fingerprints cannot establish reuse. A workspace change while the continuation is
+queued invalidates reused links before inference. Changed nodes mark downstream
+results stale in the canvas. Layout changes remain independent.
+
+Refresh approval appends a fresh waiting attempt and interrupts the old undecided
+attempt. It does not fabricate acceptance or resume successors; accepting the
+refreshed node requires a separate explicit continuation for the remaining flow.
+
+Historical issue tasks convert without inference. The full graph remains in History;
+the saved execution boundary becomes a clearly labelled checkpoint over remaining
+nodes. Past approvals and exact historical context packets remain unknown. The
+original task bytes, IDs, files, runs, messages, artifacts, command evidence and usage
+remain retained. Cancelled, failed and interrupted checkpoints do not automatically
+queue. A waiting checkpoint has no approvable attempt until the user explicitly
+inspects/continues it. That action captures current owned inputs and workspace
+integrity. An imported final review also requires its original fingerprint to match;
+otherwise add a fresh read-only Reviewer and apply a saved revision.
+
+Missing results, corrupt records or inconsistent ownership leave a recovery view
+with a diagnostic. No fallback profile settings or successful past results are
+invented. Delivered instructions remain selectable; queued/draft instructions do not
+silently enter new attempts. New issue tasks choose a profile/template directly and
+bind the actual scoped brief, notes and issue context to agent nodes. They never
+pass through historical conversion.
+
+Overview and navigation show saved flow state separately from lifecycle and recorded
+checks. Settings edits reusable profiles. Storage inspection includes profiles,
+revisions, runs, attempts, migration sources and managed files. Executed graph history
+blocks destructive cleanup; unused drafts may be explicitly removed with their
+request tombstones retained.
+
+The sections below document older saved records. Their numeric-stage execution,
+chat, follow-up, approval and verification-recovery controls have been removed.
+Use explicit profiles, graph inputs, node attempts and approval decisions. The
+bridge rejects these retired mutations before forwarding to any helper; historical
+readers and migrations preserve saved evidence. See the [implementation record](agent-flows.md).
+
+## Historical issue creation, chat and startup
 
 The repository picker searches connected repository names and shows environment/base
 branch information. Source paths and worktree ownership remain in Details. Selecting a
@@ -29,7 +134,7 @@ selected conversation ownership, then atomically saves durable startup authority
 Concurrent identical requests share settlement. Shutdown aborts and awaits validation.
 Historical queued entries retain the authorization they already had.
 
-## Stage gates, instructions and drafts
+## Historical stage gates, instructions and drafts
 
 Preparation pins base identity and records real Git activity.
 Each issue gets a dedicated branch. An explicitly started workflow may use a clean,

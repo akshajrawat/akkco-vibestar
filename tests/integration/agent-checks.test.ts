@@ -1,22 +1,22 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseIssue } from "../../backend/domain";
-import { taskVerification } from "../../backend/execution/verification/task-verification";
+import { randomUUID } from "node:crypto";
 import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
-  finishFixtureTask,
-  waitForTask,
+  fixtureFlowTask,
+  startFixtureFlow,
+  waitForFixtureFlow,
 } from "../helpers/fixtures";
 
-it("lets the independent reviewer run missing implementation checks and complete the task without a validation stage", async () => {
+it("keeps missing implementation checks separate from independently observed read-only reviewer checks", async () => {
   const directory = await mkdtemp(join(tmpdir(), "vibestar-agent-checks-"));
-  const stages: number[] = [];
+  const access: string[] = [];
   const fixture = new FixtureProvider();
   const argv = ["node", "--check", "source.js"];
 
@@ -29,14 +29,13 @@ it("lets the independent reviewer run missing implementation checks and complete
     prerequisite: null,
   };
 
-  const engine = await createFixtureEngine(join(directory, "data"), (stage) => ({
+  const engine = await createFixtureEngine(join(directory, "data"), () => ({
     ...fixture,
     invocation: (request) => {
-      stages.push(stage);
-      if (stage !== 3 && stage !== 5) return fixture.invocation(request);
+      access.push(request.access);
 
       const report =
-        stage === 3
+        request.access === "workspace-write"
           ? {
               summary: "Implementation ready; syntax check not run",
               filesChanged: ["source.js"],
@@ -60,7 +59,7 @@ it("lets the independent reviewer run missing implementation checks and complete
             };
 
       const action =
-        stage === 3
+        request.access === "workspace-write"
           ? "await require('node:fs/promises').writeFile('source.js', 'const answer = 42;\\n');"
           : `const output = require('node:child_process').execFileSync('node', ['--check', 'source.js'], {encoding:'utf8'});
           let denied=false;try{await require('node:fs/promises').writeFile('source.js','bad')}catch(e){if(e.code!=='EROFS')throw e;denied=true}
@@ -80,47 +79,53 @@ it("lets the independent reviewer run missing implementation checks and complete
   try {
     const { repo } = await fixtureRepository(engine, directory);
 
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      {},
+    const task = fixtureFlowTask(engine, repo);
+    const saved = engine.flows.definition(task.flow_id!);
+    const implementation = saved.definition.nodes[0];
+    if (implementation.type !== "agent") throw new Error("Missing fixture agent");
+    const profile = engine.flows.profile(implementation.profile_id);
+
+    const reviewer = {
+      ...profile,
+      id: randomUUID(),
+      name: "Independent reviewer",
+      execution: { ...profile.execution, access: "read-only" as const, output: "review" as const },
+    };
+
+    engine.flows.saveProfile(reviewer, null);
+
+    const review = {
+      ...implementation,
+      id: randomUUID(),
+      name: reviewer.name,
+      profile_id: reviewer.id,
+      inputs: [{ kind: "output" as const, node_id: implementation.id }],
+      completion: { verification: "require-passing" as const, review: "require-approved" as const },
+    };
+
+    engine.flows.saveDefinition(
+      task.flow_id!,
+      {
+        name: "Independent checks",
+        nodes: [implementation, review],
+        edges: [{ id: randomUUID(), source: implementation.id, target: review.id }],
+      },
+      1,
     );
 
-    await finishFixtureTask(
-      engine,
-      task.id,
-      (status) =>
-        status === "awaiting_approval" &&
-        engine.db.task(task.id).approval_gate === "implementation",
-    );
-
-    await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
-    expect(engine.db.task(task.id)).toMatchObject({ stage: 5, error: null });
-    expect(taskVerification(engine.db, task.id).canReview).toBe(false);
-    expect(stages).toEqual([1, 2, 3]);
-    await engine.approveStage(task.id);
-
-    await waitForTask(
-      engine,
-      task.id,
-      (status) => status === "ready_for_review" || status === "failed",
-    );
-
-    await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
-
-    expect(engine.db.task(task.id), engine.db.task(task.id).error || "Review result").toMatchObject(
-      { final_review_verdict: "verified", stage: 6, status: "ready_for_review" },
-    );
-
-    expect(stages).toEqual([1, 2, 3, 5]);
+    const run = startFixtureFlow(engine, task);
+    await waitForFixtureFlow(engine, run);
+    const attempts = engine.flowRuns.attempts(run.id);
+    expect(attempts.map((value) => value.verification)).toEqual(["missing", "passed"]);
+    expect(access).toEqual(["workspace-write", "read-only"]);
+    expect(engine.db.task(task.id)).toMatchObject({ stage: 0, status: "not_started" });
 
     expect(
-      taskVerification(engine.db, task.id).checks.find((item) => item.name === check.name),
-    ).toMatchObject({ outcome: "passed", source: "observed_command" });
-
-    expect(engine.db.task(task.id).approval_gate).toBeUndefined();
+      engine.db.all(
+        "SELECT status,exit_code FROM test_runs WHERE run_id=?",
+        attempts[1].agent_run_id,
+      ),
+    ).toEqual([{ status: "passed", exit_code: 0 }]);
 
     expect(await readFile(join(engine.db.task(task.id).worktree_path, "source.js"), "utf8")).toBe(
       "const answer = 42;\n",

@@ -77,7 +77,7 @@ it("refuses a managed repository parent redirected to an external source before 
   }
 });
 
-it("requires current final-review authority for completion and retains legacy completed history", async () => {
+it("retires fixed-stage completion authority while retaining legacy completed history", async () => {
   const { dir, root, task: workspace } = await securityWorkspace();
   const engine = await createFixtureEngine(root);
   const rpc = new Rpc(engine);
@@ -104,9 +104,9 @@ it("requires current final-review authority for completion and retains legacy co
     for (const hash of [undefined, "a".repeat(64)]) {
       engine.db.saveTask({ ...task, final_review_hash: hash });
 
-      await expect(rpc.call("task.complete", { id: task.id })).rejects.toThrow(
-        "older integrity method",
-      );
+      await expect(rpc.call("task.complete", { id: task.id })).rejects.toMatchObject({
+        kind: "invalid_method",
+      });
 
       expect(engine.db.task(task.id).status).toBe("ready_for_review");
     }

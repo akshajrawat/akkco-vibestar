@@ -10,14 +10,17 @@ import {
   X,
   Search,
   Activity,
+  Bot,
 } from "lucide-react";
-
 import type { Page } from "../lib/types";
 import { useWorkspace, useDetail } from "../hooks/useWorkspace";
 import { Overview } from "../features/tasks/Overview";
 import { RepositoryPage } from "../features/repositories/RepositoryPage";
 import { NewTask } from "../features/tasks/NewTask";
-import { TaskWorkspace } from "../features/tasks/TaskWorkspace";
+import { HistoricalTask } from "../features/flows/HistoricalTask";
+import { FlowWorkspace } from "../features/flows/FlowWorkspace";
+import { NewViberTask } from "../features/flows/NewViberTask";
+import { ProfileLibrary } from "../features/flows/ProfileLibrary";
 import { ProvidersPage } from "../features/providers/ProvidersPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { Button } from "../components/ui/button";
@@ -31,6 +34,8 @@ import {
   updateTaskView,
   openWorkspaceTool,
   workspaceSections,
+  flowWorkspaceSections,
+  type FlowWorkspaceSection,
   type SecondarySection,
 } from "../lib/taskView";
 import { rpc, errorMessage } from "../lib/api";
@@ -45,6 +50,7 @@ import { useWatchNotifications } from "../features/issue-watch/notifications";
 
 const navigation = [
   ["Tasks", ListTodo],
+  ["Vibers", Bot],
   ["Scheduled", GitPullRequest],
   ["Issue Watch", Search],
   ["Repositories", FolderGit2],
@@ -76,6 +82,7 @@ export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
   usePRWatch(snapshot?.capabilities?.pr_quick_watch === true);
   const [page, setPage] = useState<Page>("Tasks");
+  const [newViberProfile, setNewViberProfile] = useState<string>();
 
   const [taskId, setTaskId] = useState<string | null>(() =>
     localStorage.getItem("vibestar.activeTask"),
@@ -88,6 +95,7 @@ export const App = () => {
   );
 
   const [newTask, setNewTask] = useState(false);
+  const [issueTask, setIssueTask] = useState(false);
   const [newTaskRepository, setNewTaskRepository] = useState<string>();
 
   const [taskPrefill, setTaskPrefill] = useState<{
@@ -102,6 +110,7 @@ export const App = () => {
   const workspaceId = taskId || repairId;
   const activeView = useTaskView(workspaceId || "");
   const { detail, error: detailError } = useDetail(taskId, revision);
+  const flowTask = !!taskId && detail?.task.id === taskId && !!detail.task.flow_id;
   const onError = useCallback((s: string) => setError(s), [setError]);
 
   useEffect(() => {
@@ -185,6 +194,20 @@ export const App = () => {
           setNewTask(true);
         }}
       />
+    ) : page === "Vibers" ? (
+      <div className="viber-library-page">
+        <ProfileLibrary
+          revision={revision}
+          chat={(profileId) => {
+            setNewViberProfile(profileId);
+            setNewTask(true);
+          }}
+          openInstance={(id, nodeId) => {
+            updateTaskView(id, { flowSection: "chat", flowNode: nodeId });
+            open(id);
+          }}
+        />
+      </div>
     ) : page === "Usage" ? (
       <UsageView
         openRun={(row) => {
@@ -194,6 +217,7 @@ export const App = () => {
           else openRepair(id);
 
           updateTaskView(id, {
+            ...(row.task_id ? { flowSection: "logs" } : {}),
             secondaryOpen: true,
             secondarySection: "run-details",
             outputRun: row.id,
@@ -238,14 +262,20 @@ export const App = () => {
       />
     ) : taskId ? (
       detail && detail.task.id === taskId ? (
-        <TaskWorkspace
-          key={taskId}
-          detail={detail}
-          repository={snapshot?.repositories.find((r) => r.id === detail.task.repo_id)}
-          revision={revision}
-          onError={onError}
-          back={() => setTaskId(null)}
-        />
+        detail.task.flow_id ? (
+          <FlowWorkspace
+            key={taskId}
+            detail={detail}
+            repository={snapshot?.repositories.find(
+              (repository) => repository.id === detail.task.repo_id,
+            )}
+            revision={revision}
+            onError={onError}
+            back={() => setTaskId(null)}
+          />
+        ) : (
+          <HistoricalTask key={taskId} detail={detail} back={() => setTaskId(null)} />
+        )
       ) : (
         <p className="empty-row">{detailError || "Opening task…"}</p>
       )
@@ -278,7 +308,8 @@ export const App = () => {
         onSidebar={() => setSidebar((v) => !v)}
         currentTask={
           detail && detail.task.id === taskId
-            ? `#${detail.task.issue_number} · ${detail.task.claimed_scope || detail.task.issue?.title}`
+            ? detail.task.goal ||
+              `#${detail.task.issue_number} · ${detail.task.claimed_scope || detail.task.issue?.title}`
             : undefined
         }
       />
@@ -310,6 +341,7 @@ export const App = () => {
               </div>
 
               <TaskNavigation
+                flowStates={snapshot?.flow_states}
                 repositories={snapshot?.repositories || []}
                 tasks={snapshot?.tasks || []}
                 selected={taskId}
@@ -499,7 +531,9 @@ export const App = () => {
               },
               ...(snapshot?.tasks || []).map((task) => ({
                 id: `task-${task.id}`,
-                label: `Open #${task.issue_number} · ${task.claimed_scope || task.issue?.title}`,
+                label:
+                  task.goal ||
+                  `Open #${task.issue_number} · ${task.claimed_scope || task.issue?.title}`,
                 detail: task.branch_name,
                 run: () => open(task.id),
               })),
@@ -508,13 +542,24 @@ export const App = () => {
                     {
                       id: "task-chat",
                       label: `${repairId ? "Repair" : "Task"}: Return to chat`,
-                      run: () => updateTaskView(workspaceId, { expandedTool: false }),
+                      run: () =>
+                        updateTaskView(workspaceId, {
+                          expandedTool: false,
+                          ...(flowTask ? { flowSection: "chat" } : {}),
+                        }),
                     },
-                    ...Object.entries(workspaceSections).map(([key, label]) => ({
-                      id: `task-tool-${key}`,
-                      label: `${repairId ? "Repair" : "Task"}: ${label}`,
-                      run: () => openWorkspaceTool(workspaceId, key as SecondarySection),
-                    })),
+                    ...Object.entries(flowTask ? flowWorkspaceSections : workspaceSections).map(
+                      ([key, label]) => ({
+                        id: `task-tool-${key}`,
+                        label: `${repairId ? "Repair" : "Task"}: ${label}`,
+                        run: () =>
+                          flowTask
+                            ? updateTaskView(workspaceId, {
+                                flowSection: key as FlowWorkspaceSection,
+                              })
+                            : openWorkspaceTool(workspaceId, key as SecondarySection),
+                      }),
+                    ),
                     {
                       id: "task-terminal",
                       label: `${repairId ? "Repair" : "Task"}: Terminal`,
@@ -557,27 +602,47 @@ export const App = () => {
           />
         )}
 
-        {newTask && (
-          <NewTask
+        {newTask && snapshot?.capabilities?.agent_flows === 1 && !issueTask && !taskPrefill ? (
+          <NewViberTask
+            repositories={snapshot.repositories}
             initialRepositoryId={newTaskRepository}
-            initialIssueUrl={taskPrefill?.url}
-            initialNotes={taskPrefill?.notes}
+            initialProfileId={newViberProfile}
             close={() => {
               setNewTask(false);
               setNewTaskRepository(undefined);
-              setTaskPrefill(undefined);
+              setNewViberProfile(undefined);
             }}
             created={async (id) => {
               await refresh();
-
-              updateTaskView(id, {
-                secondaryOpen: window.innerWidth >= 1200,
-                secondarySection: "pipeline",
-              });
-
               open(id);
+              if (newViberProfile) updateTaskView(id, { flowSection: "chat" });
             }}
+            issueTask={() => setIssueTask(true)}
           />
+        ) : (
+          newTask && (
+            <NewTask
+              initialRepositoryId={newTaskRepository}
+              initialIssueUrl={taskPrefill?.url}
+              initialNotes={taskPrefill?.notes}
+              close={() => {
+                setNewTask(false);
+                setNewTaskRepository(undefined);
+                setTaskPrefill(undefined);
+                setIssueTask(false);
+              }}
+              created={async (id) => {
+                await refresh();
+
+                updateTaskView(id, {
+                  secondaryOpen: window.innerWidth >= 1200,
+                  secondarySection: "pipeline",
+                });
+
+                open(id);
+              }}
+            />
+          )
         )}
       </div>
     </div>

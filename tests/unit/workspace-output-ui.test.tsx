@@ -2,31 +2,15 @@
 import { selectValue } from "../helpers/select";
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
+import { randomUUID } from "node:crypto";
 
-import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
-import { TestsView } from "../../src/features/verification/TestsView";
+import { CommandRuns } from "../../src/features/verification/CommandRuns";
 import { LogView } from "../../src/features/chat/LogView";
 import { TaskCleanup } from "../../src/features/tasks/TaskCleanup";
 import type { Detail } from "../../src/lib/types";
-
-const terminal = vi.hoisted(() => ({ mounts: 0 }));
-
-vi.mock("../../src/components/shared/TaskTerminal", async () => {
-  const { useEffect } = await import("react");
-  return {
-    TaskTerminal: () => {
-      useEffect(() => {
-        terminal.mounts++;
-      }, []);
-
-      return <div>Attached terminal session</div>;
-    },
-  };
-});
-
-vi.mock("../../src/hooks/useWorkspace", () => ({
-  useProviders: () => ({ providers: [], refresh: vi.fn() }),
-}));
+import { NodeAttemptSchema } from "../../backend/flows/run-contracts";
+import { resolveAgentNode, type FlowNode } from "../../backend/flows/contracts";
+import { viberProfile } from "../workspace/flow-fixtures";
 
 afterEach(cleanup);
 
@@ -136,56 +120,6 @@ it("removes task history while preserving work through a distinct explicit choic
   });
 });
 
-it("keeps active execution visible with the right sidebar closed and restores the dock without restarting its terminal", async () => {
-  bridge();
-  terminal.mounts = 0;
-
-  const ui = render(
-    <TaskWorkspace detail={detail} revision={0} onError={vi.fn()} back={vi.fn()} />,
-  );
-
-  expect(screen.getByLabelText("Current agent run")).toBeTruthy();
-  expect(screen.queryByText("View sent prompts")).toBeNull();
-  expect(screen.getAllByLabelText("Stop agent").length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
-  const sidebar = ui.container.querySelector("aside.context-pane")!;
-  expect(sidebar.contains(screen.getByLabelText("Current agent run"))).toBe(false);
-  fireEvent.click(screen.getByRole("tab", { name: "Run details" }));
-  expect(sidebar.contains(screen.getByText("View sent prompts"))).toBe(true);
-  fireEvent.click(screen.getByLabelText("Collapse secondary workspace"));
-  fireEvent.click(screen.getByLabelText("Toggle utility dock"));
-  expect(await screen.findByText("Attached terminal session")).toBeTruthy();
-  const height = ui.container.querySelector<HTMLElement>(".utility-dock")!.style.height;
-  fireEvent.click(screen.getByLabelText("Maximize utility dock"));
-  expect(ui.container.querySelector(".workspace.dock-maximized")).toBeTruthy();
-  expect(ui.container.querySelector<HTMLElement>(".utility-dock")!.style.height).toBe("");
-  expect(terminal.mounts).toBe(1);
-
-  fireEvent.keyDown(screen.getByLabelText("Restore utility dock"), {
-    key: "Escape",
-  });
-
-  expect(ui.container.querySelector(".workspace.dock-maximized")).toBeNull();
-  expect(ui.container.querySelector<HTMLElement>(".utility-dock")!.style.height).toBe(height);
-  expect(terminal.mounts).toBe(1);
-  fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
-  fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open full diff review" }));
-  await screen.findByText("new");
-
-  expect(
-    ui.container.querySelector('.diff-code[data-side="working"][data-line="1"]')?.textContent,
-  ).toBe("new");
-
-  expect(
-    ui.container.querySelector('.diff-code[data-side="base"][data-line="1"]')?.textContent,
-  ).toBe("old");
-
-  expect(ui.container.querySelector(".secondary-expanded")).toBeTruthy();
-  fireEvent.click(screen.getByLabelText("Return to chat"));
-  expect(terminal.mounts).toBe(1);
-});
-
 it("separates command transcripts by attempt and stage, highlights failures, keeps both streams and updates live output", () => {
   bridge();
 
@@ -241,10 +175,10 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
     ],
   };
 
-  const ui = render(<TestsView detail={props} onError={vi.fn()} />);
+  const ui = render(<CommandRuns detail={props} />);
   expect(screen.getByLabelText("Selected command output").textContent).toContain("linting");
 
-  selectValue(screen.getByLabelText("Command stage"), "5");
+  selectValue(screen.getByLabelText("Command run"), "run:review");
 
   expect(screen.getByLabelText("Selected command output").textContent).toContain(
     "mobile assertion failed",
@@ -254,7 +188,7 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
   expect(within(screen.getByLabelText("Recorded commands")).getAllByRole("button")).toHaveLength(1);
   expect(ui.container.querySelector(".command-failed[aria-current='true']")).toBeTruthy();
 
-  selectValue(screen.getByLabelText("Command stage"), "all");
+  selectValue(screen.getByLabelText("Command run"), "all");
 
   fireEvent.click(within(screen.getByLabelText("Recorded commands")).getAllByRole("button")[0]);
   expect(screen.getByLabelText("Selected command output").textContent).toContain("desktop passed");
@@ -268,16 +202,106 @@ it("separates command transcripts by attempt and stage, highlights failures, kee
   });
 
   ui.rerender(
-    <TestsView
+    <CommandRuns
       detail={{
         ...props,
         tests: [tests[0], tests[1], { ...tests[2], stdout: "linting\nchecked 4 files" }],
       }}
-      onError={vi.fn()}
     />,
   );
 
   expect(screen.getByLabelText("Selected command output").textContent).toContain("checked 4 files");
+});
+
+it("filters stage-zero commands by their actual Viber attempt and attributes direct command nodes", () => {
+  const nodes: FlowNode[] = ["Scout", "Builder"].map((name) => ({
+    id: randomUUID(),
+    type: "agent",
+    name,
+    profile_id: viberProfile.id,
+    inputs: [],
+    instructions: "",
+    overrides: {},
+    completion: { verification: "record-only", review: "none" },
+  }));
+
+  nodes.push({
+    id: randomUUID(),
+    type: "command",
+    name: "Syntax check",
+    argv: ["node", "--check", "source.js"],
+    access: "read-only",
+    timeout_secs: 30,
+    inputs: [],
+  });
+
+  const runs = nodes.slice(0, 2).map(() => ({
+    ...detail.runs[0],
+    id: randomUUID(),
+    stage: 0,
+    purpose: "Shared role",
+    status: "completed",
+    exit_code: 0,
+  }));
+
+  const tests = nodes.map((node, index) => ({
+    id: randomUUID(),
+    run_id: runs[index]?.id || null,
+    command: "node --check source.js",
+    status: "passed",
+    exit_code: 0,
+    started_at: detail.task.created_at,
+    ended_at: detail.task.updated_at,
+    stdout: `${node.name} output`,
+    stderr: "",
+  }));
+
+  const runId = randomUUID();
+
+  const attempts = nodes.map((node, index) =>
+    NodeAttemptSchema.parse({
+      id: randomUUID(),
+      run_id: runId,
+      node_id: node.id,
+      ordinal: 1,
+      status: "completed",
+      configuration: {
+        node,
+        agent: node.type === "agent" ? resolveAgentNode(node, viberProfile) : null,
+      },
+      configuration_hash: "a".repeat(64),
+      inputs_hash: "b".repeat(64),
+      inputs: [],
+      workspace_fingerprint: "fixture:before",
+      completed_fingerprint: "fixture:after",
+      agent_run_id: runs[index]?.id || null,
+      command_run_id: index === 2 ? tests[index].id : null,
+      dispatch_id: null,
+      started_at: detail.task.created_at,
+      ended_at: detail.task.updated_at,
+      output: "Retained output",
+      verification: "missing",
+      error: null,
+    }),
+  );
+
+  render(<CommandRuns detail={{ runs, tests }} attempts={attempts} />);
+  selectValue(screen.getByLabelText("Command run"), `attempt:${attempts[1].id}`);
+  expect(within(screen.getByLabelText("Recorded commands")).getAllByRole("button")).toHaveLength(1);
+  expect(screen.getByLabelText("Selected command output").textContent).toContain("Builder output");
+
+  expect(screen.getByLabelText("Selected command output").textContent).not.toContain(
+    "Scout output",
+  );
+
+  selectValue(screen.getByLabelText("Command run"), `attempt:${attempts[2].id}`);
+
+  expect(screen.getByLabelText("Selected command output").textContent).toContain(
+    "Syntax check output",
+  );
+
+  expect(screen.getAllByText(/Syntax check · attempt 1/).length).toBeGreaterThan(0);
+  expect(screen.queryByText("Manual / unassigned")).toBeNull();
 });
 
 it("opens readable agent output with expanded results and both command streams, while retaining raw inspection", async () => {

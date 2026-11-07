@@ -5,6 +5,8 @@ import { isAbsolute, join } from "node:path";
 import { checked } from "../../backend/execution/runtime/process";
 import { now, type Repository, type Task } from "../../backend/domain";
 import { Engine } from "../../backend/execution/engine";
+import { AgentProfileSchema, type AgentProfile } from "../../backend/flows/contracts";
+import type { FlowRun } from "../../backend/flows/run-contracts";
 import { CodexProvider } from "../../backend/execution/providers/codex";
 import type {
   AgentRunRequest,
@@ -55,6 +57,44 @@ export const fixtureRepository = async (engine: Engine, dir: string) => {
   return { repo, upstream };
 };
 
+/** Stored historical/ownership data only: no dispatch, model discovery or provider execution. */
+export const historicalTaskFixture = (
+  engine: Engine,
+  repo: Repository,
+  input: {
+    id?: string;
+    issue_number?: number;
+    scope?: string;
+    status?: Task["status"];
+    stage?: number;
+  } = {},
+) => {
+  const timestamp = now();
+  const issue = input.issue_number ?? 1;
+
+  const task: Task = {
+    id: input.id || randomUUID(),
+    repo_id: repo.id,
+    issue_number: issue,
+    issue_url: `https://github.com/${repo.owner}/${repo.name}/issues/${issue}`,
+    claimed_scope: input.scope || "Task A",
+    notes: "",
+    issue: {},
+    branch_name: "",
+    base_branch: repo.base_branch,
+    base_commit_sha: "",
+    worktree_path: "",
+    stage: input.stage ?? 0,
+    status: input.status || "not_started",
+    error: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  };
+
+  engine.db.saveTask(task);
+  return task;
+};
+
 export const plan1 = {
   summary: "Fixture plan",
   understanding: "One file only",
@@ -79,10 +119,7 @@ export const plan2 = {
 };
 
 export class FixtureProvider extends CodexProvider {
-  constructor(
-    private readonly gate?: () => Promise<void>,
-    private readonly failOnce?: { value: boolean },
-  ) {
+  constructor(private readonly gate?: () => Promise<void>) {
     super();
   }
 
@@ -102,7 +139,9 @@ export class FixtureProvider extends CodexProvider {
   };
 
   invocation = (r: AgentRunRequest) => {
-    const result = (r.schema.properties as Record<string, unknown>)?.manualActionRequired
+    const fields = r.schema.properties as Record<string, unknown>;
+
+    const result = fields?.manualActionRequired
       ? {
           manualActionRequired: true,
           severity: "action_required",
@@ -115,11 +154,11 @@ export class FixtureProvider extends CodexProvider {
           recommendedNextAction: "Add coverage",
           affectedFiles: ["source.txt"],
         }
-      : r.stage === 1
+      : fields?.understanding
         ? plan1
-        : r.stage === 2
+        : fields?.filesToModify
           ? { ...plan2, scope: /(?:^|\n)Scope: ([^\n]+)/.exec(r.prompt)?.[1] || plan2.scope }
-          : r.stage === 5
+          : fields?.approval
             ? {
                 approval: "approved",
                 summary: "Fixture final review",
@@ -127,19 +166,21 @@ export class FixtureProvider extends CodexProvider {
                 testsRun: ["fixture inspection"],
                 testsNotRun: ["remote CI"],
               }
-            : {
-                summary: "Implemented by TEST fixture",
-                filesChanged: ["source.txt"],
-                testsPassed: [],
-                testsFailed: [],
-                testsSkipped: [],
-                remainingRisks: [],
-              };
+            : fields?.filesChanged
+              ? {
+                  summary: "Implemented by TEST fixture",
+                  filesChanged: ["source.txt"],
+                  testsPassed: [],
+                  testsFailed: [],
+                  testsSkipped: [],
+                  remainingRisks: [],
+                }
+              : { summary: "Fixture response" };
 
     let action = "";
-    if (r.stage === 3)
+    if (r.access === "workspace-write")
       action = `await require('node:fs/promises').writeFile('source.txt',${JSON.stringify(r.prompt.includes("Task A") ? "A\n" : "B\n")});`;
-    if (r.stage === 3 || r.stage === 5)
+    if (r.access === "workspace-write" || fields?.approval)
       action += `
         const fs = require('node:fs/promises');
         const path = require('node:path');
@@ -149,14 +190,6 @@ export class FixtureProvider extends CodexProvider {
         const output = require('node:child_process').execFileSync(process.execPath, ['--test', test], {encoding: 'utf8'});
         console.log(JSON.stringify({type:'item.completed',item:{type:'command_execution',id:'fixture-check',command:JSON.stringify(['node','--test',test]),exit_code:0,aggregated_output:output}}));
       `;
-    if (r.stage === 2 && this.failOnce?.value) {
-      this.failOnce.value = false;
-      return {
-        program: process.execPath,
-        input: "",
-        args: ["-e", "console.error('fixture quota error');process.exit(29)"],
-      };
-    }
 
     return {
       program: process.execPath,
@@ -169,15 +202,85 @@ export class FixtureProvider extends CodexProvider {
   };
 }
 
-export const waitForTask = (engine: Engine, id: string, predicate: (status: string) => boolean) =>
+/** A current task with explicit settings; creating it never starts a provider. */
+export const fixtureFlowTask = (
+  engine: Engine,
+  repo: Repository | null,
+  goal = "Task A",
+  execution: Partial<AgentProfile["execution"]> = {},
+) => {
+  const profile = AgentProfileSchema.parse({
+    id: randomUUID(),
+    revision: 1,
+    name: "Fixture Viber",
+    instructions: "Use the selected task goal.",
+    supported_access: ["read-only", "workspace-write"],
+    execution: {
+      provider: "codex",
+      model: "next-model",
+      effort: "low",
+      timeout_secs: 30,
+      access: "workspace-write",
+      output: "implementation",
+      ...execution,
+    },
+  });
+
+  engine.flows.saveProfile(profile, null);
+  return engine.createGeneralTask({
+    request_id: randomUUID(),
+    goal,
+    ...(repo ? { repository_id: repo.id } : {}),
+    profile_id: profile.id,
+  });
+};
+
+export const startFixtureFlow = (engine: Engine, task: Task) => {
+  if (!task.flow_id || !task.goal) throw new Error("Fixture requires a current task and flow.");
+  return engine.startFlow({
+    task_id: task.id,
+    flow_id: task.flow_id,
+    revision: engine.flows.definition(task.flow_id).revision,
+    request_id: randomUUID(),
+    goal: task.goal,
+  });
+};
+
+export const waitForFixtureFlow = (
+  engine: Engine,
+  run: FlowRun,
+  status: FlowRun["status"] = "completed",
+) =>
   new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       engine.off("event", check);
-      reject(new Error("Task transition deadline exceeded"));
+      const latest = engine.flowRuns.run(run.id);
+
+      reject(
+        new Error(`Flow transition deadline: ${latest.status}: ${latest.error || "no diagnostic"}`),
+      );
     }, 30000);
 
     const check = () => {
-      if (predicate(engine.db.task(id).status)) {
+      const latest = engine.flowRuns.run(run.id);
+      if (
+        !engine.isExecuting(run.task_id) &&
+        latest.status !== status &&
+        ["completed", "failed", "cancelled", "interrupted"].includes(latest.status)
+      ) {
+        clearTimeout(timer);
+        engine.off("event", check);
+
+        reject(
+          new Error(
+            `Expected flow ${status}; got ${latest.status}: ${latest.error || "no diagnostic"}`,
+          ),
+        );
+
+        return;
+      }
+
+      if (latest.status === status && !engine.isExecuting(run.task_id)) {
         clearTimeout(timer);
         engine.off("event", check);
         resolve();
@@ -188,80 +291,19 @@ export const waitForTask = (engine: Engine, id: string, predicate: (status: stri
     check();
   });
 
-// Existing integration scenarios explicitly simulate the user's approvals.
-// Gate-specific tests use waitForTask directly and assert no autonomous progress.
-export const finishFixtureTask = async (
-  engine: Engine,
-  id: string,
-  predicate: (status: string) => boolean,
-) => {
-  let approving = false;
-  let failure: unknown;
-
-  const approve = () => {
-    const task = engine.db.task(id);
-    if (
-      task.status !== "awaiting_approval" ||
-      predicate(task.status) ||
-      engine.isActive(id) ||
-      approving ||
-      failure
-    )
-      return;
-    approving = true;
-
-    void engine
-      .approveStage(id)
-      .catch((error) => {
-        failure = error;
-      })
-      .finally(() => {
-        approving = false;
-      });
-  };
-
-  engine.on("event", approve);
-  const timer = setInterval(approve, 20);
-  try {
-    await waitForTask(
-      engine,
-      id,
-      (status) => !!failure || (predicate(status) && !engine.isActive(id)),
-    );
-
-    if (failure) throw failure;
-  } finally {
-    clearInterval(timer);
-    engine.off("event", approve);
-  }
-};
-
 export const prepareFixtureTask = async (
   engine: Engine,
   repo: Repository,
   id: string,
   issue = 1,
 ) => {
-  const task: Task = {
+  const task = historicalTaskFixture(engine, repo, {
     id,
-    repo_id: repo.id,
     issue_number: issue,
-    issue_url: `https://github.com/fixture/fixture/issues/${issue}`,
-    claimed_scope: id,
-    notes: "",
-    issue: {},
-    branch_name: "",
-    base_branch: "main",
-    base_commit_sha: "",
-    worktree_path: "",
+    scope: id,
     stage: 1,
     status: "cancelled",
-    error: null,
-    created_at: now(),
-    updated_at: now(),
-  };
-
-  engine.db.saveTask(task);
+  });
 
   await engine.git.prepare(
     repo,

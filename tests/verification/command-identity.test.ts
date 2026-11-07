@@ -1,7 +1,6 @@
 import { expect, it } from "vitest";
 
 import { verificationSummary } from "../../backend/execution/verification/verification";
-import { missingVerificationChecks } from "../../backend/execution/verification/verification-recovery";
 
 const check = (name: string, command: string, kind = "check") => ({
   name,
@@ -38,7 +37,7 @@ it.each([
   expect(result.checks).toMatchObject([{ command, outcome: "passed", source: "observed_command" }]);
 });
 
-it("links the complete logged script without dropping pipelines or granting shell execution to recovery", () => {
+it("links the complete logged script without dropping pipelines", () => {
   const script = "set -o pipefail && node --check script.js 2>&1 | tee /tmp/syntax.log";
   const command = `/bin/bash -lc '${script}'`;
   const report = { verification: [check("Syntax", script)] };
@@ -50,7 +49,6 @@ it("links the complete logged script without dropping pipelines or granting shel
 
   const failed = verificationSummary(report, [observed(command, 1, "SyntaxError: Invalid token")]);
   expect(failed).toMatchObject({ outcome: "failed", canReviewWithGaps: false });
-  expect(missingVerificationChecks(failed)).toEqual([]);
 });
 
 it("preserves literal embedded quotes and expansions inside a quoted script", () => {

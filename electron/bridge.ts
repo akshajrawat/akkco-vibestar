@@ -7,6 +7,28 @@ import { EventEmitter } from "node:events";
 
 import type { DesktopSettings } from "./contracts";
 
+// Never forward retired task mutations to an older helper that might still execute them.
+const retiredTaskMethods = new Set([
+  "task.create",
+  "task.startWorkflow",
+  "task.chat",
+  "task.retry",
+  "task.approve",
+  "task.acceptDraft",
+  "task.followup",
+  "task.complete",
+  "task.message.retry",
+  "task.message.send",
+  "task.configure",
+  "task.configureStage",
+  "task.verification.recheck",
+  "task.verification.policy",
+  "task.verification.run",
+  "task.verification.fix",
+  "task.verification.reviewPreview",
+  "task.verification.continueReview",
+]);
+
 export class CoreBridge extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
 
@@ -14,21 +36,9 @@ export class CoreBridge extends EventEmitter {
 
   private warning: string | undefined;
 
-  private approvalsAvailable = false;
-
-  private instructionChoicesAvailable = false;
-
-  private workflowFirstAvailable = false;
-
-  private workspaceChatAvailable = false;
-
   private finalReviewSettingsAvailable = false;
 
   private browserVerificationAvailable = false;
-
-  private pipelineVerificationAvailable = false;
-
-  private verificationPolicyAvailable = false;
 
   private manualTerminalAvailable = false;
 
@@ -50,6 +60,12 @@ export class CoreBridge extends EventEmitter {
 
   private stopping = false;
 
+  private agentFlowsAvailable = false;
+
+  private flowContinuationsAvailable = false;
+
+  private viberConversationsAvailable = false;
+
   private pending = new Map<
     string,
     {
@@ -68,6 +84,9 @@ export class CoreBridge extends EventEmitter {
 
   start = () => {
     this.stopping = false;
+    this.agentFlowsAvailable = false;
+    this.flowContinuationsAvailable = false;
+    this.viberConversationsAvailable = false;
     this.manualPrAvailable = false;
     this.prReviewControlsAvailable = false;
     this.bulkPrMetadataAvailable = false;
@@ -75,14 +94,8 @@ export class CoreBridge extends EventEmitter {
     this.repairAvailable = false;
     this.issueWatchAvailable = false;
     this.issueWatchBatchesAvailable = false;
-    this.approvalsAvailable = false;
-    this.instructionChoicesAvailable = false;
-    this.workflowFirstAvailable = false;
-    this.workspaceChatAvailable = false;
     this.finalReviewSettingsAvailable = false;
     this.browserVerificationAvailable = false;
-    this.pipelineVerificationAvailable = false;
-    this.verificationPolicyAvailable = false;
     this.manualTerminalAvailable = false;
     this.pipelineProvidersAvailable = false;
 
@@ -167,14 +180,11 @@ export class CoreBridge extends EventEmitter {
       Promise.resolve(bundle),
       this.sendRequest<{
         build: string;
-        pipeline_approvals?: boolean;
-        saved_instruction_choices?: boolean;
-        workflow_first?: number;
-        workspace_chat?: number;
+        agent_flows?: number;
+        flow_continuations?: number;
+        viber_conversations?: number;
         independent_final_review?: boolean;
         browser_verification_environment?: boolean;
-        pipeline_verification?: number;
-        verification_policy?: boolean;
         manual_user_terminal?: number;
         pipeline_stage_providers?: number;
         manual_pr_analysis?: boolean;
@@ -188,14 +198,14 @@ export class CoreBridge extends EventEmitter {
       }>("core.info", {}, 15000),
     ])
       .then(([bundle, info]) => {
-        this.approvalsAvailable = info.pipeline_approvals === true;
-        this.instructionChoicesAvailable = info.saved_instruction_choices === true;
-        this.workflowFirstAvailable = info.workflow_first === 1;
-        this.workspaceChatAvailable = info.workspace_chat === 1;
+        this.agentFlowsAvailable = info.agent_flows === 1;
+        this.flowContinuationsAvailable = info.flow_continuations === 1;
+
+        this.viberConversationsAvailable =
+          this.agentFlowsAvailable && info.viber_conversations === 1;
+
         this.finalReviewSettingsAvailable = info.independent_final_review === true;
         this.browserVerificationAvailable = info.browser_verification_environment === true;
-        this.pipelineVerificationAvailable = info.pipeline_verification === 2;
-        this.verificationPolicyAvailable = info.verification_policy === true;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
         this.pipelineProvidersAvailable = info.pipeline_stage_providers === 1;
         this.manualPrAvailable = info.manual_pr_analysis === true;
@@ -209,8 +219,8 @@ export class CoreBridge extends EventEmitter {
 
         this.issueWatchBatchesAvailable = info.issue_watch_batches === 1;
 
-        this.warning = !this.approvalsAvailable
-          ? "The running core cannot enforce plan review approvals. Restart the current dev build, or update the WSL helper in Settings → Execution. Task execution is blocked until updated."
+        this.warning = !this.agentFlowsAvailable
+          ? "The running core cannot run Viber profiles and flows. Update the WSL helper in Settings → Execution, then restart."
           : !this.manualPrAvailable
             ? "The helper cannot enforce manual-only PR analysis. Install / update WSL helper before using PR actions."
             : createHash("sha256").update(bundle).digest("hex") === info.build
@@ -234,36 +244,30 @@ export class CoreBridge extends EventEmitter {
 
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
     await this.checking;
+    if (retiredTaskMethods.has(method))
+      throw new Error("This task control is retired. Use Viber profiles and flows.");
+    if (!this.viberConversationsAvailable && method.startsWith("viber."))
+      throw new Error("Update the execution helper before chatting with individual Vibers.");
+    if (!this.flowContinuationsAvailable && method.startsWith("flow.continuation."))
+      throw new Error(
+        "Update the execution helper before applying saved revisions with verified result reuse.",
+      );
+    if (
+      !this.agentFlowsAvailable &&
+      (method.startsWith("flow.") ||
+        method.startsWith("profile.") ||
+        ["task.createGeneral", "task.createIssue", "task.lifecycle"].includes(method))
+    )
+      throw new Error("Update the execution helper before using Viber profiles and flows.");
     if (
       this.issueWatchAvailable &&
       ["issueWatch.scan", "issueWatch.retry", "issueWatch.continue"].includes(method) &&
       !this.issueWatchBatchesAvailable
     )
       throw new Error("Update the execution helper to scan Issue Watch in batches of 10.");
-    if (
-      !this.pipelineProvidersAvailable &&
-      [
-        "task.create",
-        "task.startWorkflow",
-        "task.retry",
-        "task.approve",
-        "task.configure",
-        "task.configureStage",
-        "task.verification.fix",
-        "task.followup",
-        "task.message.send",
-        "repair.create",
-        "repair.start",
-      ].includes(method)
-    )
+    if (!this.pipelineProvidersAvailable && ["repair.create", "repair.start"].includes(method))
       throw new Error(
         this.warning || "Update the execution helper before using per-stage pipeline providers.",
-      );
-    if (method === "task.verification.policy" && !this.verificationPolicyAvailable)
-      throw new Error("Update the execution helper before changing verification policy.");
-    if (!this.pipelineVerificationAvailable && method.startsWith("task.verification."))
-      throw new Error(
-        "Update the execution helper before using verification recovery and review with gaps.",
       );
     if (
       method.startsWith("git.") ||
@@ -351,52 +355,6 @@ export class CoreBridge extends EventEmitter {
       throw new Error("Update the execution helper before using bulk PR metadata refresh.");
     if (!this.quickPrWatchAvailable && method === "pr.watch.start")
       throw new Error("Update the execution helper before using automatic quick PR checks.");
-    if (
-      !this.approvalsAvailable &&
-      [
-        "task.create",
-        "task.retry",
-        "task.followup",
-        "task.message.retry",
-        "task.approve",
-        "task.acceptDraft",
-      ].includes(method)
-    )
-      throw new Error(this.warning || "Restart the updated core before starting task execution.");
-    if (
-      !this.instructionChoicesAvailable &&
-      [
-        "task.retry",
-        "task.followup",
-        "task.message.retry",
-        "task.message.send",
-        "task.approve",
-        "task.configureStage",
-        "task.verification.fix",
-      ].includes(method)
-    )
-      throw new Error(
-        "Update the execution helper before using saved instruction choices and future stage settings.",
-      );
-    if (
-      !this.workflowFirstAvailable &&
-      ["task.create", "task.chat", "task.startWorkflow"].includes(method)
-    )
-      throw new Error(
-        "Update the execution helper before creating idle tasks or using read-only task conversations.",
-      );
-    if (
-      method === "task.chat" &&
-      params &&
-      typeof params === "object" &&
-      "configuration" in params &&
-      params.configuration &&
-      typeof params.configuration === "object" &&
-      "access" in params.configuration &&
-      params.configuration.access === "workspace" &&
-      !this.workspaceChatAvailable
-    )
-      throw new Error("Update the execution helper before requesting workspace edits in chat.");
 
     try {
       const result = await this.sendRequest<T>(method, params);
@@ -404,6 +362,9 @@ export class CoreBridge extends EventEmitter {
         return {
           ...result,
           capabilities: {
+            ...(this.agentFlowsAvailable ? { agent_flows: 1 } : {}),
+            ...(this.flowContinuationsAvailable ? { flow_continuations: 1 } : {}),
+            ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
             manual_issue_watch: this.issueWatchAvailable,
             issue_watch_contract: this.issueWatchAvailable ? 1 : null,
             issue_watch_batches: this.issueWatchBatchesAvailable ? 1 : null,

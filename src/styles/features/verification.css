@@ -144,10 +144,6 @@
   color: var(--accent-amber);
 }
 
-.provider-test-reports {
-  margin: 14px 0;
-}
-
 .cwd-banner {
   display: flex;
   align-items: center;
@@ -158,42 +154,6 @@
 }
 
 .cwd-banner code {
-  font-size: 10px;
-}
-
-.manual-command {
-  margin: 10px 0;
-}
-
-.command-form {
-  display: flex;
-  gap: 9px;
-  align-items: flex-end;
-  padding: 8px 0;
-}
-
-.command-form label {
-  flex: 1;
-  margin: 0;
-}
-
-.test-report {
-  display: flex;
-  gap: 20px;
-  margin: 15px 0;
-}
-
-.test-report section {
-  flex: 1;
-  font-size: 12px;
-}
-
-.test-report h3 {
-  margin-bottom: 7px;
-}
-
-.test-report small {
-  display: block;
   font-size: 10px;
 }
 

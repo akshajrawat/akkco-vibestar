@@ -155,7 +155,6 @@ export const SettingsSchema = z
 
 export type Settings = z.infer<typeof SettingsSchema>;
 export type StageConfig = z.infer<typeof StageConfigSchema>;
-export type PipelineStageConfig = z.infer<typeof PipelineStageConfigSchema>;
 
 /** Resolves legacy provider defaults without changing saved settings or completed runs. */
 export const pipelineConfiguration = (
@@ -265,9 +264,13 @@ export interface Task {
   preparation_timing?: { started_at: string; ended_at: string | null };
   verification_policy?: "repository" | "extended_browser";
   id: string;
-  repo_id: string;
-  issue_number: number;
-  issue_url: string;
+  repo_id: string | null;
+  issue_number: number | null;
+  issue_url: string | null;
+  kind?: "general" | "issue";
+  goal?: string;
+  flow_id?: string;
+  workspace_kind?: "managed";
   claimed_scope: string;
   scope_mode?: "whole_issue" | "partial";
   followup_config?: { provider: "codex" | "antigravity"; config: StageConfig };
@@ -320,6 +323,7 @@ export type WorkspaceAssignment = Pick<
   | "base_commit_sha"
   | "workspace_mode"
   | "workspace_checkpoint"
+  | "workspace_kind"
 >;
 
 export interface CoreEvent {
@@ -353,40 +357,10 @@ export interface NormalizedEvent {
   data: unknown;
 }
 
-export const stageStatuses: TaskStatus[] = [
-  "preparing",
-  "planning_antigravity",
-  "planning_codex",
-  "implementing",
-  "validating",
-  "reviewing_antigravity",
-  "ready_for_review",
-];
-
-export const stageStatus = (stage: number) => {
-  const status = stageStatuses[stage];
-  if (!status) throw new AdeError("invalid_state", "Invalid pipeline stage");
-  return status;
-};
-
-export const retryTarget = (task: Task, target: number, active: boolean) => {
-  if (
-    active ||
-    target < 0 ||
-    target > 5 ||
-    target > task.stage ||
-    (target === 0 && !!task.worktree_path)
-  )
-    throw new AdeError(
-      "invalid_state",
-      "Cannot retry an active task, future stage, or recreate an existing worktree.",
-    );
-  return target;
-};
-
-export const parseIssue = (input: string): IssueRef => {
+export const parseIssue = (input: string | null): IssueRef => {
   let u: URL;
   try {
+    if (!input) throw new Error("Issue URL is required.");
     u = new URL(input.trim());
   } catch {
     throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
@@ -426,8 +400,11 @@ export const slug = (scope: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "") || "scope";
 
-export const branchName = (number: number, scope: string, suffix = 0) =>
-  `akkco/${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`;
+export const branchName = (identifier: number | string, scope: string, suffix = 0) => {
+  if (!/^[a-zA-Z0-9-]+$/.test(String(identifier)))
+    throw new AdeError("isolation", "Invalid task branch identifier.");
+  return `akkco/${identifier}-${slug(scope)}${suffix ? `-${suffix}` : ""}`;
+};
 
 export const remoteIdentity = (input: string) => {
   const u = new URL(

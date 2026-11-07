@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { realpath, stat, mkdir, lstat } from "node:fs/promises";
 import { isAbsolute, join, relative, dirname, sep, resolve } from "node:path";
 
-import { AdeError, slug, type WorkspaceAssignment, type Repository } from "../domain";
+import { AdeError, branchName, type WorkspaceAssignment, type Repository } from "../domain";
 import { gitChecked } from "./git-command";
 import { readWorktreeOwner } from "./ownership";
 
@@ -43,12 +43,12 @@ export const managedPath = async (root: string, path: string) => {
 export const worktreePath = (
   root: string,
   repoId: string,
-  number: number,
+  number: number | string,
   scope: string,
   suffix = 0,
 ) => {
   if (!/^[a-zA-Z0-9-]+$/.test(repoId)) throw new AdeError("isolation", "Invalid repository ID");
-  return join(root, "worktrees", repoId, `${number}-${slug(scope)}${suffix ? `-${suffix}` : ""}`);
+  return join(root, "worktrees", repoId, branchName(number, scope, suffix).slice("akkco/".length));
 };
 
 const validateFilePath = (path: string) => {
@@ -112,7 +112,7 @@ export const taskRoot = async (
   task: WorkspaceAssignment,
   repository?: Repository,
 ) => {
-  if (!/^[a-zA-Z0-9-]+$/.test(task.repo_id))
+  if (!task.repo_id || !/^[a-zA-Z0-9-]+$/.test(task.repo_id))
     throw new AdeError("isolation", "Invalid repository ID");
   if (task.workspace_mode === "source") {
     if (
@@ -190,6 +190,7 @@ export const createLayout = async (root: string) => {
   for (const d of [
     "repos",
     "worktrees",
+    "workspaces",
     "logs",
     "artifacts",
     "state",

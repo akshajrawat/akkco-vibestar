@@ -1,10 +1,10 @@
 import { RepairActions, RepairIdentity } from "./RepairContext";
 import { Composer, composerContent } from "../../chat/Composer";
-import { workspaceContext } from "../../workflow/context";
-import { ActionTray } from "../../workflow/ActionTray";
+import { repairContext } from "./context";
+import { ActionTray } from "./ActionTray";
 import { ChatSurface } from "../../chat/ChatSurface";
-import { SecondaryWorkspace } from "../../workflow/SecondaryWorkspace";
-import { BottomDock } from "../../workflow/BottomDock";
+import { SecondaryWorkspace } from "./SecondaryWorkspace";
+import { BottomDock } from "../../../components/shared/BottomDock";
 import { RunPrompt } from "../../chat/RunPrompt";
 import { useWorkspaceKeys } from "../../../hooks/useWorkspaceKeys";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -385,7 +385,6 @@ export const RepairWorkspace = ({
           actions={
             awaiting ? (
               <ActionTray
-                id={id}
                 label="PR repair manual review"
                 title="Review repair complete · Manual review required"
                 detail="Inspect the repair and independent verification, then use the terminal for Git commands."
@@ -481,13 +480,12 @@ export const RepairWorkspace = ({
                   {implementationProvider} → {reviewProvider}
                 </Button>
               }
-              context={workspaceContext({
+              context={repairContext({
                 id,
-                owner: "repair",
                 files: diff?.files || [],
                 selected: view.diffPath,
                 layer,
-                plan: JSON.stringify(session.actions, null, 2),
+                scope: JSON.stringify(session.actions, null, 2),
                 failures: reportedTests
                   .filter((test) => test.status !== "passed")
                   .map((test) => JSON.stringify(test))

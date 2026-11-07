@@ -272,4 +272,107 @@ CREATE INDEX task_conversation ON task_messages(task_id,purpose,created_at);
     version: 27,
     sql: `CREATE TABLE issue_watch_http_cache(endpoint TEXT PRIMARY KEY,etag TEXT NOT NULL,body TEXT NOT NULL CHECK(json_valid(body)),checked_at TEXT NOT NULL);`,
   },
+  {
+    version: 28,
+    sql: `
+ALTER TABLE agent_runs ADD COLUMN execution TEXT CHECK(execution IS NULL OR json_valid(execution));
+ALTER TABLE utility_runs ADD COLUMN execution TEXT CHECK(execution IS NULL OR json_valid(execution));
+ALTER TABLE scheduled_agent_runs ADD COLUMN execution TEXT CHECK(execution IS NULL OR json_valid(execution));
+`,
+  },
+  {
+    version: 29,
+    sql: `
+CREATE TABLE agent_profiles(id TEXT PRIMARY KEY,current_revision INTEGER NOT NULL CHECK(current_revision>0),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(id,current_revision) REFERENCES agent_profile_revisions(profile_id,revision) DEFERRABLE INITIALLY DEFERRED);
+CREATE TABLE agent_profile_revisions(profile_id TEXT NOT NULL REFERENCES agent_profiles(id),revision INTEGER NOT NULL CHECK(revision>0),data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL,PRIMARY KEY(profile_id,revision));
+CREATE TABLE flow_definitions(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id),current_revision INTEGER NOT NULL CHECK(current_revision>0),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(id,current_revision) REFERENCES flow_revisions(flow_id,revision) DEFERRABLE INITIALLY DEFERRED);
+CREATE TABLE flow_revisions(flow_id TEXT NOT NULL REFERENCES flow_definitions(id),revision INTEGER NOT NULL CHECK(revision>0),data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL,PRIMARY KEY(flow_id,revision));
+CREATE INDEX task_flows ON flow_definitions(task_id);
+CREATE TABLE flow_canvas_layouts(flow_id TEXT PRIMARY KEY REFERENCES flow_definitions(id),data TEXT NOT NULL CHECK(json_valid(data)),updated_at TEXT NOT NULL);
+`,
+  },
+  {
+    version: 30,
+    sql: `
+CREATE TABLE flow_runs(id TEXT PRIMARY KEY,flow_id TEXT NOT NULL,revision INTEGER NOT NULL,task_id TEXT NOT NULL REFERENCES tasks(id),status TEXT NOT NULL CHECK(status IN ('queued','running','pausing','paused','waiting','completed','failed','cancelled','interrupted','continued')),request_id TEXT NOT NULL UNIQUE,request_digest TEXT NOT NULL,parent_run_id TEXT REFERENCES flow_runs(id),snapshot TEXT NOT NULL CHECK(json_valid(snapshot)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,error TEXT,FOREIGN KEY(flow_id,revision) REFERENCES flow_revisions(flow_id,revision));
+CREATE UNIQUE INDEX flow_active_task ON flow_runs(task_id) WHERE status IN ('queued','running','pausing','paused','waiting');
+CREATE INDEX flow_run_history ON flow_runs(flow_id,created_at);
+CREATE TABLE flow_node_attempts(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES flow_runs(id),node_id TEXT NOT NULL,ordinal INTEGER NOT NULL CHECK(ordinal>0),status TEXT NOT NULL CHECK(status IN ('running','waiting','completed','failed','rejected','cancelled','interrupted')),configuration TEXT NOT NULL CHECK(json_valid(configuration)),configuration_hash TEXT NOT NULL,inputs TEXT NOT NULL CHECK(json_valid(inputs)),inputs_hash TEXT NOT NULL,workspace_fingerprint TEXT NOT NULL,agent_run_id TEXT UNIQUE REFERENCES agent_runs(id),command_run_id TEXT UNIQUE REFERENCES test_runs(id),started_at TEXT NOT NULL,ended_at TEXT,output TEXT,verification TEXT NOT NULL CHECK(verification IN ('missing','passed','failed','stale')),error TEXT,UNIQUE(run_id,node_id,ordinal),CHECK(agent_run_id IS NULL OR command_run_id IS NULL));
+CREATE UNIQUE INDEX flow_active_node ON flow_node_attempts(run_id,node_id) WHERE status IN ('running','waiting');
+CREATE UNIQUE INDEX flow_serial_attempt ON flow_node_attempts(run_id) WHERE status='running';
+CREATE TABLE flow_approval_decisions(attempt_id TEXT PRIMARY KEY REFERENCES flow_node_attempts(id),request_id TEXT NOT NULL UNIQUE,decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),configuration_hash TEXT NOT NULL,inputs_hash TEXT NOT NULL,workspace_fingerprint TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE flow_transitions(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES flow_runs(id),attempt_id TEXT REFERENCES flow_node_attempts(id),previous_status TEXT,next_status TEXT NOT NULL,timestamp TEXT NOT NULL);
+CREATE TRIGGER flow_run_snapshot_immutable BEFORE UPDATE OF flow_id,revision,task_id,request_id,request_digest,parent_run_id,snapshot,created_at ON flow_runs BEGIN SELECT RAISE(ABORT,'Flow run snapshots are immutable'); END;
+CREATE TRIGGER flow_attempt_snapshot_immutable BEFORE UPDATE OF run_id,node_id,ordinal,configuration,configuration_hash,inputs,inputs_hash,workspace_fingerprint,started_at ON flow_node_attempts BEGIN SELECT RAISE(ABORT,'Node attempt snapshots are immutable'); END;
+CREATE TRIGGER flow_approval_immutable BEFORE UPDATE ON flow_approval_decisions BEGIN SELECT RAISE(ABORT,'Approval decisions are immutable'); END;
+`,
+  },
+  {
+    version: 31,
+    foreign_keys_off: true,
+    sql: `
+CREATE TABLE tasks_new(id TEXT PRIMARY KEY,repo_id TEXT REFERENCES repositories(id),status TEXT NOT NULL,stage INTEGER NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,scope_mode TEXT NOT NULL DEFAULT 'partial' CHECK(scope_mode IN ('whole_issue','partial')));
+INSERT INTO tasks_new(id,repo_id,status,stage,data,created_at,scope_mode) SELECT id,repo_id,status,stage,data,created_at,scope_mode FROM tasks;
+DROP TABLE tasks;
+ALTER TABLE tasks_new RENAME TO tasks;
+CREATE INDEX task_queue ON tasks(status,created_at);
+`,
+  },
+  {
+    version: 32,
+    sql: `
+CREATE TABLE flow_dispatches(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES flow_runs(id),kind TEXT NOT NULL CHECK(kind IN ('flow','node','retry')),node_id TEXT,retry_of TEXT REFERENCES flow_node_attempts(id),request_digest TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('queued','running','waiting','completed','failed','cancelled','interrupted')),created_at TEXT NOT NULL,started_at TEXT,ended_at TEXT,error TEXT,CHECK((kind='flow' AND node_id IS NULL AND retry_of IS NULL) OR (kind='node' AND node_id IS NOT NULL AND retry_of IS NULL) OR (kind='retry' AND node_id IS NOT NULL AND retry_of IS NOT NULL)));
+CREATE UNIQUE INDEX flow_active_dispatch ON flow_dispatches(run_id) WHERE status IN ('queued','running');
+ALTER TABLE flow_node_attempts ADD COLUMN dispatch_id TEXT REFERENCES flow_dispatches(id);
+CREATE TRIGGER flow_dispatch_immutable BEFORE UPDATE OF run_id,kind,node_id,retry_of,request_digest,created_at ON flow_dispatches BEGIN SELECT RAISE(ABORT,'Flow execution requests are immutable'); END;
+CREATE TRIGGER flow_attempt_dispatch_immutable BEFORE UPDATE OF dispatch_id ON flow_node_attempts BEGIN SELECT RAISE(ABORT,'Node execution request attribution is immutable'); END;
+`,
+  },
+  {
+    version: 33,
+    sql: `
+ALTER TABLE flow_node_attempts ADD COLUMN completed_fingerprint TEXT;
+CREATE TRIGGER flow_attempt_completion_immutable BEFORE UPDATE OF completed_fingerprint ON flow_node_attempts WHEN OLD.completed_fingerprint IS NOT NULL BEGIN SELECT RAISE(ABORT,'Completed workspace evidence is immutable'); END;
+CREATE TABLE flow_result_links(run_id TEXT NOT NULL REFERENCES flow_runs(id),node_id TEXT NOT NULL,source_attempt_id TEXT NOT NULL REFERENCES flow_node_attempts(id),workspace_fingerprint TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(run_id,node_id));
+CREATE TRIGGER flow_result_link_immutable BEFORE UPDATE ON flow_result_links BEGIN SELECT RAISE(ABORT,'Reused result links are immutable'); END;
+CREATE TABLE flow_continuations(request_id TEXT PRIMARY KEY,request_digest TEXT NOT NULL,run_id TEXT NOT NULL UNIQUE REFERENCES flow_runs(id),parent_run_id TEXT NOT NULL REFERENCES flow_runs(id),plan TEXT NOT NULL CHECK(json_valid(plan)),created_at TEXT NOT NULL);
+CREATE TRIGGER flow_continuation_immutable BEFORE UPDATE ON flow_continuations BEGIN SELECT RAISE(ABORT,'Continuation requests are immutable'); END;
+`,
+  },
+  {
+    version: 34,
+    sql: `
+CREATE TABLE flow_result_invalidations(run_id TEXT NOT NULL,node_id TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(run_id,node_id),FOREIGN KEY(run_id,node_id) REFERENCES flow_result_links(run_id,node_id));
+CREATE TRIGGER flow_result_invalidation_immutable BEFORE UPDATE ON flow_result_invalidations BEGIN SELECT RAISE(ABORT,'Result invalidation evidence is immutable'); END;
+`,
+  },
+  {
+    version: 35,
+    sql: `
+ALTER TABLE flow_runs ADD COLUMN origin TEXT NOT NULL DEFAULT 'user' CHECK(origin IN ('user','historical'));
+CREATE TRIGGER flow_run_origin_immutable BEFORE UPDATE OF origin ON flow_runs BEGIN SELECT RAISE(ABORT,'Flow run origin is immutable'); END;
+CREATE TABLE flow_migration_sources(task_id TEXT NOT NULL REFERENCES tasks(id),source_hash TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(task_id,source_hash));
+CREATE TRIGGER flow_migration_source_immutable BEFORE UPDATE ON flow_migration_sources BEGIN SELECT RAISE(ABORT,'Historical task source bytes are immutable'); END;
+CREATE TABLE flow_task_migrations(task_id TEXT PRIMARY KEY REFERENCES tasks(id),source_hash TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),updated_at TEXT NOT NULL,FOREIGN KEY(task_id,source_hash) REFERENCES flow_migration_sources(task_id,source_hash));
+`,
+  },
+  {
+    version: 36,
+    sql: `
+ALTER TABLE flow_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'flow' CHECK(kind IN ('flow','conversation'));
+CREATE TRIGGER flow_run_kind_immutable BEFORE UPDATE OF kind ON flow_runs BEGIN SELECT RAISE(ABORT,'Flow run kind is immutable'); END;
+DROP INDEX flow_active_task;
+CREATE UNIQUE INDEX flow_active_task ON flow_runs(task_id,kind) WHERE status IN ('queued','running','pausing','paused','waiting');
+ALTER TABLE task_messages ADD COLUMN flow_node_id TEXT;
+ALTER TABLE task_messages ADD COLUMN viber_profile_id TEXT REFERENCES agent_profiles(id);
+UPDATE task_messages AS m SET
+flow_node_id=(SELECT a.node_id FROM flow_node_attempts a JOIN flow_runs r ON r.id=a.run_id JOIN agent_profiles p ON p.id=json_extract(CASE WHEN json_valid(a.configuration) THEN a.configuration END,'$.agent.profile.id') WHERE a.agent_run_id=m.run_id AND r.task_id=m.task_id LIMIT 1),
+viber_profile_id=(SELECT p.id FROM flow_node_attempts a JOIN flow_runs r ON r.id=a.run_id JOIN agent_profiles p ON p.id=json_extract(CASE WHEN json_valid(a.configuration) THEN a.configuration END,'$.agent.profile.id') WHERE a.agent_run_id=m.run_id AND r.task_id=m.task_id LIMIT 1)
+WHERE m.purpose='chat' AND EXISTS(SELECT 1 FROM flow_node_attempts a JOIN flow_runs r ON r.id=a.run_id JOIN agent_profiles p ON p.id=json_extract(CASE WHEN json_valid(a.configuration) THEN a.configuration END,'$.agent.profile.id') WHERE a.agent_run_id=m.run_id AND r.task_id=m.task_id);
+CREATE INDEX task_viber_messages ON task_messages(task_id,flow_node_id,viber_profile_id,created_at);
+CREATE TRIGGER task_viber_scope_immutable BEFORE UPDATE OF flow_node_id,viber_profile_id ON task_messages WHEN OLD.flow_node_id IS NOT NULL OR OLD.viber_profile_id IS NOT NULL BEGIN SELECT RAISE(ABORT,'Viber conversation scope is immutable'); END;
+CREATE TABLE flow_run_invalidations(run_id TEXT PRIMARY KEY REFERENCES flow_runs(id),reason TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TRIGGER flow_run_invalidation_immutable BEFORE UPDATE ON flow_run_invalidations BEGIN SELECT RAISE(ABORT,'Flow workspace invalidation evidence is immutable'); END;
+`,
+  },
 ];

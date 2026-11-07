@@ -21,11 +21,78 @@ const build=createHash('sha256').update(bytes).digest('hex');
 const lines=createInterface({input:process.stdin});
 lines.on('line',line=>{
 const request=JSON.parse(line);
-const result=request.method==='core.info'?{build,pipeline_approvals:true,workflow_first:1,saved_instruction_choices:${instructions},independent_final_review:${finalReview},pipeline_stage_providers:${pipelineProviders ? 1 : 0},manual_pr_analysis:${manual},pr_review_controls:1,manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
+const result=request.method==='core.info'?{build,agent_flows:1,pipeline_approvals:true,workflow_first:1,saved_instruction_choices:${instructions},independent_final_review:${finalReview},pipeline_stage_providers:${pipelineProviders ? 1 : 0},manual_pr_analysis:${manual},pr_review_controls:1,manual_issue_watch:${watch},issue_watch_contract:${watch ? 1 : 0}}:{accepted:request.method};
 process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
 });
 lines.on('close',()=>process.exit(0));
 });`;
+
+it.skipIf(process.platform === "win32")(
+  "negotiates Viber profiles and graph execution before forwarding new requests",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-flows-"));
+    let bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
+    try {
+      await writeFile(join(dir, "core.cjs"), helper().replace("agent_flows:1,", ""));
+      bridge.start();
+      for (const method of [
+        "profile.save",
+        "flow.start",
+        "flow.node.approve",
+        "task.createGeneral",
+        "task.createIssue",
+        "task.lifecycle",
+      ])
+        await expect(bridge.request(method, {})).rejects.toThrow("Viber profiles and flows");
+      await bridge.stop();
+
+      await writeFile(
+        join(dir, "core.cjs"),
+        helper().replace("pipeline_approvals:true,", "pipeline_approvals:true,"),
+      );
+
+      bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
+      bridge.start();
+      await expect(bridge.request("flow.start", {})).resolves.toEqual({ accepted: "flow.start" });
+      await expect(bridge.request("viber.chat", {})).rejects.toThrow("individual Vibers");
+      await expect(bridge.request("viber.instances", {})).rejects.toThrow("individual Vibers");
+
+      await expect(bridge.request("flow.continuation.apply", {})).rejects.toThrow(
+        "verified result reuse",
+      );
+
+      await expect(bridge.request("snapshot")).resolves.toMatchObject({
+        capabilities: { agent_flows: 1 },
+      });
+
+      await bridge.stop();
+
+      await writeFile(
+        join(dir, "core.cjs"),
+        helper().replace(
+          "pipeline_approvals:true,",
+          "pipeline_approvals:true,flow_continuations:1,viber_conversations:1,",
+        ),
+      );
+
+      bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
+      bridge.start();
+
+      await expect(bridge.request("flow.continuation.apply", {})).resolves.toEqual({
+        accepted: "flow.continuation.apply",
+      });
+
+      await expect(bridge.request("viber.chat", {})).resolves.toEqual({ accepted: "viber.chat" });
+
+      await expect(bridge.request("snapshot")).resolves.toMatchObject({
+        capabilities: { viber_conversations: 1 },
+      });
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 it.skipIf(process.platform === "win32")(
   "negotiates quick PR watch independently and retains cancellation for old helpers",
@@ -131,7 +198,7 @@ it.skipIf(process.platform === "win32")(
     try {
       bridge.start();
 
-      await expect(bridge.request("task.startWorkflow", {})).rejects.toThrow(
+      await expect(bridge.request("repair.start", {})).rejects.toThrow(
         "per-stage pipeline providers",
       );
 
@@ -164,9 +231,7 @@ it.skipIf(process.platform === "win32")(
     try {
       bridge.start();
 
-      await expect(bridge.request("task.verification.policy", {})).rejects.toThrow(
-        "verification policy",
-      );
+      await expect(bridge.request("task.verification.policy", {})).rejects.toThrow("retired");
 
       await expect(bridge.request("git.preview", {})).rejects.toThrow("built-in terminal");
 
@@ -189,9 +254,7 @@ it.skipIf(process.platform === "win32")(
         "independent final review",
       );
 
-      await expect(bridge.request("task.create", { settings })).rejects.toThrow(
-        "independent final review",
-      );
+      await expect(bridge.request("task.create", { settings })).rejects.toThrow("retired");
 
       await expect(bridge.request("settings.save", {})).resolves.toEqual({
         accepted: "settings.save",
@@ -220,8 +283,8 @@ it.skipIf(process.platform === "win32")(
       await expect(bridge.request("scheduled.analyze")).rejects.toThrow("manual-only PR analysis");
       await expect(bridge.request("github.sync")).rejects.toThrow("manual-only PR analysis");
 
-      await expect(bridge.request("task.create")).resolves.toEqual({
-        accepted: "task.create",
+      await expect(bridge.request("flow.start")).resolves.toEqual({
+        accepted: "flow.start",
       });
 
       await expect(bridge.request("issueWatch.scan")).rejects.toThrow("manual Issue Watch");
@@ -300,6 +363,7 @@ child.on('exit',code=>process.exit(code||0));
             await expect(bridge.request("snapshot")).resolves.toEqual({
               accepted: "snapshot",
               capabilities: {
+                agent_flows: 1,
                 manual_issue_watch: false,
                 issue_watch_contract: null,
                 issue_watch_batches: null,
@@ -387,68 +451,35 @@ it.skipIf(process.platform === "win32")(
 );
 
 it.skipIf(process.platform === "win32")(
-  "refuses legacy helpers that cannot preserve saved instruction choices",
+  "never forwards retired task mutations even when the helper advertises their old capabilities",
   async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-instructions-"));
-    await writeFile(join(dir, "core.cjs"), helper(true, true, false));
-
-    const bridge = new CoreBridge(dir, {
-      distro: "",
-      data_home: dir,
-      helper_path: "",
-    });
-
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-retired-"));
+    await writeFile(join(dir, "core.cjs"), helper());
+    const bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
     try {
       bridge.start();
       for (const method of [
-        "task.followup",
+        "task.create",
+        "task.startWorkflow",
+        "task.chat",
         "task.retry",
         "task.approve",
+        "task.acceptDraft",
+        "task.followup",
+        "task.complete",
+        "task.message.retry",
         "task.message.send",
+        "task.configure",
         "task.configureStage",
+        "task.verification.recheck",
+        "task.verification.policy",
+        "task.verification.run",
+        "task.verification.fix",
+        "task.verification.reviewPreview",
+        "task.verification.continueReview",
       ])
-        await expect(bridge.request(method)).rejects.toThrow("saved instruction choices");
-
-      await expect(bridge.request("task.detail")).resolves.toEqual({
-        accepted: "task.detail",
-      });
-    } finally {
-      await bridge.stop();
-      await rm(dir, { recursive: true, force: true });
-    }
-  },
-);
-
-it.skipIf(process.platform === "win32")(
-  "requires workspace-chat capability for editing while retaining read-only chat",
-  async () => {
-    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-workspace-chat-"));
-    let bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
-    try {
-      await writeFile(join(dir, "core.cjs"), helper());
-      bridge.start();
-
-      await expect(
-        bridge.request("task.chat", { configuration: { access: "workspace" } }),
-      ).rejects.toThrow("workspace edits in chat");
-
-      await expect(bridge.request("task.chat", { configuration: {} })).resolves.toEqual({
-        accepted: "task.chat",
-      });
-
-      await bridge.stop();
-
-      await writeFile(
-        join(dir, "core.cjs"),
-        helper().replace("workflow_first:1,", "workflow_first:1,workspace_chat:1,"),
-      );
-
-      bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
-      bridge.start();
-
-      await expect(
-        bridge.request("task.chat", { configuration: { access: "workspace" } }),
-      ).resolves.toEqual({ accepted: "task.chat" });
+        await expect(bridge.request(method, {})).rejects.toThrow("retired");
+      await expect(bridge.request("task.cancel", {})).resolves.toEqual({ accepted: "task.cancel" });
     } finally {
       await bridge.stop();
       await rm(dir, { recursive: true, force: true });

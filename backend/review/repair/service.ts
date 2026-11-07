@@ -665,7 +665,7 @@ export class RepairService {
       const result = RepairImplementationSchema.parse(
         await this.engine.runRepair(
           repairAssignment(session),
-          3,
+          "implementation",
           session.configuration.codex.provider || "codex",
           session.configuration.codex,
           repairPrompt(session, context, "implementation"),
@@ -694,7 +694,7 @@ export class RepairService {
     const review = RepairVerificationSchema.parse(
       await this.engine.runRepair(
         repairAssignment(session),
-        5,
+        "review",
         session.configuration.antigravity.provider || "antigravity",
         session.configuration.antigravity,
         repairPrompt(session, context, "review"),

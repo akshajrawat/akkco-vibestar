@@ -1,7 +1,7 @@
 # Akkco Vibestar
 
 A local desktop workspace for open-source contribution tasks and pull-request repairs.
-Vibestar uses dedicated issue branches, isolated Git worktrees, official provider CLIs, per-stage provider choices, explicit review gates,
+Vibestar uses dedicated issue branches, isolated Git worktrees, official provider CLIs, reusable Viber profiles, editable flows, explicit approvals,
 and recorded verification evidence. It does not automatically publish work.
 
 This project is pre-stable. This repository preparation milestone is not an official release.
@@ -15,22 +15,23 @@ More previews: [task overview](docs/screenshots/overview.png),
 
 ## What it does
 
-- Creates idle issue tasks with optional read-only repository conversations.
-- Keeps ordinary chat separate from workflow execution, with streamed answers,
-  expandable tool activity and follow-up conversation in the same workspace.
-  Codex uses its official app-server protocol; both providers can continue a completed
-  conversation for the same task and model through their existing CLI sign-in.
-  One agent conversation uses normal text replies; Send to workflow explicitly routes
-  feedback into the pipeline.
-- Runs an explicitly started Plan → Plan refinement → Implementation → Review
-  workflow, with a provider choice for each stage and human approval between stages.
-  Review ends with a verdict and next steps. Request further fixes directly in chat
-  using the selected model; the workflow does not automatically repeat.
-- Shows workflow prompts as user messages, agent replies in chat, and collapsible
-  “Worked for…” activity. Basic app questions skip repository preparation.
-- Keeps each task's pinned base, files, conversation, command evidence and usage separate.
-  A clean, idle source checkout can hold the first workflow's issue branch. Overlapping
-  tasks and dirty checkouts use separate worktrees without committing or stashing existing changes.
+- Creates general tasks with a solo Viber or an editable DAG flow. Repository context
+  is optional; unattached tasks use owned managed files. The canvas includes profiles,
+  command and approval nodes, an inspector and real run/attempt state.
+- Provides Planner → Implementer, Implementer → Reviewer and full contribution
+  templates. Save and arrange a draft, then explicitly run it. Pause, continue,
+  stop and retry an individual node through the same execution engine.
+- Creates reusable, customizable Vibers in the Vibers library. Chat directly or add
+  instances to any task’s connected graph; each instance has its own conversation.
+- Lets write-capable Vibers work directly. Turns use the existing task
+  history and only explicitly selected conversation context. Inspect files, commands,
+  output and usage; finish a task without inventing passing verification.
+- Creates idle issue tasks from a registered repository and a real issue, with a solo
+  profile or any starting template. Whole-issue and partial scope remain distinct.
+- Streams replies and tool activity through the shared conversation UI. Selected
+  history is explicit; a reusable profile never shares a provider thread across tasks.
+- Preserves each task's pinned base, owned files, messages, commands and usage. New
+  Git-backed flows use owned worktrees; imported source assignments retain their identity.
 - Checks open PR conversations once when the app opens, flagging unanswered change
   requests from other people and distinguishing replies waiting on a reviewer.
   Conversations load concurrently and share a compact model check. Recheck open PRs
@@ -45,12 +46,20 @@ More previews: [task overview](docs/screenshots/overview.png),
   commands, commits and pushes using your normal Linux/WSL shell and authentication.
   Opening the terminal starts and focuses the shell in the task's worktree.
 - Shows actual provider output, verification gaps and reported usage without inventing results.
-- Implementation and independent review run the applicable tests, lint and formatting;
-  sidebar approvals move between stages without a separate validation workflow.
+- Completion rules distinguish successful processes, observed passing checks and
+  independent review. Approval nodes bind decisions to exact inputs and workspace evidence.
 - Agents reuse installed dependencies and toolchains; they report missing prerequisites
   instead of installing packages or browsers.
 
 ## Architecture
+
+The agent-flow migration is in progress. Paused flows can preview and apply a saved
+revision, reusing only results whose settings, selected inputs and observed workspace
+evidence still match. Historical issue tasks convert conservatively to a graph and an
+explicit checkpoint, preserving original records and unknown past approvals. Records
+that cannot translate remain inspectable with recovery diagnostics. Final removal of
+replaced orchestration and test interfaces remains in progress. See the
+[implementation record](docs/architecture/agent-flows.md) for the exact boundary.
 
 React runs in a sandboxed Electron renderer. A narrow preload bridge sends requests
 and events to a Node execution core over standard input/output. Linux runs the core
@@ -102,6 +111,7 @@ Never point automated tests at your normal application state.
 ```text
 backend/                 Node execution core and trusted domain services
   execution/             Engine, agents, providers, sandbox/runtime, PTYs and evidence
+  flows/                 Profiles, validated graphs, captured runs/context and revision storage
   github/                Official gh client and repository/PR discovery
   issue-watch/           Manual bounded discovery and saved scan history
   review/                File review, PR analysis and isolated repair workflows
@@ -141,6 +151,8 @@ suite boundaries, desktop fixtures and opt-in tests. CI reports eight separate c
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), then read the relevant architecture
 contracts before changing execution, persistence, ownership or Git code.
 Changes should preserve saved data, explicit authorization and existing behavior.
+The [agent-flow implementation record](docs/architecture/agent-flows.md) tracks the
+solo Vibers, editable flows, historical conversion and verification boundaries.
 
 Live-provider tests consume subscription allowance. Live GitHub fixtures can write
 to a real repository. Neither belongs in routine verification without explicit authorization.

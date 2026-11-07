@@ -27,13 +27,6 @@
   overflow-wrap: anywhere;
 }
 
-.dock-maximized > .workspace-content,
-.dock-maximized > .workspace-tabs,
-.dock-maximized > .workspace-status,
-.dock-maximized > .pipeline-approval {
-  display: none;
-}
-
 .dock-maximized > .utility-dock {
   flex: 1;
   min-height: 0;
@@ -346,21 +339,6 @@
   font-size: 12px;
 }
 
-.plan-comparison {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  overflow: auto;
-}
-
-.plan-comparison > section {
-  min-width: 0;
-  border-right: 1px solid var(--border);
-  overflow: auto;
-}
-
 .panel-heading {
   display: flex;
   align-items: center;
@@ -370,27 +348,6 @@
   border-bottom: 1px solid var(--border);
   padding: 10px 15px;
   font-size: 12px;
-}
-
-.plan-section {
-  padding: 13px 18px;
-  font-size: 12px;
-  line-height: 1.8;
-}
-
-.plan-section h3 {
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  text-transform: capitalize;
-}
-
-.plan-section ol {
-  padding-left: 18px;
-  margin: 0;
-}
-
-.plan-section li {
-  margin-bottom: 6px;
 }
 
 .diff-view {

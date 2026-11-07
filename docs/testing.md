@@ -30,7 +30,8 @@ Run a relevant file during iteration without selecting an unrelated whole suite:
 
 ```bash
 npm exec -- vitest run tests/unit/frontend.test.tsx
-npm exec -- vitest run tests/integration/pipeline-approval.test.ts
+npm exec -- vitest run tests/integration/flow-engine.test.ts
+npm exec -- vitest run tests/integration/legacy-flow-migration.test.ts
 npm exec -- vitest run tests/security/task-ownership.test.ts
 ```
 
@@ -41,7 +42,7 @@ Do not use a passing narrow test to claim a broad workflow or migration is verif
 ## What different changes require
 
 - Display helpers/components: affected unit/UI tests, types, lint and formatting.
-- Workflow/approvals/recovery: stage and saved-instruction regressions plus integration.
+- Flows/approvals/recovery: captured inputs, scoped conversations, node retries and continuation regressions plus integration.
 - Git, ownership, sandbox or cleanup: affected security/integration refusal and success paths.
 - SQLite: upgrade/reopen, corrupt-record and foreign-key fixtures; preserve old migrations.
 - Terminal interactions: PTY suite in addition to affected tests and quality checks.
@@ -62,11 +63,17 @@ xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:output
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:watch
 ```
 
-Other fixture files in `tests/desktop` retain their specific opt-in variables. They
-exercise the real built renderer/IPC against isolated roots and blocked real CLIs.
+The flow, output, PR and Issue Watch fixtures exercise the built renderer/IPC with
+isolated roots and blocked real CLIs. Historical fixed-stage workspace, approval and
+verification and general/milestone/product pipeline fixtures have been retired.
+Their current flow, output, PR and ownership coverage uses isolated fixtures.
+Native window assertions moved to `desktop-window.test.ts`, enabled with
+`VIBESTAR_WINDOW_DESKTOP_TEST=1`; this fixture blocks live CLIs and requires a window
+manager. The separate Windows harness retains native Windows input/DPI checks.
 Selected fixtures route RPC to test-owned services; production has no fixture-provider selector.
-`VIBESTAR_KEEP_EVIDENCE=1` retains supported temporary evidence. The general desktop
-fixture writes screenshots to ignored `test-results/desktop`, preserving curated docs images.
+`npm run test:desktop` now aliases the isolated Viber flow fixture.
+`VIBESTAR_KEEP_EVIDENCE=1` retains supported temporary evidence. Flow, output and repair
+fixtures print their temporary screenshot directories, preserving curated docs images.
 
 `npm run test:browser:environment` explicitly exercises installed browser/toolchain
 capability without downloading dependencies or using a model. Its result proves the
@@ -99,6 +106,28 @@ Removed publication endpoints must fail dispatch; legacy migration and storage f
 preserve old journals without allowing operations to replay.
 
 ## CI
+
+The Viber canvas has a built Electron fixture: build first, then run
+`xvfb-run -a npm run test:desktop:flows` on Linux without a display. It blocks real
+provider/GitHub CLIs and uses isolated fixture engines and data roots. It exercises
+creation without inference, template editing, duplication/deletion, persisted keyboard
+movement, a real approval pause, solo chat writes, managed-file inspection and reduced
+motion at 1280×720 and 1440×900. Screenshots are retained in its temporary evidence
+directory. Native Windows checks still require their separate environment.
+
+The same fixture also pauses a waiting flow, edits a future Viber, previews reuse
+and applies the saved revision while proving that the planner is not invoked again.
+It selects a running Viber and inspects an actual fixture command before completion.
+It also opens an imported approval checkpoint, inspects its complete historical graph,
+confirms that past decisions remain unknown, and explicitly captures then rejects a
+new approval attempt without invoking another provider. Solo submission exercises
+Shift+Enter and Enter in the built renderer.
+Connected Viber chat is exercised at a waiting gate, proving that the graph revision,
+attempts and approval remain unchanged after a read-only turn. The fixture returns
+to that exact task/node conversation through the reusable Vibers library.
+Command-palette task usage navigation and Ctrl+backtick/Ctrl+J are also exercised;
+the fixture opens a real PTY with an isolated HOME and confirms that hide/reopen
+retains its session without starting another agent.
 
 Three workflows expose independent status checks:
 

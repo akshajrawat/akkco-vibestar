@@ -7,13 +7,10 @@ import { AgentResponse } from "../../src/features/chat/AgentResponse";
 import { ChatSurface } from "../../src/features/chat/ChatSurface";
 import { UserMessageBody } from "../../src/features/chat/UserMessageBody";
 import { RunError } from "../../src/features/chat/RunError";
-import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
 import { agentEntries, toolState } from "../../src/features/chat/output/activity";
 import { useConversationEvents } from "../../src/features/chat/output/useConversationEvents";
 import { streamingSummary } from "../../src/features/chat/output/response";
-import type { AgentEvent, Detail, Message, Run } from "../../src/lib/types";
-
-vi.mock("../../src/components/shared/TaskTerminal", () => ({ TaskTerminal: () => null }));
+import type { AgentEvent, Run } from "../../src/lib/types";
 
 it("keeps a long prompt compact and lets the user expand and collapse its complete text", () => {
   let resized: ResizeObserverCallback = () => {};
@@ -134,102 +131,6 @@ const event = (id: number, kind: string, data: unknown): AgentEvent => ({
   run_id: run.id,
   task_id: "task",
   timestamp: run.started_at,
-});
-
-const detail = (): Detail => ({
-  task: {
-    id: crypto.randomUUID(),
-    repo_id: "repo",
-    issue_number: 1,
-    issue_url: "https://github.com/a/b/issues/1",
-    claimed_scope: "scope",
-    notes: "",
-    issue: {},
-    branch_name: "",
-    base_branch: "main",
-    base_commit_sha: "",
-    worktree_path: "",
-    created_at: run.started_at,
-    updated_at: run.started_at,
-    status: "not_started",
-    stage: 0,
-    error: null,
-  },
-  runs: [],
-  events: [],
-  messages: [],
-  artifacts: [],
-  tests: [],
-});
-
-it.each([false, true])(
-  "shows a prompt before RPC settles and restores failed drafts without overwriting new typing (%s)",
-  async (typeAhead) => {
-    let reject!: (error: Error) => void;
-
-    const pending = new Promise((_, fail) => {
-      reject = fail;
-    });
-
-    const rpc = vi.fn((method: string) =>
-      method === "task.chat" ? pending : Promise.resolve(null),
-    );
-
-    Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
-    const onError = vi.fn();
-    render(<TaskWorkspace detail={detail()} revision={0} onError={onError} back={vi.fn()} />);
-    const field = screen.getByLabelText<HTMLTextAreaElement>("Task conversation");
-    fireEvent.change(field, { target: { value: "hello" } });
-    fireEvent.keyDown(field, { key: "Enter" });
-    expect(screen.getByText("hello")).toBeTruthy();
-    expect(field.value).toBe("");
-    if (typeAhead) fireEvent.change(field, { target: { value: "new draft" } });
-    await act(async () => reject(new Error("Submission refused")));
-    expect(field.value).toBe(typeAhead ? "new draft" : "hello");
-    expect(onError).toHaveBeenCalledWith("Submission refused");
-    expect(document.querySelector(".user-message") !== null).toBe(typeAhead);
-  },
-);
-
-it("reconciles an event echo before the submit response without duplicate user rows", async () => {
-  let resolve!: (value: unknown) => void;
-
-  const pending = new Promise((done) => {
-    resolve = done;
-  });
-
-  const rpc = vi.fn((method: string) => (method === "task.chat" ? pending : Promise.resolve(null)));
-  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
-  const initial = detail();
-
-  const ui = render(
-    <TaskWorkspace detail={initial} revision={0} onError={vi.fn()} back={vi.fn()} />,
-  );
-
-  fireEvent.change(screen.getByLabelText("Task conversation"), {
-    target: { value: "one message" },
-  });
-
-  fireEvent.keyDown(screen.getByLabelText("Task conversation"), { key: "Enter" });
-
-  const request = rpc.mock.calls.find(([method]) => method === "task.chat") as unknown as [
-    string,
-    { request_id: string },
-  ];
-
-  const message: Message = {
-    id: request[1].request_id,
-    content: "one message",
-    role: "user",
-    created_at: run.started_at,
-    purpose: "chat",
-    status: "chat_completed",
-  };
-
-  const echoed = { ...initial, messages: [message] };
-  ui.rerender(<TaskWorkspace detail={echoed} revision={1} onError={vi.fn()} back={vi.fn()} />);
-  await act(async () => resolve({ message, disposition: "chat_completed" }));
-  expect(screen.getAllByText("one message")).toHaveLength(1);
 });
 
 it("streams a structured answer through stable message rows and reconciles the final output", () => {
@@ -577,60 +478,6 @@ it("holds the visible answer while recovering a burst that outruns the detail wi
   expect(ui.container.querySelector(".message-event")).toBe(row);
 });
 
-it("restores a sent instruction when the host saves it at an approval boundary", async () => {
-  const rpc = vi.fn(async (method: string, params: { content?: string; request_id?: string }) =>
-    method === "task.followup"
-      ? {
-          disposition: "draft",
-          message: {
-            id: params.request_id,
-            role: "user",
-            content: params.content,
-            status: "draft",
-            created_at: run.started_at,
-          },
-        }
-      : null,
-  );
-
-  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
-  const value = detail();
-  value.task.status = "awaiting_approval";
-  value.task.stage = 1;
-  render(<TaskWorkspace detail={value} revision={0} onError={vi.fn()} back={vi.fn()} />);
-  const field = screen.getByLabelText<HTMLTextAreaElement>("Task conversation");
-  fireEvent.change(field, { target: { value: "Keep this instruction pending" } });
-  fireEvent.click(screen.getByRole("button", { name: "Send to workflow" }));
-  await vi.waitFor(() => expect(field.value).toBe("Keep this instruction pending"));
-
-  expect(rpc).toHaveBeenCalledWith(
-    "task.followup",
-    expect.objectContaining({ content: "Keep this instruction pending" }),
-  );
-
-  expect(screen.getByRole("button", { name: "Instruction saved" })).toBeTruthy();
-});
-
-it("shows the idle welcome without duplicating the issue brief", () => {
-  Object.defineProperty(window, "vibestar", {
-    configurable: true,
-    value: { rpc: vi.fn(async () => null) },
-  });
-
-  const data = detail();
-
-  data.task.issue = {
-    title: "Issue title in header",
-    body: "Long issue body stays out of the idle transcript",
-  };
-
-  data.task.notes = "Scoped notes";
-  const ui = render(<TaskWorkspace detail={data} revision={0} onError={vi.fn()} back={vi.fn()} />);
-  expect(screen.getByText("Let’s start building.")).toBeTruthy();
-  expect(ui.container.querySelector(".context-message")).toBeNull();
-  expect(screen.queryByText("Long issue body stays out of the idle transcript")).toBeNull();
-});
-
 it("shows workflow briefs as user messages and keeps the complete plan in the reply", () => {
   const output = JSON.stringify({
     summary: "A complete plan",
@@ -697,26 +544,4 @@ it("collapses completed work while leaving the answer visible and omits protocol
   expect(ui.container.querySelector(".turn-outcome")).toBeNull();
   fireEvent.click(log.querySelector("summary")!);
   expect(log.querySelector(".tool-event")?.textContent).toContain("node --test");
-});
-
-it("requests explicit workspace access from the ordinary composer after final review", async () => {
-  const rpc = vi.fn(async () => ({ disposition: "chat_pending" }));
-  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
-  const data = detail();
-  data.task.stage = 6;
-  data.task.status = "reviewed_with_gaps";
-  render(<TaskWorkspace detail={data} revision={0} onError={vi.fn()} back={vi.fn()} />);
-  const field = screen.getByLabelText("Task conversation");
-  fireEvent.change(field, { target: { value: "Okay, fix those findings" } });
-  fireEvent.keyDown(field, { key: "Enter" });
-
-  await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith(
-      "task.chat",
-      expect.objectContaining({
-        content: "Okay, fix those findings",
-        configuration: expect.objectContaining({ access: "workspace" }),
-      }),
-    ),
-  );
 });

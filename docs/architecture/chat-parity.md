@@ -1,3 +1,7 @@
+> This records the historical chat-parity migration. Current task execution and
+> renderer ownership are documented in [agent flows](agent-flows.md); the old
+> task-only renderer and its fixed-workflow desktop fixture have been retired.
+
 # T3 Code chat parity
 
 ## Reference analysis before implementation

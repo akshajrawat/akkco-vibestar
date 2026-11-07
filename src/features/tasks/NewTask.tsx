@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { X, ArrowUpRight, FolderGit2 } from "lucide-react";
 
 import { rpc, errorMessage } from "../../lib/api";
-import type { Repository, Task, Settings, Snapshot } from "../../lib/types";
+import type { Repository, Task, Snapshot } from "../../lib/types";
+import type { AgentProfile } from "../../../backend/flows/contracts";
+import { builtInProfiles, flowTemplates, type TemplateId } from "../../../backend/flows/templates";
 import { parseIssue, repositoryMatchesIssue } from "../../../backend/domain";
-import { useProviders } from "../../hooks/useWorkspace";
-import { StageSettings } from "../providers/StageSettings";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/Select";
 
@@ -33,13 +33,14 @@ export const NewTask = ({
   initialNotes?: string;
   initialRepositoryId?: string;
 }) => {
-  const models = useProviders();
   const [url, setUrl] = useState(initialIssueUrl);
   const [scope, setScope] = useState("");
   const [mode, setMode] = useState<"whole_issue" | "partial">("whole_issue");
   const [notes, setNotes] = useState(initialNotes);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [settings, setSettings] = useState<Settings>();
+  const [profiles, setProfiles] = useState<AgentProfile[]>([]);
+  const [profileId, setProfileId] = useState<string>(builtInProfiles.implementer);
+  const [template, setTemplate] = useState<TemplateId | "">("");
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [repositoryId, setRepositoryId] = useState("");
   const [root, setRoot] = useState("");
@@ -51,9 +52,16 @@ export const NewTask = ({
   const request = useRef({ payload: "", id: "" });
 
   useEffect(() => {
-    void rpc<Snapshot>("snapshot")
-      .then((s) => {
-        setSettings(s.settings);
+    void Promise.all([rpc<Snapshot>("snapshot"), rpc<AgentProfile[]>("profile.list")])
+      .then(([s, profiles]) => {
+        setProfiles(profiles);
+
+        setProfileId(
+          profiles.find((profile) => profile.id === builtInProfiles.implementer)?.id ||
+            profiles[0]?.id ||
+            "",
+        );
+
         const active = s.repositories.filter((r) => r.connected !== false);
         setRepositories(active);
 
@@ -168,7 +176,8 @@ export const NewTask = ({
                 scope_mode: mode,
                 claimed_scope: mode === "partial" ? scope : "",
                 notes,
-                settings,
+                profile_id: profileId,
+                ...(template ? { template } : {}),
               };
 
               const identity = JSON.stringify(payload);
@@ -178,7 +187,7 @@ export const NewTask = ({
                   id: crypto.randomUUID(),
                 };
 
-              const task = await rpc<Task>("task.create", {
+              const task = await rpc<Task>("task.createIssue", {
                 ...payload,
                 request_id: request.current.id,
               });
@@ -321,30 +330,39 @@ export const NewTask = ({
             />
           </label>
 
-          <details className="task-configuration">
-            <summary>Agent configuration</summary>
-            <p className="subtle">
-              Models and efforts come from the installed CLI; discovery does not run AI.
-            </p>
-            {models.loading && <small>Loading provider models…</small>}
-            {models.error && <p className="failure">{models.error}</p>}
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={models.loading}
-              onClick={() => void models.refresh()}
+          <label>
+            Starting flow
+            <select
+              value={template}
+              onChange={(event) => setTemplate(event.target.value as TemplateId | "")}
             >
-              Refresh models
-            </Button>
-
-            {settings && (
-              <StageSettings
-                settings={settings}
-                onChange={setSettings}
-                providers={models.providers}
-              />
-            )}
-          </details>
+              <option value="">Solo Viber</option>
+              {flowTemplates.map((flow) => (
+                <option key={flow.id} value={flow.id}>
+                  {flow.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!template && (
+            <label>
+              Viber profile
+              <select
+                required
+                value={profileId}
+                onChange={(event) => setProfileId(event.target.value)}
+              >
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name} · {profile.execution.provider} · {profile.execution.access}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <p className="subtle">
+            Create an idle workspace, then edit its flow, inputs and settings before running.
+          </p>
 
           {selected && (
             <details className="task-configuration">

@@ -1,23 +1,3 @@
-.pipeline-stage-actions > .actions {
-  position: absolute;
-  top: 25px;
-  right: 0;
-  width: 178px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding: 4px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--background-elevated);
-  box-shadow: 0 8px 20px #0004;
-}
-
-.verification-recovery {
-  margin: 10px 0;
-}
-
-.verification-recovery .actions,
 .secondary-workspace .actions {
   flex-wrap: wrap;
   gap: 6px;
@@ -29,8 +9,7 @@
   overflow: auto;
 }
 
-.verification-recovery-dialog article,
-.final-review-summary article {
+.verification-recovery-dialog article {
   margin: 10px 0;
   padding: 10px;
   border: 1px solid var(--border-default);
@@ -38,28 +17,9 @@
 }
 
 .verification-recovery-dialog pre,
-.verification-recovery-dialog code,
-.final-review-summary code {
+.verification-recovery-dialog code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.final-review-summary {
-  margin: 0;
-  font-size: 13px;
-}
-
-.final-review-summary > p {
-  margin-top: 10px;
-}
-
-.final-review-summary > .actions,
-.final-review-summary > .agent-response {
-  margin-top: 20px;
-}
-
-.secondary-expanded .verification-recovery {
-  margin-block: 24px;
 }
 
 .verification-blockers {
@@ -134,53 +94,6 @@
   font-size: 11px;
   color: var(--text-muted);
   overflow-wrap: anywhere;
-}
-
-.pipeline-stages li small {
-  color: var(--text-muted);
-  font-size: 11px;
-  text-align: right;
-}
-
-.pipeline-stage-heading small.success {
-  color: var(--accent-green);
-}
-
-.pipeline-stage-heading small.failure {
-  color: var(--accent-red);
-}
-
-.pipeline-stage-heading small.warning {
-  color: var(--accent-amber);
-}
-
-.pipeline-stages li p {
-  margin: 3px 0;
-  color: var(--text-secondary);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.pipeline-stages li p.pipeline-current-action {
-  color: var(--accent-blue);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.pipeline-step.blocked p.pipeline-current-action {
-  color: var(--accent-amber);
-  white-space: normal;
-}
-
-.secondary-workspace:not(.secondary-expanded) .plan-comparison {
-  display: block;
-  overflow: visible;
-  flex: none;
-}
-
-.secondary-workspace .plan-comparison > section {
-  overflow: visible;
 }
 
 .secondary-workspace .panel-heading {
@@ -380,8 +293,7 @@
 }
 
 @media (hover: none) {
-  .sidebar-tasks .tree-task-menu,
-  .pipeline-stage-actions > summary {
+  .sidebar-tasks .tree-task-menu {
     opacity: 1;
   }
 }

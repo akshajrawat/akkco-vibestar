@@ -85,7 +85,7 @@ it("reconciles creation before ownership markers using the saved intent and exac
   const saved = engine.db.task(task.id);
 
   expect(saved).toMatchObject({
-    stage: 1,
+    stage: 0,
     status: "interrupted",
     branch_owned: true,
     workspace_checkpoint: { state: "ready", operation: null },

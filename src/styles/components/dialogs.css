@@ -115,10 +115,6 @@
   padding: 7px 0;
 }
 
-.task-composer .stage-settings {
-  display: block;
-}
-
 .task-composer .config-block {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(120px, 0.65fr) 130px;

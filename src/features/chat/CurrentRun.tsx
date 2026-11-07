@@ -74,14 +74,16 @@ export const CurrentRun = ({
         : run?.purpose?.startsWith("PR Repair")
           ? run.purpose
           : run
-            ? [
-                "",
-                "Planning",
-                "Reviewing plan",
-                "Implementing",
-                "Validation",
-                "Reviewing changes & tests",
-              ][run.stage]
+            ? run.stage === 0
+              ? run.purpose || "Viber execution"
+              : [
+                  "",
+                  "Planning",
+                  "Reviewing plan",
+                  "Implementing",
+                  "Validation",
+                  "Reviewing changes & tests",
+                ][run.stage]
             : labels[status];
 
   return (

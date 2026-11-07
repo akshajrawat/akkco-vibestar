@@ -1,15 +1,6 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { parseIssue } from "../../backend/domain";
 import { fetchIssue } from "../../backend/workspace/issue";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import {
-  createFixtureEngine,
-  fixtureRepository,
-  FixtureProvider,
-  finishFixtureTask,
-} from "../helpers/fixtures";
 
 const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 
@@ -23,46 +14,6 @@ afterEach(() => {
   api.mockReset();
   vi.unstubAllGlobals();
 });
-
-it("refreshes issue context for planning and review while implementation receives only the refined plan", async () => {
-  api.mockImplementation(async (endpoint: string) => {
-    if (endpoint === "repos/fixture/fixture/issues/1")
-      return { title: "Updated issue", body: "Complete current requirements" };
-    if (endpoint.includes("/comments?")) return [{ body: "Latest author comment" }];
-    return [];
-  });
-
-  const dir = await mkdtemp(join(tmpdir(), "vibestar-context-refresh-"));
-  const engine = await createFixtureEngine(join(dir, "data"), () => new FixtureProvider());
-  try {
-    const { repo } = await fixtureRepository(engine, dir);
-
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      { title: "Old fetched issue", number: 1, comments: [] },
-    );
-
-    await finishFixtureTask(engine, task.id, (s) => s === "ready_for_review" || s === "failed");
-    expect(engine.db.task(task.id).status).toBe("ready_for_review");
-    expect(engine.db.detail(task.id).runs).toHaveLength(4);
-    for (const run of engine.db.detail(task.id).runs.filter((run) => run.stage !== 3))
-      expect(run.prompt).toContain("Latest author comment");
-
-    expect(
-      JSON.parse(String(engine.db.detail(task.id).runs.find((run) => run.stage === 3)!.prompt)),
-    ).toEqual(engine.db.artifact(task.id, 2));
-
-    expect(
-      api.mock.calls.filter(([endpoint]) => endpoint === "repos/fixture/fixture/issues/1"),
-    ).toHaveLength(3);
-  } finally {
-    await engine.close();
-    await rm(dir, { recursive: true, force: true });
-  }
-}, 30000);
 
 it("retrieves the complete issue and paginated comments plus linked PRs from text and timeline, including fork review context", async () => {
   api.mockImplementation(async (endpoint: string) => {

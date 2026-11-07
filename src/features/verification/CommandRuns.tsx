@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { Detail } from "../../lib/types";
+import type { NodeAttempt } from "../../../backend/flows/run-contracts";
 import { duration } from "../../lib/format";
 import { parseArgv } from "./commands";
 import { Status } from "../../components/shared/Status";
@@ -20,15 +21,17 @@ const displayCommand = (command: string) => {
 
 export const CommandRuns = ({
   detail,
+  attempts = [],
   selectedId = "",
 }: {
   detail: Pick<Detail, "tests" | "runs">;
+  attempts?: NodeAttempt[];
   selectedId?: string;
 }) => {
   const [selected, setSelected] = useState(selectedId);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
-  const [stage, setStage] = useState("all");
+  const [executionId, setExecutionId] = useState("all");
   const [stream, setStream] = useState("all");
   const transcript = useRef<HTMLDivElement>(null);
 
@@ -39,24 +42,46 @@ export const CommandRuns = ({
     }
   }, [selectedId]);
 
+  const attribution = (test: Detail["tests"][number]) => {
+    const attempt = attempts.find(
+      (attempt) =>
+        attempt.command_run_id === test.id ||
+        (!!attempt.agent_run_id && attempt.agent_run_id === test.run_id),
+    );
+
+    if (attempt)
+      return {
+        value: `attempt:${attempt.id}`,
+        label: `${attempt.configuration.node.name} · attempt ${attempt.ordinal}${attempt.configuration.agent ? ` · ${attempt.configuration.agent.execution.provider}` : ""}`,
+      };
+    const run = detail.runs.find((run) => run.id === test.run_id);
+    if (run)
+      return { value: `run:${run.id}`, label: `${run.provider} · ${run.purpose || "Saved run"}` };
+    if (test.run_id) return { value: `run:${test.run_id}`, label: `Recorded run ${test.run_id}` };
+    return { value: "manual", label: "Manual / unassigned" };
+  };
+
+  const executions = [
+    ...new Map(
+      detail.tests.map((test) => {
+        const execution = attribution(test);
+        return [execution.value, execution];
+      }),
+    ).values(),
+  ];
+
   const commands = detail.tests.filter((test) => {
-    const run = detail.runs.find((r) => r.id === test.run_id);
     return (
       test.command.toLowerCase().includes(query.toLowerCase()) &&
       (status === "all" ||
         (test.status === "running" ? "running" : commandVerification(test).outcome) === status) &&
-      (stage === "all" || (stage === "manual" ? !run : String(run?.stage) === stage))
+      (executionId === "all" || attribution(test).value === executionId)
     );
   });
 
   const command = commands.find((test) => test.id === selected) || commands.at(-1);
   const run = detail.runs.find((r) => r.id === command?.run_id);
   const evidence = command ? commandVerification(command) : null;
-
-  const label = (runId?: string | null) => {
-    const run = detail.runs.find((r) => r.id === runId);
-    return run ? `${run.provider} · ${run.purpose || `stage ${run.stage}`}` : "Manual / validation";
-  };
 
   return (
     <section className="command-runs" aria-label="Command executions">
@@ -88,17 +113,10 @@ export const CommandRuns = ({
         />
 
         <Select
-          label="Command stage"
-          value={stage}
-          onChange={setStage}
-          options={[
-            { value: "all", label: "All stages" },
-            { value: "1", label: "Plan" },
-            { value: "2", label: "Plan refinement" },
-            { value: "3", label: "Implementation" },
-            { value: "5", label: "Final review" },
-            { value: "manual", label: "Manual / validation" },
-          ]}
+          label="Command run"
+          value={executionId}
+          onChange={setExecutionId}
+          options={[{ value: "all", label: "All runs" }, ...executions]}
         />
       </div>
 
@@ -120,7 +138,7 @@ export const CommandRuns = ({
               )}
               <code title={test.command}>{displayCommand(test.command)}</code>
               <small>
-                {label(test.run_id)} · {new Date(test.started_at).toLocaleTimeString()} ·{" "}
+                {attribution(test).label} · {new Date(test.started_at).toLocaleTimeString()} ·{" "}
                 {duration(test.started_at, test.ended_at)}
               </small>
             </button>
@@ -138,7 +156,7 @@ export const CommandRuns = ({
         {command && (
           <div className="command-transcript" ref={transcript} tabIndex={-1}>
             <div className="command-log-heading">
-              <strong>{label(command.run_id)}</strong>
+              <strong>{attribution(command).label}</strong>
               <span>
                 {command.status === "running" ? "running" : evidence?.outcome} · exit{" "}
                 {command.exit_code ?? (command.ended_at ? "unreported" : "pending")}

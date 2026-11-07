@@ -20,23 +20,6 @@
   max-width: 900px;
 }
 
-.stage-settings {
-  container-type: inline-size;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-}
-
-@container (max-width: 650px) {
-  .stage-settings .config-block.pipeline-config {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.future-stage-settings .config-block.pipeline-config {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .config-block {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(120px, 0.65fr) 130px;

@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { Search } from "lucide-react";
-
 import { useDialogFocus } from "../hooks/useDialogFocus";
 
 export interface PaletteAction {

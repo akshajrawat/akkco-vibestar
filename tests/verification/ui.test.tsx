@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
-import { TestsView } from "../../src/features/verification/TestsView";
+import { HistoricalChecks } from "../../src/features/flows/HistoricalChecks";
 import { RunError } from "../../src/features/chat/RunError";
 import type { Detail } from "../../src/lib/types";
 import { verificationSummary } from "../../backend/execution/verification/verification";
@@ -112,8 +112,7 @@ it("shows code success with unresolved browser evidence, opens the exact command
     value: { rpc },
   });
 
-  const terminal = vi.fn();
-  render(<TestsView detail={detail} onError={vi.fn()} terminal={terminal} />);
+  render(<HistoricalChecks detail={detail} />);
 
   const evidence = screen.getByRole("region", {
     name: "Verification evidence",
@@ -134,8 +133,6 @@ it("shows code success with unresolved browser evidence, opens the exact command
   );
 
   expect(document.activeElement?.className).toBe("command-transcript");
-  fireEvent.click(screen.getByRole("button", { name: "Diagnose in terminal" }));
-  expect(terminal).toHaveBeenCalledOnce();
   expect(screen.queryByRole("button", { name: "Recheck saved evidence" })).toBeNull();
   expect(rpc).not.toHaveBeenCalled();
 });
@@ -183,7 +180,7 @@ it("groups a recorded DNS setup failure with browser prerequisites without chang
   };
 
   const before = structuredClone(value);
-  render(<TestsView detail={value} onError={vi.fn()} />);
+  render(<HistoricalChecks detail={value} />);
 
   expect(screen.getByRole("region", { name: "Verification evidence" }).textContent).toContain(
     "DNS resolution unavailable",

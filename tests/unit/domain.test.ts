@@ -6,11 +6,8 @@ import {
   parseIssue,
   branchName,
   remoteIdentity,
-  retryTarget,
   defaultSettings,
   SettingsSchema,
-  stageStatus,
-  type Task,
 } from "../../backend/domain";
 import { safeFile, worktreePath } from "../../backend/workspace/paths";
 import { Database } from "../../backend/storage/database";
@@ -274,17 +271,6 @@ describe("domain and persistence", () => {
     ).toBe("max");
   });
 
-  it("enforces sequential state and legal retry transitions", () => {
-    expect(stageStatus(5)).toBe("reviewing_antigravity");
-    expect(stageStatus(6)).toBe("ready_for_review");
-    expect(() => stageStatus(7)).toThrow();
-    const t = { stage: 3, worktree_path: "/tmp/worktree" } as Task;
-    expect(retryTarget(t, 2, false)).toBe(2);
-    expect(() => retryTarget(t, 4, false)).toThrow();
-    expect(() => retryTarget(t, 1, true)).toThrow();
-    expect(() => retryTarget(t, 0, false)).toThrow();
-  });
-
   it("rejects traversal and symlink escape", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-path-"));
     try {
@@ -307,35 +293,11 @@ describe("domain and persistence", () => {
       const db = new Database(path);
       db.saveSettings({ ...defaultSettings, concurrency: 3 });
 
-      expect(db.all("SELECT version FROM schema_migrations")).toEqual([
-        { version: 1 },
-        { version: 2 },
-        { version: 3 },
-        { version: 4 },
-        { version: 5 },
-        { version: 6 },
-        { version: 7 },
-        { version: 8 },
-        { version: 9 },
-        { version: 10 },
-        { version: 11 },
-        { version: 12 },
-        { version: 13 },
-        { version: 14 },
-        { version: 15 },
-        { version: 16 },
-        { version: 17 },
-        { version: 18 },
-        { version: 19 },
-        { version: 20 },
-        { version: 21 },
-        { version: 22 },
-        { version: 23 },
-        { version: 24 },
-        { version: 25 },
-        { version: 26 },
-        { version: 27 },
+      expect(db.all("SELECT MAX(version) AS version FROM schema_migrations")).toEqual([
+        { version: 36 },
       ]);
+
+      expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
 
       db.close();
       const reopened = new Database(path);
@@ -417,7 +379,7 @@ it("upgrades the V2 database additively without changing authorized queued tasks
 
     expect(
       current.all<{ version: number }>("SELECT version FROM schema_migrations").at(-1)?.version,
-    ).toBe(27);
+    ).toBe(36);
   } finally {
     current.close();
     await rm(dir, { recursive: true, force: true });

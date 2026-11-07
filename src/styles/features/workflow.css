@@ -20,8 +20,7 @@
   min-width: 0;
 }
 
-.breadcrumb,
-.issue-link {
+.breadcrumb {
   padding: 0;
   background: transparent;
   border: 0;
@@ -30,7 +29,6 @@
   white-space: nowrap;
 }
 
-.issue-link:hover,
 .breadcrumb:hover {
   color: var(--text-primary);
 }

@@ -163,7 +163,9 @@ export class Database {
       "id",
     );
 
-  repository = (id: string) => {
+  repository = (id: string | null) => {
+    if (!id)
+      throw new AdeError("repository_required", "This operation requires an attached repository.");
     const row = this.all<{ data: string }>("SELECT data FROM repositories WHERE id=?", id)[0];
     if (!row) throw new Error("Repository is not registered");
     return this.records.decode<Repository>(
@@ -341,7 +343,8 @@ export class Database {
             ...t,
             status: "interrupted",
             updated_at: now(),
-            error: "Execution stopped. Resume retries the interrupted stage using saved context.",
+            error:
+              "Execution stopped. Inspect the imported flow or recovery diagnostic and retry explicitly.",
           });
         }
       }

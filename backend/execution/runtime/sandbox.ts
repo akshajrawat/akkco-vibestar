@@ -9,6 +9,7 @@ import { checked, cleanEnvironment } from "./process";
 import { taskRuntime } from "../../workspace/runtime";
 import type { VerificationEnvironment } from "../verification/browser/contracts";
 import type { ProcessInputProtocol } from "./process";
+import { assertManagedWorkspace } from "../../workspace/managed";
 
 export const sandboxInvocation = async (
   root: string,
@@ -34,12 +35,14 @@ export const sandboxInvocation = async (
   if (!task) await managedPath(root, analysisWorkspace || "");
 
   const cwd = task
-    ? await taskRoot(root, task, db.repository(task.repo_id))
+    ? task.workspace_kind === "managed"
+      ? await assertManagedWorkspace(root, task)
+      : await taskRoot(root, task, db.repository(task.repo_id))
     : await realpath(analysisWorkspace || "");
 
   if (!task && !inside(join(root, "cache", "utility"), cwd))
     throw new AdeError("isolation", "PR analysis workspace is outside the managed root");
-  const repository = task ? db.repository(task.repo_id) : null;
+  const repository = task?.repo_id ? db.repository(task.repo_id) : null;
   const repo = repository ? await realpath(repository.path) : null;
   if (repo && repository?.source !== "imported" && !inside(join(root, "repos"), repo))
     throw new AdeError("isolation", "Managed clone is outside the repository root");

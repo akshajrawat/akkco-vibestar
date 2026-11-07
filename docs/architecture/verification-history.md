@@ -1315,3 +1315,336 @@ to latest, newest discovery, Next 10 and oldest discovery/display order. Evidenc
 `~/tmp/vibestar-chat-workspace-Iu85O5/screenshots/` and
 `~/tmp/vibestar-watch-evidence-Xqz7QL/screenshots/`. These were visually inspected;
 this is not a claim of pixel identity with ChatGPT or of native Windows validation.
+
+## 2026-11-06: Agent-flow execution and persistence foundation
+
+This checkpoint introduces explicit invocation access/output settings in the existing
+runner, a historical-stage adapter, shared validated graph/profile contracts and
+profile/flow revision storage. The new graph scheduler, optional-context tasks,
+solo-agent UI and Viber canvas remain under development; this is not final acceptance
+of that full migration.
+
+Migration 28 adds nullable execution snapshots without inventing settings for old
+runs. Migration 29 adds profile revisions, executable flow revisions and independent
+layout storage. Isolated upgrade/reopen tests preserve prior source bytes and verify
+the pre-upgrade backup and foreign keys. Saved flow dependencies now protect task
+workspaces/evidence from legacy cleanup, disposal and reset.
+
+`npm run verify` passed, including formatting, lint, types and the production build.
+The deterministic suites passed: 406 unit/domain tests (one skipped), 152 integration,
+137 security and six terminal tests. The real-sandbox fixture proves read-only write
+denial and explicit write access without advancing the old pipeline. Graph tests
+exercise branches, joins, cycles, missing/duplicate connections, explicit ancestor
+bindings and profile capture/authority. Revision-storage tests cover history,
+conflicts, independent layout, ownership, reopening and corrupt-record retention.
+
+Provider permission regressions now exercise explicit access rather than granting
+authority to stage 3. The unused `schemaFor` helper and obsolete migration-version
+inventory were removed; the underlying transport and persistence coverage remains.
+No existing workflow/test files were removed while their callers remain live. No
+live-provider or GitHub-write tests were run. Renderer/desktop and native Windows
+acceptance for the upcoming canvas have not yet been run.
+
+## 2026-11-06: Durable runs and repository-free task backend
+
+Migration 30 adds run/attempt snapshots, transition history, immutable approval
+decisions and links to existing agent/command telemetry. Restart recovery interrupts
+unfinished work without replay, including records with corrupt snapshot bytes.
+Migration 31 rebuilds only the task constraint needed for a nullable repository;
+historical JSON and foreign-key identities remain intact. General task creation
+uses the existing task/history model, records null issue context and starts no
+filesystem preparation or inference.
+
+Real-sandbox tests exercise owned managed files, read-only refusal, explicit writes,
+host-state isolation, command JSON stdin, captured-input/settings enforcement and
+existing event/usage attribution. Other regressions cover branches/joins, explicit
+retries, stale/duplicate/rejected approvals, cancellation, linked continuations,
+observed checks versus provider reports, context ownership/size limits and corrupt
+snapshot retention. Managed files survive cache clearing, restart and data-root
+migration. Normal user PTYs prepare an owned directory without inference and retain
+the existing task lease. Manual commands share the global execution capacity.
+
+`npm run verify` passed: formatting, lint, types, production build and 720 tests
+(406 unit/domain, 162 integration, 145 security, seven terminal; one unit skip).
+An additional historical migration-journal preservation regression was then added;
+all nine general-workspace security cases passed, including refusal to adopt a new
+destination directory under an older journal's authority.
+
+The built `desktop-chat-workspace` Electron fixture passed under Xvfb using blocked
+real CLIs and fixture-only providers. It exercises keyboard/composer behavior,
+streaming, navigation and responsive workspace layouts. Evidence is in
+`/home/aksha/tmp/vibestar-chat-workspace-nRWKnL/screenshots/`. Current 1440×900 and
+1280×720 chat captures were visually inspected; the curated chat reference depicts
+an older UI and is not a matching pixel baseline. No native Windows or live-provider
+checks were run. The general desktop fixture's optional live GitHub branch was not
+used as deterministic acceptance here.
+
+The graph scheduling controller, historical workflow-to-graph conversion, solo UI,
+canvas/templates, stale-result reuse and final cleanup remain pending. These results
+verify the backend increment and retained workspace behavior, not completion of
+the entire requested migration.
+
+## 2026-11-06 — Durable graph execution and Viber workspace
+
+Migration 32 adds durable scoped execution requests and immutable attempt dispatch
+attribution. The controller uses the existing runner, global slots and task leases
+for branches/joins, pause/continue, cancellation and node-only retry. Approval decisions
+validate captured inputs/settings against actual workspace evidence under a lease;
+settled duplicate requests never replay. Ordinary successful commands do not become
+passing checks. New Git-backed flows positively verify worktree/common-directory,
+branch and owner identity before execution.
+
+Validated RPC and bridge negotiation expose profiles, graph/layout editing, general
+tasks, execution and independent task lifecycle. Solo turns use existing task messages,
+selected history and the graph runner at stage zero. The React Flow workspace includes
+Viber characters, profile creation/editing, explicit node settings/inputs, templates,
+actual activity, checks, managed files, usage and existing terminal/editor tools.
+Profile initialization preserves edits and keeps healthy history available when saved
+settings are corrupt, without manufacturing replacement defaults.
+
+`npm run verify` passed: formatting, lint, types, all 737 deterministic tests
+(406 unit/domain, 177 integration, 147 security, seven terminal; one unit skip), and
+the production build. Focused regressions caught and corrected request decoding,
+general-task navigation spacing, corrupt-settings startup and task-reopen authorization.
+No tests were deleted to hide these failures. Stage-derived permission assumptions
+were replaced in the existing provider tests; historical workflow tests remain live
+until their actual UI/RPC replacements are integrated.
+
+The initial built Viber Electron fixture passed with blocked real CLIs and isolated
+fixture engines, covering creation without inference, canvas edits, duplication and
+deletion, approval pauses, solo writes, files and reduced-motion responsive layouts.
+Initial captures were inspected at
+`/home/aksha/tmp/vibestar-flow-desktop-OjLI50/screenshots/`. That review found and corrected
+the general-task title bar. Both final built Electron fixtures passed: Viber canvas
+and the existing chat/workspace regression. Final canvas evidence is in
+`/home/aksha/tmp/vibestar-flow-desktop-rBFtdl/screenshots/`; existing-workspace evidence
+is in `/home/aksha/tmp/vibestar-chat-workspace-MKP7Mk/screenshots/`. Final 1440×900
+canvas/approval captures were visually inspected, and keyboard movement was checked
+against an actual saved coordinate change. No horizontal overflow occurred at the
+tested sizes. Focused lint/format checks and `git diff --check` also passed after
+the final UI/documentation adjustments.
+
+Historical issue-workflow conversion, reuse/staleness after execution edits, remaining
+app integration and final old-code/test cleanup are still pending. No live inference,
+GitHub writes or native Windows checks were run.
+
+## 2026-11-06 — Captured continuations and approval refresh
+
+Migrations 33–34 add observed completion fingerprints, immutable links to original
+results, bound continuation plans and durable invalidation records. Applying a saved
+revision rechecks its preview under the existing task lease, captures a linked run
+and reuses only matching configurations, dependencies, selected sources and workspace
+evidence. Existing version-32 attempts retain null completion evidence and original
+bytes. Queue-time workspace changes invalidate reused links before inference;
+explicit eligible-node recomputation remains available. Changed branches invalidate
+their joins. Waiting approvals can be refreshed into a new attempt, retaining the
+interrupted original without inventing a decision or authorizing successors.
+
+The renderer labels reused results, propagates draft staleness, distinguishes saved
+and captured revisions, previews reuse/recomputation before apply and shows actual
+recent activity for a selected running node. Continuation RPCs negotiate
+`flow_continuations: 1` separately from the initial graph capability.
+
+`npm run verify` passed: formatting, lint, types, production build and 748 deterministic
+tests (406 unit/domain, 188 integration, 147 security, seven terminal; one unit skip).
+Added integration coverage proves branch/join invalidation, request deduplication,
+context/profile/workspace freshness, original telemetry attribution, interrupted
+approval refresh, accepted-approval reuse, foreign-source refusal, restart without
+replay, immutable evidence and backup/reopening from schema 32.
+
+The built Viber fixture passed the pause → edit → preview → apply path while asserting
+that the planner invoked only once. Its continuation screenshot was visually inspected
+at `/home/aksha/tmp/vibestar-flow-desktop-k3jq4E/screenshots/vibers-continuation-1440.png`.
+The existing chat fixture initially pressed Enter before its rendered Send control
+re-enabled after backend completion. It now waits for that actual control and passed
+on rerun; its execution assertions remain intact. Native Windows and live-provider
+checks were not run. Historical issue conversion, remaining app integration and final
+old-workflow code/test removal remain active work.
+
+The final Viber fixture also executes a real version command while the selected node
+is running and displays that activity in the inspector. Editing a later model draft
+keeps the original attempt's provider/model labels and starts no inference. The final
+fixture passed against a fresh production build; running/continuation evidence is in
+`/home/aksha/tmp/vibestar-flow-desktop-e9ADu9/screenshots/`. The existing chat fixture's
+successful rerun evidence is in `/home/aksha/tmp/vibestar-chat-workspace-pXl5W3/screenshots/`.
+Focused lint/format and `git diff --check` passed after the fixture/documentation
+adjustments. React Flow's matching React/system MIT notice was retained in
+`public/xyflow-MIT.txt`, and its built `dist` copy was checked byte-for-byte.
+
+## 2026-11-06 — historical task conversion and Viber navigation
+
+Migration 35 retains exact original task bytes and conversion provenance. Historical
+contribution tasks retain the complete graph and an explicitly continued checkpoint
+at their saved boundary. No past input packet, invocation setting, approval decision
+or successful result is reconstructed. Corrupt/incomplete records remain readable
+with recovery diagnostics. Existing task IDs, files, ownership, messages, artifacts,
+commands and usage remain retained. Imported final-review approval requires its
+original workspace fingerprint still to match. Corrupt migration-journal bytes are
+preserved; unsupported historical IDs remain readable without creating execution authority
+or substituting global settings for historical configuration.
+
+Startup still stops saved processes by start identity, clears ended preparation PIDs
+and reconciles existing positively owned creation checkpoints. It never recreates
+missing worktrees or advances a numeric stage automatically. Interrupted cleanup
+remains available under its original scoped authorization; migration does not turn
+it into new execution work. Graph dependencies continue to block evidence deletion.
+Explicit deletion of an unprepared idle draft preserves request tombstones.
+
+New issue tasks choose a profile/template directly through `task.createIssue` and
+never pass through historical conversion. Their selected goal, scoped brief, notes,
+repository and issue context remain explicit. The workspace, overview, navigation,
+settings profile library and storage inspection expose the new model. The inspector
+selects retained artifacts, messages and observed command records. Optimistic chat
+uses the existing reconciliation helper and preserves later typing on send failure.
+
+The obsolete fixed-stage `tests/workspace/workflow.test.ts` and `instructions.test.ts`
+suites were removed, together with three obsolete approval/gap scenarios in mixed
+suites. Replacements cover graph dispatch, explicit access, message ownership,
+continuation and historical conversion. Source-checkout, registry, crash recovery,
+request tombstone, observed-failure and storage/ownership security regressions were
+retained and adapted. Source-assignment fixtures use GitWorkspace and the common
+explicit runner without restoring retired fixed-stage RPC controls.
+
+`npm run verify` passed after the integration and navigation changes: formatting,
+lint, types, production build and 753 deterministic tests (400 unit/domain,
+199 integration, 147 security and seven terminal; one unit skip). The verification
+log is `/tmp/vibestar-viber-navigation-acceptance.log`. Nine conversion tests include
+all approval boundaries, stopped-state reopening, explicit continuation through the
+real sandbox, corrupt artifacts/journals, stale final review, unsupported historical
+IDs and backup/reopening from schema 34.
+
+The built Electron Viber fixture passed with isolated roots/HOME, blocked live CLIs
+and fixture-only providers. It covers canvas editing and layout, actual node activity,
+pause/edit/apply continuation, Shift+Enter/Enter, solo writes/files, imported history
+and explicit approval inspection/rejection. Command-palette usage navigation and
+terminal shortcuts also passed; hiding the dock retained the same actual PTY session.
+The fixture asserts that those controls and imported approvals invoke no extra agent.
+The navigation log is `/tmp/vibestar-navigation-desktop.log`, with screenshots in
+`/home/aksha/tmp/vibestar-flow-desktop-UPNcLq/screenshots/`. Running-node, imported
+history and usage/terminal captures were visually inspected. The matching React Flow
+MIT notice was compared with the built distribution copy. Native Windows and live
+provider/GitHub-write checks were not run.
+
+The clarified next increment is a reusable Viber entry point and per-Viber chat for
+agents inside multi-node tasks. Current chat supports solo tasks. Conversation
+history must remain task/node scoped, and conversations must not complete graph nodes
+or authorize their successors. Remaining old orchestration, task-only UI and their
+obsolete tests still require final cleanup; this record does not claim that work done.
+
+## 2026-11-06 — reusable Vibers and conversations inside connected flows
+
+The Vibers library creates, edits and duplicates reusable identities, starts direct
+tasks and opens existing task/node instances. Each instance has its own conversation,
+draft and scroll position. Solo and connected conversations use the unified
+`viber.chat` route and existing runner, workspace leases, slots, output and telemetry.
+The superseded solo-only `flow.chat` route, wrapper and schema were removed after
+their callers and regression coverage moved to the unified interface.
+
+Migration 36 distinguishes conversation turns from graph runs and retains immutable
+task/node/profile message attribution. Existing message bytes remain unchanged;
+backfill requires a proven same-task agent attempt and profile. Unknown assignments
+remain unassigned and readable in History. Upgrade/reopen fixtures cover schemas 32
+and 35, backup preservation, unknown completion evidence, scope immutability and
+foreign-key integrity. No providers run during migration.
+
+Conversation capture selects only the requested Viber, preserves its access and
+instructions, and does not revise or complete its connected graph. Tests prove that
+two instances of one profile have separate history, stale profile identities are
+rejected, selected retained context stays task-owned, and read-only access remains
+enforced through the real sandbox. Read-only chat preserves waiting gates. Successful
+or cancelled partial writes invalidate parent authority and interrupt undecided gates
+without accepted decisions. Scope-specific stop/retry and global task cancellation
+retain original attempts and request identities. Helper negotiation is independent
+through `viber_conversations: 1`.
+
+`npm run verify` passed: formatting, lint, types, production build and 765 deterministic
+tests (401 unit/domain, 210 integration, 147 security and seven terminal; one unit skip).
+The log is `/tmp/vibestar-viber-conversation-verify.log`. Three historical multi-provider
+fixture cases exceeded their existing five-second test deadline; their targeted
+15-second deadlines passed with all assertions retained. The queue fixture now waits
+for actual process spawn before writing its release file, preserving the host's
+workspace freshness check.
+
+The built Electron flow fixture passed after updating its provider count to include
+the newly exercised connected chat. It checks canvas editing/layout/activity,
+continuation, per-Viber read-only chat at a waiting gate, unchanged graph revision and
+attempts, solo writes/files, Enter/Shift+Enter, real PTY persistence, imported history,
+reduced motion and library navigation back to the exact conversation. Its log is
+`/tmp/vibestar-viber-conversation-desktop.log`; screenshots are in
+`/home/aksha/tmp/vibestar-flow-desktop-UFKauF/screenshots/`. The canvas, connected chat
+and returned conversation were visually inspected. `git diff --check` and the built
+React Flow notice comparison passed. Native Windows, live-provider and GitHub-write
+checks were not run.
+
+Appearance customization remains deferred as requested. Old task-only renderer and
+fixed-stage orchestration interfaces still require final removal and their remaining
+obsolete tests need replacement/removal alongside those interfaces. This checkpoint
+does not mark the full migration and cleanup complete.
+
+## 2026-11-07 — Viber migration acceptance
+
+Completed the engine, task, canvas and reusable Viber conversation migration and
+retired the replaced fixed-stage task interfaces. The final audit covers reusable
+profiles/revisions, optional task context and owned workspaces, agent/command/approval
+DAGs, explicit access/output settings, bounded handoffs, shared slots/leases,
+append-only retries, exact approvals, linked continuations and restart without replay.
+Both providers run all roles in the editable full template through explicit settings.
+
+Ordinary chat includes only that Viber instance’s completed conversation by default,
+with visible selection and a required choice beyond 50 messages. Tests retain
+per-instance drafts/history and prevent foreign context or silent truncation. A later
+provider failure preserves an already observed failed assertion. Task archiving now
+also refuses queued graph work and linked activity before mutation.
+
+Historical conversion retains original bytes and IDs; missing captured settings
+produce recovery diagnostics instead of adopting current defaults. Migration 36
+preserves malformed configuration bytes and leaves unproved message scope unknown.
+A source comparison confirmed all 27 pre-existing migrations unchanged, with nine
+appended migrations (28–36). Historical data readers, notices and scheduled PR
+services remain supported.
+
+Removed fixed-stage orchestration/approval/verification classes, stage startup/chat
+contracts, prompt/continuation/draft-recovery helpers, the old runner entry point,
+18 task RPCs and unused `review.send`. Retired task-only views and exclusive styles
+and tests were removed or moved to their current flow/repair/shared owners.
+Ownership, source checkout, worktree isolation/base pinning, storage migration,
+editor, observed-failure, read-only review and terminal regressions were preserved
+and migrated. Account-dependent obsolete pipeline desktop scripts were removed;
+native window assertions moved into a separate isolated opt-in fixture. Existing
+local user formatting edits were preserved. No source code was committed or published.
+
+`npm run verify` passed against the final executable source: formatting, lint, types,
+715 deterministic tests and the production build. Counts are 356 unit/domain (one
+additional skipped test), 205 integration, 147 security and seven terminal tests.
+The final log is
+`/home/aksha/tmp/vibestar-2026-11-07-checks/acceptance-verify.log`.
+
+All six applicable built Electron fixtures passed: flows, streaming output, PR
+analysis, quick PR watch, isolated repair and Issue Watch. Five passed in the combined
+run; the flow fixture initially lacked a saved historical configuration, correctly
+reached recovery, then passed after explicitly capturing its original fixture settings.
+The production migration was not relaxed. Logs are
+`/home/aksha/tmp/vibestar-2026-11-07-checks/final-desktop.log` and
+`/home/aksha/tmp/vibestar-2026-11-07-checks/final-flow-desktop.log`.
+The default `npm run test:desktop` was exercised and passed its safe flow alias.
+
+Retained visual evidence includes:
+
+- Canvas, connected chat, continuation, imported history, keyboard/layout, reduced
+  motion, real PTY retention and return through the library:
+  `/home/aksha/tmp/vibestar-flow-desktop-WVWMRB/screenshots/`.
+- Streaming tool activity, stdout/stderr redaction, retained output paging/search,
+  correct Planner attribution and actual usage:
+  `/home/aksha/tmp/vibestar-output-desktop-jOn9RH/screenshots/`.
+- Repair, three diff baselines, observed checks and manual terminal Git:
+  `/home/aksha/tmp/vibestar-pr-repair-desktop-5aUUM9/screenshots/`.
+- PR analysis and quick watch:
+  `/home/aksha/tmp/vibestar-pr-desktop-y7lGpj/` and
+  `/home/aksha/tmp/vibestar-pr-watch-desktop-UeaqYB/`.
+
+The canvas, connected chat, compact solo view, streaming output and repair captures
+were visually inspected and compared with the earlier same-host canvas/output
+captures. `git diff --check` and the production React Flow MIT-notice comparison
+passed. Appearance customization remains deferred as requested. Native Windows,
+window-manager geometry, installed-browser, live-provider and real GitHub-write
+checks were not run; headless fixtures do not prove those platform/account behaviors.

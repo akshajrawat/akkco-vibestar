@@ -5,7 +5,8 @@ import type { DesktopInfo } from "../../../electron/contracts";
 import { useProviders } from "../../hooks/useWorkspace";
 import { rpc, errorMessage, subscribe } from "../../lib/api";
 import { Button } from "../../components/ui/button";
-import { StageSettings, AgentConfiguration } from "../providers/StageSettings";
+import { AgentConfiguration } from "../providers/AgentConfiguration";
+import { ProfileLibrary } from "../flows/ProfileLibrary";
 import { StoragePage } from "./StoragePage";
 import { DiscoverySettings } from "./DiscoverySettings";
 import { UsageView } from "../usage/UsageView";
@@ -121,7 +122,7 @@ export const SettingsPage = ({
 
       <PageHeader
         title="Settings"
-        description="Configure your workspace, agent stages and execution environment."
+        description="Configure Viber profiles, workspace preferences and the execution environment."
         actions={
           <>
             <span className="settings-save-state" role="status">
@@ -334,20 +335,7 @@ export const SettingsPage = ({
                 </section>
               )}
 
-              {section === "Agents & Models" && (
-                <section className="settings-section">
-                  <h2>Agent pipeline</h2>
-                  <p className="pipeline-sequence">
-                    Plan → Plan refinement → Implementation → Review
-                  </p>
-
-                  <p className="subtle">
-                    Each stage has its own provider, model and reasoning settings. Empty model uses
-                    that CLI’s default; requested models and effort are never silently substituted.
-                  </p>
-                  <StageSettings settings={value} onChange={setValue} providers={providers} />
-                </section>
-              )}
+              {section === "Agents & Models" && <ProfileLibrary />}
 
               {section === "Agents & Models" && (
                 <section className="settings-section">

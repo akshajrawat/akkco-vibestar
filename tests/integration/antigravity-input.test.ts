@@ -5,14 +5,17 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseIssue } from "../../backend/domain";
+import { AgentRunner } from "../../backend/execution/agents/agent-runner";
+import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
 import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
 import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
   plan1,
-  waitForTask,
+  prepareFixtureTask,
+  fixtureFlowTask,
+  waitForFixtureFlow,
 } from "../helpers/fixtures";
 
 vi.mock("../../backend/workspace/issue", () => ({
@@ -24,10 +27,10 @@ it("delivers a large planning prompt and schema through the production sandbox w
   const antigravity = new AntigravityProvider();
   let promptBytes = 0;
 
-  const engine = await createFixtureEngine(join(directory, "data"), () => ({
+  const fixtureProvider = {
     ...antigravity,
     detect: () => new FixtureProvider().detect(),
-    invocation: (request) => {
+    invocation: (request: AgentRunRequest) => {
       const invocation = antigravity.invocation(request);
       promptBytes = Buffer.byteLength(request.prompt);
       const digest = createHash("sha256").update(request.prompt).digest("hex");
@@ -69,29 +72,44 @@ it("delivers a large planning prompt and schema through the production sandbox w
         input: invocation.input,
       };
     },
-  }));
+  };
+
+  const engine = await createFixtureEngine(join(directory, "data"), () => fixtureProvider);
 
   try {
     const { repo } = await fixtureRepository(engine, directory);
 
-    const task = engine.enqueue(
-      repo,
-      parseIssue("https://github.com/fixture/fixture/issues/1"),
-      "Task A",
-      "",
-      { title: "Large issue context", body: 'Context "quoted"\n第二行 🪐\n'.repeat(16000) },
-    );
+    const task = await prepareFixtureTask(engine, repo, randomUUID());
 
-    await waitForTask(engine, task.id, (status) =>
-      ["awaiting_approval", "failed"].includes(status),
+    const runner = new AgentRunner(engine.root, engine.db, engine.git, engine.publish, () => ({
+      ...antigravity,
+      detect: () => new FixtureProvider().detect(),
+      invocation: fixtureProvider.invocation,
+    }));
+
+    const result = await runner.runConfigured(
+      task,
+      new AbortController().signal,
+      {
+        provider: "antigravity",
+        model: "next-model",
+        effort: "low",
+        timeout_secs: 30,
+        access: "read-only",
+        output: "plan",
+      },
+      {
+        purpose: "Large planning transport",
+        prompt: 'Context "quoted"\n第二行 🪐\n'.repeat(16000),
+      },
     );
 
     const detail = engine.db.detail(task.id);
     expect(promptBytes).toBeGreaterThan(128 * 1024);
-    expect(detail.task.status, detail.task.error || "Planning failed").toBe("awaiting_approval");
+    expect(detail.task.status).toBe("cancelled");
     expect(detail.runs).toHaveLength(1);
     expect(detail.runs[0]).toMatchObject({ status: "completed", exit_code: 0, error: null });
-    expect(engine.db.artifact(task.id, 1)).toEqual(plan1);
+    expect(result).toEqual(plan1);
     expect(await readFile(join(detail.task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
   } finally {
     await engine.close();
@@ -123,7 +141,7 @@ it.each(["streamed", "result-only"])(
                 let input = '';
                 for await (const chunk of process.stdin) input += chunk;
                 const content = JSON.parse(input).message.content;
-                if (!content.endsWith('hi?') || !content.includes('Akkco Vibestar') || content.includes('TASK CONTEXT:')) throw Error('Missing app context or unexpected workflow instructions');
+                if (!content.includes('hi?') || !content.includes('hi?') || content.includes('TASK CONTEXT:')) throw Error('Missing selected chat input or unexpected workflow instructions');
                 const emit = value => console.log(JSON.stringify(value));
                 if (${JSON.stringify(delivery)} === 'streamed') {
                   emit({event:'step_update',step_update:{step_type:'agent_response',step_index:1,state:'RUNNING',text_delta:'Hello! '}});
@@ -142,31 +160,41 @@ it.each(["streamed", "result-only"])(
     }));
 
     try {
-      const { repo } = await fixtureRepository(engine, directory);
-
-      const task = await engine.createTask(
-        repo.id,
-        "https://github.com/fixture/fixture/issues/1",
-        "",
-        "",
-        "whole_issue",
-      );
-
-      engine.chat({
-        id: task.id,
-        request_id: randomUUID(),
-        content: "hi?",
-        configuration: {
-          provider: "antigravity",
-          config: { model: "next-model", effort: "low", timeout_secs: 10 },
-        },
+      const task = fixtureFlowTask(engine, null, "Direct Viber chat", {
+        provider: "antigravity",
+        access: "read-only",
+        output: "conversation",
       });
 
-      await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false), { timeout: 15000 });
+      const node = engine.flows.definition(task.flow_id!).definition.nodes[0];
+      if (node.type !== "agent") throw new Error("Missing Viber");
+
+      const run = engine.chatViber({
+        task_id: task.id,
+        node_id: node.id,
+        profile_id: node.profile_id,
+        expected_revision: 1,
+        request_id: randomUUID(),
+        content: "hi?",
+        history_ids: [],
+        inputs: [],
+      });
+
+      await waitForFixtureFlow(engine, run);
       const detail = engine.db.detail(task.id);
       expect(detail.runs[0]).toMatchObject({ status: "completed", error: null });
-      expect(detail.messages.at(-1)?.content).toBe("Hello! What can I help with?");
-      expect(detail.task).toMatchObject({ status: "not_started", stage: 0, worktree_path: "" });
+
+      expect(JSON.parse(String(detail.messages.at(-1)?.content))).toEqual({
+        summary: "Hello! What can I help with?",
+      });
+
+      expect(detail.task).toMatchObject({
+        status: "not_started",
+        stage: 0,
+        repo_id: null,
+        workspace_kind: "managed",
+      });
+
       expect(detail.artifacts).toEqual([]);
 
       expect(

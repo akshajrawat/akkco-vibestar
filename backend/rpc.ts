@@ -16,6 +16,7 @@ import { callReview, reviewMethods } from "./rpc/review";
 import { callStorage, storageMethods } from "./rpc/storage";
 import { callSystem, systemMethods } from "./rpc/system";
 import { callTasks, tasksMethods } from "./rpc/tasks";
+import { callFlows, flowMethods } from "./rpc/flows";
 import { callTerminals, terminalsMethods } from "./rpc/terminals";
 import { GitHubMonitor } from "./scheduled/github";
 import { Scheduler } from "./scheduled/scheduler";
@@ -95,6 +96,7 @@ export class Rpc {
       [repositoriesMethods, callRepositories],
       [storageMethods, callStorage],
       [tasksMethods, callTasks],
+      [flowMethods, callFlows],
       [terminalsMethods, callTerminals],
       [repairsMethods, callRepairs],
       [outputMethods, callOutput],

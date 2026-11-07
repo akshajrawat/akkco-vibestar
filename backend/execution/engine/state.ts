@@ -1,4 +1,5 @@
-import { type ActivityBlocker, type Task } from "../../domain";
+import { type ActivityBlocker } from "../../domain";
+import type { ApprovalDecision, FlowRun } from "../../flows/run-contracts";
 
 /** Authoritative in-memory leases and cancellation state shared by engine operations. */
 export class ExecutionState {
@@ -14,7 +15,14 @@ export class ExecutionState {
 
   readonly interactive = new Map<string, string>();
 
-  readonly startingWorkflows = new Map<string, { digest: string; promise: Promise<Task> }>();
+  readonly flowRequests = new Set<Promise<unknown>>();
+
+  readonly flowApprovals = new Map<
+    string,
+    { digest: string; promise: Promise<ApprovalDecision> }
+  >();
+
+  readonly flowContinuations = new Map<string, { digest: string; promise: Promise<FlowRun> }>();
 
   draining = false;
 

@@ -100,6 +100,7 @@ it("does not disable real Antigravity plan mode or bypass permissions", () => {
     runId: "run",
     cwd: "/worktree",
     stage: 1,
+    access: "read-only" as const,
     config: { model: "chosen", effort: "high", timeout_secs: 60 },
     prompt: "plan",
     schemaPath: "/artifact",
@@ -107,16 +108,26 @@ it("does not disable real Antigravity plan mode or bypass permissions", () => {
   };
 
   const invocation = agy.invocation(request);
-  expect(agy.invocation({ ...request, stage: 3 }).args).toContain("accept-edits");
+
+  expect(agy.invocation({ ...request, stage: 1, access: "workspace-write" }).args).toContain(
+    "accept-edits",
+  );
+
+  expect(agy.invocation({ ...request, stage: 3 }).args).toContain("plan");
   expect(invocation.args).toContain("plan");
   expect(invocation.args).not.toContain("--disable-slash-commands");
   expect(invocation.args).not.toContain("--dangerously-skip-permissions");
   const args = codex.invocation({ ...request, stage: 2 }).args;
   expect(args).toContain("read-only");
   expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
-  expect(codex.invocation({ ...request, stage: 3 }).args).toContain("workspace-write");
 
-  expect(codex.invocation({ ...request, stage: 3 }).args).toContain(
+  expect(codex.invocation({ ...request, stage: 1, access: "workspace-write" }).args).toContain(
+    "workspace-write",
+  );
+
+  expect(codex.invocation({ ...request, stage: 3 }).args).toContain("read-only");
+
+  expect(codex.invocation({ ...request, stage: 1, access: "workspace-write" }).args).toContain(
     "sandbox_workspace_write.network_access=true",
   );
 
@@ -132,6 +143,7 @@ it("sends complete Antigravity prompts as one stdin message and references the m
     runId: "run",
     cwd: "/worktree",
     stage: 1,
+    access: "read-only",
     config: { model: "chosen", effort: "high", timeout_secs: 60 },
     prompt,
     schemaPath: "/artifacts/schema.json",
@@ -208,6 +220,7 @@ it("resumes only the explicit Antigravity conversation identity supplied by the 
     runId: "chat",
     cwd: "/owned/task",
     stage: 1,
+    access: "read-only" as const,
     config: { model: "chosen", effort: "high", timeout_secs: 60 },
     prompt: "hello",
     schemaPath: "/schema",

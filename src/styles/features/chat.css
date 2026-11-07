@@ -305,11 +305,3 @@
   gap: 5px;
   min-width: 0;
 }
-
-.composer-settings {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--text-muted);
-  min-width: 0;
-}

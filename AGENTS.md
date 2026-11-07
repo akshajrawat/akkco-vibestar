@@ -14,7 +14,7 @@ The renderer presents state; the Linux/WSL Node core owns all execution authorit
 - `src/hooks`: reusable React hooks; `src/lib`: transport, view state and display utilities.
 - `src/styles/index.css`: ordered CSS imports. Preserve cascade order when moving rules.
 - `backend/execution/engine.ts`: stable engine façade and startup/shutdown composition.
-- `backend/execution/engine`: scheduling, lifecycle, workflow, approval and recovery internals.
+- `backend/execution/engine`: shared scheduling, task lifecycle and captured flow/conversation execution.
 - `backend/execution/{agents,providers,runtime,output,terminals,verification}`: execution support.
 - `backend/rpc`: domain request handlers; `backend/rpc.ts`: service composition and dispatch.
 - `backend/{github,issue-watch,review,workspace,storage}`: trusted domain services.

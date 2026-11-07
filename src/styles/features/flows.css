@@ -1,0 +1,708 @@
+.viber-workspace {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--background-app);
+}
+
+.viber-workspace-header,
+.flow-toolbar,
+.viber-workspace-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.viber-workspace-header > div {
+  min-width: 0;
+}
+
+.viber-workspace-header strong {
+  display: block;
+  max-width: min(52vw, 600px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viber-workspace-header small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.flow-toolbar {
+  min-height: 52px;
+  padding-block: 6px;
+  flex-wrap: wrap;
+}
+
+.flow-toolbar nav {
+  display: flex;
+  gap: 3px;
+}
+
+.flow-toolbar nav button {
+  padding: 7px 11px;
+  border-radius: 7px;
+  color: var(--muted);
+}
+
+.flow-toolbar nav button[aria-current],
+.flow-toolbar nav button:hover {
+  color: var(--foreground);
+  background: var(--background-elevated);
+}
+
+.viber-workspace-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-editor {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 205px minmax(200px, 1fr) 280px;
+}
+
+.flow-palette,
+.flow-inspector {
+  padding: 22px 14px;
+  overflow: auto;
+  background: var(--background-sidebar);
+}
+
+.flow-palette {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.flow-palette-heading {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.13em;
+  margin-bottom: 24px;
+}
+
+.flow-palette-heading small,
+.flow-template small,
+.flow-palette-viber small {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+.flow-palette-viber {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 12px 5px;
+  border-radius: 10px;
+}
+
+.flow-palette-viber:hover,
+.flow-template:hover {
+  background: var(--background-hover);
+}
+
+.flow-palette-viber > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-palette-viber strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.flow-palette-viber small {
+  font-size: 9px;
+}
+
+.flow-palette-label {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: 28px 5px 12px;
+}
+
+.flow-palette > .button {
+  justify-content: flex-start;
+  width: 100%;
+  margin-bottom: 7px;
+}
+
+.flow-template {
+  display: block;
+  padding: 12px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  width: 100%;
+}
+
+.flow-template strong {
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.flow-canvas {
+  position: relative;
+  min-height: 340px;
+  background: var(--background-app);
+  --xy-edge-stroke: var(--border-strong);
+  --xy-edge-stroke-selected: var(--accent-purple);
+  --xy-controls-button-background-color: var(--background-panel);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-border-color: var(--border-subtle);
+  --xy-attribution-background-color: var(--background-app);
+}
+
+.flow-canvas .react-flow__edge-path {
+  stroke-width: 1.5px;
+}
+
+.flow-canvas .react-flow__node:focus-visible {
+  outline: 1px dashed var(--accent-purple);
+  outline-offset: 8px;
+  border-radius: 18px;
+}
+
+.viber-node {
+  width: 166px;
+  text-align: center;
+  padding-bottom: 8px;
+}
+
+.viber-shell {
+  width: 92px;
+  height: 92px;
+  margin: 0 auto 17px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  border-radius: 41% 44% 36% 37%;
+  background: var(--background-elevated);
+  border: 1px solid var(--border-strong);
+  box-shadow:
+    inset 0 -7px 0 #0002,
+    0 9px 25px #0002;
+  color: var(--accent-purple);
+  transition:
+    box-shadow 180ms,
+    border-color 180ms;
+}
+
+.viber-shell::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  height: 9px;
+  width: 20px;
+  border: 1px solid var(--border-strong);
+  border-bottom: 0;
+  border-radius: 7px 7px 0 0;
+  background: var(--background-elevated);
+}
+
+.viber-face {
+  width: 58px;
+  height: 41px;
+  display: inline-flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px 18px 15px 15px;
+  background: #17171d;
+  border: 1px solid #ffffff0e;
+  box-shadow: inset 0 2px 8px #0004;
+}
+
+.viber-face i {
+  width: 9px;
+  height: 13px;
+  border-radius: 5px;
+  background: #d2c0f4;
+  box-shadow: 0 0 10px #c1a7f82b;
+}
+
+.flow-palette .viber-face {
+  width: 32px;
+  height: 29px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  gap: 5px;
+  background: var(--background-elevated);
+}
+
+.flow-palette .viber-face i {
+  width: 4px;
+  height: 7px;
+}
+
+.viber-node strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.viber-identity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.viber-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 7px;
+}
+
+.viber-shell .react-flow__handle {
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--background-app);
+  background: var(--border-strong);
+  min-width: 14px;
+  min-height: 14px;
+}
+
+.viber-shell .react-flow__handle:hover {
+  background: var(--accent-purple);
+  outline: 5px solid #b7a0e81a;
+}
+
+.viber-node.selected .viber-shell {
+  border-color: var(--accent-purple);
+  box-shadow:
+    0 0 0 5px #b7a0e812,
+    inset 0 -7px 0 #0002;
+}
+
+.viber-node.running .viber-shell {
+  border-color: var(--accent-purple);
+  animation: viber-working 2.4s ease-in-out infinite;
+}
+
+.viber-node.waiting .viber-shell,
+.viber-node.stale .viber-shell {
+  border-color: var(--accent-amber);
+}
+
+.viber-state.waiting,
+.viber-state.stale {
+  color: var(--accent-amber);
+}
+
+.viber-state.completed {
+  color: var(--accent-green);
+}
+
+.viber-state.failed,
+.viber-state.rejected {
+  color: var(--accent-red);
+}
+
+.viber-node.failed .viber-shell,
+.viber-node.rejected .viber-shell {
+  border-color: var(--accent-red);
+}
+
+.viber-node.completed .viber-face i {
+  background: #acd9b8;
+}
+
+.flow-canvas-caption {
+  position: absolute;
+  bottom: 16px;
+  left: 65px;
+  right: 85px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 9px;
+  pointer-events: none;
+}
+
+.flow-inspector {
+  border-left: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+
+.flow-inspector-heading {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  margin-bottom: 22px;
+}
+
+.flow-inspector label,
+.new-viber-task label,
+.viber-profile-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 15px;
+  color: var(--text-secondary);
+}
+
+.flow-inspector input,
+.flow-inspector select,
+.flow-inspector textarea,
+.new-viber-task input,
+.new-viber-task select,
+.new-viber-task textarea,
+.viber-profile-editor input,
+.viber-profile-editor select,
+.viber-profile-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--background-input);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.flow-inspector textarea,
+.new-viber-task textarea,
+.viber-profile-editor textarea {
+  resize: vertical;
+}
+
+.viber-field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.flow-inspector fieldset {
+  border: 0;
+  padding: 14px 0;
+  margin: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.flow-inspector legend {
+  padding: 0 5px 0 0;
+}
+
+.flow-inspector fieldset > small {
+  display: block;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+label.viber-checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  margin: 10px 0;
+}
+
+label.viber-checkbox input {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  accent-color: var(--accent-purple);
+}
+
+.flow-node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 10px 0 17px;
+}
+
+.flow-node-activity {
+  max-height: 240px;
+  overflow: auto;
+  border-block: 1px solid var(--border-subtle);
+  margin-block: 14px;
+}
+
+.flow-inspector-empty,
+.flow-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+  padding: 25px;
+  gap: 12px;
+}
+
+.flow-empty {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.flow-inline-error,
+.flow-draft-notice,
+.flow-validation {
+  padding: 8px 18px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--accent-amber);
+  background: var(--background-warning);
+}
+
+.flow-validation {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  border-radius: 8px;
+}
+
+.flow-activity {
+  padding: 24px;
+  overflow: auto;
+}
+
+.flow-activity details,
+.flow-inspector details {
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 12px 0;
+}
+
+.flow-activity pre,
+.flow-inspector pre,
+.flow-files pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px/1.7 var(--font-mono);
+}
+
+.viber-workspace-footer {
+  padding-block: 4px;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.viber-workspace.dock-maximized > .viber-workspace-body {
+  display: none;
+}
+
+.new-viber-task,
+.viber-profile-editor {
+  width: min(540px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.new-viber-task form,
+.viber-profile-editor form {
+  margin-top: 24px;
+}
+
+.viber-profile-select {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.viber-profile-select label {
+  flex: 1;
+}
+
+.flow-history {
+  margin: 0 auto 6px;
+  max-width: 760px;
+  width: calc(100% - 40px);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.flow-history[open] {
+  max-height: 180px;
+  overflow: auto;
+}
+
+.flow-continuation-dialog {
+  width: min(660px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.flow-continuation-dialog ul {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0;
+}
+
+.flow-continuation-dialog li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.flow-continuation-dialog li strong,
+.flow-continuation-dialog li span,
+.flow-continuation-dialog li small {
+  display: block;
+}
+
+.flow-continuation-dialog li small {
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.flow-files {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  min-height: 0;
+  flex: 1;
+}
+
+.flow-files aside,
+.flow-files > div {
+  padding: 18px;
+  overflow: auto;
+}
+
+.flow-files aside {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.flow-files aside button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px;
+  overflow-wrap: anywhere;
+}
+
+.flow-files aside .selected {
+  background: var(--background-selected);
+  border-radius: 6px;
+}
+
+@keyframes viber-working {
+  0%,
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 #b7a0e80a;
+  }
+
+  50% {
+    transform: translateY(-3px);
+    box-shadow: 0 0 0 7px #b7a0e80a;
+  }
+}
+
+@media (max-width: 1200px) {
+  .flow-editor {
+    grid-template-columns: 165px minmax(180px, 1fr) 245px;
+  }
+
+  .flow-palette,
+  .flow-inspector {
+    padding: 18px 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  .flow-editor {
+    grid-template-columns: 135px minmax(220px, 1fr);
+    overflow: auto;
+  }
+
+  .flow-inspector {
+    grid-column: 1 / -1;
+    max-height: 280px;
+  }
+
+  .flow-inspector-empty {
+    display: none;
+  }
+
+  .flow-palette-viber .viber-face {
+    display: none;
+  }
+
+  .flow-canvas-caption {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viber-node.running .viber-shell,
+  .flow-canvas .react-flow__edge.animated path {
+    animation: none;
+  }
+
+  .viber-shell {
+    transition: none;
+  }
+}
+
+.viber-conversation-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.viber-chat-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.viber-chat-heading label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.viber-library-page {
+  height: 100%;
+  overflow: auto;
+  padding: 28px;
+}
+
+.viber-library-member {
+  margin-block: 12px;
+}
+
+.viber-library-instances {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-left: 52px;
+}

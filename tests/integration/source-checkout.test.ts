@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
-import { fetchIssue } from "../../backend/workspace/issue";
+import { AgentRunner } from "../../backend/execution/agents/agent-runner";
 import { gitChecked, gitCapture } from "../../backend/workspace/git-command";
 import { migrateDataRoot } from "../../backend/storage/migrate-root";
 import { checked } from "../../backend/execution/runtime/process";
@@ -14,10 +14,9 @@ import {
   createFixtureEngine,
   fixtureRepository,
   FixtureProvider,
-  waitForTask,
+  historicalTaskFixture,
 } from "../helpers/fixtures";
 
-vi.mock("../../backend/workspace/issue", () => ({ fetchIssue: vi.fn() }));
 let directory: string;
 let engine: Awaited<ReturnType<typeof createFixtureEngine>>;
 const invocations: AgentRunRequest[] = [];
@@ -25,19 +24,6 @@ const invocations: AgentRunRequest[] = [];
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "vibestar-source-workspace-"));
   invocations.length = 0;
-
-  vi.mocked(fetchIssue).mockImplementation(async (reference) => ({
-    title: "Dedicated branch",
-    body: "Change only this task",
-    comments: [],
-    labels: [],
-    state: "open",
-    number: reference.number,
-    url: reference.url,
-    linkedPullRequests: [],
-    contextWarnings: [],
-    context_fetched_at: new Date().toISOString(),
-  }));
 
   engine = await createFixtureEngine(
     join(directory, "data"),
@@ -62,32 +48,75 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
+// Historical source assignments are exercised through GitWorkspace and the common
+// explicit runner, without reintroducing the retired fixed-stage RPC controls.
 const start = async (
   repositoryId: string,
   number: number,
   provider: "codex" | "antigravity" = "codex",
 ) => {
-  const task = await engine.createTask(
-    repositoryId,
-    `https://github.com/fixture/fixture/issues/${number}`,
-    "Task A",
-    "",
-  );
+  const repo = engine.db.repository(repositoryId);
 
-  await new Rpc(engine).call("task.configureStage", {
-    id: task.id,
-    stage: 1,
-    config: { provider, model: "next-model", effort: "low", timeout_secs: 30 },
+  const task = historicalTaskFixture(engine, repo, { issue_number: number });
+
+  const reusableOwners = engine.db
+    .tasks()
+    .filter(
+      (task) =>
+        task.repo_id === repo.id && task.workspace_mode === "source" && task.status === "preserved",
+    )
+    .map((task) => task.id);
+
+  await engine.git.prepare(repo, task, undefined, (task) => engine.db.saveTask(task), undefined, {
+    reusableOwners,
   });
 
-  await engine.startWorkflow({ id: task.id, request_id: randomUUID() });
-  await waitForTask(engine, task.id, (status) => ["awaiting_approval", "failed"].includes(status));
-  await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
+  const runner = new AgentRunner(
+    engine.root,
+    engine.db,
+    engine.git,
+    engine.publish,
+    (_stage, name) => ({
+      ...new FixtureProvider(),
+      name: name || "codex",
+      invocation: (request) => {
+        invocations.push(request);
+        return new FixtureProvider().invocation(request);
+      },
+    }),
+  );
 
-  expect(
-    engine.db.task(task.id).status,
-    engine.db.task(task.id).error || "Preparation result",
-  ).toBe("awaiting_approval");
+  const output = await runner.runConfigured(
+    task,
+    new AbortController().signal,
+    {
+      provider,
+      model: "next-model",
+      effort: "low",
+      timeout_secs: 30,
+      access: "read-only",
+      output: "plan",
+    },
+    {
+      prompt: "Inspect this assigned historical workspace.",
+      purpose: "Source assignment inspection",
+    },
+  );
+
+  engine.db.run(
+    "INSERT INTO task_artifacts VALUES(?,?,1,'plan',?,?)",
+    randomUUID(),
+    task.id,
+    JSON.stringify(output),
+    new Date().toISOString(),
+  );
+
+  engine.db.saveTask({
+    ...task,
+    stage: 1,
+    status: "awaiting_approval",
+    approval_gate: "antigravity_plan",
+  });
 
   return engine.db.task(task.id);
 };

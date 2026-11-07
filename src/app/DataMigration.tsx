@@ -1,5 +1,4 @@
 import { useState } from "react";
-
 import { rpc, errorMessage } from "../lib/api";
 import { Button } from "../components/ui/button";
 

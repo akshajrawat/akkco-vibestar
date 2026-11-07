@@ -143,10 +143,6 @@
   max-width: 580px;
 }
 
-.settings-content .stage-settings {
-  gap: 16px;
-}
-
 .settings-content .config-block {
   padding: 16px;
   background: var(--background-panel);
@@ -292,58 +288,6 @@
   background: var(--accent-blue);
 }
 
-.composer-settings {
-  position: relative;
-  display: flex;
-  min-width: 0;
-}
-
-.composer-settings > button {
-  max-width: 380px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.model-picker {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 10px);
-  width: 360px;
-  padding: 16px;
-  background: var(--background-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 24px var(--shadow);
-  z-index: 30;
-}
-
-.model-picker > strong {
-  display: block;
-  margin: 10px 0 8px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.effort-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.effort-options button {
-  background: var(--background-info);
-  border: 1px solid var(--border-strong);
-  padding: 4px 8px;
-}
-
-.effort-options button[aria-pressed="true"] {
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
-  background: var(--background-selected);
-}
-
 .message-actions {
   display: flex;
   gap: 3px;
@@ -466,9 +410,5 @@
 
   .settings-nav {
     flex-basis: 140px;
-  }
-
-  .stage-settings {
-    grid-template-columns: 1fr;
   }
 }

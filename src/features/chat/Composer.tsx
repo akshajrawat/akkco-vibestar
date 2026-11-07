@@ -31,7 +31,6 @@ export const Composer = ({
   onSend,
   stop,
   save,
-  workflow,
   model,
   context,
   busy,
@@ -48,7 +47,6 @@ export const Composer = ({
   onSend: () => void;
   stop?: () => void;
   save?: { label: string; run: () => void; disabled?: boolean };
-  workflow?: { run: () => void; disabled?: boolean };
   model: ReactNode;
   context: ContextOption[];
   busy: boolean;
@@ -287,16 +285,6 @@ export const Composer = ({
             onClick={save.run}
           >
             {save.label}
-          </Button>
-        )}
-        {workflow && content && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || tooLong || workflow.disabled}
-            onClick={workflow.run}
-          >
-            Send to workflow
           </Button>
         )}
         <span className="spacer" />

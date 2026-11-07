@@ -14,7 +14,7 @@ import { rpc, errorMessage } from "../../lib/api";
 import { useProviders } from "../../hooks/useWorkspace";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { containDialogFocus } from "../../lib/keyboard";
-import { AgentConfiguration } from "../providers/StageSettings";
+import { AgentConfiguration } from "../providers/AgentConfiguration";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/Select";
 import { ProviderIcon } from "../../components/ui/ProviderIcon";

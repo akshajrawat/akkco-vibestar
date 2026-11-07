@@ -657,13 +657,15 @@ export const AgentTimeline = ({
                 <span>
                   {run.purpose === "Code Review Ask AI"
                     ? "Code review"
-                    : run.stage === 1
-                      ? "Plan"
-                      : run.stage === 2
-                        ? "Plan refinement"
-                        : run.stage === 5
-                          ? "Implementation review"
-                          : "Implementation"}
+                    : run.stage === 0
+                      ? run.purpose || "Viber execution"
+                      : run.stage === 1
+                        ? "Plan"
+                        : run.stage === 2
+                          ? "Plan refinement"
+                          : run.stage === 5
+                            ? "Implementation review"
+                            : "Implementation"}
                 </span>
               </div>
             )}
@@ -720,13 +722,15 @@ export const AgentTimeline = ({
                     {run.status === "completed" && run.purpose === "Read-only conversation"
                       ? "Answer completed"
                       : run.status === "completed"
-                        ? run.stage === 1
-                          ? "Plan completed"
-                          : run.stage === 2
-                            ? "Plan refined"
-                            : run.stage === 5
-                              ? "Final review completed"
-                              : "Implementation completed"
+                        ? run.stage === 0
+                          ? `${run.purpose || "Viber execution"} completed`
+                          : run.stage === 1
+                            ? "Plan completed"
+                            : run.stage === 2
+                              ? "Plan refined"
+                              : run.stage === 5
+                                ? "Final review completed"
+                                : "Implementation completed"
                         : run.status}{" "}
                     · {duration(run.started_at, run.ended_at)}
                   </>

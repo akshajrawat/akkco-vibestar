@@ -5,13 +5,9 @@ import { join } from "node:path";
 import type { Engine } from "../../backend/execution/engine";
 import { Rpc } from "../../backend/rpc";
 import { parseIssue } from "../../backend/domain";
+import { builtInProfiles } from "../../backend/flows/templates";
 import * as processes from "../../backend/execution/runtime/process";
-import {
-  createFixtureEngine,
-  fixtureRepository,
-  FixtureProvider,
-  finishFixtureTask as waitForTask,
-} from "../helpers/fixtures";
+import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
 import BetterSqlite3 from "better-sqlite3";
 import { migrations } from "../../backend/storage/migrations";
 import { Database } from "../../backend/storage/database";
@@ -249,11 +245,18 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
     const issue_url = "https://github.com/oppia/oppia/issues/26831";
 
     await expect(
-      rpc.call("task.create", { issue_url, scope_mode: "whole_issue" }),
+      rpc.call("task.createIssue", {
+        request_id: crypto.randomUUID(),
+        profile_id: builtInProfiles.implementer,
+        issue_url,
+        scope_mode: "whole_issue",
+      }),
     ).rejects.toThrow();
 
     await expect(
-      rpc.call("task.create", {
+      rpc.call("task.createIssue", {
+        request_id: crypto.randomUUID(),
+        profile_id: builtInProfiles.implementer,
         repository_id: repository.id,
         issue_url: "https://github.com/facebook/react/issues/1",
         scope_mode: "whole_issue",
@@ -270,14 +273,18 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
 
     expect(preview).toMatchObject({ repository: { id: second.repository.id } });
 
-    const a = (await rpc.call("task.create", {
+    const a = (await rpc.call("task.createIssue", {
+      request_id: crypto.randomUUID(),
+      profile_id: builtInProfiles.implementer,
       repository_id: repository.id,
       issue_url,
       scope_mode: "partial",
       claimed_scope: "Task A",
     })) as ReturnType<Engine["db"]["task"]>;
 
-    const b = (await rpc.call("task.create", {
+    const b = (await rpc.call("task.createIssue", {
+      request_id: crypto.randomUUID(),
+      profile_id: builtInProfiles.implementer,
       repository_id: repository.id,
       issue_url,
       scope_mode: "partial",
@@ -286,19 +293,35 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
 
     expect([a.status, b.status]).toEqual(["not_started", "not_started"]);
 
-    await Promise.all(
-      [a, b].map((task) => engine.startWorkflow({ id: task.id, request_id: crypto.randomUUID() })),
+    const profile = engine.flows.profile(builtInProfiles.implementer);
+
+    engine.flows.saveProfile(
+      {
+        ...profile,
+        revision: profile.revision + 1,
+        execution: { ...profile.execution, model: "next-model", effort: "low", timeout_secs: 30 },
+      },
+      profile.revision,
     );
 
-    await Promise.all(
-      [a, b].map((task) =>
-        waitForTask(engine, task.id, (status) => ["ready_for_review", "failed"].includes(status)),
-      ),
+    const runs = [a, b].map((task) =>
+      engine.startFlow({
+        task_id: task.id,
+        flow_id: task.flow_id!,
+        revision: 1,
+        request_id: crypto.randomUUID(),
+        goal: task.goal!,
+      }),
     );
+
+    for (const run of runs)
+      await vi.waitFor(() => expect(engine.flowRuns.run(run.id).status).toBe("completed"), {
+        timeout: 10000,
+      });
 
     for (const task of [a, b]) {
       const current = engine.db.task(task.id);
-      expect(current.status, current.error || "").toBe("ready_for_review");
+      expect(current.status, current.error || "").toBe("not_started");
       expect(current.repo_id).toBe(repository.id);
       expect(current.worktree_path).toContain(`/worktrees/${repository.id}/`);
       expect(current.worktree_path).not.toBe(path);
@@ -312,10 +335,10 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
       ).toContain(current.branch_name);
 
       const runs = engine.db.detail(task.id).runs;
-      expect(runs.map((r) => r.stage)).toEqual([1, 2, 3, 5]);
+      expect(runs.map((r) => r.stage)).toEqual([0]);
 
       expect(workspaces.filter((r) => r.cwd === current.worktree_path).map((r) => r.stage)).toEqual(
-        [1, 2, 3, 5],
+        [0],
       );
 
       expect(current.branch_name).toMatch(/^akkco\//);
@@ -364,7 +387,9 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
     expect((await stat(engine.db.task(a.id).worktree_path)).isDirectory()).toBe(true);
 
     await expect(
-      rpc.call("task.create", {
+      rpc.call("task.createIssue", {
+        request_id: crypto.randomUUID(),
+        profile_id: builtInProfiles.implementer,
         repository_id: repository.id,
         issue_url,
         scope_mode: "whole_issue",
@@ -526,7 +551,9 @@ it("keeps an explicitly selected legacy managed repository authoritative when it
       .spyOn(engine.git, "clone")
       .mockRejectedValue(new Error("Selected clone could not be restored"));
 
-    const task = (await rpc.call("task.create", {
+    const task = (await rpc.call("task.createIssue", {
+      request_id: crypto.randomUUID(),
+      profile_id: builtInProfiles.implementer,
       repository_id: repo.id,
       issue_url: "https://github.com/fixture/fixture/issues/1",
       scope_mode: "whole_issue",
@@ -534,12 +561,16 @@ it("keeps an explicitly selected legacy managed repository authoritative when it
 
     expect(task.status).toBe("not_started");
 
-    await engine.startWorkflow({
-      id: task.id,
+    const run = engine.startFlow({
+      task_id: task.id,
+      flow_id: task.flow_id!,
+      revision: 1,
       request_id: crypto.randomUUID(),
+      goal: task.goal!,
     });
 
-    await waitForTask(engine, task.id, (status) => status === "failed");
+    await vi.waitFor(() => expect(engine.flowRuns.run(run.id).status).toBe("failed"));
+    expect(engine.flowRuns.run(run.id).error).toContain("Selected clone could not be restored");
 
     expect(engine.db.repository(repo.id)).toMatchObject({
       path: repo.path,

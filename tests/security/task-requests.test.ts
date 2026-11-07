@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { builtInProfiles } from "../../backend/flows/templates";
 import { fetchIssue } from "../../backend/workspace/issue";
 import { StorageService } from "../../backend/storage/service";
 import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
@@ -58,36 +59,36 @@ it("shares simultaneous requests, preserves their task through restart and rejec
 
   const calls = vi.spyOn(provider, "invocation");
 
-  const first = engine.createTask(
-    repo.id,
-    context.url,
-    " Task A ",
-    "notes",
-    "partial",
-    undefined,
-    request,
-  );
+  const first = engine.createIssueTask({
+    repository_id: repo.id,
+    issue_url: context.url,
+    claimed_scope: " Task A ",
+    notes: "notes",
+    scope_mode: "partial",
+    request_id: request,
+    profile_id: builtInProfiles.implementer,
+  });
 
-  const duplicate = engine.createTask(
-    repo.id,
-    context.url,
-    "Task A",
-    "notes",
-    "partial",
-    undefined,
-    request,
-  );
+  const duplicate = engine.createIssueTask({
+    repository_id: repo.id,
+    issue_url: context.url,
+    claimed_scope: "Task A",
+    notes: "notes",
+    scope_mode: "partial",
+    request_id: request,
+    profile_id: builtInProfiles.implementer,
+  });
 
   await expect(
-    engine.createTask(
-      repo.id,
-      context.url,
-      "Task A",
-      "changed notes",
-      "partial",
-      undefined,
-      request,
-    ),
+    engine.createIssueTask({
+      repository_id: repo.id,
+      issue_url: context.url,
+      claimed_scope: "Task A",
+      notes: "changed notes",
+      scope_mode: "partial",
+      request_id: request,
+      profile_id: builtInProfiles.implementer,
+    }),
   ).rejects.toThrow("different payload");
 
   release();
@@ -108,15 +109,15 @@ it("shares simultaneous requests, preserves their task through restart and rejec
 
   expect(
     (
-      await engine.createTask(
-        repo.id,
-        context.url,
-        "Task A",
-        "notes",
-        "partial",
-        undefined,
-        request,
-      )
+      await engine.createIssueTask({
+        repository_id: repo.id,
+        issue_url: context.url,
+        claimed_scope: "Task A",
+        notes: "notes",
+        scope_mode: "partial",
+        request_id: request,
+        profile_id: builtInProfiles.implementer,
+      })
     ).id,
   ).toBe(a.id);
 
@@ -124,15 +125,15 @@ it("shares simultaneous requests, preserves their task through restart and rejec
   expect(calls).toHaveBeenCalledTimes(0);
 
   await expect(
-    engine.createTask(
-      repo.id,
-      context.url,
-      "different scope",
-      "notes",
-      "partial",
-      undefined,
-      request,
-    ),
+    engine.createIssueTask({
+      repository_id: repo.id,
+      issue_url: context.url,
+      claimed_scope: "different scope",
+      notes: "notes",
+      scope_mode: "partial",
+      request_id: request,
+      profile_id: builtInProfiles.implementer,
+    }),
   ).rejects.toThrow("different payload");
 
   expect(engine.db.tasks()).toHaveLength(1);
@@ -142,15 +143,15 @@ it("retains a request tombstone after history removal rather than creating anoth
   const { repo } = await fixtureRepository(engine, dir);
   const request = randomUUID();
 
-  const task = await engine.createTask(
-    repo.id,
-    context.url,
-    "Task A",
-    "",
-    "partial",
-    undefined,
-    request,
-  );
+  const task = await engine.createIssueTask({
+    repository_id: repo.id,
+    issue_url: context.url,
+    claimed_scope: "Task A",
+    notes: "",
+    scope_mode: "partial",
+    request_id: request,
+    profile_id: builtInProfiles.implementer,
+  });
 
   await vi.waitFor(() => expect(engine.isActive(task.id)).toBe(false));
 
@@ -168,7 +169,15 @@ it("retains a request tombstone after history removal rather than creating anoth
   ]);
 
   await expect(
-    engine.createTask(repo.id, context.url, "Task A", "", "partial", undefined, request),
+    engine.createIssueTask({
+      repository_id: repo.id,
+      issue_url: context.url,
+      claimed_scope: "Task A",
+      notes: "",
+      scope_mode: "partial",
+      request_id: request,
+      profile_id: builtInProfiles.implementer,
+    }),
   ).rejects.toThrow("history was removed");
 
   expect(fetchIssue).toHaveBeenCalledTimes(1);
@@ -186,7 +195,15 @@ it("rolls back task and request together when reservation fails, then permits an
   });
 
   await expect(
-    engine.createTask(repo.id, context.url, "Task A", "", "partial", undefined, request),
+    engine.createIssueTask({
+      repository_id: repo.id,
+      issue_url: context.url,
+      claimed_scope: "Task A",
+      notes: "",
+      scope_mode: "partial",
+      request_id: request,
+      profile_id: builtInProfiles.implementer,
+    }),
   ).rejects.toThrow("reservation failure");
 
   expect(engine.db.tasks()).toEqual([]);
@@ -194,15 +211,15 @@ it("rolls back task and request together when reservation fails, then permits an
   expect(engine.db.all("SELECT * FROM task_requests")).toEqual([]);
   spy.mockRestore();
 
-  const task = await engine.createTask(
-    repo.id,
-    context.url,
-    "Task A",
-    "",
-    "partial",
-    undefined,
-    request,
-  );
+  const task = await engine.createIssueTask({
+    repository_id: repo.id,
+    issue_url: context.url,
+    claimed_scope: "Task A",
+    notes: "",
+    scope_mode: "partial",
+    request_id: request,
+    profile_id: builtInProfiles.implementer,
+  });
 
   expect(engine.db.tasks()).toHaveLength(1);
   expect(engine.db.all("SELECT task_id FROM task_requests")).toEqual([{ task_id: task.id }]);
@@ -221,15 +238,15 @@ it("settles an interrupted context request before closing persistence and never 
       }),
   );
 
-  const pending = engine.createTask(
-    repo.id,
-    context.url,
-    "Task A",
-    "",
-    "partial",
-    undefined,
-    request,
-  );
+  const pending = engine.createIssueTask({
+    repository_id: repo.id,
+    issue_url: context.url,
+    claimed_scope: "Task A",
+    notes: "",
+    scope_mode: "partial",
+    request_id: request,
+    profile_id: builtInProfiles.implementer,
+  });
 
   const rejected = expect(pending).rejects.toThrow("context cancelled");
   await vi.waitFor(() => expect(fetchIssue).toHaveBeenCalledTimes(1));

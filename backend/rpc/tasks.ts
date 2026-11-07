@@ -1,48 +1,22 @@
 import { z } from "zod";
 
-import {
-  AdeError,
-  FollowupConfigSchema,
-  SettingsSchema,
-  PipelineStageConfigSchema,
-  now,
-  parseIssue,
-} from "../domain";
+import { AdeError, now, parseIssue } from "../domain";
 import {
   BrowserEnvironmentReportSchema,
   VerificationEnvironmentSchema,
 } from "../execution/verification/browser/contracts";
 import { browserEnvironmentProbe } from "../execution/verification/browser/probe";
 import { taskVerification } from "../execution/verification/task-verification";
-import { StartWorkflowSchema, TaskChatSchema } from "../execution/workflow";
 import { fetchIssue } from "../workspace/issue";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
 
 export const tasksMethods = [
-  "task.message.retry",
-  "task.message.send",
-  "task.configure",
-  "task.configureStage",
   "task.browser.configure",
   "task.browser.inspect",
   "task.detail",
   "task.preview",
-  "task.create",
   "task.cancel",
-  "task.startWorkflow",
-  "task.chat",
-  "task.retry",
-  "task.verification.recheck",
-  "task.verification.policy",
-  "task.verification.run",
-  "task.verification.fix",
-  "task.verification.reviewPreview",
-  "task.verification.continueReview",
-  "task.approve",
-  "task.acceptDraft",
-  "task.followup",
-  "task.complete",
   "task.diff",
   "task.file",
   "task.discard",
@@ -56,120 +30,8 @@ export const callTasks = async (
   input: unknown,
 ) => {
   const e = services.engine;
+
   switch (method) {
-    case "task.message.retry": {
-      const p = idInput
-        .extend({
-          message_id: z.string().uuid(),
-          content: z.string().min(1).max(32000).optional(),
-          request_id: z.string().uuid().optional(),
-        })
-        .parse(input);
-
-      const message = e.db.all<{
-        content: string;
-        configuration: string | null;
-        status: string;
-        purpose: string;
-      }>(
-        "SELECT content,configuration,status,purpose FROM task_messages WHERE id=? AND task_id=?",
-        p.message_id,
-        p.id,
-      )[0];
-
-      if (!message) throw new AdeError("not_found", "Message not found");
-      if (message.purpose === "chat")
-        throw new AdeError("invalid_input", "Send a new chat message to retry a conversation.");
-      if (message.status !== "delivered" && (!p.content || p.content === message.content))
-        return e.sendSavedMessage(p.id, p.message_id);
-      return e.followUp(
-        p.id,
-        p.content || message.content,
-        message.configuration
-          ? e.db.records.decode(
-              {
-                table: "task_messages",
-                id: p.message_id,
-                column: "configuration",
-                source: message.configuration,
-              },
-              FollowupConfigSchema.parse,
-            )
-          : undefined,
-        false,
-        p.request_id,
-      );
-    }
-
-    case "task.message.send": {
-      const p = idInput
-        .extend({
-          message_id: z.string().uuid(),
-          configuration: FollowupConfigSchema.optional(),
-        })
-        .strict()
-        .parse(input);
-
-      return e.sendSavedMessage(p.id, p.message_id, p.configuration);
-    }
-
-    case "task.configure": {
-      const p = idInput.extend({ settings: SettingsSchema }).parse(input);
-      if (e.isActive(p.id))
-        throw new AdeError(
-          "busy",
-          "Stop this task's active run or terminal before changing its models",
-        );
-      const task = e.db.task(p.id);
-
-      e.db.saveTask({
-        ...task,
-        execution_settings: p.settings,
-        updated_at: now(),
-      });
-
-      e.changed(p.id);
-      return p.settings;
-    }
-
-    case "task.configureStage": {
-      const p = idInput
-        .extend({
-          stage: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(5)]),
-          config: PipelineStageConfigSchema.strict(),
-        })
-        .strict()
-        .parse(input);
-
-      const task = e.db.task(p.id);
-      if (e.cleanupBlockers(p.id).length || task.status === "queued")
-        throw new AdeError(
-          "busy",
-          "Wait for execution and terminals to finish before editing a future stage.",
-        );
-      if (
-        task.stage > p.stage ||
-        e.db.all(
-          "SELECT id FROM agent_runs WHERE task_id=? AND stage=? AND purpose NOT IN ('Read-only conversation','Workspace conversation') LIMIT 1",
-          p.id,
-          p.stage,
-        ).length
-      )
-        throw new AdeError(
-          "invalid_state",
-          "Only stages that have never started can change their saved model configuration.",
-        );
-
-      e.db.saveTask({
-        ...task,
-        stage_settings: { ...task.stage_settings, [p.stage]: p.config },
-        updated_at: now(),
-      });
-
-      e.changed(p.id);
-      return p.config;
-    }
-
     case "task.browser.configure": {
       const p = idInput
         .extend({
@@ -245,15 +107,15 @@ export const callTasks = async (
     }
 
     case "task.detail": {
-      const id = idInput.parse(input).id;
+      const id = z
+        .object({ id: z.string().min(1).max(1000) })
+        .strict()
+        .parse(input).id;
+
       const detail = e.db.detail(id);
       return {
         ...detail,
         validation: taskVerification(e.db, id),
-        task: {
-          ...detail.task,
-          execution_settings: detail.task.execution_settings ?? e.db.settings(),
-        },
         active: e.isActive(id),
         executing: e.isExecuting(id),
       };
@@ -278,165 +140,10 @@ export const callTasks = async (
       };
     }
 
-    case "task.create": {
-      const p = z
-        .object({
-          request_id: z.string().uuid().optional(),
-          repository_id: z.string().uuid(),
-          issue_url: z.string(),
-          scope_mode: z.enum(["whole_issue", "partial"]).default("partial"),
-          claimed_scope: z.string().max(1000).default(""),
-          notes: z.string().max(32000).default(""),
-          settings: SettingsSchema.optional(),
-        })
-        .strict()
-        .parse(input);
-
-      if (p.scope_mode === "partial" && !p.claimed_scope.trim())
-        throw new AdeError("invalid_input", "Claimed scope is required for a partial task");
-      return e.createTask(
-        p.repository_id,
-        p.issue_url,
-        p.claimed_scope,
-        p.notes,
-        p.scope_mode,
-        p.settings,
-        p.request_id,
-      );
-    }
-
     case "task.cancel": {
       const id = idInput.parse(input).id;
       await services.terminals.close(id);
-      e.cancel(id);
-      return null;
-    }
-
-    case "task.startWorkflow":
-      return e.startWorkflow(StartWorkflowSchema.parse(input));
-
-    case "task.chat":
-      return e.chat(TaskChatSchema.parse(input));
-
-    case "task.retry": {
-      const p = idInput
-        .extend({
-          stage: z.number().int().min(0).max(5).optional(),
-          restart: z.boolean().optional(),
-        })
-        .parse(input);
-
-      return e.retry(p.id, p.stage, p.restart);
-    }
-
-    case "task.verification.recheck":
-      return e.recheckEvidence(idInput.strict().parse(input).id);
-
-    case "task.verification.policy": {
-      const p = idInput
-        .extend({
-          policy: z.enum(["repository", "extended_browser"]),
-          confirmed: z.literal(true),
-        })
-        .strict()
-        .parse(input);
-
-      return e.setVerificationPolicy(p.id, p.policy);
-    }
-
-    case "task.verification.run": {
-      const p = idInput
-        .extend({ command: z.string().min(1).max(16000) })
-        .strict()
-        .parse(input);
-
-      return e.runMissingCheck(p.id, p.command);
-    }
-
-    case "task.verification.fix": {
-      const p = idInput.extend({ request_id: z.string().uuid() }).strict().parse(input);
-      return e.fixVerification(p.id, p.request_id);
-    }
-
-    case "task.verification.reviewPreview":
-      return e.reviewGapsPreview(idInput.strict().parse(input).id);
-
-    case "task.verification.continueReview": {
-      const p = idInput
-        .extend({
-          artifact_id: z.string().uuid(),
-          acknowledge_gaps: z.literal(true),
-          fingerprint: z.string().min(1),
-          evidence_hash: z.string().min(1),
-          instructions: z
-            .object({
-              disposition: z.enum(["keep_saved", "include_next_stage"]),
-              message_ids: z.array(z.string().uuid()).max(1000),
-            })
-            .strict()
-            .optional(),
-        })
-        .strict()
-        .parse(input);
-
-      return e.approveStage(p.id, p.instructions, p.artifact_id, {
-        fingerprint: p.fingerprint,
-        evidence_hash: p.evidence_hash,
-      });
-    }
-
-    case "task.approve": {
-      const p = idInput
-        .extend({
-          artifact_id: z.string().uuid().optional(),
-          instructions: z
-            .object({
-              disposition: z.enum(["keep_saved", "include_next_stage"]),
-              message_ids: z.array(z.string().uuid()).max(1000),
-            })
-            .strict()
-            .optional(),
-        })
-        .strict()
-        .parse(input);
-
-      return e.approveStage(p.id, p.instructions, p.artifact_id);
-    }
-
-    case "task.acceptDraft": {
-      const p = idInput.extend({ run_id: z.string().uuid() }).strict().parse(input);
-      return e.acceptDraft(p.id, p.run_id);
-    }
-
-    case "task.followup": {
-      const p = idInput
-        .extend({
-          content: z.string().max(32000),
-          save_only: z.boolean().default(false),
-          configuration: FollowupConfigSchema.optional(),
-          request_id: z.string().uuid().optional(),
-        })
-        .parse(input);
-
-      return e.followUp(p.id, p.content, p.configuration, p.save_only, p.request_id);
-    }
-
-    case "task.complete": {
-      const t = e.db.task(idInput.parse(input).id);
-      if (e.isActive(t.id) || t.status !== "ready_for_review")
-        throw new AdeError("invalid_state", "Only Ready for Review tasks can be completed");
-      if (
-        !t.final_review_hash?.startsWith("issue-v2:") ||
-        t.final_review_hash !== (await e.git.fingerprint(t))
-      )
-        throw new AdeError(
-          "stale_review",
-          "The worktree changed or its final review uses an older integrity method. Retry the final review before completing.",
-        );
-      const verification = taskVerification(e.db, t.id);
-      if (!verification.canReview) throw new AdeError("verification_blocked", verification.summary);
-      e.db.saveTask({ ...t, status: "completed", updated_at: now() });
-      e.changed(t.id);
+      await e.cancel(id);
       return null;
     }
 

@@ -21,16 +21,19 @@ export const Overview = ({
   const [archived, setArchived] = useState(false);
   const tasks = snapshot.tasks.filter((t) => archived || !t.archived);
 
+  const running = (task: Snapshot["tasks"][number]) => {
+    const status = snapshot.flow_states?.[task.id]?.status || task.status;
+    return activeStatuses.includes(status) || ["queued", "running", "pausing"].includes(status);
+  };
+
   const groups = [
     {
       name: "Running agents",
-      tasks: tasks.filter((t) => activeStatuses.includes(t.status) || t.status === "queued"),
+      tasks: tasks.filter(running),
     },
     {
       name: "Recent tasks",
-      tasks: tasks
-        .filter((t) => !activeStatuses.includes(t.status) && t.status !== "queued")
-        .slice(0, 30),
+      tasks: tasks.filter((t) => !running(t)).slice(0, 30),
     },
   ];
 
@@ -38,7 +41,7 @@ export const Overview = ({
     <div className="page task-library">
       <PageHeader
         title="Tasks"
-        description="Plan, build and review contributions in isolated worktrees."
+        description="Work directly with a Viber or build a flow for your crew."
         actions={
           <>
             <Button variant="ghost" onClick={() => setArchived(!archived)}>
@@ -60,8 +63,8 @@ export const Overview = ({
       {!snapshot.tasks.length && (
         <EmptyState
           icon={<ListTodo size={26} />}
-          title="Start from a GitHub issue"
-          description="Bring an issue and your instructions. Vibestar prepares an isolated worktree and guides each plan, implementation and review through your approval."
+          title="Give your ideas a Viber"
+          description="Start a solo task, attach a repository if you need one, or build a flow with your crew."
           action={
             <Button variant="default" onClick={newTask}>
               New task
@@ -83,16 +86,30 @@ export const Overview = ({
             <div className="task-list">
               {group.tasks.map((task) => {
                 const repo = snapshot.repositories.find((r) => r.id === task.repo_id);
+                const execution = snapshot.flow_states?.[task.id];
                 return (
                   <button className="task-card" key={task.id} onClick={() => open(task.id)}>
                     <i className={`task-dot ${task.status}`} />
                     <div>
-                      <strong>{task.claimed_scope || task.issue?.title || "Entire issue"}</strong>
+                      <strong>
+                        {task.goal || task.claimed_scope || task.issue?.title || "Entire issue"}
+                      </strong>
                       <span className="subtle">
-                        {repo?.owner}/{repo?.name} #{task.issue_number}
+                        {repo ? `${repo.owner}/${repo.name}` : "Managed workspace"}
+                        {task.issue_number ? ` #${task.issue_number}` : ""}
                       </span>
                     </div>
-                    <Status status={task.status} />
+                    {execution ? (
+                      <div>
+                        <Status status={execution.status} />
+                        <small>
+                          Task {task.status.replaceAll("_", " ")} · recorded checks{" "}
+                          {execution.verification}
+                        </small>
+                      </div>
+                    ) : (
+                      <Status status={task.status} />
+                    )}
                     <ArrowUpRight size={13} />
                   </button>
                 );

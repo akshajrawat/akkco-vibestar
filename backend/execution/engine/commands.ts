@@ -6,6 +6,7 @@ import { AdeError, now, type WorkspaceAssignment } from "../../domain";
 import type { VerificationEnvironment } from "../verification/browser/contracts";
 import { execute } from "../runtime/process";
 import { sandboxInvocation } from "../runtime/sandbox";
+import { FlowRunStore } from "../../flows/run-store";
 
 /** Runs validated argv in the assigned sandbox and persists observed command evidence. */
 export class CommandExecution {
@@ -27,6 +28,7 @@ export class CommandExecution {
       environment?: VerificationEnvironment;
       readOnly?: boolean;
       timeoutMs?: number;
+      nodeAttemptId?: string;
     },
   ) => {
     if (!argv.length || argv.length > 100 || argv.some((s) => typeof s !== "string"))
@@ -40,6 +42,23 @@ export class CommandExecution {
         "Wait for task execution to finish before running a manual command",
       );
     const t = repair || this.host.db.task(id);
+    let input: string | undefined;
+    if (verification?.nodeAttemptId) {
+      if (repair)
+        throw new AdeError("isolation", "Task flow nodes cannot attach repair execution.");
+
+      new FlowRunStore(this.host.db).assertCommandExecution(
+        verification.nodeAttemptId,
+        id,
+        argv,
+        verification.readOnly || false,
+        verification.timeoutMs || 1800000,
+      );
+
+      const inputs = new FlowRunStore(this.host.db).attempt(verification.nodeAttemptId).inputs;
+      if (inputs.length) input = `${JSON.stringify({ inputs })}\n`;
+    }
+
     const cwd = await this.host.git.assertTask(t);
     const run = randomUUID();
 
@@ -54,6 +73,19 @@ export class CommandExecution {
     const owner = repair ? { repair_id: id } : { task_id: id };
     this.host.publish({ event: "changed", ...owner });
     try {
+      if (verification?.nodeAttemptId) {
+        const runs = new FlowRunStore(this.host.db);
+        runs.attachExecution(verification.nodeAttemptId, run, "command");
+        if (
+          runs.attempt(verification.nodeAttemptId).workspace_fingerprint !==
+          (await this.host.git.fingerprint(t))
+        )
+          throw new AdeError(
+            "stale_context",
+            "The workspace changed after command inputs were captured. Retry explicitly.",
+          );
+      }
+
       const invocation = await sandboxInvocation(
         this.host.root,
         this.host.db,
@@ -61,6 +93,7 @@ export class CommandExecution {
         {
           program: argv[0],
           args: argv.slice(1),
+          input,
           verificationEnvironment: verification?.environment,
         },
         verification?.readOnly || false,
@@ -125,6 +158,8 @@ export class CommandExecution {
       throw new AdeError("busy", "Task data cleanup is running");
     if (this.host.isActive(id))
       throw new AdeError("invalid_state", "Task already has an active process");
+    if (this.state.active.size >= this.host.db.settings().concurrency)
+      throw new AdeError("busy", "Wait for execution capacity before running another command.");
     const controller = new AbortController();
 
     const output = Promise.resolve().then(() =>

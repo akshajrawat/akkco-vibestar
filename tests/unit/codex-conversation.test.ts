@@ -9,6 +9,7 @@ const request: AgentRunRequest = {
   runId: "run",
   cwd: process.cwd(),
   stage: 1,
+  access: "read-only",
   config: { model: "requested-model", effort: "low", timeout_secs: 10 },
   prompt: "hello",
   schemaPath: "/schema",
@@ -263,7 +264,12 @@ it("interrupts an owned app-server process during handshake without dispatching 
 
 it("limits writable chat turns to the task workspace in both thread and turn policy", () => {
   const messages: Record<string, unknown>[] = [];
-  const protocol = codexConversation({ ...request, stage: 3 }).inputProtocol;
+
+  const protocol = codexConversation({
+    ...request,
+    stage: 1,
+    access: "workspace-write",
+  }).inputProtocol;
 
   protocol.start(
     (message) => messages.push(message as Record<string, unknown>),

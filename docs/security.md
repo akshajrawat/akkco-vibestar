@@ -23,7 +23,9 @@ chunks before events, snapshots and logs; redaction remains best effort.
 
 Bubblewrap starts from an empty root and an explicit mount manifest. Only the assigned
 worktree, permitted system/toolchain/runtime paths, managed artifacts and selected
-provider state are exposed. Planning/review source and Git mounts are read-only.
+provider state are exposed. Each invocation captures explicit read-only or
+workspace-write access; names, provider identity and numeric stages grant no access.
+Planning/review templates and repair review keep source and Git mounts read-only.
 Codex implementation commands can use the network for test servers inside this
 filesystem boundary. Dependency installation and auto-download are prohibited by agent
 instructions; npm defaults to offline/no-confirm operation and pip uses no index.
@@ -84,11 +86,17 @@ remain optional user quality checks and their installer preserves private hook p
 
 Observed command exits, model-reported tests and environmental prerequisites remain
 separate. Missing/skipped/unknown evidence is not a pass. Required historical checks
-and unresolved application failures survive repairs. Environmental-gap review needs
-fresh content/evidence-bound acknowledgment.
+and unresolved application failures survive repairs. Approvals bind captured node
+configuration, selected inputs and workspace evidence; acceptance cannot turn missing
+or failed checks into a pass.
 
-Task creation is idle. Workflow startup, approval, saved-instruction delivery, detailed PR
-analysis, Issue Watch scans and repair continuation require explicit requests. The lightweight
+Task/profile/graph creation and layout edits are idle. Flow startup, node retry,
+approval, Viber conversation turns, detailed PR analysis, Issue Watch scans and repair
+continuation require explicit requests. Messages and drafts are task/node/profile
+scoped; selected context is bounded before inference. Chat writes invalidate shared
+graph evidence. Retired task mutations are not registered and cannot be forwarded
+to old helpers. Historical conversion preserves unknown authority and raw source
+bytes without using current defaults as missing execution settings. The lightweight
 PR watch runs once per app launch and on explicit recheck, using bounded read-only conversation
 context and the existing sandbox/slots. Core startup requests are deduplicated; interrupted,
 cancelled or failed operations are not replayed. Filtering or refreshing metadata does not

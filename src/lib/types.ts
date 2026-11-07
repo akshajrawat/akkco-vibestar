@@ -2,7 +2,7 @@ import type { Task as CoreTask } from "../../backend/domain";
 import type { DiffFile as CoreDiffFile } from "../../backend/workspace/git";
 import type { Repository, Settings } from "../../backend/domain";
 
-export type { Repository, Settings, StageConfig, PipelineStageConfig } from "../../backend/domain";
+export type { Repository, Settings, StageConfig } from "../../backend/domain";
 export type Detection = import("../../backend/execution/providers/contracts").ProviderDetection;
 
 /** Renderer projection retains sparse historical records and uses canonical task field contracts. */
@@ -29,6 +29,10 @@ export interface Task
       Pick<
         CoreTask,
         | "workflow_start"
+        | "kind"
+        | "goal"
+        | "flow_id"
+        | "workspace_kind"
         | "verification_environment"
         | "browser_environment_report"
         | "runtime"
@@ -47,9 +51,13 @@ export interface Task
 }
 
 export interface Snapshot {
+  flow_states?: ReturnType<typeof import("../../backend/rpc/flows").taskFlowSummaries>;
   pr_batches?: import("../../backend/review/pr/batches").PRBatch[];
   pr_watch?: import("../../backend/review/pr/watch-contracts").PRWatchState | null;
   capabilities?: {
+    agent_flows?: number;
+    flow_continuations?: number;
+    viber_conversations?: number;
     pr_quick_watch?: boolean;
     manual_issue_watch: boolean;
     issue_watch_contract: number | null;
@@ -120,6 +128,8 @@ export interface AgentEvent {
 }
 
 export interface Message {
+  flow_node_id?: string | null;
+  viber_profile_id?: string | null;
   purpose?: "instruction" | "chat";
   status?: string;
   run_id?: string | null;
@@ -186,17 +196,14 @@ export interface FileDiff {
 export type { CoreEvent } from "../../backend/domain";
 
 export type Page =
-  "Scheduled" | "Tasks" | "Issue Watch" | "Repositories" | "Providers" | "Usage" | "Settings";
-
-export const stages = [
-  "Prepare workspace",
-  "Plan",
-  "Plan refinement",
-  "Implementation",
-  "Validation",
-  "Review",
-  "Ready for review",
-];
+  | "Scheduled"
+  | "Tasks"
+  | "Vibers"
+  | "Issue Watch"
+  | "Repositories"
+  | "Providers"
+  | "Usage"
+  | "Settings";
 
 export const activeStatuses = [
   "preparing",

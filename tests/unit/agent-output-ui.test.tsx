@@ -1,22 +1,17 @@
 // @vitest-environment jsdom
 import { selectValue } from "../helpers/select";
 import { it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, within, act } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 
 import { LogView } from "../../src/features/chat/LogView";
 import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
 import { AgentResponse } from "../../src/features/chat/AgentResponse";
 import { CurrentRun } from "../../src/features/chat/CurrentRun";
-import { TaskWorkspace } from "../../src/features/tasks/TaskWorkspace";
 import { updateTaskView } from "../../src/lib/taskView";
 import type { AgentEvent, Detail, Run } from "../../src/lib/types";
 
 vi.mock("../../src/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [], refresh: vi.fn() }),
-}));
-
-vi.mock("../../src/components/shared/TaskTerminal", () => ({
-  TaskTerminal: () => <p>Fixture terminal</p>,
 }));
 
 afterEach(() => {
@@ -140,6 +135,30 @@ const bridge = (
   return rpc;
 };
 
+it("labels stage-zero activity by its captured Viber purpose without inventing an implementation role", () => {
+  render(
+    <AgentTimeline
+      runs={[
+        {
+          ...run,
+          stage: 0,
+          purpose: "Scout",
+          status: "completed",
+          output: "A scoped answer",
+          ended_at: "2026-10-14T10:00:01Z",
+          exit_code: 0,
+        },
+      ]}
+      events={[]}
+    />,
+  );
+
+  expect(screen.getByText("Scout", { exact: true })).toBeTruthy();
+  expect(screen.getByText(/Scout completed/)).toBeTruthy();
+  expect(screen.queryByText("Implementation", { exact: true })).toBeNull();
+  expect(screen.queryByText(/Implementation completed/)).toBeNull();
+});
+
 it("renders streamed messages, tool arguments and separate live streams, and never succeeds unfinished or explicitly interrupted tools", () => {
   bridge();
 
@@ -220,51 +239,6 @@ it("renders streamed messages, tool arguments and separate live streams, and nev
   expect(ui.container.querySelector(".tool-event[data-state=failed]")).toBeTruthy();
   expect(screen.getByText("Exit 1")).toBeTruthy();
   expect(screen.getByText("3s")).toBeTruthy();
-});
-
-it("shows actual execution independently from follow-up selection and keeps the status strip across task tabs", () => {
-  bridge();
-  const data = detail("status-strip");
-
-  updateTaskView(data.task.id, {
-    followupModel: "composer-model",
-    followupProvider: "antigravity",
-    followupEffort: "low",
-  });
-
-  const ui = render(<TaskWorkspace detail={data} revision={0} onError={vi.fn()} back={vi.fn()} />);
-  const current = screen.getByLabelText("Current agent run");
-  expect(current.textContent).toContain("actual-model");
-  expect(current.textContent).toContain("xhigh");
-  expect(current.textContent).not.toContain("composer-model");
-  expect(screen.queryByRole("tab", { name: "Chat" })).toBeNull();
-  fireEvent.click(screen.getByLabelText("Toggle secondary workspace"));
-  const pipeline = screen.getByRole("tab", { name: "Workflow" });
-  pipeline.focus();
-  fireEvent.keyDown(pipeline, { key: "ArrowRight" });
-  expect(document.activeElement).toBe(screen.getByRole("tab", { name: "Plans" }));
-  expect(screen.getByRole("tab", { name: "Plans" }).getAttribute("aria-selected")).toBe("true");
-  expect(screen.getByLabelText("Current agent run")).toBe(current);
-  expect(ui.container.querySelector("aside")?.contains(current)).toBe(false);
-  fireEvent.click(screen.getByLabelText("Collapse secondary workspace"));
-  expect(screen.getByLabelText("Current agent run")).toBe(current);
-
-  ui.rerender(
-    <TaskWorkspace
-      detail={{
-        ...data,
-        task: { ...data.task, status: "awaiting_approval" },
-        runs: [{ ...run, status: "completed" }],
-      }}
-      revision={1}
-      onError={vi.fn()}
-      back={vi.fn()}
-    />,
-  );
-
-  expect(screen.queryByLabelText("Current agent run")).toBeNull();
-  expect(screen.getByText("Worked")).toBeTruthy();
-  expect(screen.queryByText(/Implementation completed/)).toBeNull();
 });
 
 it("shows provider-emitted failures and status text while the CLI is still running without synthesizing progress", () => {
@@ -508,73 +482,6 @@ it("continues capturing raw output while scrolling is paused and drains event bu
   expect(screen.getByText("burst final page")).toBeTruthy();
   expect(burstRpc).toHaveBeenCalledWith("task.events", expect.objectContaining({ after: 2 }));
   ui.unmount();
-});
-
-it("restores persisted layouts and contains prompt dialog focus while preserving composer IME and newline behavior", async () => {
-  const id = "persisted-layout";
-
-  localStorage.setItem(
-    `vibestar.layout.${id}`,
-    JSON.stringify({
-      contextPane: "pipeline",
-      terminalDock: true,
-      dockTab: "Agent Output",
-      outputView: "raw",
-      outputStream: "stderr",
-      outputFollow: false,
-    }),
-  );
-
-  const rpc = bridge(
-    vi.fn(async (method, params) =>
-      method === "task.chat"
-        ? {
-            message: {
-              id: "saved",
-              content: params.content,
-              status: "queued",
-              created_at: run.started_at,
-            },
-          }
-        : method === "task.logs"
-          ? {
-              text: "saved stderr",
-              start: 0,
-              end: 12,
-              size: 12,
-              truncated: false,
-            }
-          : null,
-    ),
-  );
-
-  render(<TaskWorkspace detail={detail(id)} revision={0} onError={vi.fn()} back={vi.fn()} />);
-  expect(screen.getByRole("button", { name: "Follow output" })).toBeTruthy();
-  expect(screen.getByLabelText("Raw output stream").getAttribute("data-value")).toBe("stderr");
-  fireEvent.click(screen.getByRole("tab", { name: "Run details" }));
-  const opener = screen.getByRole("button", { name: "View sent prompts" });
-  opener.focus();
-  fireEvent.click(opener);
-  const dialog = screen.getByRole("dialog", { name: "Agent prompts" });
-  expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Close" }));
-  fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true });
-  expect(document.activeElement?.tagName).toBe("SUMMARY");
-  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  expect(screen.queryByRole("dialog", { name: "Agent prompts" })).toBeNull();
-  expect(document.activeElement).toBe(opener);
-  const input = screen.getByLabelText("Task conversation");
-  fireEvent.change(input, { target: { value: "saved instruction" } });
-  fireEvent.keyDown(input, { key: "Enter", isComposing: true });
-  fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
-  expect(rpc.mock.calls.filter(([method]) => method === "task.chat")).toHaveLength(0);
-  fireEvent.keyDown(input, { key: "Enter" });
-
-  await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith(
-      "task.chat",
-      expect.objectContaining({ content: "saved instruction" }),
-    ),
-  );
 });
 
 it("renders nested results and unknown fields as readable content and treats completed activity as completed in the status strip", () => {
