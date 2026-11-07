@@ -193,7 +193,7 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       await page.reload();
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      await page.getByRole("button", { name: "Issue Watch", exact: true }).click();
+      await page.getByRole("button", { name: "Issues", exact: true }).click();
       await page.getByRole("button", { name: "New watch", exact: true }).click();
       const editor = page.getByRole("dialog", { name: "New Issue Watch" });
 
@@ -376,7 +376,10 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       await page.locator(".usage-run summary strong").first().waitFor();
       expect(fixture.api).toHaveBeenCalledTimes(readsBeforeBrowse);
       expect(provider.calls).toBe(1);
-      await page.getByRole("button", { name: "Tasks", exact: true }).click();
+      await page.keyboard.press("Control+Shift+P");
+      const taskNavigation = page.getByRole("dialog", { name: "Command palette", exact: true });
+      await taskNavigation.locator("input").fill("Go to Tasks");
+      await taskNavigation.getByRole("option", { name: "Go to Tasks", exact: true }).click();
       await page.getByRole("button", { name: "View results", exact: true }).first().click();
       await page.getByRole("tab", { name: "Results", exact: true }).waitFor();
       while (
@@ -464,7 +467,7 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       expect(provider.calls).toBe(2);
       await task.getByRole("button", { name: "Close", exact: true }).click();
       await page.reload();
-      await page.getByRole("button", { name: "Issue Watch", exact: true }).click();
+      await page.getByRole("button", { name: "Issues", exact: true }).click();
       await page.getByRole("button", { name: /Oppia contribution opportunities/ }).click();
       await page.getByRole("button", { name: "Scan now", exact: true }).waitFor();
       expect(provider.calls).toBe(2);
@@ -519,7 +522,7 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       for (let number = 20; number < 40; number++) fixture.issues.set(number, githubIssue(number));
       const batched = await fixture.create();
       await page.reload();
-      await page.getByRole("button", { name: "Issue Watch", exact: true }).click();
+      await page.getByRole("button", { name: "Issues", exact: true }).click();
       await page.getByRole("button", { name: /Oppia opportunities/ }).click();
       await page.getByRole("button", { name: "Scan now", exact: true }).click();
 

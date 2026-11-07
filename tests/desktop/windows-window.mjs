@@ -108,9 +108,8 @@ try {
   });
 
   const gap = await p.evaluate(() => {
-    const name = document.querySelector(".titlebar-name").getBoundingClientRect();
-    const palette = document.querySelector(".titlebar-palette").getBoundingClientRect();
-    return { x: (name.right + palette.left) / 2, y: 16 };
+    const region = document.querySelector(".titlebar-drag-region").getBoundingClientRect();
+    return { x: region.x + region.width / 2, y: region.y + region.height / 2 };
   });
 
   const pointer = async (mode, x, y) =>

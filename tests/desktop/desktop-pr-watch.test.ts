@@ -231,7 +231,7 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
         engine.db.all("SELECT id FROM utility_runs WHERE purpose='PR watch attention check'"),
       ).toHaveLength(1);
 
-      await page.getByRole("button", { name: "Repositories", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("button", { name: "Pull Requests", exact: true }).click();
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       expect(metadata).toHaveBeenCalledTimes(2);

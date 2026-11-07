@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
-import { AnimatePresence } from "motion/react";
-import { X, Search } from "lucide-react";
+import { useState, useCallback, useEffect, useRef, Activity } from "react";
+import { X, Search, ListTodo, Bot, GitPullRequest, FolderGit2, Plug, Settings } from "lucide-react";
 import type { Page } from "../lib/types";
 import { useWorkspace, useDetail } from "../hooks/useWorkspace";
 import { Overview } from "../features/tasks/Overview";
@@ -16,7 +15,7 @@ import { Button } from "../components/ui/button";
 import { ListSkeleton, PageHeader } from "../components/ui/PageHeader";
 import { CommandPalette } from "./CommandPalette";
 import { ResizeHandle } from "../components/shared/ResizeHandle";
-import { NavigationSidebar, navigation } from "./NavigationSidebar";
+import { NavigationSidebar } from "./NavigationSidebar";
 import { usePaneSize } from "../hooks/usePaneSize";
 import {
   useTaskView,
@@ -36,6 +35,17 @@ import { RepairWorkspace } from "../features/pull-requests/repair/RepairWorkspac
 import { IssueWatchPage } from "../features/issue-watch/IssueWatchPage";
 import { UsageView } from "../features/usage/UsageView";
 import { useWatchNotifications } from "../features/issue-watch/notifications";
+
+const navigation = [
+  ["Tasks", ListTodo],
+  ["Vibers", Bot],
+  ["Scheduled", GitPullRequest],
+  ["Issue Watch", Search],
+  ["Repositories", FolderGit2],
+  ["Providers", Plug],
+  ["Usage", Activity],
+  ["Settings", Settings],
+] as const;
 
 export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
@@ -65,6 +75,13 @@ export const App = () => {
   const [watchId, setWatchId] = useState<string | null>(null);
   const notifications = useWatchNotifications(snapshot?.capabilities?.manual_issue_watch === true);
   const [sidebar, setSidebar] = useState(true);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebar((value) => !value);
+    requestAnimationFrame(() => sidebarToggle.current?.focus());
+  }, []);
+
   const [sidebarWidth, setSidebarWidth] = usePaneSize("sidebarWidth", 238, 180, 380);
   const workspaceId = taskId || repairId;
   const activeView = useTaskView(workspaceId || "");
@@ -82,13 +99,13 @@ export const App = () => {
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
-        setSidebar((v) => !v);
+        toggleSidebar();
       }
     };
 
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, []);
+  }, [toggleSidebar]);
 
   useEffect(() => {
     if (snapshot && taskId && !snapshot.tasks.some((t) => t.id === taskId)) {
@@ -189,6 +206,7 @@ export const App = () => {
         root={snapshot?.root}
         diagnostics={snapshot?.persistence}
         refresh={refresh}
+        navigate={navigate}
       />
     ) : page === "Providers" ? (
       <ProvidersPage />
@@ -262,36 +280,24 @@ export const App = () => {
 
   return (
     <div className="desktop-shell">
-      <TitleBar
-        onPalette={() => setPalette(true)}
-        onSidebar={() => setSidebar((v) => !v)}
-        currentTask={
-          detail && detail.task.id === taskId
-            ? detail.task.goal ||
-              `#${detail.task.issue_number} · ${detail.task.claimed_scope || detail.task.issue?.title}`
-            : undefined
-        }
-      />
-
       <div className="app-shell">
         {snapshot?.migration && <DataMigration migration={snapshot.migration} refresh={refresh} />}
-        <AnimatePresence initial={false}>
-          {sidebar && (
-            <NavigationSidebar
-              width={sidebarWidth}
-              snapshot={snapshot}
-              page={page}
-              count={count}
-              taskId={taskId}
-              repairId={repairId}
-              newTask={() => setNewTask(true)}
-              navigate={navigate}
-              open={open}
-              openRepair={openRepair}
-              onError={onError}
-            />
-          )}
-        </AnimatePresence>
+        {sidebar && (
+          <NavigationSidebar
+            toggleSidebar={toggleSidebar}
+            toggleRef={sidebarToggle}
+            width={sidebarWidth}
+            revision={revision}
+            snapshot={snapshot}
+            page={page}
+            count={count}
+            taskId={taskId}
+            newTask={() => setNewTask(true)}
+            navigate={navigate}
+            open={open}
+            onError={onError}
+          />
+        )}
 
         {sidebar && (
           <ResizeHandle
@@ -304,6 +310,11 @@ export const App = () => {
         )}
 
         <main className="main-area">
+          <TitleBar
+            onPalette={() => setPalette(true)}
+            onSidebar={sidebar ? undefined : toggleSidebar}
+            toggleRef={sidebarToggle}
+          />
           {snapshot?.warning && (
             <p className="helper-warning" role="alert">
               {snapshot.warning}

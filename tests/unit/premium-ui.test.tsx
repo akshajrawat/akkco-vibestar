@@ -172,7 +172,12 @@ it("retains dirty utility settings through background snapshots and keeps Viber 
   });
 
   const refresh = vi.fn().mockResolvedValue(undefined);
-  const ui = render(<SettingsPage settings={defaultSettings} refresh={refresh} />);
+  const navigate = vi.fn();
+
+  const ui = render(
+    <SettingsPage settings={defaultSettings} refresh={refresh} navigate={navigate} />,
+  );
+
   await screen.findByText("All changes saved");
   const models = screen.getAllByLabelText("Model");
 
@@ -181,7 +186,11 @@ it("retains dirty utility settings through background snapshots and keeps Viber 
   });
 
   expect(screen.getByText("Unsaved changes")).toBeTruthy();
-  ui.rerender(<SettingsPage settings={{ ...defaultSettings }} refresh={refresh} />);
+
+  ui.rerender(
+    <SettingsPage settings={{ ...defaultSettings }} refresh={refresh} navigate={navigate} />,
+  );
+
   expect((screen.getAllByLabelText("Timeout (seconds)")[0] as HTMLInputElement).value).toBe("1234");
   expect(models).toHaveLength(1);
   expect(await screen.findByRole("heading", { name: "Viber profiles" })).toBeTruthy();
@@ -202,6 +211,12 @@ it("retains dirty utility settings through background snapshots and keeps Viber 
   );
 
   expect(rpc.mock.calls.every(([method]) => !String(method).includes("analyze"))).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Repositories" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Repositories" }));
+  expect(navigate).toHaveBeenLastCalledWith("Repositories");
+  fireEvent.click(screen.getByRole("button", { name: "Providers" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Providers" }));
+  expect(navigate).toHaveBeenLastCalledWith("Providers");
 });
 
 it("keeps missing totals unavailable and pages every saved run while charts report exact counts and coverage", async () => {

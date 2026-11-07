@@ -73,6 +73,11 @@ Legacy task readers and migrations preserve older records for inspection and saf
 historical settings, inputs or approvals remain unknown; current defaults do not fill those gaps.
 Existing migration and compatibility code is part of the saved-data boundary.
 
+Sidebar grouping uses saved execution summaries. Current Viber names and recorded execution
+intervals come from the existing read-only task and flow projections, with bounded, cached reads.
+Display timers never poll the core or start execution; task, flow and conversation completion remain
+separate facts.
+
 ## Persistence, verification and recovery
 
 SQLite migrations are additive and run with a private backup before upgrade. Recovery retains

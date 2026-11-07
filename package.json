@@ -25,6 +25,7 @@
     "test:desktop:pr": "VIBESTAR_PR_DESKTOP_TEST=1 vitest run tests/desktop/desktop-pr-analysis.test.ts tests/desktop/desktop-pr-watch.test.ts",
     "test:desktop:repair": "VIBESTAR_REPAIR_DESKTOP_TEST=1 vitest run tests/desktop/desktop-pr-repair.test.ts",
     "test:desktop:output": "VIBESTAR_OUTPUT_DESKTOP_TEST=1 vitest run tests/desktop/desktop-agent-output.test.ts",
+    "test:desktop:sidebar": "VIBESTAR_SIDEBAR_DESKTOP_TEST=1 vitest run tests/desktop/desktop-sidebar.test.ts",
     "test:desktop:flows": "VIBESTAR_FLOW_DESKTOP_TEST=1 vitest run tests/desktop/desktop-flows.test.ts",
     "test:desktop:watch": "VIBESTAR_WATCH_DESKTOP_TEST=1 vitest run tests/desktop/desktop-issue-watch.test.ts",
     "test:windows": "node scripts/test-windows.mjs",

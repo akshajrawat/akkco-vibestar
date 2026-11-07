@@ -1,14 +1,14 @@
-import { useEffect, useState, useRef } from "react";
-import { Minus, Square, Copy, X } from "lucide-react";
+import { useEffect, useState, useRef, type Ref } from "react";
+import { Minus, Square, Copy, X, PanelLeftOpen, Search } from "lucide-react";
 
 export const TitleBar = ({
   onPalette,
-  currentTask,
   onSidebar,
+  toggleRef,
 }: {
   onPalette?: () => void;
-  currentTask?: string;
   onSidebar?: () => void;
+  toggleRef?: Ref<HTMLButtonElement>;
 } = {}) => {
   const [maximized, setMaximized] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -90,16 +90,29 @@ export const TitleBar = ({
       }}
     >
       {onSidebar && (
-        <button className="sidebar-toggle" aria-label="Toggle sidebar" onClick={onSidebar}>
-          ☰
+        <button
+          ref={toggleRef}
+          className="titlebar-action"
+          aria-label="Expand sidebar"
+          aria-expanded="false"
+          title="Expand sidebar (Ctrl+B)"
+          onClick={onSidebar}
+        >
+          <PanelLeftOpen size={15} aria-hidden="true" />
         </button>
       )}
-      <span className="titlebar-name">akkco vibestar</span>
       {onPalette && (
-        <button className="titlebar-palette" aria-label="Open command palette" onClick={onPalette}>
-          {currentTask || "Search tasks and commands"} <kbd>Ctrl+Shift+P</kbd>
+        <button
+          className="titlebar-action"
+          aria-label="Open command palette"
+          title="Open command palette (Ctrl+Shift+P)"
+          onClick={onPalette}
+        >
+          <Search size={14} aria-hidden="true" />
         </button>
       )}
+
+      <div className="titlebar-drag-region" />
 
       {error && (
         <span role="alert" className="titlebar-error">

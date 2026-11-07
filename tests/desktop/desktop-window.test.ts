@@ -86,7 +86,7 @@ it.skipIf(process.env.VIBESTAR_WINDOW_DESKTOP_TEST !== "1")(
 
       await page.keyboard.press("Escape");
       await page.getByLabel("Maximize window").waitFor();
-      await page.locator(".titlebar-name").dblclick();
+      await page.locator(".titlebar-drag-region").dispatchEvent("dblclick");
       await page.getByLabel("Restore window").waitFor();
       await page.getByLabel("Restore window").click();
 
@@ -112,11 +112,15 @@ it.skipIf(process.env.VIBESTAR_WINDOW_DESKTOP_TEST !== "1")(
           return w.getBounds();
         });
 
+        const dragRegion = (await page.locator(".titlebar-drag-region").boundingBox())!;
+        const dragX = dragRegion.x + dragRegion.width / 2;
+        const dragY = dragRegion.y + dragRegion.height / 2;
+
         await promisify(execFile)("python3", [
           "tests/desktop/window-pointer.py",
           "drag",
-          String(bounds.x + 290),
-          String(bounds.y + 16),
+          String(Math.round(bounds.x + dragX)),
+          String(Math.round(bounds.y + dragY)),
         ]);
 
         const dragged = await app.evaluate(({ BrowserWindow }) =>
@@ -137,8 +141,8 @@ it.skipIf(process.env.VIBESTAR_WINDOW_DESKTOP_TEST !== "1")(
         await promisify(execFile)("python3", [
           "tests/desktop/window-pointer.py",
           "double",
-          String(normal.x + 290),
-          String(normal.y + 16),
+          String(Math.round(normal.x + dragX)),
+          String(Math.round(normal.y + dragY)),
         ]);
 
         await page.getByLabel("Restore window").waitFor();

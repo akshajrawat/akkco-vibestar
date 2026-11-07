@@ -179,8 +179,13 @@ it("uses typed preload window controls and reflects maximize state", async () =>
     configurable: true,
   });
 
-  render(<TitleBar />);
-  expect(screen.getByText("akkco vibestar")).toBeTruthy();
+  const expand = vi.fn();
+  render(<TitleBar onSidebar={expand} />);
+  expect(screen.queryByText("akkco vibestar")).toBeNull();
+  const reopen = screen.getByRole("button", { name: "Expand sidebar" });
+  expect(reopen.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(reopen);
+  expect(expand).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("button", { name: "Minimize window" }));
   fireEvent.click(screen.getByRole("button", { name: "Maximize window" }));
   fireEvent.click(screen.getByRole("button", { name: "Close window" }));

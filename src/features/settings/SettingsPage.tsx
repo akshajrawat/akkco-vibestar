@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-
-import type { Settings, Snapshot } from "../../lib/types";
+import type { Page, Settings, Snapshot } from "../../lib/types";
 import type { DesktopInfo } from "../../../electron/contracts";
 import { useProviders } from "../../hooks/useWorkspace";
 import { rpc, errorMessage, subscribe } from "../../lib/api";
@@ -15,16 +14,28 @@ import { SettingsSchema } from "../../../backend/domain";
 import { Select } from "../../components/ui/Select";
 import { ProviderIcon } from "../../components/ui/ProviderIcon";
 
+const SidebarItems = [
+  "General",
+  "Agents & Models",
+  "Repositories",
+  "Providers",
+  "Storage",
+  "Usage",
+  "Execution",
+];
+
 export const SettingsPage = ({
   settings,
   root,
   refresh,
   diagnostics,
+  navigate,
 }: {
   settings?: Settings;
   root?: string;
   refresh: () => Promise<void>;
   diagnostics?: Snapshot["persistence"];
+  navigate?: (page: Page) => void;
 }) => {
   const [value, setValue] = useState(settings);
   const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
@@ -152,25 +163,37 @@ export const SettingsPage = ({
       {notice && <div className="notice">{notice}</div>}
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
-          {["General", "Agents & Models", "Repositories", "Storage", "Usage", "Execution"].map(
-            (name) => (
-              <button
-                type="button"
-                key={name}
-                className={section === name ? "selected" : ""}
-                aria-current={section === name ? "page" : undefined}
-                onClick={() => {
-                  setSection(name);
-                  setNotice("");
-                }}
-              >
-                {name}
-              </button>
-            ),
-          )}
+          {SidebarItems.map((name) => (
+            <button
+              type="button"
+              key={name}
+              className={section === name ? "selected" : ""}
+              aria-current={section === name ? "page" : undefined}
+              onClick={() => {
+                setSection(name);
+                setNotice("");
+              }}
+            >
+              {name}
+            </button>
+          ))}
         </nav>
 
         <div className="settings-content">
+          {section === "Repositories" && navigate && (
+            <section className="settings-section">
+              <h2>Repositories</h2>
+              <p className="subtle">Manage source checkouts and repository connections.</p>
+              <Button onClick={() => navigate("Repositories")}>Open Repositories</Button>
+            </section>
+          )}
+          {section === "Providers" && navigate && (
+            <section className="settings-section">
+              <h2>Providers</h2>
+              <p className="subtle">Connect providers and manage their local sessions.</p>
+              <Button onClick={() => navigate("Providers")}>Open Providers</Button>
+            </section>
+          )}
           {section === "Execution" && (
             <section className="settings-section execution-settings">
               <h2>Execution environment</h2>

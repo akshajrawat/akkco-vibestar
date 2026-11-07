@@ -56,7 +56,14 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(e.message));
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
-      await page.getByRole("button", { name: "Repositories", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+
+      await page
+        .getByRole("navigation", { name: "Settings sections" })
+        .getByRole("button", { name: "Repositories", exact: true })
+        .click();
+
+      await page.getByRole("button", { name: "Open Repositories", exact: true }).click();
       await page.getByText("No active repositories", { exact: true }).waitFor();
       await page.screenshot({ path: join(evidence, "repositories-empty.png") });
 

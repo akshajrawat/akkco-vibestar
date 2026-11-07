@@ -102,7 +102,7 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
         const errors: string[] = [];
         page.on("pageerror", (error) => errors.push(error.message));
         await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
-        await page.getByRole("button", { name: "Issue Watch", exact: true }).click();
+        await page.getByRole("button", { name: "Issues", exact: true }).click();
         await page.getByRole("button", { name: "New watch", exact: true }).click();
         await page.getByRole("dialog", { name: "New Issue Watch", exact: true }).waitFor();
         await page.screenshot({ path: join(dir, "packaged-watch-editor.png") });

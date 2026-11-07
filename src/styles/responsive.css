@@ -26,10 +26,6 @@
     text-overflow: ellipsis;
   }
 
-  .titlebar-name {
-    width: 130px;
-  }
-
   .row-actions .button {
     font-size: 11px;
   }

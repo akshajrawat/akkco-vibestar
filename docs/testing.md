@@ -57,11 +57,18 @@ Build first. On a headless Linux host, use Xvfb with enough virtual screen area 
 ```bash
 npm run build
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop
+xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:sidebar
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:pr
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:repair
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:output
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:watch
 ```
+
+The sidebar fixture uses saved fixture tasks and captured run evidence without starting providers.
+It checks flat task rows, both collapse controls, dynamic Working height, long-list scrolling,
+archived tasks, local search across both task areas, Escape clearing and empty results, context menus,
+keyboard/pointer resizing, neutral selection/hover, custom theme tokens, reduced motion and Settings
+access to Repositories and Providers. `VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots.
 
 The flow, output, PR and Issue Watch fixtures exercise the built renderer/IPC with
 isolated roots and blocked real CLIs. Historical fixed-stage workspace, approval and
