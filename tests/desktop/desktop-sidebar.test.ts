@@ -586,17 +586,15 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
         .getByRole("button", { name: "Repositories", exact: true })
         .click();
 
-      await page.getByRole("button", { name: "Open Repositories", exact: true }).click();
-      await page.getByRole("heading", { name: "Repositories", exact: true }).waitFor();
-      await dock.getByRole("button", { name: "Settings" }).click();
+      await page.getByRole("textbox", { name: "Search repositories", exact: true }).waitFor();
 
       await page
         .getByRole("navigation", { name: "Settings sections" })
         .getByRole("button", { name: "Providers", exact: true })
         .click();
 
-      await page.getByRole("button", { name: "Open Providers", exact: true }).click();
       await page.getByRole("heading", { name: "Providers", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Close Settings", exact: true }).click();
       await sidebar.screenshot({ path: join(screenshots, "sidebar-custom-theme.png") });
 
       await page.evaluate(() => {

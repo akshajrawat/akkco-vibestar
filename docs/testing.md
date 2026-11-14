@@ -64,11 +64,21 @@ xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:output
 xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:watch
 ```
 
+The Settings workspace fixture runs with `VIBESTAR_SETTINGS_DESKTOP_TEST=1 npm exec -- vitest run
+ tests/desktop/desktop-settings.test.ts` after building (use the same Xvfb wrapper on headless Linux).
+It blocks live CLIs and routes RPC to an isolated fixture engine. It checks modal focus containment,
+focus restoration, shortcut isolation, category search/navigation, shared/local draft retention,
+validation/save/reset boundaries, nested discard confirmation, embedded Providers/Repositories,
+Storage/Recovery dialogs, desktop restart persistence and mounted task/graph preservation. Captures
+cover 1280×720, 1440×900, 800×540 and 390×640, reduced motion and a custom accent token.
+`VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots. This does not exercise live provider sign-in or
+native Windows WSL setup.
+
 The sidebar fixture uses saved fixture tasks and captured run evidence without starting providers.
 It checks flat task rows, both collapse controls, dynamic Working height, long-list scrolling,
 archived tasks, local search across both task areas, Escape clearing and empty results, context menus,
 keyboard/pointer resizing, neutral selection/hover, custom theme tokens, reduced motion and Settings
-access to Repositories and Providers. `VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots.
+access to embedded Repositories and Providers. `VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots.
 
 The flow, output, PR and Issue Watch fixtures exercise the built renderer/IPC with
 isolated roots and blocked real CLIs. Historical fixed-stage workspace, approval and

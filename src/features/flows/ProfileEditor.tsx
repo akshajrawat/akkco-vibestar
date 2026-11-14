@@ -4,6 +4,7 @@ import { AgentProfileSchema, type AgentProfile } from "../../../backend/flows/co
 import { Button } from "../../components/ui/button";
 import { rpc, errorMessage } from "../../lib/api";
 import { useDialogFocus } from "../../hooks/useDialogFocus";
+import { DiscardChangesDialog } from "../../components/ui/DiscardChangesDialog";
 import { containDialogFocus } from "../../lib/keyboard";
 
 export const ProfileEditor = ({
@@ -20,6 +21,13 @@ export const ProfileEditor = ({
   const [busy, setBusy] = useState(false);
   const focus = useDialogFocus(true);
   const execution = draft.execution;
+  const [confirmClose, setConfirmClose] = useState(false);
+
+  const requestClose = () => {
+    if (busy) return;
+    if (JSON.stringify(draft) !== JSON.stringify(profile)) setConfirmClose(true);
+    else close();
+  };
 
   const patch = (value: Partial<AgentProfile["execution"]>) =>
     setDraft({ ...draft, execution: { ...execution, ...value } });
@@ -28,7 +36,7 @@ export const ProfileEditor = ({
     <div
       className="modal-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       <section
@@ -38,13 +46,20 @@ export const ProfileEditor = ({
         aria-modal="true"
         aria-label={profile.revision ? "Edit Viber profile" : "Create Viber profile"}
         onKeyDown={(event) => {
-          if (event.key === "Escape") close();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            requestClose();
+          }
+
           containDialogFocus(event);
         }}
       >
         <div className="modal-heading">
           <h2>{profile.revision ? "Edit Viber profile" : "Create Viber profile"}</h2>
-          <Button onClick={close}>Close</Button>
+          <Button disabled={busy} onClick={requestClose}>
+            Close
+          </Button>
         </div>
         <p className="subtle">
           Saved changes apply to future runs. Started runs keep their captured settings.
@@ -182,6 +197,7 @@ export const ProfileEditor = ({
           </Button>
         </form>
       </section>
+      {confirmClose && <DiscardChangesDialog keep={() => setConfirmClose(false)} discard={close} />}
     </div>
   );
 };

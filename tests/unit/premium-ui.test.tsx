@@ -4,11 +4,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { Button } from "../../src/components/ui/button";
-import { SettingsPage } from "../../src/features/settings/SettingsPage";
 import { UsageCharts } from "../../src/features/usage/UsageCharts";
 import { UsageView } from "../../src/features/usage/UsageView";
-import { defaultSettings } from "../../backend/domain";
-import { viberProfile } from "../workspace/flow-fixtures";
 import type { UsageRecord } from "../../backend/execution/output/usage";
 import { AgentResponse } from "../../src/features/chat/AgentResponse";
 import { workspaceDetail } from "../workspace/fixtures";
@@ -150,73 +147,6 @@ it("keeps busy actions labelled and prevents duplicate activation or accidental 
   fireEvent.click(button);
   expect(action).not.toHaveBeenCalled();
   expect(submit).not.toHaveBeenCalled();
-});
-
-it("retains dirty utility settings through background snapshots and keeps Viber profiles independent", async () => {
-  const rpc = vi.fn(async (method: string) =>
-    method === "editors.list" ? { editors: [] } : method === "profile.list" ? [viberProfile] : {},
-  );
-
-  Object.defineProperty(window, "vibestar", {
-    configurable: true,
-    value: {
-      rpc,
-      subscribe: () => () => {},
-      saveDesktopSettings: vi.fn().mockResolvedValue(undefined),
-      desktopSettings: async () => ({
-        config: { distro: "", data_home: "", helper_path: "" },
-        distros: [],
-        native_windows: false,
-      }),
-    },
-  });
-
-  const refresh = vi.fn().mockResolvedValue(undefined);
-  const navigate = vi.fn();
-
-  const ui = render(
-    <SettingsPage settings={defaultSettings} refresh={refresh} navigate={navigate} />,
-  );
-
-  await screen.findByText("All changes saved");
-  const models = screen.getAllByLabelText("Model");
-
-  fireEvent.change(screen.getAllByLabelText("Timeout (seconds)")[0], {
-    target: { value: "1234" },
-  });
-
-  expect(screen.getByText("Unsaved changes")).toBeTruthy();
-
-  ui.rerender(
-    <SettingsPage settings={{ ...defaultSettings }} refresh={refresh} navigate={navigate} />,
-  );
-
-  expect((screen.getAllByLabelText("Timeout (seconds)")[0] as HTMLInputElement).value).toBe("1234");
-  expect(models).toHaveLength(1);
-  expect(await screen.findByRole("heading", { name: "Viber profiles" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Models" })).toBeNull();
-  expect(screen.getByRole("button", { name: "Agents & Models" })).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "GitHub & PR Watch" })).toBeNull();
-  expect(screen.getByRole("heading", { name: "Utility AI" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
-
-  await waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith(
-      "settings.save",
-      expect.objectContaining({
-        utility_ai: { ...defaultSettings.utility_ai, timeout_secs: 1234 },
-        antigravity: defaultSettings.antigravity,
-      }),
-    ),
-  );
-
-  expect(rpc.mock.calls.every(([method]) => !String(method).includes("analyze"))).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Repositories" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open Repositories" }));
-  expect(navigate).toHaveBeenLastCalledWith("Repositories");
-  fireEvent.click(screen.getByRole("button", { name: "Providers" }));
-  fireEvent.click(screen.getByRole("button", { name: "Open Providers" }));
-  expect(navigate).toHaveBeenLastCalledWith("Providers");
 });
 
 it("keeps missing totals unavailable and pages every saved run while charts report exact counts and coverage", async () => {

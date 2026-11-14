@@ -5,7 +5,6 @@ import { Search, RefreshCw, Plus, MoreHorizontal, X } from "lucide-react";
 import type { Snapshot } from "../../lib/types";
 import type { LocalRepository } from "../../../backend/workspace/discovery";
 import { Button } from "../../components/ui/button";
-import { PageHeader } from "../../components/ui/PageHeader";
 import { rpc, errorMessage } from "../../lib/api";
 import { ConnectLocalRepository } from "./ConnectLocalRepository";
 import { remoteIdentity } from "../../../backend/domain";
@@ -32,6 +31,18 @@ export const RepositoryPage = ({
 
   const active = snapshot.repositories.filter((r) => r.connected !== false);
   const visible = (text: string) => text.toLowerCase().includes(query.toLowerCase());
+
+  const formatCheckedAge = (timestamp?: string | null) => {
+    if (!timestamp) return null;
+    const seconds = Math.floor((Date.now() - Date.parse(timestamp)) / 1000);
+    if (!Number.isFinite(seconds) || seconds < 0) return null;
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
+
+  const syncAge = formatCheckedAge(snapshot.github?.last_sync);
 
   const discovered = (snapshot.repository_index?.repositories || []).filter(
     (r) => !active.some((a) => a.path === r.path) && visible(r.path + " " + r.identities.join(" ")),
@@ -100,51 +111,37 @@ export const RepositoryPage = ({
 
   return (
     <div className="page repository-library">
-      <PageHeader
-        title="Repositories"
-        description="Connect local checkouts or prepare managed clones. Tasks get their own worktree."
-        actions={
-          <>
-            <Button variant="default" onClick={() => setConnection({ path: "" })}>
-              <Plus size={14} />
-              Connect local repository
-            </Button>
+      <div className="repository-toolbar">
+        <div className="library-search">
+          <Search size={14} aria-hidden="true" />
+          <input
+            aria-label="Search repositories"
+            placeholder="Search repositories…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="page-actions">
+          <Button variant="default" onClick={() => setConnection({ path: "" })}>
+            <Plus size={14} />
+            Connect local repository
+          </Button>
 
-            <Button
-              busy={busy === "scan"}
-              disabled={!!busy}
-              onClick={() => void action("repositories.scan", {}, "scan")}
-            >
-              {busy === "scan" ? "Scanning…" : "Scan local"}
-            </Button>
-
-            <Button
-              busy={busy === "sync" || !!snapshot.github?.phase}
-              disabled={!!busy}
-              onClick={() => void action("github.sync", {}, "sync")}
-            >
-              {busy !== "sync" && !snapshot.github?.phase && <RefreshCw size={13} />}
-              {busy === "sync" ? "Syncing…" : "Sync GitHub"}
-            </Button>
-          </>
-        }
-      />
+          <Button
+            busy={busy === "scan"}
+            disabled={!!busy}
+            onClick={() => void action("repositories.scan", {}, "scan")}
+          >
+            {busy === "scan" ? "Scanning…" : "Scan local"}
+          </Button>
+        </div>
+      </div>
 
       {snapshot.github?.phase && (
         <p className="operation-status" role="status">
           {snapshot.github.phase}
         </p>
       )}
-
-      <div className="library-search">
-        <Search size={14} />
-        <input
-          aria-label="Search repositories"
-          placeholder="Search repositories…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
 
       {error && (
         <p className="error-box" role="alert">
@@ -166,144 +163,147 @@ export const RepositoryPage = ({
           Connected repositories <small>{active.length}</small>
         </h2>
 
-        {!active.length && (
-          <div className="repository-empty">
-            <strong>No active repositories</strong>
-            <p>Connect a local Git repository to start working with Vibestar.</p>
-            <div className="actions">
-              <Button variant="default" onClick={() => setConnection({ path: "" })}>
-                Connect local repository
-              </Button>
+        <div className="repository-list-card">
+          {!active.length && (
+            <div className="repository-empty">
+              <strong>No active repositories</strong>
+              <p>Connect a local Git repository to start working with Vibestar.</p>
+              <div className="actions">
+                <Button variant="default" onClick={() => setConnection({ path: "" })}>
+                  Connect local repository
+                </Button>
 
-              <Button
-                disabled={!!busy}
-                onClick={() => void action("repositories.scan", {}, "scan")}
-              >
-                Scan for repositories
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {active
-          .filter((r) => visible(r.owner + "/" + r.name + " " + r.path))
-          .map((r) => (
-            <div className="active-repository-row" key={r.id}>
-              <div className="active-repository-heading">
-                <strong>
-                  {r.owner}/{r.name}
-                </strong>
-                <span className="status-chip success">Active</span>
-              </div>
-              <div className="active-repository-meta">
-                <span className="subtle">
-                  {r.source === "imported" ? "User-owned checkout" : "Vibestar-managed clone"}
-                </span>
-                <span className="subtle">Base {r.base_branch}</span>
-              </div>
-              <div className="active-repository-actions">
-                <OpenInEditor id={r.id} kind="repository" path={r.path} />
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  popoverTarget={`repository-details-${r.id}`}
-                  aria-label={`Details and actions for ${r.owner}/${r.name}`}
+                  disabled={!!busy}
+                  onClick={() => void action("repositories.scan", {}, "scan")}
                 >
-                  <MoreHorizontal size={16} />
+                  Scan for repositories
                 </Button>
               </div>
+            </div>
+          )}
 
-              <div
-                id={`repository-details-${r.id}`}
-                popover="auto"
-                role="dialog"
-                aria-label={`Repository details for ${r.owner}/${r.name}`}
-                className="repository-details-popover"
-              >
-                <div className="section-heading">
-                  <h2>
+          {active
+            .filter((r) => visible(r.owner + "/" + r.name + " " + r.path))
+            .map((r) => (
+              <div className="active-repository-row" key={r.id}>
+                <div className="active-repository-heading">
+                  <strong>
                     {r.owner}/{r.name}
-                  </h2>
-
+                  </strong>
+                  <span className="status-chip success">Active</span>
+                </div>
+                <div className="active-repository-meta">
+                  <span className="subtle">
+                    {r.source === "imported" ? "User-owned checkout" : "Vibestar-managed clone"}
+                  </span>
+                  <span className="subtle">Base {r.base_branch}</span>
+                </div>
+                <div className="active-repository-actions">
+                  <OpenInEditor id={r.id} kind="repository" path={r.path} />
                   <Button
                     variant="ghost"
                     size="icon"
                     popoverTarget={`repository-details-${r.id}`}
-                    popoverTargetAction="hide"
-                    aria-label="Close repository details"
+                    aria-label={`Details and actions for ${r.owner}/${r.name}`}
                   >
-                    <X size={16} />
+                    <MoreHorizontal size={16} />
                   </Button>
                 </div>
 
-                <p className="subtle">
-                  {r.environment === "windows" || r.path?.startsWith("/mnt/") ? "Windows" : "WSL"} ·{" "}
-                  {r.distro || snapshot.execution_environment?.distro || "Configured environment"}
-                </p>
-                <code className="repository-path">{r.path}</code>
-                {r.windows_path && <p className="subtle">Windows: {r.windows_path}</p>}
-                <dl className="repository-facts">
-                  <dt>Upstream</dt>
-                  <dd>
-                    {r.owner}/{r.name} <small>{r.upstream_remote || "upstream"}</small>
-                  </dd>
-                  <dt>Origin / fork</dt>
-                  <dd>{originLabel(r.origin_url)}</dd>
-                  <dt>Base</dt>
-                  <dd>{r.base_branch}</dd>
-                </dl>
+                <div
+                  id={`repository-details-${r.id}`}
+                  popover="auto"
+                  role="dialog"
+                  aria-label={`Repository details for ${r.owner}/${r.name}`}
+                  className="repository-details-popover"
+                >
+                  <div className="section-heading">
+                    <h2>
+                      {r.owner}/{r.name}
+                    </h2>
 
-                <div className="actions">
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      void action("open.directory", { id: r.id, kind: "repository" }, r.id)
-                    }
-                  >
-                    Open
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      popoverTarget={`repository-details-${r.id}`}
+                      popoverTargetAction="hide"
+                      aria-label="Close repository details"
+                    >
+                      <X size={16} />
+                    </Button>
+                  </div>
 
-                  <Button
-                    size="sm"
-                    disabled={!!busy}
-                    onClick={() => void action("repository.fetch", { id: r.id }, r.id)}
-                  >
-                    Fetch
-                  </Button>
-
-                  <Button size="sm" disabled={!!busy} onClick={() => void verify(r.id)}>
-                    Verify
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={!!busy}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Disconnect " +
-                            r.owner +
-                            "/" +
-                            r.name +
-                            "? It will leave the active list. Source files, branches, task history and existing worktrees will be kept. Reconnect this checkout to create new tasks.",
-                        )
-                      )
-                        void action("repository.disconnect", { id: r.id, confirmed: true }, r.id);
-                    }}
-                  >
-                    Disconnect
-                  </Button>
-                </div>
-
-                {verified[r.id] && (
-                  <p className="success" role="status">
-                    {verified[r.id]}
+                  <p className="subtle">
+                    {r.environment === "windows" || r.path?.startsWith("/mnt/") ? "Windows" : "WSL"}{" "}
+                    ·{" "}
+                    {r.distro || snapshot.execution_environment?.distro || "Configured environment"}
                   </p>
-                )}
+                  <code className="repository-path">{r.path}</code>
+                  {r.windows_path && <p className="subtle">Windows: {r.windows_path}</p>}
+                  <dl className="repository-facts">
+                    <dt>Upstream</dt>
+                    <dd>
+                      {r.owner}/{r.name} <small>{r.upstream_remote || "upstream"}</small>
+                    </dd>
+                    <dt>Origin / fork</dt>
+                    <dd>{originLabel(r.origin_url)}</dd>
+                    <dt>Base</dt>
+                    <dd>{r.base_branch}</dd>
+                  </dl>
+
+                  <div className="actions">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        void action("open.directory", { id: r.id, kind: "repository" }, r.id)
+                      }
+                    >
+                      Open
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      disabled={!!busy}
+                      onClick={() => void action("repository.fetch", { id: r.id }, r.id)}
+                    >
+                      Fetch
+                    </Button>
+
+                    <Button size="sm" disabled={!!busy} onClick={() => void verify(r.id)}>
+                      Verify
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!!busy}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            "Disconnect " +
+                              r.owner +
+                              "/" +
+                              r.name +
+                              "? It will leave the active list. Source files, branches, task history and existing worktrees will be kept. Reconnect this checkout to create new tasks.",
+                          )
+                        )
+                          void action("repository.disconnect", { id: r.id, confirmed: true }, r.id);
+                      }}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+
+                  {verified[r.id] && (
+                    <p className="success" role="status">
+                      {verified[r.id]}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+        </div>
       </section>
 
       {!!discovered.length && (
@@ -332,70 +332,95 @@ export const RepositoryPage = ({
       )}
 
       <section aria-labelledby="github-repositories-title">
-        <h2 id="github-repositories-title" className="repository-section-title">
-          GitHub repositories <small>All</small>
-        </h2>
+        <div className="repository-section-header">
+          <h2 id="github-repositories-title" className="repository-section-title">
+            GitHub repositories <small>All</small>
+          </h2>
 
-        {!snapshot.github?.status?.connected && (
-          <p className="empty-row">Connect GitHub in Providers to browse your repositories.</p>
-        )}
+          <button
+            type="button"
+            className="ghost-action-button"
+            disabled={!!busy}
+            onClick={() => void action("github.sync", {}, "sync")}
+            aria-label={
+              busy === "sync" || !!snapshot.github?.phase
+                ? "Syncing GitHub repositories"
+                : "Sync GitHub repositories"
+            }
+          >
+            <RefreshCw
+              size={13}
+              className={busy === "sync" || !!snapshot.github?.phase ? "spinning" : ""}
+              aria-hidden="true"
+            />
+            <span>
+              {busy === "sync" || !!snapshot.github?.phase
+                ? "Syncing…"
+                : syncAge
+                  ? `Checked ${syncAge}`
+                  : "Sync GitHub"}
+            </span>
+          </button>
+        </div>
 
-        {rows.map((r) => {
-          const connected = active.find(
-            (local) => `${local.owner}/${local.name}`.toLowerCase() === r.full_name.toLowerCase(),
-          );
+        <div className="repository-list-card">
+          {rows.map((r) => {
+            const connected = active.find(
+              (local) => `${local.owner}/${local.name}`.toLowerCase() === r.full_name.toLowerCase(),
+            );
 
-          const managed = snapshot.repositories.find(
-            (local) =>
-              local.source !== "imported" &&
-              `${local.owner}/${local.name}`.toLowerCase() === r.full_name.toLowerCase(),
-          );
+            const managed = snapshot.repositories.find(
+              (local) =>
+                local.source !== "imported" &&
+                `${local.owner}/${local.name}`.toLowerCase() === r.full_name.toLowerCase(),
+            );
 
-          const cloning = snapshot.github?.clones?.some(
-            (c) => c.repository_id === managed?.id && ["resolving", "cloning"].includes(c.status),
-          );
+            const cloning = snapshot.github?.clones?.some(
+              (c) => c.repository_id === managed?.id && ["resolving", "cloning"].includes(c.status),
+            );
 
-          return (
-            <div className="repo-catalog-row" key={r.id}>
-              <div>
-                <strong>{r.full_name}</strong>
-                <small>
-                  {r.default_branch} · {r.private ? "private" : "public"}
-                </small>
-              </div>
-              <div className="spacer" />
-              <Button
-                size="sm"
-                disabled={!!busy || cloning}
-                onClick={() =>
-                  connected
-                    ? createTask?.(connected.id)
-                    : managed?.connected === false
-                      ? void action("repository.reconnectManaged", { id: managed.id }, managed.id)
-                      : void find(r.full_name)
-                }
-              >
-                {cloning
-                  ? "Cloning…"
-                  : busy === r.full_name
-                    ? "Finding…"
-                    : connected
-                      ? "Select connected repository"
+            return (
+              <div className="repo-catalog-row" key={r.id}>
+                <div>
+                  <strong>{r.full_name}</strong>
+                  <small>
+                    {r.default_branch} · {r.private ? "private" : "public"}
+                  </small>
+                </div>
+                <div className="spacer" />
+                <Button
+                  size="sm"
+                  disabled={!!busy || cloning}
+                  onClick={() =>
+                    connected
+                      ? createTask?.(connected.id)
                       : managed?.connected === false
-                        ? "Reconnect managed clone"
-                        : "Use repository"}
-              </Button>
-            </div>
-          );
-        })}
+                        ? void action("repository.reconnectManaged", { id: managed.id }, managed.id)
+                        : void find(r.full_name)
+                  }
+                >
+                  {cloning
+                    ? "Cloning…"
+                    : busy === r.full_name
+                      ? "Finding…"
+                      : connected
+                        ? "Select connected repository"
+                        : managed?.connected === false
+                          ? "Reconnect managed clone"
+                          : "Use repository"}
+                </Button>
+              </div>
+            );
+          })}
 
-        {!rows.length && snapshot.github?.status?.connected && (
-          <p className="empty-row">
-            {query
-              ? "No GitHub repositories match your search."
-              : "Sync GitHub to load your repository catalog."}
-          </p>
-        )}
+          {!rows.length && snapshot.github?.status?.connected && (
+            <p className="empty-row">
+              {query
+                ? "No GitHub repositories match your search."
+                : "Sync GitHub to load your repository catalog."}
+            </p>
+          )}
+        </div>
       </section>
 
       {connection && (

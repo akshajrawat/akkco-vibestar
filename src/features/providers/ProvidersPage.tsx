@@ -16,10 +16,16 @@ export const ProvidersPage = () => {
         title="Providers"
         description="Connect your developer tools through their official command-line sign-in."
         actions={
-          <Button busy={loading} onClick={() => void refresh()}>
-            {!loading && <RefreshCw size={14} />}
-            {loading ? "Detecting installed CLIs…" : "Refresh"}
-          </Button>
+          <button
+            type="button"
+            className="ghost-action-button"
+            disabled={loading}
+            onClick={() => void refresh()}
+            aria-label="Refresh providers"
+          >
+            <RefreshCw size={13} className={loading ? "spinning" : ""} aria-hidden="true" />
+            <span>{loading ? "Detecting installed CLIs…" : "Refresh"}</span>
+          </button>
         }
       />
       {error && <p className="error-box">{error}</p>}
@@ -69,11 +75,21 @@ export const ProvidersPage = () => {
                 </details>
               </div>
 
-              <Button disabled={!p.installed || !!login} onClick={() => setLogin(p.provider)}>
-                {connected
-                  ? "Reconnect"
-                  : `Connect ${p.provider === "github" ? "GitHub" : p.provider === "codex" ? "Codex" : "Antigravity"}`}
-              </Button>
+              {connected ? (
+                <button
+                  type="button"
+                  className="ghost-action-button"
+                  disabled={!p.installed || !!login}
+                  onClick={() => setLogin(p.provider)}
+                >
+                  <RefreshCw size={13} aria-hidden="true" />
+                  <span>Reconnect</span>
+                </button>
+              ) : (
+                <Button disabled={!p.installed || !!login} onClick={() => setLogin(p.provider)}>
+                  {`Connect ${p.provider === "github" ? "GitHub" : p.provider === "codex" ? "Codex" : "Antigravity"}`}
+                </Button>
+              )}
             </section>
           );
         })}

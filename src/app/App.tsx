@@ -51,6 +51,7 @@ export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
   usePRWatch(snapshot?.capabilities?.pr_quick_watch === true);
   const [page, setPage] = useState<Page>("Tasks");
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [newViberProfile, setNewViberProfile] = useState<string>();
 
   const [taskId, setTaskId] = useState<string | null>(() =>
@@ -123,6 +124,11 @@ export const App = () => {
   };
 
   const navigate = (p: Page) => {
+    if (p === "Settings") {
+      setSettingsOpen(true);
+      return;
+    }
+
     setPage(p);
     setWatchId(null);
     setTaskId(null);
@@ -199,14 +205,6 @@ export const App = () => {
             outputRun: row.id,
           });
         }}
-      />
-    ) : page === "Settings" ? (
-      <SettingsPage
-        settings={snapshot?.settings}
-        root={snapshot?.root}
-        diagnostics={snapshot?.persistence}
-        refresh={refresh}
-        navigate={navigate}
       />
     ) : page === "Providers" ? (
       <ProvidersPage />
@@ -289,7 +287,7 @@ export const App = () => {
             width={sidebarWidth}
             revision={revision}
             snapshot={snapshot}
-            page={page}
+            page={settingsOpen ? "Settings" : page}
             count={count}
             taskId={taskId}
             newTask={() => setNewTask(true)}
@@ -382,6 +380,17 @@ export const App = () => {
           )}
           {content}
         </main>
+
+        {settingsOpen && (
+          <SettingsPage
+            settings={snapshot?.settings}
+            root={snapshot?.root}
+            diagnostics={snapshot?.persistence}
+            snapshot={snapshot || undefined}
+            refresh={refresh}
+            close={() => setSettingsOpen(false)}
+          />
+        )}
 
         {palette && (
           <CommandPalette

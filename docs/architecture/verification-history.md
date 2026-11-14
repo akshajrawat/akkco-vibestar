@@ -3,6 +3,113 @@
 Earlier milestone logs were removed from the active documentation tree; their historical versions
 remain in Git. This page records the latest local acceptance run.
 
+## 2026-11-07 — Grouped repository cards
+
+Connected repositories and the GitHub catalog each use one dark rounded panel, matching the Task
+settings card. Rows share the panel background with subtle inset dividers instead of individual
+borders and gaps. Existing actions and empty-state behavior are preserved. Targeted ESLint,
+formatting, production build and the built Electron Settings fixture passed. The repository capture
+was refreshed and inspected. No commit or push.
+
+## 2026-11-07 — Remove unused Settings pages and discovery form
+
+Removed Models and Viber Defaults from Settings; the standalone Vibers workspace remains available.
+Removed the Local repository discovery component and its location fields, advanced options, Scan now
+control and status text. The repository toolbar and repository management remain available. Existing
+backend preferences and scanning operations were not removed. Ten focused UI tests, targeted lint,
+the production build and the built Electron Settings fixture passed. The repository screenshot was
+refreshed. No commit or push.
+
+## 2026-11-07 — Repository toolbar and section headings
+
+Removed the repository page introduction, placing its padded, borderless search beside Connect local
+repository, Scan local and Sync GitHub. Hover and focus use a background change without an outline.
+Removed the GitHub connection hint. Connected repositories and GitHub repositories have additional
+space above, below and on the left; both headings and Task use 20px semibold text. Repository headings
+retain their h2 semantics and use sentence case. The production renderer build, formatting and built
+Electron Settings fixture passed. Updated screenshots were inspected and retained, including the
+[repository toolbar](../screenshots/settings-repository-toolbar.png). No commit or push.
+
+## 2026-11-07 — Task setting descriptions and heading spacing
+
+Added muted descriptions under Default editor and Concurrency while retaining their compact shared
+panel and right-aligned dropdowns. Increased the Task subheader's left margin from 4px to 20px.
+Twelve focused UI tests, targeted lint/format checks, the production build and the built Electron
+Settings fixture passed. Updated wide, narrow and dropdown captures were visually inspected and
+retained. No commit or push.
+
+## 2026-11-07 — Compact Task preferences in General
+
+Replaced the General introduction and separate Editor/Concurrency headings and descriptions with
+one Task subheader and a single panel. Default editor and Concurrency use compact dropdowns aligned
+to the right, with the existing options, persistence and validation unchanged. Settings dropdown
+popovers use the reference's dark surface, subtle border and compact selected/hover rows.
+
+The focused Settings/premium UI run passed 12 tests; targeted ESLint, the production build and the
+built Electron Settings fixture passed. Actual wide, narrow and open-dropdown screenshots were
+inspected against the supplied reference. The workspace/narrow captures were refreshed; the
+[open Task dropdown](../screenshots/settings-task-dropdown.png) is retained as additional evidence.
+This refinement changed GeneralSettings, Settings workspace CSS, the existing unit/desktop selectors
+and captures. No commit or push.
+
+## 2026-11-07 — Settings workspace overlay
+
+Settings now opens in an approximately 80vw × 90vh native modal over the mounted workspace. A
+248px grouped, searchable sidebar and fixed breadcrumb/action header surround independently
+scrollable category panels. Visited categories preserve local drafts and scroll positions. Shared
+preferences retain their existing schema/RPCs, desktop saves and partial-save acknowledgements;
+close/discard confirmation protects shared, profile and repository connection edits. Dropdowns
+remain within the modal top layer. Usage stays in bottom navigation.
+
+Existing Providers and Repositories render inside Settings. Model preferences, Viber defaults,
+execution configuration, Storage, Recovery and saved-record Diagnostics reuse their existing
+components and authority boundaries. Recovery owns the existing guarded reset dialog; completing
+reset refreshes retained Storage measurements. Appearance is omitted because no persisted
+Appearance controls exist. Existing theme/accent variables remain customizable; no new preference
+or dependency was introduced. Viber and New Task layouts were not redesigned.
+
+`npm run verify` passed: formatting, ESLint, TypeScript, 392 unit tests (one existing skip),
+205 integration tests, 147 security tests, seven terminal tests and the production build: 751 passing
+deterministic tests. The focused Settings/premium UI run passed 12 tests after the final Storage
+refresh adjustment. Existing jsdom canvas notices and bundled-Zod annotation warnings remain.
+
+The Settings, sidebar and Viber flow built Electron fixtures passed together under Xvfb (three
+cases). Settings checks real native modality, Tab/Shift+Tab, focus restoration including nested
+confirmation teardown, Escape/search behavior, shortcut isolation, category navigation, retained
+shared/local drafts, validation/save failures (unit coverage), save success, nested dialogs,
+desktop restart and database reopen persistence. An unsaved workflow node name, inspector scroll
+position, DOM identity, saved graph and absence of new runs survive the overlay. Panels were checked
+at 800px; captures also cover 1280×720, 1440×900 and 390×640, custom accent and reduced motion.
+Actual Electron captures were visually inspected; the compact confirmation has a height regression
+assertion. The supplied T3 reference attachment was not available, so comparison used the written
+layout requirements; an exact image comparison remains unavailable. Native Windows WSL setup and
+live provider sign-in were not exercised. Provider cards use inert fixture observations.
+
+Curated screenshots: [workspace](../screenshots/settings-workspace.png),
+[narrow workspace](../screenshots/settings-workspace-narrow.png),
+[models](../screenshots/settings-models.png), [providers](../screenshots/settings-providers.png),
+[storage](../screenshots/settings-storage.png) and
+[discard confirmation](../screenshots/settings-discard-confirmation.png).
+
+Modified files for this milestone:
+
+- Composition and shared UI: `src/app/App.tsx`, `src/components/ui/WorkspaceOverlay.tsx`,
+  `src/components/ui/DiscardChangesDialog.tsx`, `src/components/ui/Select.tsx`.
+- Settings: `src/features/settings/SettingsPage.tsx`, `SettingsNavigation.tsx`,
+  `useSettingsDraft.ts`, `GeneralSettings.tsx`, `ModelSettings.tsx`, `ExecutionSettings.tsx`,
+  `RecoverySettings.tsx`, `SettingsDiagnostics.tsx`, `DiscoverySettings.tsx`, `StoragePage.tsx`.
+- Nested draft protection: `src/features/flows/ProfileEditor.tsx`,
+  `src/features/repositories/ConnectLocalRepository.tsx`.
+- Styles: `src/styles/index.css`, `src/styles/components/workspace-overlay.css`,
+  `src/styles/components/surfaces.css`, `src/styles/features/settings-workspace.css`.
+- Tests: `tests/helpers/dialog.ts`, `tests/unit/settings-workspace.test.tsx`,
+  `tests/unit/premium-ui.test.tsx`, `tests/desktop/desktop-settings.test.ts`,
+  `tests/desktop/desktop-sidebar.test.ts`.
+- Documentation/evidence: `ARCHITECTURE.md`, `README.md`, `docs/testing.md`, this record and the
+  six screenshots linked above.
+
+No application/user data was reset. No commit or push.
+
 ## 2026-11-07 — Remove the Tasks heading row
 
 Removed the visible Tasks heading and count row. Its collapse chevron now sits beside Search and

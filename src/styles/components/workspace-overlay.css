@@ -1,0 +1,61 @@
+.workspace-overlay {
+  position: fixed;
+  inset: 0;
+  width: 80vw;
+  height: 90dvh;
+  max-width: 1600px;
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  padding: 0;
+  overflow: visible;
+  color: var(--foreground);
+  background: var(--background-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 24px 100px var(--shadow);
+}
+
+.workspace-overlay::backdrop {
+  background: color-mix(in srgb, var(--background-app) 62%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.workspace-confirmation {
+  width: min(440px, calc(100vw - 32px));
+  height: fit-content;
+  padding: 24px;
+}
+
+.workspace-confirmation h2 {
+  font-size: 16px;
+}
+
+.workspace-confirmation p {
+  color: var(--text-muted);
+  margin: 12px 0 24px;
+}
+
+.workspace-confirmation .actions {
+  justify-content: flex-end;
+}
+
+.workspace-overlay .modal-backdrop {
+  inset: 0;
+  border-radius: var(--radius-panel);
+}
+
+@media (max-width: 1100px) {
+  .workspace-overlay:not(.workspace-confirmation) {
+    width: calc(100vw - 32px);
+    height: calc(100dvh - 32px);
+    max-height: calc(100dvh - 32px);
+  }
+}
+
+@media (max-width: 600px) {
+  .workspace-overlay:not(.workspace-confirmation) {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+}

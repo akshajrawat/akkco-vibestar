@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
+import { useOverlayPortal } from "./WorkspaceOverlay";
 
 export interface SelectOption {
   value: string;
@@ -30,6 +31,7 @@ export const Select = ({
   searchable?: boolean;
   id?: string;
 }) => {
+  const overlay = useOverlayPortal();
   const generated = useId();
   const listId = `${generated}-options`;
   const trigger = useRef<HTMLButtonElement>(null);
@@ -251,7 +253,7 @@ export const Select = ({
               )}
             </div>
           </div>,
-          document.body,
+          overlay?.current || document.body,
         )}
     </>
   );

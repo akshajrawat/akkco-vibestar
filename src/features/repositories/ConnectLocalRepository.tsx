@@ -5,6 +5,9 @@ import type { VerifiedLocalRepository } from "../../../backend/workspace/discove
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import type { Repository } from "../../lib/types";
+import { useDialogFocus } from "../../hooks/useDialogFocus";
+import { containDialogFocus } from "../../lib/keyboard";
+import { DiscardChangesDialog } from "../../components/ui/DiscardChangesDialog";
 import { Select } from "../../components/ui/Select";
 
 export const ConnectLocalRepository = ({
@@ -35,6 +38,23 @@ export const ConnectLocalRepository = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [located, setLocated] = useState<Repository | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const focus = useDialogFocus();
+
+  const requestClose = () => {
+    if (busy) return;
+
+    const dirty =
+      path !== initialPath ||
+      environment !== initialEnvironment ||
+      (verification &&
+        (upstream !== (verification.upstream_remote || "") ||
+          origin !== (verification.origin_remote || "") ||
+          base !== (verification.base_branch || "")));
+
+    if (dirty) setConfirmClose(true);
+    else close();
+  };
 
   const existing =
     located ||
@@ -84,17 +104,29 @@ export const ConnectLocalRepository = ({
   return (
     <div className="modal-backdrop">
       <section
+        ref={focus}
         className="modal compact-dialog repository-connect"
         role="dialog"
         aria-modal="true"
         aria-labelledby="connect-repository-title"
         onKeyDown={(e) => {
-          if (e.key === "Escape" && !busy) close();
+          containDialogFocus(e);
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            requestClose();
+          }
         }}
       >
         <div className="modal-heading">
           <h2 id="connect-repository-title">Connect local repository</h2>
-          <Button variant="ghost" size="icon" aria-label="Close" disabled={busy} onClick={close}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Close"
+            disabled={busy}
+            onClick={requestClose}
+          >
             <X size={16} />
           </Button>
         </div>
@@ -314,6 +346,7 @@ export const ConnectLocalRepository = ({
           </p>
         )}
       </section>
+      {confirmClose && <DiscardChangesDialog keep={() => setConfirmClose(false)} discard={close} />}
     </div>
   );
 };

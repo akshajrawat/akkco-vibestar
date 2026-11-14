@@ -55,6 +55,20 @@ Feature-specific code belongs with its owner. Shared renderer primitives stay un
 and ordered CSS chapters under `src/styles/`. Detailed folder and check ownership is documented in
 the [contributor guide](CONTRIBUTING.md) and [testing guide](docs/testing.md).
 
+## Workspace overlays
+
+Settings opens independently of page navigation in the shared `WorkspaceOverlay`. The native modal
+keeps the current task/workflow mounted and makes the underlying interface inert, contains keyboard
+focus and restores the opener on close. Select popovers use the modal's portal target so they remain
+interactive in its top layer. Workspace shortcuts cannot run through the overlay.
+
+Settings owns one settings/desktop draft across categories. Visited panels remain mounted but hidden,
+retaining local form values and scroll positions. Saving uses the existing RPC and desktop validation
+boundaries; reset restores the last acknowledged values. Closing a dirty draft requires confirmation,
+and closing during a shared save is blocked. Providers and Repositories embed their existing feature
+pages; Storage and Recovery reuse the guarded cleanup/reset operations. Usage stays in bottom
+navigation. There is no new execution or persistence authority in the overlay.
+
 ## Viber and graph execution
 
 Vibers are reusable profiles. Each task graph captures its own Viber instances, settings and

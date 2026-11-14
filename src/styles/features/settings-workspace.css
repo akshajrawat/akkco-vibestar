@@ -1,0 +1,624 @@
+/* The sidebar and content own separate scroll areas; the header never scrolls away. */
+.settings-workspace .settings-layout {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--background-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  padding: 22px 14px 14px;
+}
+
+.settings-sidebar-heading {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0 10px 18px;
+}
+
+.settings-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0 10px;
+  margin: 0 0 18px;
+  transition: background var(--motion-fast);
+}
+
+.settings-search:hover {
+  background: var(--background-hover);
+}
+
+.settings-search:focus-within {
+  background: transparent;
+  outline: none;
+  box-shadow: none;
+}
+
+.settings-search input {
+  min-width: 0;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  font-size: 12px;
+  outline: none;
+  box-shadow: none;
+}
+
+.settings-nav {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.settings-nav-group {
+  margin-bottom: 18px;
+}
+
+.settings-workspace .settings-nav-group h2 {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 0 10px;
+  margin-bottom: 6px;
+}
+
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  min-height: 34px;
+  margin: 2px 0;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 12px;
+  text-align: left;
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.settings-nav button svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.settings-nav button:hover {
+  background: var(--background-hover);
+}
+
+.settings-nav button.selected {
+  color: var(--foreground);
+  background: var(--background-selected);
+}
+
+.settings-nav button.selected svg {
+  color: var(--accent);
+}
+
+.settings-no-results {
+  color: var(--text-muted);
+  padding: 10px;
+}
+
+.settings-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 12px;
+  min-height: 62px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-breadcrumb,
+.settings-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-breadcrumb {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.settings-breadcrumb strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.settings-save-state {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.settings-feedback {
+  flex-shrink: 0;
+  max-height: 22%;
+  overflow: auto;
+}
+
+.settings-feedback > * {
+  margin: 10px 24px;
+}
+
+.settings-feedback .error-box {
+  white-space: pre-wrap;
+}
+
+.settings-recovery-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-amber);
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.settings-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.settings-category {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 28px 32px 36px;
+  scrollbar-gutter: stable;
+}
+
+.settings-panel-fields {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.settings-workspace .settings-section {
+  padding: 0 0 26px;
+}
+
+.settings-workspace h2 {
+  font-size: 14px;
+  font-weight: 550;
+  margin: 0 0 6px;
+}
+
+.settings-workspace .settings-section > p {
+  margin: 0 0 16px;
+}
+
+.settings-workspace .settings-card,
+.settings-workspace .config-block {
+  padding: 0 16px;
+  background: var(--background-sidebar);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.settings-workspace .settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 240px);
+  align-items: center;
+  gap: 24px;
+  min-height: 66px;
+  margin: 0;
+  padding: 14px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.settings-task .settings-row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.settings-workspace .settings-task > h2 {
+  margin: 0 0 16px 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.settings-task .settings-row + .settings-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-task .select-trigger {
+  min-height: 34px;
+  padding: 6px 11px;
+  border-color: var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--background-panel);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.settings-workspace > .select-popover {
+  padding: 4px;
+  border-color: var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--background-app);
+}
+
+.settings-workspace > .select-popover .select-options {
+  padding: 0;
+}
+
+.settings-workspace > .select-popover .select-option {
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.settings-workspace .settings-fields {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0 16px;
+  border-radius: var(--radius);
+  background: var(--background-sidebar);
+  border: 1px solid var(--border-subtle);
+}
+
+.settings-workspace .settings-fields > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 260px);
+  align-items: center;
+  gap: 18px;
+  padding: 16px 0;
+}
+
+.settings-workspace .settings-fields > label + label {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-workspace .config-block {
+  padding: 16px;
+  margin: 16px 0 24px;
+}
+
+.settings-workspace .page {
+  padding: 0;
+  overflow: visible;
+  height: auto;
+}
+
+.settings-workspace .page-header {
+  margin-bottom: 20px;
+}
+
+.settings-workspace .page-header h1 {
+  font-size: 22px;
+}
+
+.settings-workspace .provider-row {
+  background: var(--background-sidebar);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.settings-workspace .discovery-settings {
+  margin-top: 28px;
+}
+
+.settings-workspace code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .settings-workspace .settings-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .settings-category {
+    padding: 24px;
+  }
+
+  .settings-save-state {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .settings-workspace .settings-layout {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+
+  .settings-sidebar {
+    padding: 16px 8px;
+  }
+
+  .settings-header {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+  }
+
+  .settings-header-actions {
+    margin-left: auto;
+    gap: 6px;
+  }
+
+  .settings-category {
+    padding: 20px 16px;
+  }
+
+  .settings-workspace .settings-row,
+  .settings-workspace .settings-fields > label,
+  .settings-workspace .config-block {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .settings-workspace .config-block > label:first-of-type {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 450px) {
+  .settings-workspace .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-sidebar {
+    max-height: 190px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .settings-sidebar-heading {
+    display: none;
+  }
+
+  .settings-search {
+    margin-bottom: 10px;
+  }
+
+  .settings-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+
+  .settings-nav-group {
+    margin-bottom: 0;
+    flex: 1 0 130px;
+  }
+}
+
+.repository-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+}
+
+.repository-toolbar .library-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  transition: background var(--motion-fast);
+}
+
+.repository-toolbar .library-search:hover {
+  background: var(--background-hover);
+}
+
+.repository-toolbar .library-search:focus-within {
+  background: transparent;
+  outline: none;
+}
+
+.repository-toolbar .library-search input {
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.repository-library .repository-section-title {
+  margin: 28px 0 18px 20px;
+}
+
+.repository-library #active-repositories-title,
+.repository-library #github-repositories-title {
+  font-size: 20px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.repository-list-card {
+  padding: 0 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--background-sidebar);
+}
+
+.repository-list-card:empty {
+  display: none;
+}
+
+.repository-list-card > .active-repository-row,
+.repository-list-card > .repository-empty {
+  margin: 0;
+  padding: 18px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.repository-list-card > .repo-catalog-row {
+  padding: 18px 0;
+  border: 0;
+}
+
+.repository-list-card > .active-repository-row + .active-repository-row,
+.repository-list-card > .repo-catalog-row + .repo-catalog-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-workspace input:not([type="checkbox"]):not([type="radio"]),
+.settings-workspace textarea,
+.settings-fields input {
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--background-input);
+  outline: none;
+  box-shadow: none;
+  transition: background var(--motion-fast);
+}
+
+.settings-workspace input:not([type="checkbox"]):not([type="radio"]):hover,
+.settings-workspace textarea:hover,
+.settings-fields input:hover {
+  background: var(--background-hover);
+  border: 0;
+}
+
+.settings-workspace input:not([type="checkbox"]):not([type="radio"]):focus,
+.settings-workspace textarea:focus,
+.settings-fields input:focus {
+  background: transparent;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.ghost-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast),
+    color var(--motion-fast);
+}
+
+.ghost-action-button:hover:not(:disabled) {
+  background: var(--background-hover);
+  color: var(--foreground);
+}
+
+.ghost-action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghost-action-button:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.repository-section-header,
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 28px 0 14px 20px;
+}
+
+.repository-section-header .repository-section-title,
+.settings-section-header h2 {
+  margin: 0;
+}
+
+.storage-page .settings-section-header {
+  margin: 0 0 14px 0;
+}
+
+.storage-card {
+  padding: 0 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--background-sidebar);
+  margin-bottom: 20px;
+}
+
+.storage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  font-size: 13px;
+  color: var(--foreground);
+}
+
+.storage-row + .storage-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.storage-label {
+  color: var(--text-secondary);
+}
+
+.storage-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.storage-total-row {
+  font-weight: 600;
+}
+
+.storage-total-row .storage-label,
+.storage-total-row .storage-value {
+  color: var(--foreground);
+}
+
+.storage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}

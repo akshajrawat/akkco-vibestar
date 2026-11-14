@@ -1,19 +1,9 @@
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { CleanupError } from "../../components/shared/CleanupError";
 import type { StorageService } from "../../../backend/storage/service";
-import { StorageReset } from "./StorageReset";
-
-const flowRecordLabels: Record<string, string> = {
-  agent_profiles: "Viber profiles",
-  flow_definitions: "Task flows",
-  flow_revisions: "Saved revisions",
-  flow_runs: "Flow runs",
-  flow_node_attempts: "Node attempts",
-  flow_task_migrations: "Imported tasks",
-  flow_migration_sources: "Preserved historical sources",
-};
 
 const bytes = (value: number) =>
   value >= 1024 ** 3
@@ -22,7 +12,13 @@ const bytes = (value: number) =>
       ? `${(value / 1024 ** 2).toFixed(1)} MB`
       : `${(value / 1024).toFixed(1)} KB`;
 
-export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
+export const StoragePage = ({
+  refresh,
+  refreshKey = 0,
+}: {
+  refresh: () => Promise<void>;
+  refreshKey?: number;
+}) => {
   const [info, setInfo] = useState<Awaited<ReturnType<StorageService["info"]>>>();
   const [error, setError] = useState("");
   const [cleanupError, setCleanupError] = useState<unknown>();
@@ -30,12 +26,10 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
   const [revision, setRevision] = useState(0);
 
   const [confirmation, setConfirmation] = useState<{
-    method: string;
-    params: Record<string, unknown>;
+    action: () => Promise<void>;
     description: string;
   } | null>(null);
 
-  const [reset, setReset] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -52,7 +46,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
     return () => {
       alive = false;
     };
-  }, [revision]);
+  }, [revision, refreshKey]);
 
   const execute = async () => {
     if (!confirmation) return;
@@ -60,11 +54,7 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
     setError("");
     setCleanupError(undefined);
     try {
-      await rpc(confirmation.method, {
-        ...confirmation.params,
-        confirmed: true,
-      });
-
+      await confirmation.action();
       setNotice("Cleanup completed.");
       setConfirmation(null);
       setRevision((v) => v + 1);
@@ -77,22 +67,30 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
   };
 
   return (
-    <section className="storage-page">
-      <div className="page-title">
+    <section className="settings-section storage-page">
+      <div className="settings-section-header">
         <h2>Storage</h2>
-        <Button disabled={busy} size="sm" onClick={() => setRevision((v) => v + 1)}>
-          Refresh sizes
-        </Button>
+        <button
+          type="button"
+          className="ghost-action-button"
+          disabled={busy}
+          onClick={() => setRevision((v) => v + 1)}
+          aria-label="Refresh sizes"
+        >
+          <RefreshCw size={13} className={busy ? "spinning" : ""} aria-hidden="true" />
+          <span>Refresh sizes</span>
+        </button>
       </div>
       {error && <p className="error-box">{error}</p>}
       {notice && <p className="notice">{notice}</p>}
-      <label>
-        Data root<code>{info?.root || "Measuring…"}</code>
-      </label>
 
-      {info && (
-        <dl className="storage-sizes">
-          {[
+      <div className="settings-card storage-card">
+        <div className="storage-row">
+          <span className="storage-label">Data root</span>
+          <code className="storage-value">{info?.root || "Measuring…"}</code>
+        </div>
+        {info &&
+          [
             ["Database", info.database],
             ["Repositories", info.sizes.repos],
             ["Task worktrees", info.sizes.worktrees],
@@ -104,103 +102,56 @@ export const StoragePage = ({ refresh }: { refresh: () => Promise<void> }) => {
               info.sizes.runtime + info.sizes.telemetry + info.sizes.state - info.database,
             ],
             ["Total", info.total],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{bytes(Number(value))}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {info?.flows && (
-        <details>
-          <summary>Saved profiles, flow history and migration records</summary>
-          <dl className="storage-sizes">
-            {Object.entries(info.flows).map(([table, count]) => (
-              <div key={table}>
-                <dt>{flowRecordLabels[table] || table}</dt>
-                <dd>{count}</dd>
+          ].map(([label, value]) => {
+            const isTotal = label === "Total";
+            return (
+              <div key={label} className={`storage-row${isTotal ? " storage-total-row" : ""}`}>
+                <span className="storage-label">{label}</span>
+                <span className="storage-value">{bytes(Number(value))}</span>
               </div>
-            ))}
-          </dl>
-          <p className="subtle">
-            These records retain captured inputs and source evidence. Archive tasks to keep their
-            files and history available.
-          </p>
-        </details>
-      )}
-
-      <p className="subtle">
-        Logical file sizes, measured locally. Imported checkouts stay at their original locations
-        and are excluded.
-      </p>
+            );
+          })}
+      </div>
 
       <div className="storage-actions">
         <Button
           disabled={busy}
-          onClick={() => void rpc("storage.open").catch((e) => setError(errorMessage(e)))}
+          variant="secondary"
+          onClick={() => {
+            setCleanupError(undefined);
+
+            setConfirmation({
+              action: async () => {
+                await rpc("storage.clear", { kind: "cache", confirmed: true });
+              },
+              description: "Delete Vibestar's temporary analysis workspaces and cache.",
+            });
+          }}
         >
-          Open data directory
+          Clear cache
         </Button>
 
-        {[
-          [
-            "Clear logs",
-            "storage.clear",
-            { kind: "logs" },
-            "Delete Vibestar's raw logs. Conversations, run records and usage remain.",
-          ],
-          [
-            "Clear cache",
-            "storage.clear",
-            { kind: "cache" },
-            "Delete Vibestar's temporary analysis workspaces and cache.",
-          ],
-          [
-            "Clean completed task worktrees",
-            "storage.cleanCompleted",
-            {},
-            "Remove worktrees and owned branches for completed and cancelled tasks. History and logs remain.",
-          ],
-          [
-            "Remove unused managed repositories",
-            "storage.removeUnused",
-            {},
-            "Remove managed clones with no tasks. Imported repositories remain where they are.",
-          ],
-        ].map(([label, method, params, description]) => (
-          <Button
-            key={String(method) + String(label)}
-            disabled={busy}
-            variant="secondary"
-            onClick={() => {
-              setCleanupError(undefined);
+        <Button
+          disabled={busy}
+          variant="secondary"
+          onClick={() => {
+            setCleanupError(undefined);
 
-              setConfirmation({
-                method: String(method),
-                params: params as Record<string, unknown>,
-                description: String(description),
-              });
-            }}
-          >
-            {String(label)}
-          </Button>
-        ))}
-
-        <Button variant="destructive" disabled={busy} onClick={() => setReset(true)}>
-          Reset Local Test Workspace…
+            setConfirmation({
+              action: async () => {
+                await rpc("storage.clear", { kind: "cache", confirmed: true });
+                await rpc("storage.clear", { kind: "logs", confirmed: true });
+                await rpc("storage.cleanCompleted", { confirmed: true });
+                await rpc("storage.removeUnused", { confirmed: true });
+              },
+              description:
+                "Clear cache, logs, completed task worktrees, and unused managed repositories.",
+            });
+          }}
+        >
+          Clear all
         </Button>
       </div>
-
-      {reset && (
-        <StorageReset
-          close={() => setReset(false)}
-          done={async () => {
-            setRevision((value) => value + 1);
-            await refresh();
-          }}
-        />
-      )}
 
       {confirmation && (
         <div className="modal-backdrop">

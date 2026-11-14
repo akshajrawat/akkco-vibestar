@@ -1,495 +1,122 @@
-import { useEffect, useRef, useState } from "react";
-import type { Page, Settings, Snapshot } from "../../lib/types";
-import type { DesktopInfo } from "../../../electron/contracts";
-import { useProviders } from "../../hooks/useWorkspace";
-import { rpc, errorMessage, subscribe } from "../../lib/api";
+import { useState } from "react";
+import { ChevronRight, X } from "lucide-react";
+
+import type { Settings, Snapshot } from "../../lib/types";
 import { Button } from "../../components/ui/button";
-import { AgentConfiguration } from "../providers/AgentConfiguration";
-import { ProfileLibrary } from "../flows/ProfileLibrary";
+import { WorkspaceOverlay } from "../../components/ui/WorkspaceOverlay";
+import { ProvidersPage } from "../providers/ProvidersPage";
+import { RepositoryPage } from "../repositories/RepositoryPage";
 import { StoragePage } from "./StoragePage";
-import { DiscoverySettings } from "./DiscoverySettings";
-import { UsageView } from "../usage/UsageView";
-import { PageHeader } from "../../components/ui/PageHeader";
-import { SettingsSchema } from "../../../backend/domain";
-import { Select } from "../../components/ui/Select";
-import { ProviderIcon } from "../../components/ui/ProviderIcon";
+import { GeneralSettings } from "./GeneralSettings";
+import { ExecutionSettings } from "./ExecutionSettings";
+import { SettingsNavigation, type SettingsCategory } from "./SettingsNavigation";
+import { useSettingsDraft } from "./useSettingsDraft";
 
-const SidebarItems = [
-  "General",
-  "Agents & Models",
-  "Repositories",
-  "Providers",
-  "Storage",
-  "Usage",
-  "Execution",
-];
-
+/** Settings is independent of app navigation; panels automatically save changes. */
 export const SettingsPage = ({
   settings,
   root,
   refresh,
-  diagnostics,
-  navigate,
+  snapshot,
+  close,
 }: {
   settings?: Settings;
   root?: string;
   refresh: () => Promise<void>;
   diagnostics?: Snapshot["persistence"];
-  navigate?: (page: Page) => void;
+  snapshot?: Snapshot;
+  close: () => void;
 }) => {
-  const [value, setValue] = useState(settings);
-  const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
-  const [savedDesktop, setSavedDesktop] = useState<DesktopInfo["config"]>();
-  const settingsBaseline = useRef(settings);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [installLog, setLog] = useState("");
-  const [editors, setEditors] = useState<{ id: string; label: string }[]>([]);
-  const [section, setSection] = useState("Agents & Models");
-  const { providers } = useProviders();
+  const draft = useSettingsDraft(settings, refresh);
+  const { value, setValue } = draft;
+  const [section, setSection] = useState<SettingsCategory>("General");
+  const [visited, setVisited] = useState<SettingsCategory[]>(["General"]);
 
-  useEffect(() => {
-    void window.vibestar
-      .desktopSettings()
-      .then((info) => {
-        setDesktop(info);
-        setSavedDesktop(info.config);
-      })
-      .catch((e) => setError(errorMessage(e)));
+  const requestClose = () => {
+    void draft.flush?.();
+    close();
+  };
 
-    const subscription = subscribe((e) => {
-      if (e.event === "install.output") setLog((s) => (s + e.text).slice(-16000));
-    });
-
-    return () => {
-      void subscription.then((fn) => fn());
-    };
-  }, []);
-
-  useEffect(() => {
-    void rpc<{ editors: typeof editors }>("editors.list")
-      .then((r) => setEditors(r.editors))
-      .catch((e) => setError(errorMessage(e)));
-  }, []);
-
-  useEffect(() => {
-    const previous = settingsBaseline.current;
-    settingsBaseline.current = settings;
-
-    setValue((current) =>
-      JSON.stringify(current) === JSON.stringify(previous) ? settings : current,
-    );
-  }, [settings]);
-
-  useEffect(() => {
-    setNotice("");
-  }, [value, desktop?.config]);
-
-  const dirty =
-    JSON.stringify(value) !== JSON.stringify(settings) ||
-    JSON.stringify(desktop?.config) !== JSON.stringify(savedDesktop);
-
-  const validation = value && SettingsSchema.safeParse(value);
-
-  const save = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      if (desktop) await window.vibestar.saveDesktopSettings(desktop.config);
-      if (value) await rpc("settings.save", value);
-      setSavedDesktop(desktop?.config);
-      setNotice("Settings saved.");
-      await refresh();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+  const select = (category: SettingsCategory) => {
+    setSection(category);
+    setVisited((current) => (current.includes(category) ? current : [...current, category]));
   };
 
   return (
-    <div className="page">
-      {!!diagnostics?.length && (
-        <details className="error-box" open>
-          <summary>Saved records need recovery</summary>
-          <p>
-            Original record data remains in SQLite. Affected workspace actions are blocked. Preserve
-            the data root and its pre-migration backups before repairing these records.
-          </p>
-
-          <ul>
-            {diagnostics.map((record) => (
-              <li key={`${record.table_name}:${record.record_id}:${record.column_name}`}>
-                <code>
-                  {record.table_name} · {record.record_id} · {record.column_name}
-                </code>
-                <small>Source SHA-256: {record.source_hash}</small>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      <PageHeader
-        title="Settings"
-        description="Configure Viber profiles, workspace preferences and the execution environment."
-        actions={
-          <>
-            <span className="settings-save-state" role="status">
-              {dirty ? "Unsaved changes" : "All changes saved"}
-            </span>
-
-            <Button
-              variant="default"
-              busy={busy}
-              disabled={!dirty || (!!validation && !validation.success)}
-              onClick={() => void save()}
-            >
-              {busy ? "Saving…" : "Save settings"}
-            </Button>
-          </>
-        }
-      />
-
-      {validation && !validation.success && (
-        <p className="error-box" role="alert">
-          {validation.error.issues
-            .map((issue) => `${issue.path.join(" · ")}: ${issue.message}`)
-            .join("\n")}
-        </p>
-      )}
-      {error && <div className="error-box">{error}</div>}
-      {notice && <div className="notice">{notice}</div>}
+    <WorkspaceOverlay label="Settings" className="settings-workspace" onClose={requestClose}>
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
-          {SidebarItems.map((name) => (
-            <button
-              type="button"
-              key={name}
-              className={section === name ? "selected" : ""}
-              aria-current={section === name ? "page" : undefined}
-              onClick={() => {
-                setSection(name);
-                setNotice("");
-              }}
-            >
-              {name}
-            </button>
-          ))}
-        </nav>
-
-        <div className="settings-content">
-          {section === "Repositories" && navigate && (
-            <section className="settings-section">
-              <h2>Repositories</h2>
-              <p className="subtle">Manage source checkouts and repository connections.</p>
-              <Button onClick={() => navigate("Repositories")}>Open Repositories</Button>
-            </section>
+        <SettingsNavigation selected={section} select={select} />
+        <div className="settings-main">
+          <header className="settings-header">
+            <div className="settings-breadcrumb">
+              <span>Settings</span>
+              <ChevronRight size={13} aria-hidden="true" />
+              <strong>{section}</strong>
+            </div>
+            <div className="settings-header-actions">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Close Settings"
+                onClick={requestClose}
+              >
+                <X size={17} />
+              </Button>
+            </div>
+          </header>
+          {draft.error && (
+            <div className="settings-feedback" aria-live="polite">
+              <p className="error-box" role="alert">
+                {draft.error}
+              </p>
+            </div>
           )}
-          {section === "Providers" && navigate && (
-            <section className="settings-section">
-              <h2>Providers</h2>
-              <p className="subtle">Connect providers and manage their local sessions.</p>
-              <Button onClick={() => navigate("Providers")}>Open Providers</Button>
-            </section>
-          )}
-          {section === "Execution" && (
-            <section className="settings-section execution-settings">
-              <h2>Execution environment</h2>
-              <div className="settings-fields">
-                <label>
-                  WSL distribution
-                  <Select
-                    label="WSL distribution"
-                    value={desktop?.config.distro || desktop?.distros[0] || ""}
-                    disabled={!desktop?.native_windows}
-                    onChange={(distro) =>
-                      desktop &&
-                      setDesktop({
-                        ...desktop,
-                        config: { ...desktop.config, distro },
-                      })
-                    }
-                    options={[
-                      ...(desktop?.native_windows
-                        ? [{ value: "", label: "Select distribution" }]
-                        : []),
-                      ...(desktop?.distros.map((d) => ({ value: d, label: d })) || []),
-                    ]}
-                  />
-                </label>
-
-                <label>
-                  <span>
-                    Linux data directory <small>optional</small>
-                  </span>
-                  <input
-                    value={desktop?.config.data_home || ""}
-                    placeholder="Default: ~/.akkco-vibestar"
-                    onChange={(e) =>
-                      desktop &&
-                      setDesktop({
-                        ...desktop,
-                        config: {
-                          ...desktop.config,
-                          data_home: e.target.value,
-                        },
-                      })
-                    }
-                  />
-                </label>
-
-                {desktop?.native_windows && (
-                  <label>
-                    <span>
-                      Existing helper path <small>optional</small>
-                    </span>
-                    <input
-                      value={desktop.config.helper_path}
-                      placeholder="Use the installed bundled helper"
-                      onChange={(e) =>
-                        setDesktop({
-                          ...desktop,
-                          config: {
-                            ...desktop.config,
-                            helper_path: e.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                )}
-              </div>
-
-              <details>
-                <summary>Execution details</summary>
-                <p className="subtle">
-                  Data root: <code>{root || "Execution core not connected"}</code>
-                </p>
-                <p className="subtle">
-                  Linux runs the core directly. Windows uses the selected WSL distribution.
-                </p>
-              </details>
-
-              {desktop?.native_windows && (
-                <>
-                  <Button
-                    disabled={busy || !desktop.config.distro}
-                    onClick={async () => {
-                      setBusy(true);
-                      setError("");
-                      try {
-                        await window.vibestar.saveDesktopSettings(desktop.config);
-                        await window.vibestar.installHelper();
-                        await refresh();
-                        setNotice("WSL helper installed.");
-                      } catch (e) {
-                        setError(errorMessage(e));
-                      } finally {
-                        setBusy(false);
-                      }
-                    }}
-                  >
-                    Install / update WSL helper
-                  </Button>
-
-                  <p className="subtle">
-                    Installs the bundled core and native SQLite/PTY dependencies inside the selected
-                    distro. Requires Node 22+, npm, and build tools there.
-                  </p>
-                  {installLog && <pre className="install-log">{installLog}</pre>}
-                </>
-              )}
-            </section>
-          )}
-
-          {value && (
-            <>
-              {section === "General" && (
-                <section className="settings-section">
-                  <h2>Editor</h2>
-                  <label>
-                    Default editor
-                    <Select
-                      label="Default editor"
-                      value={value.default_editor}
-                      onChange={(editor) =>
-                        setValue({
-                          ...value,
-                          default_editor: editor as Settings["default_editor"],
-                        })
-                      }
-                      options={[
-                        { value: "", label: "Choose when opening" },
-                        ...editors.map((editor) => ({ value: editor.id, label: editor.label })),
-                        ...(value.default_editor &&
-                        !editors.some((e) => e.id === value.default_editor)
-                          ? [
-                              {
-                                value: value.default_editor,
-                                label: `${value.default_editor} (unavailable)`,
-                              },
-                            ]
-                          : []),
-                      ]}
-                    />
-                  </label>
-
-                  <p className="subtle">
-                    Task actions open the isolated worktree. Repository actions open the source
-                    checkout.
-                  </p>
-                  <h2>Concurrency</h2>
-                  <label>
-                    Simultaneous tasks
-                    <Select
-                      label="Simultaneous tasks"
-                      value={String(value.concurrency)}
-                      onChange={(concurrency) =>
-                        setValue({
-                          ...value,
-                          concurrency: Number(concurrency),
-                        })
-                      }
-                      options={[1, 2, 3, 4].map((v) => ({ value: String(v), label: String(v) }))}
-                    />
-                  </label>
-                </section>
-              )}
-
-              {section === "Agents & Models" && <ProfileLibrary />}
-
-              {section === "Agents & Models" && (
-                <section className="settings-section">
-                  <h2>Review / explain AI</h2>
-                  <p className="subtle">
-                    Read-only questions about selected code. Each query appears in task and global
-                    Usage.
-                  </p>
-
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={!!value.review_ai}
-                      onChange={(e) =>
-                        setValue({
-                          ...value,
-                          review_ai: e.target.checked ? { ...value.utility_ai } : null,
-                        })
-                      }
-                    />
-                    Use a separate review model
-                  </label>
-
-                  {value.review_ai ? (
+          <div className="settings-content">
+            {visited.map((category) => (
+              <div
+                className="settings-category"
+                key={category}
+                id={`settings-${category.replaceAll(" ", "-")}`}
+                hidden={section !== category}
+              >
+                <div className="settings-panel-fields">
+                  {category === "General" &&
+                    (value ? (
+                      <GeneralSettings value={value} setValue={setValue} editors={draft.editors} />
+                    ) : (
+                      <p role="status">
+                        Settings unavailable until the execution core connects. Inspect Execution to
+                        configure the environment.
+                      </p>
+                    ))}
+                  {category === "Providers" && <ProvidersPage />}
+                  {category === "Repositories" && (
                     <>
-                      <label>
-                        Review provider
-                        <Select
-                          label="Review provider"
-                          value={value.review_ai.provider}
-                          onChange={(provider) =>
-                            setValue({
-                              ...value,
-                              review_ai: {
-                                ...value.review_ai!,
-                                provider: provider as "codex" | "antigravity",
-                                model: "",
-                              },
-                            })
-                          }
-                          options={["antigravity", "codex"].map((provider) => ({
-                            value: provider,
-                            label: provider === "codex" ? "Codex" : "Antigravity",
-                            icon: <ProviderIcon provider={provider} />,
-                          }))}
-                        />
-                      </label>
-
-                      <AgentConfiguration
-                        id="review-ai"
-                        label="REVIEW / EXPLAIN AI"
-                        provider={value.review_ai.provider}
-                        providers={providers}
-                        config={value.review_ai}
-                        onChange={(config) =>
-                          setValue({
-                            ...value,
-                            review_ai: {
-                              ...config,
-                              provider: value.review_ai!.provider,
-                            },
-                          })
-                        }
-                      />
+                      {snapshot ? (
+                        <RepositoryPage snapshot={snapshot} refresh={refresh} />
+                      ) : (
+                        <p role="status">Connect the execution core to manage repositories.</p>
+                      )}
                     </>
-                  ) : (
-                    <p className="subtle">
-                      Uses Utility AI settings. Individual questions can override provider, model
-                      and effort.
-                    </p>
                   )}
-                  <h2>Utility AI</h2>
-                  <p className="subtle">
-                    PR discussion reasoning and miscellaneous Vibestar intelligence. Deterministic
-                    inspections never use this model. Each run appears in Usage.
-                  </p>
-
-                  <label>
-                    Utility provider
-                    <Select
-                      label="Utility provider"
-                      value={value.utility_ai.provider}
-                      onChange={(provider) =>
-                        setValue({
-                          ...value,
-                          utility_ai: {
-                            ...value.utility_ai,
-                            provider: provider as Settings["utility_ai"]["provider"],
-                            model: "",
-                          },
-                        })
-                      }
-                      options={["antigravity", "codex"].map((provider) => ({
-                        value: provider,
-                        label: provider === "codex" ? "Codex" : "Antigravity",
-                        icon: <ProviderIcon provider={provider} />,
-                      }))}
+                  {category === "Execution" && (
+                    <ExecutionSettings
+                      desktop={draft.desktop}
+                      setDesktop={draft.setDesktop}
+                      flush={draft.flush}
+                      root={root}
+                      busy={draft.busy}
+                      installLog={draft.installLog}
+                      install={draft.install}
                     />
-                  </label>
-
-                  <AgentConfiguration
-                    id="utility"
-                    label="UTILITY / MISCELLANEOUS AI"
-                    provider={value.utility_ai.provider}
-                    providers={providers}
-                    config={value.utility_ai}
-                    onChange={(config) =>
-                      setValue({
-                        ...value,
-                        utility_ai: {
-                          ...config,
-                          provider: value.utility_ai.provider,
-                        },
-                      })
-                    }
-                  />
-                </section>
-              )}
-
-              {section === "Repositories" && (
-                <DiscoverySettings
-                  value={value.repository_discovery}
-                  onChange={(repository_discovery) => setValue({ ...value, repository_discovery })}
-                />
-              )}
-            </>
-          )}
-          {section === "Storage" && <StoragePage refresh={refresh} />}
-          {section === "Usage" && <UsageView />}
+                  )}
+                  {category === "Storage" && <StoragePage refresh={refresh} />}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </WorkspaceOverlay>
   );
 };
