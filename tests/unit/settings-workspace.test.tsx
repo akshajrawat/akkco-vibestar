@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { defaultSettings } from "../../backend/domain";
 import { SettingsPage } from "../../src/features/settings/SettingsPage";
+import { GlobalNotifications } from "../../src/app/GlobalNotifications";
+import { notifications } from "../../src/lib/notifications";
+import toast from "react-hot-toast";
 import { ConnectLocalRepository } from "../../src/features/repositories/ConnectLocalRepository";
 import { ProfileEditor } from "../../src/features/flows/ProfileEditor";
 import { viberProfile } from "../workspace/flow-fixtures";
@@ -19,6 +22,14 @@ const close = vi.fn();
 
 beforeEach(() => {
   mockDialog();
+  notifications.dismiss("settings:settings");
+  notifications.dismiss("settings:execution settings");
+  notifications.setPreference("necessary");
+
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: false })),
+  );
 
   rpc.mockImplementation(async (method: string) =>
     method === "editors.list" ? { editors: [] } : method === "profile.list" ? [viberProfile] : {},
@@ -44,11 +55,18 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  toast.remove();
   vi.resetAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const open = () =>
-  render(<SettingsPage settings={defaultSettings} refresh={refresh} close={close} />);
+  render(
+    <>
+      <GlobalNotifications />
+      <SettingsPage settings={defaultSettings} refresh={refresh} close={close} />
+    </>,
+  );
 
 it("filters category groups, clears search with Escape and excludes unsupported categories and Usage", async () => {
   open();
@@ -75,6 +93,8 @@ it("saves setting changes automatically across categories and closes directly wi
   await waitFor(() => {
     expect(rpc).toHaveBeenCalledWith("settings.save", expect.objectContaining({ concurrency: 4 }));
   });
+
+  expect(screen.queryByText("Settings saved")).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Repositories" }));
   fireEvent.click(screen.getByRole("button", { name: "General" }));
@@ -107,7 +127,15 @@ it("tracks desktop changes automatically and displays error if core save fails",
   fireEvent.click(screen.getByRole("button", { name: "General" }));
   await screen.findByLabelText("Concurrency");
   selectValue(screen.getByLabelText("Concurrency"), "3");
-  await screen.findByText("Core save failed");
+  await screen.findByText("Could not save settings: Core save failed");
+  expect(screen.getByLabelText("Concurrency").getAttribute("data-value")).toBe("2");
+  rpc.mockResolvedValue({});
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  selectValue(screen.getByLabelText("Concurrency"), "3");
+
+  await waitFor(() =>
+    expect(screen.getByLabelText("Concurrency").getAttribute("data-value")).toBe("3"),
+  );
 
   fireEvent.click(screen.getByRole("button", { name: "Close Settings" }));
   expect(close).toHaveBeenCalledOnce();
@@ -128,6 +156,138 @@ it("keeps dropdown portals within the modal and restores focus to the opener", a
   ui.unmount();
   await waitFor(() => expect(document.activeElement).toBe(opener));
   opener.remove();
+});
+
+it("continues newer saves after a failure without replaying a failed field", async () => {
+  let rejectFirst!: (error: Error) => void;
+  let finishSecond!: () => void;
+  const attempts: unknown[] = [];
+
+  rpc.mockImplementation((method: string, input: unknown) => {
+    if (method === "editors.list") return Promise.resolve({ editors: [] });
+    if (method !== "settings.save") return Promise.resolve({});
+    attempts.push(input);
+    return attempts.length === 1
+      ? new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+        })
+      : attempts.length === 2
+        ? new Promise<void>((resolve) => {
+            finishSecond = resolve;
+          })
+        : Promise.resolve();
+  });
+
+  open();
+  selectValue(await screen.findByLabelText("Concurrency"), "3");
+  await waitFor(() => expect(attempts).toHaveLength(1));
+  selectValue(screen.getByLabelText("Notification preference"), "all");
+
+  await act(async () => {
+    rejectFirst(new Error("First save failed"));
+  });
+
+  await waitFor(() => expect(attempts).toHaveLength(2));
+  expect(attempts[1]).toMatchObject({ concurrency: 2, notification_preference: "all" });
+
+  await act(async () => {
+    finishSecond();
+  });
+
+  expect(screen.getByLabelText("Concurrency").getAttribute("data-value")).toBe("2");
+  expect(screen.getByLabelText("Notification preference").getAttribute("data-value")).toBe("all");
+  expect(screen.queryByText("Settings saved")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  selectValue(screen.getByLabelText("Concurrency"), "3");
+  await waitFor(() => expect(attempts).toHaveLength(3));
+  expect(attempts[2]).toMatchObject({ concurrency: 3, notification_preference: "all" });
+});
+
+it("serializes rapid edits and rolls a later failure back to the newest acknowledged value", async () => {
+  let complete!: () => void;
+  let fail!: (error: Error) => void;
+  const attempts: unknown[] = [];
+
+  rpc.mockImplementation((method: string, input: unknown) => {
+    if (method === "editors.list") return Promise.resolve({ editors: [] });
+    if (method !== "settings.save") return Promise.resolve({});
+    attempts.push(input);
+    return attempts.length === 1
+      ? new Promise<void>((resolve) => {
+          complete = resolve;
+        })
+      : new Promise((_resolve, reject) => {
+          fail = reject;
+        });
+  });
+
+  open();
+  selectValue(await screen.findByLabelText("Concurrency"), "3");
+  await waitFor(() => expect(attempts).toHaveLength(1));
+  selectValue(screen.getByLabelText("Concurrency"), "4");
+  expect(attempts).toHaveLength(1);
+
+  await act(async () => {
+    complete();
+  });
+
+  await waitFor(() => expect(attempts).toHaveLength(2));
+
+  await act(async () => {
+    fail(new Error("Second save failed"));
+  });
+
+  expect(screen.getByLabelText("Concurrency").getAttribute("data-value")).toBe("3");
+});
+
+it("restores desktop configuration when saving fails or restart confirmation is cancelled", async () => {
+  saveDesktop.mockRejectedValueOnce(new Error("Disk unavailable")).mockResolvedValueOnce(false);
+  open();
+  fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+  const path = await screen.findByPlaceholderText("Default: ~/.akkco-vibestar");
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith("editors.list", {}));
+  fireEvent.change(path, { target: { value: "/failed" } });
+  fireEvent.blur(path);
+  await screen.findByText("Could not save execution settings: Disk unavailable");
+  expect((path as HTMLInputElement).value).toBe("");
+  fireEvent.change(path, { target: { value: "/cancelled" } });
+  fireEvent.blur(path);
+  await waitFor(() => expect(saveDesktop).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect((path as HTMLInputElement).value).toBe(""));
+  expect(screen.queryByText(/Environment change cancelled/)).toBeNull();
+  expect(screen.queryByText("Execution settings saved")).toBeNull();
+});
+
+it("announces success only after all rapid changes have persisted with All notifications enabled", async () => {
+  const finish: (() => void)[] = [];
+
+  rpc.mockImplementation((method: string) => {
+    if (method === "editors.list") return Promise.resolve({ editors: [] });
+    if (method !== "settings.save") return Promise.resolve({});
+    return new Promise<void>((resolve) => {
+      finish.push(resolve);
+    });
+  });
+
+  open();
+  selectValue(await screen.findByLabelText("Notification preference"), "all");
+  await waitFor(() => expect(finish).toHaveLength(1));
+  selectValue(screen.getByLabelText("Concurrency"), "4");
+  expect(screen.queryByText("Settings saved")).toBeNull();
+
+  await act(async () => {
+    finish[0]();
+  });
+
+  await waitFor(() => expect(finish).toHaveLength(2));
+  expect(screen.queryByText("Settings saved")).toBeNull();
+
+  await act(async () => {
+    finish[1]();
+  });
+
+  expect(screen.getAllByText("Settings saved")).toHaveLength(1);
+  expect(screen.getByRole("status").textContent).toContain("Settings saved");
 });
 
 it("protects unsaved Viber profile edits on Escape and preserves them when continuing", () => {

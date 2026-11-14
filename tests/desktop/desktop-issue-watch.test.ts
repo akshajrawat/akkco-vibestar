@@ -20,6 +20,12 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
     const provider = new IssueWatchFixtureProvider();
     const fixture = await watchFixture(() => provider);
     const rpc = new Rpc(fixture.engine, undefined, undefined, fixture.service);
+
+    fixture.engine.db.saveSettings({
+      ...fixture.engine.db.settings(),
+      notification_preference: "all",
+    });
+
     const evidence = await mkdtemp(join(tmpdir(), "vibestar-watch-evidence-"));
     const screenshots = join(evidence, "screenshots");
     await mkdir(screenshots);
@@ -385,14 +391,14 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       while (
         await page
           .getByRole("button", {
-            name: "Dismiss scan notification",
+            name: "Dismiss notification",
             exact: true,
           })
           .count()
       )
         await page
           .getByRole("button", {
-            name: "Dismiss scan notification",
+            name: "Dismiss notification",
             exact: true,
           })
           .first()

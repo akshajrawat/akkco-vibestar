@@ -33,12 +33,6 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
 
     engine.db.saveSettings({
       ...defaultSettings,
-      utility_ai: {
-        ...defaultSettings.utility_ai,
-        provider: "codex",
-        model: "next-model",
-        effort: "low",
-      },
       codex_implementation: {
         model: "repair-model",
         effort: "xhigh",

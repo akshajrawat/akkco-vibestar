@@ -1,3 +1,4 @@
+import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
 import { ActionSchema } from "../../backend/scheduled/action";
 import { it, expect } from "vitest";
 import { mkdtemp, writeFile, readFile, rm, rename } from "node:fs/promises";
@@ -246,6 +247,7 @@ it("explicit PR utility reasoning reuses isolation and shared slots without chan
     await scheduler.close();
 
     const result = await engine.utility.run({
+      configuration: defaultReviewConfiguration,
       purpose: "PR Review Analysis",
       prompt: "Analyze PR updates. Do not edit files.",
       schema: ActionSchema,

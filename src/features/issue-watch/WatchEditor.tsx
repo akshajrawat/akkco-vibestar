@@ -49,12 +49,8 @@ export const WatchEditor = ({
   const [model, setModel] = useState<WatchConfiguration["model"]>(
     original?.model || {
       provider: "codex",
-      model:
-        snapshot.settings.utility_ai.provider === "codex" ? snapshot.settings.utility_ai.model : "",
-      effort:
-        snapshot.settings.utility_ai.provider === "codex"
-          ? snapshot.settings.utility_ai.effort
-          : "medium",
+      model: "",
+      effort: "medium",
       timeout_secs: 120,
     },
   );

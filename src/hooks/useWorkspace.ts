@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { rpc, subscribe, errorMessage } from "../lib/api";
 import type { Snapshot, Detail, Detection } from "../lib/types";
@@ -7,12 +7,17 @@ export const useWorkspace = () => {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const requested = useRef(0);
 
   const refresh = useCallback(async () => {
+    const request = ++requested.current;
     try {
-      setSnapshot(await rpc<Snapshot>("snapshot"));
+      const next = await rpc<Snapshot>("snapshot");
+      if (request !== requested.current) return;
+      setSnapshot(next);
       setError("");
     } catch (e) {
+      if (request !== requested.current) return;
       setError(errorMessage(e));
     }
   }, []);
@@ -25,7 +30,10 @@ export const useWorkspace = () => {
     const subscription = subscribe((e) => {
       if (e.event === "core.error" || e.event === "core.closed") {
         setError(e.text || "Execution core stopped. Restart the app to recover tasks.");
-      } else if (["changed", "agent.event", "usage.changed", "command.output"].includes(e.event)) {
+      } else if (
+        ["changed", "agent.event", "usage.changed", "command.output"].includes(e.event) ||
+        (e.event === "runtime.status" && (e.data as { phase?: string })?.phase === "ready")
+      ) {
         if (!timer)
           timer = setTimeout(() => {
             timer = undefined;

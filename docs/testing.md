@@ -68,11 +68,21 @@ The Settings workspace fixture runs with `VIBESTAR_SETTINGS_DESKTOP_TEST=1 npm e
  tests/desktop/desktop-settings.test.ts` after building (use the same Xvfb wrapper on headless Linux).
 It blocks live CLIs and routes RPC to an isolated fixture engine. It checks modal focus containment,
 focus restoration, shortcut isolation, category search/navigation, shared/local draft retention,
-validation/save/reset boundaries, nested discard confirmation, embedded Providers/Repositories,
-Storage/Recovery dialogs, desktop restart persistence and mounted task/graph preservation. Captures
-cover 1280×720, 1440×900, 800×540 and 390×640, reduced motion and a custom accent token.
-`VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots. This does not exercise live provider sign-in or
-native Windows WSL setup.
+autosave failure rollback and resubmission, notification preference persistence across desktop/database
+restarts, cancelled environment restart confirmation, embedded Providers/Repositories, Storage dialogs
+and mounted task/graph preservation. It compares the notification dropdown's computed border,
+background, padding and typography against Concurrency, and verifies the repository search stays
+transparent in normal/hover/focus states. Runtime events exercise one bottom-right progress card.
+Captures cover 1280×720, 1440×900, 800×540 and 390×640, reduced motion and a custom accent token.
+`VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots; copy intended deliverables and remove the temporary
+fixture afterward. This does not exercise live sign-in or native Windows WSL setup.
+
+`tests/integration/runtime-recovery.test.ts` runs the actual WSL probe and installer scripts through
+inert local WSL/npm executables. It covers missing/stale helpers, dependency-manifest and native-ABI
+changes, failed installation/retry, healthy-helper reuse and refusal of owned directories/runtime
+aliases. The runtime security fixture verifies atomic admission closure and refusal of active work.
+Native Windows launch, Node discovery, installation prerequisites and WSL process shutdown still
+require native platform acceptance.
 
 The sidebar fixture uses saved fixture tasks and captured run evidence without starting providers.
 It checks flat task rows, both collapse controls, dynamic Working height, long-list scrolling,

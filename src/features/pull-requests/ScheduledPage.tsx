@@ -12,13 +12,14 @@ import {
 } from "lucide-react";
 
 import type { ScheduleJob } from "../../../backend/scheduled/contracts";
-import type { Settings } from "../../../backend/domain";
+import type { AgentConfiguration } from "../../../backend/domain";
 import type { Snapshot } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/Select";
 import { PageHeader, EmptyState, ListSkeleton } from "../../components/ui/PageHeader";
 import { PrDetails } from "./PrDetails";
+import { defaultReviewConfiguration } from "../../../backend/review/pr/contracts";
 import { ReviewModelPicker } from "./ReviewModelPicker";
 import { prReviewStatus, prWatchStatus } from "./status";
 import { WatchProgress } from "./WatchProgress";
@@ -89,7 +90,7 @@ export const ScheduledAttention = ({
       {selected && snapshot.scheduled?.find((j) => j.id === selected) && (
         <PrDetails
           job={snapshot.scheduled.find((j) => j.id === selected)!}
-          configuration={snapshot.settings.review_ai || snapshot.settings.utility_ai}
+          configuration={defaultReviewConfiguration}
           watch={snapshot.pr_watch?.items.find(
             (item) => item.url === snapshot.scheduled?.find((job) => job.id === selected)?.url,
           )}
@@ -119,7 +120,7 @@ export const ScheduledPage = ({
   connectGitHub?: () => void;
 }) => {
   const [selected, setSelected] = useState<string>();
-  const [modelOverride, setModelOverride] = useState<Settings["utility_ai"]>();
+  const [modelOverride, setModelOverride] = useState<AgentConfiguration>();
   const checking = useRef(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -131,8 +132,7 @@ export const ScheduledPage = ({
   const jobs = snapshot.scheduled || [];
   const github = snapshot.github;
 
-  const configuration =
-    modelOverride || snapshot.settings.review_ai || snapshot.settings.utility_ai;
+  const configuration = modelOverride || defaultReviewConfiguration;
 
   const discovered = github?.pull_requests || [];
 

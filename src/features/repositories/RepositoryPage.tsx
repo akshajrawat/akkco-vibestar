@@ -6,6 +6,7 @@ import type { Snapshot } from "../../lib/types";
 import type { LocalRepository } from "../../../backend/workspace/discovery";
 import { Button } from "../../components/ui/button";
 import { rpc, errorMessage } from "../../lib/api";
+import { notifications } from "../../lib/notifications";
 import { ConnectLocalRepository } from "./ConnectLocalRepository";
 import { remoteIdentity } from "../../../backend/domain";
 
@@ -58,8 +59,14 @@ export const RepositoryPage = ({
     try {
       await rpc(method, params);
       await refresh();
+
+      notifications.success(
+        method === "repositories.scan" ? "Repository scan complete" : "Repository updated",
+        { id: "repositories" },
+      );
     } catch (e) {
       setError(errorMessage(e));
+      notifications.error(errorMessage(e), { id: "repositories" });
     } finally {
       setBusy("");
     }
@@ -113,7 +120,7 @@ export const RepositoryPage = ({
     <div className="page repository-library">
       <div className="repository-toolbar">
         <div className="library-search">
-          <Search size={14} aria-hidden="true" />
+          <Search size={19} aria-hidden="true" />
           <input
             aria-label="Search repositories"
             placeholder="Search repositories…"

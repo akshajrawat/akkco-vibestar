@@ -59,12 +59,23 @@ For an installed native Windows host:
 2. Verify noninteractive Node startup from Windows, for example
    `wsl.exe --distribution Ubuntu --exec node --version`.
 3. In Settings select the distro and an optional absolute Linux data directory.
-4. Save and explicitly install/update the WSL helper.
+4. Confirm the environment change. Vibestar prepares or updates its bundled helper automatically.
 5. Keep execution repositories/data on the Linux filesystem.
 
 The helper contains the built core and its locked Linux native dependencies. Build
 hash/capability checks prevent unsupported mutations against a stale helper. Windows
 keeps its small desktop configuration/profile locally; execution state remains in WSL.
+
+Startup progress appears at the bottom-right. Essential installation progress and failures appear even
+with Necessary only notifications. Retry rechecks the runtime and installs only when needed. Settings
+→ Execution → Runtime troubleshooting → Repair Runtime remains available for an explicit reinstall.
+Finish active tasks, terminals and background work before changing or repairing the environment.
+A selected custom helper path remains user-managed: update it yourself or clear that path to use the
+bundled runtime. Node and the system build prerequisites must already be available in the distro.
+
+The retired Utility AI and Review AI global settings are ignored on read and removed by the next
+settings save. Historical runs retain their captured models. New PR checks use the existing local
+model picker, initially the provider CLI default; select a model there to override it for that operation.
 
 ## Build and packaging
 

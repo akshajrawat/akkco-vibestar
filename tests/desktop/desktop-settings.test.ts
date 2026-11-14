@@ -29,8 +29,14 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
 
     const engine = await createFixtureEngine(join(dir, "fixture-data"));
     const rpc = new Rpc(engine);
+    let failNextSettings = false;
 
     const fixtureCall = (method: string, input: unknown) => {
+      if (method === "settings.save" && failNextSettings) {
+        failNextSettings = false;
+        throw new Error("Fixture settings save failure");
+      }
+
       if (method === "pr.watch.start") return null;
       if (method === "providers.detect")
         return ["codex", "antigravity", "github"].map((provider) => ({
@@ -92,7 +98,15 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
         fixtureCall(method, input),
       );
 
-      await app.evaluate(({ ipcMain, BrowserWindow }) => {
+      await app.evaluate(({ ipcMain, BrowserWindow, dialog }) => {
+        Object.assign(globalThis, { runtimeConfirmations: 0 });
+
+        dialog.showMessageBox = async () => {
+          const state = globalThis as typeof globalThis & { runtimeConfirmations: number };
+          state.runtimeConfirmations++;
+          return { response: 0, checkboxChecked: false };
+        };
+
         ipcMain.removeHandler("core:rpc");
 
         ipcMain.handle("core:rpc", async (_event, request) => {
@@ -162,7 +176,7 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
 
       expect(
         await overlay
-          .getByRole("combobox", { name: "Concurrency" })
+          .getByRole("combobox", { name: "Notification preference" })
           .evaluate((element) => element === document.activeElement),
       ).toBe(true);
 
@@ -183,7 +197,7 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
       expect(await nav.getByRole("button").count()).toBe(1);
       await search.press("Escape");
       expect(await overlay.isVisible()).toBe(true);
-      expect(await nav.getByRole("button").count()).toBe(7);
+      expect(await nav.getByRole("button").count()).toBe(5);
       await overlay.getByRole("combobox", { name: "Concurrency" }).click();
       await overlay.getByRole("listbox", { name: "Concurrency" }).waitFor();
       await page.screenshot({ path: join(screenshots, "settings-task-dropdown.png") });
@@ -195,6 +209,103 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
       });
 
       expect(engine.db.settings().concurrency).toBe(4);
+
+      const preference = overlay.getByRole("combobox", { name: "Notification preference" });
+
+      const style = (element: Element) => {
+        const css = getComputedStyle(element);
+        return {
+          border: css.border,
+          radius: css.borderRadius,
+          font: css.font,
+          padding: css.padding,
+          background: css.backgroundColor,
+        };
+      };
+
+      await search.focus();
+      await page.mouse.move(4, 4);
+
+      await expect
+        .poll(
+          async () =>
+            JSON.stringify(await preference.evaluate(style)) ===
+            JSON.stringify(
+              await overlay.getByRole("combobox", { name: "Concurrency" }).evaluate(style),
+            ),
+        )
+        .toBe(true);
+
+      await preference.focus();
+      await page.keyboard.press("Enter");
+      await overlay.getByRole("listbox", { name: "Notification preference" }).waitFor();
+      await page.screenshot({ path: join(screenshots, "settings-notification-dropdown.png") });
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+
+      await page.waitForFunction(
+        () =>
+          document
+            .querySelector('[aria-label="Notification preference"]')
+            ?.getAttribute("data-value") === "all",
+      );
+
+      await expect.poll(() => engine.db.settings().notification_preference).toBe("all");
+      await overlay.getByText("Settings saved", { exact: true }).waitFor();
+
+      await expect
+        .poll(async () => {
+          const bounds = (await overlay.locator(".notification-success").boundingBox())!;
+          return bounds.x + bounds.width;
+        })
+        .toBeGreaterThan(1260);
+
+      await page.screenshot({
+        animations: "disabled",
+        path: join(screenshots, "settings-save-success.png"),
+      });
+
+      await overlay.locator(".vibestar-toast").screenshot({
+        animations: "disabled",
+        path: join(screenshots, "settings-toast-success.png"),
+      });
+
+      failNextSettings = true;
+      await overlay.getByRole("combobox", { name: "Concurrency" }).click();
+      await page.getByRole("option", { name: "3", exact: true }).click();
+      await overlay.getByText(/Could not save settings:.*Fixture settings save failure/).waitFor();
+      expect(await overlay.locator(".notification-success").count()).toBe(0);
+
+      expect(
+        await overlay.getByRole("combobox", { name: "Concurrency" }).getAttribute("data-value"),
+      ).toBe("4");
+
+      const errorToast = overlay.locator(".notification-error");
+
+      await expect
+        .poll(async () => {
+          const bounds = (await errorToast.boundingBox())!;
+          return bounds.x + bounds.width;
+        })
+        .toBeGreaterThan(1260);
+
+      await page.screenshot({
+        animations: "disabled",
+        path: join(screenshots, "settings-save-rollback.png"),
+      });
+
+      await overlay.locator(".vibestar-toast").screenshot({
+        animations: "disabled",
+        path: join(screenshots, "settings-toast-failure.png"),
+      });
+
+      expect(await overlay.getByRole("button", { name: "Retry", exact: true }).count()).toBe(0);
+      await overlay.getByRole("combobox", { name: "Concurrency" }).click();
+      await page.getByRole("option", { name: "3", exact: true }).click();
+      await expect.poll(() => engine.db.settings().concurrency).toBe(3);
+      await overlay.getByRole("combobox", { name: "Concurrency" }).click();
+      await page.getByRole("option", { name: "4", exact: true }).click();
+      await expect.poll(() => engine.db.settings().concurrency).toBe(4);
       await category("Providers");
       await overlay.getByRole("heading", { name: "Providers", exact: true }).waitFor();
       await page.screenshot({ path: join(screenshots, "settings-providers.png") });
@@ -205,11 +316,49 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
         .waitFor();
 
       await page.screenshot({ path: join(screenshots, "settings-repository-toolbar.png") });
+      const repositorySearch = overlay.getByRole("textbox", { name: "Search repositories" });
+
+      expect(
+        await repositorySearch.evaluate((element) => getComputedStyle(element).backgroundColor),
+      ).toBe("rgba(0, 0, 0, 0)");
+
+      await repositorySearch.hover();
+
+      await expect
+        .poll(() =>
+          repositorySearch.evaluate((element) => getComputedStyle(element).backgroundColor),
+        )
+        .toBe("rgba(0, 0, 0, 0)");
+
+      await repositorySearch.focus();
+
+      expect(await repositorySearch.evaluate((element) => getComputedStyle(element).fontSize)).toBe(
+        "15px",
+      );
+
       await overlay.getByRole("textbox", { name: "Search repositories" }).fill("fixture-draft");
       await page.screenshot({ path: join(screenshots, "settings-repositories.png") });
       await category("Execution");
       await overlay.getByLabel("Linux data directory optional").fill("/fixture/unsaved-data");
       await page.screenshot({ path: join(screenshots, "settings-execution.png") });
+      await category("Repositories");
+
+      await expect
+        .poll(() =>
+          app.evaluate(
+            () =>
+              (globalThis as typeof globalThis & { runtimeConfirmations: number })
+                .runtimeConfirmations,
+          ),
+        )
+        .toBe(1);
+
+      await category("Execution");
+
+      await expect
+        .poll(() => overlay.getByLabel("Linux data directory optional").inputValue())
+        .toBe("");
+
       await category("Repositories");
 
       expect(await overlay.getByRole("textbox", { name: "Search repositories" }).inputValue()).toBe(
@@ -302,6 +451,37 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
       expect(engine.db.all("SELECT id FROM flow_runs WHERE task_id=?", idle.id)).toHaveLength(0);
       expect(errors).toEqual([]);
 
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.send("core:event", {
+          event: "runtime.status",
+          text: "Starting WSL (Ubuntu)...",
+          data: { phase: "starting" },
+        }),
+      );
+
+      await page.getByText("Starting WSL (Ubuntu)...", { exact: true }).waitFor();
+      await page.screenshot({ path: join(screenshots, "notifications-bottom-right.png") });
+
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.send("core:event", {
+          event: "runtime.status",
+          text: "Installing dependencies...",
+          data: { phase: "dependencies", essential: true },
+        }),
+      );
+
+      await page.getByText("Installing dependencies...", { exact: true }).waitFor();
+      expect(await page.locator(".notification-progress").count()).toBe(1);
+
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0].webContents.send("core:event", {
+          event: "runtime.status",
+          data: { phase: "ready" },
+        }),
+      );
+
+      await page.getByText("Runtime ready", { exact: true }).waitFor();
+
       // Restart the actual desktop, then reattach the same isolated test authority.
       await app.close();
 
@@ -352,6 +532,12 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
         await restarted.getByRole("combobox", { name: "Concurrency" }).getAttribute("data-value"),
       ).toBe("4");
 
+      expect(
+        await restarted
+          .getByRole("combobox", { name: "Notification preference" })
+          .getAttribute("data-value"),
+      ).toBe("all");
+
       completed = true;
       console.log(`Settings Electron screenshots: ${screenshots}`);
     } catch (error) {
@@ -367,6 +553,7 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
         const reopened = await createFixtureEngine(join(dir, "fixture-data"));
         try {
           expect(reopened.db.settings().concurrency).toBe(4);
+          expect(reopened.db.settings().notification_preference).toBe("all");
         } finally {
           await reopened.close();
         }

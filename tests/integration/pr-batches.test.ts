@@ -184,7 +184,7 @@ it("records a newly merged PR without spending an analysis invocation", async ()
   expect(reviewActionState(scheduler.analysis.history(job.id)[0])).toBe("Merged");
 });
 
-it("uses the saved review model before the utility fallback for an individual check", async () => {
+it("captures the explicitly selected review model for an individual check", async () => {
   const review = {
     provider: "codex" as const,
     model: "review-specific",
@@ -192,10 +192,9 @@ it("uses the saved review model before the utility fallback for an individual ch
     timeout_secs: 30,
   };
 
-  engine.db.saveSettings({ ...engine.db.settings(), review_ai: review });
   const infer = vi.spyOn(engine.utility, "run").mockResolvedValue(analysisResult());
   const [job] = jobs();
-  scheduler.analyze(job.id, randomUUID());
+  scheduler.analyze(job.id, randomUUID(), { configuration: review });
   await vi.waitFor(() => expect(scheduler.analysis.history(job.id)[0]?.status).toBe("completed"));
   expect(infer).toHaveBeenCalledWith(expect.objectContaining({ configuration: review }));
 });

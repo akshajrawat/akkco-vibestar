@@ -1,179 +1,163 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Settings } from "../../lib/types";
 import type { DesktopInfo } from "../../../electron/contracts";
 import { rpc, errorMessage, subscribe } from "../../lib/api";
-import { SettingsSchema } from "../../../backend/domain";
+import { notifications } from "../../lib/notifications";
+import { SettingsSchema, defaultSettings } from "../../../backend/domain";
+import { useAutosave } from "./useAutosave";
 
-/** Manage settings and auto-save changes independently of visible category. */
+/** Settings remain optimistic only until their serialized persistence result arrives. */
 export const useSettingsDraft = (settings: Settings | undefined, refresh: () => Promise<void>) => {
-  const [value, setValue] = useState(settings);
-  const incoming = useRef(settings);
   const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [installLog, setLog] = useState("");
   const [editors, setEditors] = useState<{ id: string; label: string }[]>([]);
-
-  const pendingSettings = useRef<Settings | null>(null);
-  const isSavingSettings = useRef(false);
-
-  const pendingDesktop = useRef<DesktopInfo["config"] | null>(null);
-  const isSavingDesktop = useRef(false);
   const desktopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const core = useAutosave(
+    settings || defaultSettings,
+    async (value) => {
+      await rpc("settings.save", value);
+
+      void refresh().catch((error) =>
+        notifications.error(errorMessage(error), { id: "settings:refresh" }),
+      );
+    },
+    "settings",
+    (value) => notifications.setPreference(value.notification_preference),
+  );
+
+  const environment = useAutosave<DesktopInfo["config"]>(
+    { distro: "", data_home: "", helper_path: "" },
+    async (config) => {
+      const saved = await window.vibestar.saveDesktopSettings(config);
+      if (saved === false) throw { kind: "cancelled", message: "Environment change cancelled" };
+
+      void refresh().catch((error) =>
+        notifications.error(errorMessage(error), { id: "settings:refresh" }),
+      );
+    },
+    "execution settings",
+  );
+
+  const receiveSettings = core.receive;
+
+  useEffect(() => {
+    if (settings) receiveSettings(settings);
+    // Incoming snapshots are reconciled only when their values actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
 
   useEffect(() => {
     let alive = true;
 
-    void window.vibestar
-      .desktopSettings()
-      .then((info) => {
-        if (!alive) return;
-        setDesktop(info);
-      })
-      .catch((e) => {
-        if (alive) setError(errorMessage(e));
-      });
+    const loadDesktop = () => {
+      void window.vibestar
+        .desktopSettings()
+        .then((info) => {
+          if (!alive) return;
+          setDesktop(info);
+          environment.receive(info.config);
+        })
+        .catch((e) => {
+          if (alive) setError(errorMessage(e));
+        });
+    };
 
-    void rpc<{ editors: typeof editors }>("editors.list")
-      .then((result) => {
-        if (alive) setEditors(result.editors);
-      })
-      .catch((e) => {
-        if (alive) setError(errorMessage(e));
-      });
+    const loadEditors = () => {
+      void rpc<{ editors: typeof editors }>("editors.list")
+        .then((result) => {
+          if (alive) setEditors(result.editors);
+        })
+        .catch((e) => {
+          if (alive) setError(errorMessage(e));
+        });
+    };
+
+    loadDesktop();
+    loadEditors();
 
     const subscription = subscribe((event) => {
       if (event.event === "install.output") setLog((log) => (log + event.text).slice(-16000));
+      if (
+        event.event === "runtime.status" &&
+        (event.data as { phase?: string })?.phase === "ready"
+      ) {
+        setError("");
+        loadDesktop();
+        loadEditors();
+      }
     });
 
     return () => {
       alive = false;
       void subscription.then((unsubscribe) => unsubscribe());
     };
+    // Load desktop metadata once; autosave owns subsequent config changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!settings) return;
-    if (JSON.stringify(incoming.current) === JSON.stringify(settings)) return;
-    incoming.current = settings;
-
-    if (!isSavingSettings.current && !pendingSettings.current) {
-      setValue(settings);
-    }
-  }, [settings]);
-
-  const saveSettings = async (target: Settings) => {
-    pendingSettings.current = target;
-    if (isSavingSettings.current) return;
-    isSavingSettings.current = true;
-    setBusy(true);
-    setError("");
-
-    try {
-      while (pendingSettings.current) {
-        const toSave = pendingSettings.current;
-        pendingSettings.current = null;
-        await rpc("settings.save", toSave);
-        await refresh();
-      }
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      isSavingSettings.current = false;
-      setBusy(false);
-    }
+  const flushDesktop = () => {
+    if (desktopTimer.current) clearTimeout(desktopTimer.current);
+    desktopTimer.current = null;
+    return environment.flush();
   };
 
-  const updateValue = (next: Settings) => {
-    setValue(next);
-    const parsed = SettingsSchema.safeParse(next);
+  const flushRef = useRef(flushDesktop);
+  flushRef.current = flushDesktop;
 
-    if (!parsed.success) {
-      setError(parsed.error.issues.map((i) => `${i.path.join(" · ")}: ${i.message}`).join("\n"));
-      return;
-    }
+  useEffect(
+    () => () => {
+      void flushRef.current();
+    },
+    [],
+  );
 
-    void saveSettings(next);
-  };
+  return {
+    value: settings ? core.value : undefined,
+    setValue: (next: Settings) => {
+      const parsed = SettingsSchema.safeParse(next);
+      if (!parsed.success) {
+        notifications.error(parsed.error.issues.map((issue) => issue.message).join("\n"), {
+          id: "settings:validation",
+        });
 
-  const flushDesktop = useCallback(async () => {
-    if (desktopTimer.current) {
-      clearTimeout(desktopTimer.current);
-      desktopTimer.current = null;
-    }
-
-    if (!pendingDesktop.current) return;
-    if (isSavingDesktop.current) return;
-    isSavingDesktop.current = true;
-    setBusy(true);
-    setError("");
-
-    try {
-      while (pendingDesktop.current) {
-        const toSave = pendingDesktop.current;
-        pendingDesktop.current = null;
-        await window.vibestar?.saveDesktopSettings?.(toSave);
-        await refresh();
+        return;
       }
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      isSavingDesktop.current = false;
-      setBusy(false);
-    }
-  }, [refresh]);
 
-  const updateDesktop = (next: DesktopInfo) => {
-    const previousDistro = desktop?.config.distro;
-    setDesktop(next);
-    pendingDesktop.current = next.config;
-
-    if (previousDistro !== next.config.distro) {
-      void flushDesktop();
-    } else {
+      core.update(parsed.data);
+      void core.flush();
+    },
+    desktop: desktop ? { ...desktop, config: environment.value } : null,
+    setDesktop: (next: DesktopInfo) => {
+      environment.update(next.config);
       if (desktopTimer.current) clearTimeout(desktopTimer.current);
 
       desktopTimer.current = setTimeout(() => {
         void flushDesktop();
       }, 400);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (desktopTimer.current) {
-        clearTimeout(desktopTimer.current);
-        void flushDesktop();
-      }
-    };
-  }, [flushDesktop]);
-
-  const install = async () => {
-    if (!desktop || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      await flushDesktop();
-      await window.vibestar.installHelper();
-      await refresh();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return {
-    value,
-    setValue: updateValue,
-    desktop,
-    setDesktop: updateDesktop,
+    },
     flush: flushDesktop,
     error,
-    busy,
+    busy: core.busy || environment.busy || installing,
     installLog,
     editors,
-    install,
+    install: async () => {
+      if (installing) return;
+      setInstalling(true);
+      try {
+        await window.vibestar.installHelper();
+        await refresh();
+      } catch (e) {
+        notifications.error(errorMessage(e), {
+          id: "runtime",
+          action: { label: "Retry", run: () => window.vibestar.retryRuntime() },
+        });
+      } finally {
+        setInstalling(false);
+      }
+    },
   };
 };

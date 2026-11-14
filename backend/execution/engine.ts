@@ -132,7 +132,7 @@ export class Engine extends EventEmitter {
           provider === "antigravity" ? new AntigravityProvider() : new CodexProvider()),
     );
 
-    this.utility = new UtilityAI(this.db, this.runUtility);
+    this.utility = new UtilityAI(this.runUtility);
 
     this.repositories = new RepositoryOperations(
       this,
@@ -382,6 +382,18 @@ export class Engine extends EventEmitter {
     this.state.closed = true;
     this.state.repositoryController.abort();
     for (const a of this.state.active.values()) a.controller.abort();
+  };
+
+  /** Close admission atomically after proving that a desktop restart cannot interrupt work. */
+  prepareRuntimeRestart = () => {
+    const blockers = this.cleanupBlockers();
+    if (blockers.length)
+      throw new AdeError(
+        "busy",
+        "Wait for running tasks, terminals and background operations to finish before changing the runtime.",
+        { blockers },
+      );
+    this.beginShutdown();
   };
 
   close = () =>

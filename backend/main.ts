@@ -86,8 +86,15 @@ const main = async () => {
             manual_issue_watch: true,
             issue_watch_contract: 1,
             issue_watch_batches: 1,
+            runtime_restart: 1,
+            notification_preferences: 1,
           };
-        else if (!rpc && request.method === "snapshot")
+        else if (request.method === "core.prepareRestart") {
+          if (initializing || choosing)
+            throw new AdeError("busy", "Runtime initialization is in progress.");
+          engine?.prepareRuntimeRestart();
+          result = { ready: true };
+        } else if (!rpc && request.method === "snapshot")
           result = {
             repositories: [],
             tasks: [],

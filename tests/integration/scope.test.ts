@@ -1,3 +1,4 @@
+import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
 import { ActionSchema } from "../../backend/scheduled/action";
 import { it, expect } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -21,6 +22,7 @@ it("analyzes unlinked PR feedback in an isolated read-only workspace without clo
     await scheduler.close();
 
     const result = await engine.utility.run({
+      configuration: defaultReviewConfiguration,
       purpose: "PR Review Analysis",
       prompt: "Assess this reviewer question without editing any files.",
       schema: ActionSchema,

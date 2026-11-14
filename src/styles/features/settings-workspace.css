@@ -238,7 +238,7 @@
   color: var(--foreground);
 }
 
-.settings-task .settings-row small {
+.settings-general-section .settings-row small {
   display: block;
   margin-top: 4px;
   color: var(--text-muted);
@@ -247,17 +247,17 @@
   line-height: 1.5;
 }
 
-.settings-workspace .settings-task > h2 {
+.settings-workspace .settings-general-section > h2 {
   margin: 0 0 16px 20px;
   font-size: 20px;
   font-weight: 600;
 }
 
-.settings-task .settings-row + .settings-row {
+.settings-general-section .settings-row + .settings-row {
   border-top: 1px solid var(--border-subtle);
 }
 
-.settings-task .select-trigger {
+.settings-general-section .select-trigger {
   min-height: 34px;
   padding: 6px 11px;
   border-color: var(--border-subtle);
@@ -428,12 +428,13 @@
 .repository-toolbar .library-search {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 12px;
   flex: 1 1 220px;
   min-width: 0;
   max-width: none;
   margin: 0;
-  padding: 8px 12px;
+  padding: 10px 16px;
+  min-height: 44px;
   color: var(--text-muted);
   background: transparent;
   border: 0;
@@ -447,14 +448,11 @@
 
 .repository-toolbar .library-search:focus-within {
   background: transparent;
-  outline: none;
+  outline: 1px solid var(--focus-ring);
 }
 
-.repository-toolbar .library-search input {
-  min-width: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
+.repository-toolbar .library-search > svg {
+  flex-shrink: 0;
 }
 
 .repository-library .repository-section-title {
@@ -524,6 +522,20 @@
   border: 0;
   outline: none;
   box-shadow: none;
+}
+
+.repository-library .repository-toolbar .library-search input,
+.repository-library .repository-toolbar .library-search input:is(:hover, :focus) {
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 15px;
+  line-height: 24px;
 }
 
 .ghost-action-button {

@@ -1,14 +1,13 @@
 import { z } from "zod";
 
-import type { Settings } from "../../domain";
-import type { Database } from "../../storage/database";
+import type { AgentConfiguration } from "../../domain";
 
 export interface UtilityRequest {
   purpose: string;
   prompt: string;
   schema?: z.ZodType;
   workspace?: string;
-  configuration?: Settings["utility_ai"];
+  configuration: AgentConfiguration;
   signal?: AbortSignal;
   context?: {
     taskId?: string;
@@ -23,10 +22,9 @@ export interface UtilityRequest {
 
 export class UtilityAI {
   constructor(
-    private readonly db: Database,
     private readonly execute: (
       request: UtilityRequest,
-      config: Settings["utility_ai"],
+      config: AgentConfiguration,
     ) => Promise<unknown>,
   ) {}
 
@@ -36,6 +34,6 @@ export class UtilityAI {
         ...request,
         schema: request.schema || z.object({ summary: z.string() }).strict(),
       },
-      request.configuration || this.db.settings().utility_ai,
+      request.configuration,
     );
 }

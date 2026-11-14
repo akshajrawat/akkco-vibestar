@@ -10,7 +10,7 @@ import { Button } from "../../components/ui/button";
 import { AgentResponse } from "../chat/AgentResponse";
 import { RunPrompt } from "../chat/RunPrompt";
 import type { Run } from "../../lib/types";
-import type { Settings, Repository } from "../../../backend/domain";
+import type { Settings, Repository, AgentConfiguration } from "../../../backend/domain";
 import type { RepairSession } from "../../../backend/review/repair/contracts";
 import { SolveReview } from "./repair/SolveReview";
 import { containDialogFocus, navigateTabs } from "../../lib/keyboard";
@@ -46,7 +46,7 @@ export const PrDetails = ({
 }: {
   job: ScheduleJob;
   close: () => void;
-  configuration?: Settings["utility_ai"];
+  configuration?: AgentConfiguration;
   repositories?: Repository[];
   repairs?: RepairSession[];
   settings?: Settings;
@@ -729,7 +729,7 @@ export const PrDetails = ({
           <small>
             {configuration
               ? `Analyze: ${configuration.provider} · ${configuration.model || "CLI default"} · ${configuration.effort}`
-              : "Configured Utility AI"}
+              : "Provider CLI default"}
           </small>
 
           <Button

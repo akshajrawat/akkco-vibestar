@@ -1,3 +1,4 @@
+import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -161,14 +162,18 @@ it("retrieves conversations concurrently and triages five PRs with a single comp
   const infer = classifier();
 
   const config = {
-    ...engine.db.settings().utility_ai,
+    ...defaultReviewConfiguration,
     provider: "codex" as const,
     model: "review-model",
     effort: "low",
   };
 
-  engine.db.saveSettings({ ...engine.db.settings(), review_ai: config });
-  await rpc.call("pr.watch.start", { request_id: randomUUID(), trigger: "open" });
+  await rpc.call("pr.watch.start", {
+    request_id: randomUUID(),
+    trigger: "open",
+    configuration: { provider: config.provider, config },
+  });
+
   const result = await finish();
   expect(maximum).toBe(4);
   expect(infer).toHaveBeenCalledOnce();
@@ -312,7 +317,7 @@ it("keeps successful negative classifications clear and reclassifies edited conv
 
   rpc.prWatch.start({ request_id: randomUUID(), trigger: "recheck" });
   expect((await finish()).items.every((item) => item.status === "clear")).toBe(true);
-  const configuration = engine.db.settings().utility_ai;
+  const configuration = defaultReviewConfiguration;
 
   rpc.prWatch.start({
     request_id: randomUUID(),

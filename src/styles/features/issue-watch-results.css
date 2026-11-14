@@ -512,17 +512,6 @@
   padding: 9px 0;
 }
 
-.watch-notifications {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  gap: 6px;
-  max-height: 150px;
-  overflow: auto;
-  padding: 8px 13px;
-  border-bottom: 1px solid var(--border-default);
-}
-
 .watch-saved-heading label,
 .watch-view-tabs label {
   flex-direction: row;
@@ -532,33 +521,6 @@
 .issue-watch-page input[type="checkbox"] {
   width: auto;
   accent-color: var(--text-secondary);
-}
-
-.watch-notifications > div {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  background: var(--background-elevated);
-  border: 1px solid var(--border-strong);
-  border-left: 2px solid var(--accent-blue);
-  box-shadow: 0 8px 25px var(--shadow);
-  border-radius: 4px;
-  padding: 13px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.watch-notifications > div > svg {
-  color: var(--accent-blue);
-  flex-shrink: 0;
-  margin-top: 3px;
-}
-
-.watch-notifications small {
-  display: block;
-  color: var(--text-muted);
-  font-size: 10px;
-  margin: 4px 0;
 }
 
 @media (max-width: 1500px) {

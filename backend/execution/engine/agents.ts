@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import type { z } from "zod";
 
-import { AdeError, type StageConfig, type WorkspaceAssignment } from "../../domain";
+import {
+  AdeError,
+  type StageConfig,
+  type AgentConfiguration,
+  type WorkspaceAssignment,
+} from "../../domain";
 import { managedPath } from "../../workspace/paths";
 import type { AgentRunner } from "../agents/agent-runner";
 import { type UtilityRequest } from "../agents/utility-ai";
@@ -53,10 +58,7 @@ export class AgentOperations {
       ),
     );
 
-  runUtility = async (
-    request: UtilityRequest,
-    config: import("../../domain").Settings["utility_ai"],
-  ) => {
+  runUtility = async (request: UtilityRequest, config: AgentConfiguration) => {
     const id = request.context?.scanId || request.context?.jobId || randomUUID();
 
     const task =

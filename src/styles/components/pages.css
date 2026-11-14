@@ -351,18 +351,6 @@
   background: currentColor;
 }
 
-.global-error {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 13px;
-  color: var(--accent-red);
-  border-bottom: 1px solid var(--background-error);
-  background: var(--background-error);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
 .error-box,
 .warning-box,
 .notice {

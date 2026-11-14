@@ -2,9 +2,10 @@ import { z } from "zod";
 
 import { randomUUID, createHash } from "node:crypto";
 
-import { AdeError, now, StageConfigSchema } from "../domain";
+import { AdeError, now, AgentConfigurationSchema } from "../domain";
 import { redact } from "../execution/runtime/process";
 import type { Engine } from "../execution/engine";
+import { defaultReviewConfiguration } from "./pr/contracts";
 import { fileHash } from "./file-hash";
 
 const noteInput = z
@@ -55,11 +56,7 @@ const questionInput = z
   .extend({
     question: z.string().trim().min(1).max(4000),
     parent_id: z.string().uuid().optional(),
-    configuration: StageConfigSchema.extend({
-      provider: z.enum(["codex", "antigravity"]),
-    })
-      .strict()
-      .optional(),
+    configuration: AgentConfigurationSchema.strict().optional(),
   })
   .strict();
 
@@ -241,10 +238,7 @@ export class ReviewService {
             schema: z.object({ summary: z.string().min(1).max(24000) }).strict(),
             workspace: task.worktree_path,
             context: { taskId: task.id, questionId: id },
-            configuration:
-              p.configuration ||
-              this.engine.db.settings().review_ai ||
-              this.engine.db.settings().utility_ai,
+            configuration: p.configuration || defaultReviewConfiguration,
           }),
         );
 

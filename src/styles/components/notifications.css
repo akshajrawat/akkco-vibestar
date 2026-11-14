@@ -1,0 +1,56 @@
+.vibestar-toast {
+  width: 420px;
+  font: inherit;
+  box-shadow: 0 8px 28px var(--shadow);
+}
+
+.vibestar-toast > div {
+  margin: 0;
+  width: 100%;
+}
+
+.notification {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 12px 14px 16px;
+  width: 100%;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.notification > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.notification-error > svg {
+  color: var(--accent-red);
+}
+.notification-warning > svg {
+  color: var(--accent-amber);
+}
+.notification-success > svg {
+  color: var(--accent-green);
+}
+
+.notification-content {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification > button {
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vibestar-toast,
+  .notification .spinning {
+    animation: none !important;
+  }
+}

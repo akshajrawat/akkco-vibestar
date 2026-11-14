@@ -8,14 +8,16 @@ export interface DesktopInfo {
   config: DesktopSettings;
   distros: string[];
   native_windows: boolean;
+  runtime_status?: import("../backend/domain").CoreEvent;
 }
 
 export interface DesktopApi {
   rpc: <T>(method: string, params?: unknown) => Promise<T>;
   subscribe: (callback: (event: import("../backend/domain").CoreEvent) => void) => () => void;
   desktopSettings: () => Promise<DesktopInfo>;
-  saveDesktopSettings: (config: DesktopSettings) => Promise<void>;
+  saveDesktopSettings: (config: DesktopSettings) => Promise<boolean>;
   installHelper: () => Promise<void>;
+  retryRuntime: () => Promise<void>;
   openExternal: (url: string) => Promise<void>;
 }
 

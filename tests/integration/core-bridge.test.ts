@@ -486,3 +486,26 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+
+it.skipIf(process.platform === "win32")(
+  "requires helper capabilities for notification saves and safe desktop restarts",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "vibestar-bridge-notifications-"));
+    await writeFile(join(dir, "core.cjs"), helper());
+    const bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
+    try {
+      await bridge.start();
+
+      await expect(
+        bridge.request("settings.save", { notification_preference: "all" }),
+      ).rejects.toThrow("notification preferences");
+
+      await expect(bridge.request("core.prepareRestart")).rejects.toThrow("desktop-only");
+      await expect(bridge.prepareRestart()).rejects.toThrow("cannot safely restart");
+      await expect(bridge.request("snapshot")).resolves.toMatchObject({ accepted: "snapshot" });
+    } finally {
+      await bridge.stop();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);

@@ -1,3 +1,4 @@
+import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
 import { selectValue } from "../helpers/select";
 // @vitest-environment jsdom
 import { it, expect, vi, afterEach } from "vitest";
@@ -41,7 +42,7 @@ const session: PRAnalysisSession = {
   started_at: "2026-10-01T10:00:00Z",
   ended_at: "2026-10-01T10:01:00Z",
   phase: "Analysis complete",
-  configuration: defaultSettings.utility_ai,
+  configuration: defaultReviewConfiguration,
   snapshot: prSnapshot,
   method: "utility_ai",
   report: {
@@ -91,15 +92,7 @@ const snapshot: Snapshot = {
   repositories: [],
   tasks: [],
   root: "/data",
-  settings: {
-    ...defaultSettings,
-    utility_ai: {
-      ...defaultSettings.utility_ai,
-      provider: "codex",
-      model: "gpt-6.1-sol",
-      effort: "xhigh",
-    },
-  },
+  settings: defaultSettings,
   scheduled: [job],
   attention: [],
 };
@@ -109,7 +102,7 @@ it("shows the configured analysis model and performs no inspection/inference mer
   render(<ScheduledPage snapshot={snapshot} refresh={vi.fn()} open={vi.fn()} />);
 
   expect(screen.getByRole("button", { name: "Choose PR review model" }).title).toContain(
-    "gpt-6.1-sol · xhigh",
+    "CLI default · medium",
   );
 
   expect(screen.queryByText("Resume")).toBeNull();
@@ -186,13 +179,12 @@ it("checks every open PR in one click with the configured review model and no ba
       : {},
   );
 
-  const reviewModel = { ...snapshot.settings.utility_ai, model: "review-model" };
+  const reviewModel = defaultReviewConfiguration;
 
   render(
     <ScheduledPage
       snapshot={{
         ...discoveredSnapshot,
-        settings: { ...snapshot.settings, review_ai: reviewModel },
         github: {
           ...discoveredSnapshot.github!,
           pull_requests: [
@@ -220,7 +212,7 @@ it("checks every open PR in one click with the configured review model and no ba
         configuration: {
           provider: reviewModel.provider,
           config: {
-            model: "review-model",
+            model: reviewModel.model,
             effort: reviewModel.effort,
             timeout_secs: reviewModel.timeout_secs,
           },
@@ -460,6 +452,7 @@ it("applies compact model and time-limit overrides without changing saved settin
   render(<ScheduledPage snapshot={snapshot} refresh={vi.fn()} open={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "Choose PR review model" }));
   await waitFor(() => expect(rpc).toHaveBeenCalledWith("providers.detect", {}));
+  selectValue(screen.getByRole("combobox", { name: "Review provider" }), "codex");
   selectValue(screen.getByRole("combobox", { name: "Review model" }), "session-model");
   selectValue(screen.getByRole("combobox", { name: "Review time limit" }), "300");
   fireEvent.click(screen.getByRole("button", { name: "Close model selector" }));
@@ -482,14 +475,14 @@ it("applies compact model and time-limit overrides without changing saved settin
   );
 
   expect(rpc.mock.calls.some(([method]) => method === "settings.save")).toBe(false);
-  expect(snapshot.settings.utility_ai.model).toBe("gpt-6.1-sol");
+  expect(defaultReviewConfiguration.model).toBe("");
 });
 
 it("renders the entire original multiline review, source links, independent observations and positive feedback", async () => {
   install();
 
   const { container } = render(
-    <PrDetails job={job} configuration={defaultSettings.utility_ai} close={vi.fn()} />,
+    <PrDetails job={job} configuration={defaultReviewConfiguration} close={vi.fn()} />,
   );
 
   await screen.findByText("Three observations require consideration.");

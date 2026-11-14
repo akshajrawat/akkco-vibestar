@@ -75,15 +75,12 @@ it("records successful, failed and cancelled provider invocations without starti
   }));
 
   try {
-    engine.db.saveSettings({
-      ...defaultSettings,
-      utility_ai: {
-        provider: "antigravity",
-        model: "next-model",
-        effort: "high",
-        timeout_secs: 30,
-      },
-    });
+    const configuration = {
+      provider: "antigravity" as const,
+      model: "next-model",
+      effort: "high",
+      timeout_secs: 30,
+    };
 
     for (const provider of ["antigravity", "codex"]) {
       providerName = provider;
@@ -91,6 +88,7 @@ it("records successful, failed and cancelled provider invocations without starti
         mode = status;
 
         const call = engine.utility.run({
+          configuration,
           purpose: status === "success" ? "PR Review Analysis" : "Utility AI",
           prompt: "Read-only classification",
         });

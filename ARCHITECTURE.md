@@ -62,12 +62,30 @@ keeps the current task/workflow mounted and makes the underlying interface inert
 focus and restores the opener on close. Select popovers use the modal's portal target so they remain
 interactive in its top layer. Workspace shortcuts cannot run through the overlay.
 
-Settings owns one settings/desktop draft across categories. Visited panels remain mounted but hidden,
-retaining local form values and scroll positions. Saving uses the existing RPC and desktop validation
-boundaries; reset restores the last acknowledged values. Closing a dirty draft requires confirmation,
-and closing during a shared save is blocked. Providers and Repositories embed their existing feature
-pages; Storage and Recovery reuse the guarded cleanup/reset operations. Usage stays in bottom
-navigation. There is no new execution or persistence authority in the overlay.
+Settings owns one long-lived autosave queue for core settings and another for desktop configuration,
+including while the overlay is closed. Serialized field patches roll failures back to acknowledged
+values without replaying a failed field in another setting's save. Changing the setting again
+creates a new serialized save.
+Visited panels retain local form values and scroll positions while the overlay is open. Desktop
+configuration changes require native confirmation; the core atomically refuses restart when activity
+exists and closes admission before stopping. Providers, Repositories and Storage reuse their existing
+feature and guarded service boundaries.
+
+One root `react-hot-toast` Toaster renders through `src/lib/notifications.tsx`. It follows the active
+native modal's top layer without stealing focus. The saved notification preference filters optional
+messages; errors, required input, blocking warnings and essential runtime installation progress remain
+visible. A display-only cache of the acknowledged preference covers startup before the core connects;
+the core remains authoritative. Runtime status is cached by Electron so a renderer arriving after startup can display the
+current stage. The existing WSL installer runs before helper loading only when bundled bytes, the
+locked dependency manifest or native ABI/dependencies need recovery. It acquires the existing core
+ownership lock and refuses runtime aliases. Custom helper paths remain user-managed. Retry probes
+again; explicit Repair Runtime can reinstall. Linux launches bypass this WSL setup path.
+
+Retired global Utility AI and Review AI fields are stripped when reading settings and disappear on the
+next settings save; reads preserve original saved bytes. Historical analysis configurations and
+`utility_ai` method labels remain readable. Current utility execution requires an operation-owned
+configuration. Existing PR controls select a provider/model per operation and default to the provider
+CLI; they no longer read a global model setting. No historical run is rewritten or replayed.
 
 ## Viber and graph execution
 

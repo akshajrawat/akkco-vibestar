@@ -1,10 +1,14 @@
 import type { DesktopInfo } from "../../../electron/contracts";
 import { Select } from "../../components/ui/Select";
+import { Button } from "../../components/ui/button";
 
 export const ExecutionSettings = ({
   desktop,
   setDesktop,
   flush,
+  install,
+  busy,
+  installLog,
 }: {
   desktop: DesktopInfo | null;
   setDesktop: (desktop: DesktopInfo) => void;
@@ -80,5 +84,15 @@ export const ExecutionSettings = ({
         </label>
       )}
     </div>
+    {desktop?.native_windows && (
+      <details>
+        <summary>Runtime troubleshooting</summary>
+        <p>The bundled runtime is prepared automatically. Repair it here after a failed setup.</p>
+        <Button disabled={busy} onClick={() => void install?.()}>
+          Repair Runtime
+        </Button>
+        {installLog && <pre className="install-log">{installLog}</pre>}
+      </details>
+    )}
   </section>
 );

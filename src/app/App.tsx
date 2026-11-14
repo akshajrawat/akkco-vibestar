@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, Activity } from "react";
-import { X, Search, ListTodo, Bot, GitPullRequest, FolderGit2, Plug, Settings } from "lucide-react";
+import { Search, ListTodo, Bot, GitPullRequest, FolderGit2, Plug, Settings } from "lucide-react";
 import type { Page } from "../lib/types";
 import { useWorkspace, useDetail } from "../hooks/useWorkspace";
 import { Overview } from "../features/tasks/Overview";
@@ -35,6 +35,9 @@ import { RepairWorkspace } from "../features/pull-requests/repair/RepairWorkspac
 import { IssueWatchPage } from "../features/issue-watch/IssueWatchPage";
 import { UsageView } from "../features/usage/UsageView";
 import { useWatchNotifications } from "../features/issue-watch/notifications";
+import { notifications as notify } from "../lib/notifications";
+import { GlobalNotifications } from "./GlobalNotifications";
+import { useTaskNotifications } from "./useTaskNotifications";
 
 const navigation = [
   ["Tasks", ListTodo],
@@ -52,6 +55,7 @@ export const App = () => {
   usePRWatch(snapshot?.capabilities?.pr_quick_watch === true);
   const [page, setPage] = useState<Page>("Tasks");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [runtimePhase, setRuntimePhase] = useState<string>();
   const [newViberProfile, setNewViberProfile] = useState<string>();
 
   const [taskId, setTaskId] = useState<string | null>(() =>
@@ -91,6 +95,11 @@ export const App = () => {
   const onError = useCallback((s: string) => setError(s), [setError]);
 
   useEffect(() => {
+    if (runtimePhase && runtimePhase !== "ready") notify.dismiss("workspace-error");
+    else if (error) notify.error(error, { id: "workspace-error" });
+  }, [error, runtimePhase]);
+
+  useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.isComposing) return;
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
@@ -115,15 +124,17 @@ export const App = () => {
     }
   }, [snapshot, taskId]);
 
-  const open = (id: string) => {
+  const open = useCallback((id: string) => {
     setRepairId(null);
     localStorage.removeItem("vibestar.activeRepair");
     setTaskId(id);
     setPage("Tasks");
     localStorage.setItem("vibestar.activeTask", id);
-  };
+  }, []);
 
-  const navigate = (p: Page) => {
+  useTaskNotifications(snapshot, open);
+
+  const navigate = useCallback((p: Page) => {
     if (p === "Settings") {
       setSettingsOpen(true);
       return;
@@ -134,7 +145,25 @@ export const App = () => {
     setTaskId(null);
     setRepairId(null);
     localStorage.removeItem("vibestar.activeRepair");
-  };
+  }, []);
+
+  useEffect(() => {
+    if (page === "Issue Watch") return;
+    for (const notice of notifications.notices) {
+      notify.information(notice.text, {
+        id: `scan:${notice.id}`,
+        action: {
+          label: "View results",
+          run: () => {
+            navigate("Issue Watch");
+            setWatchId(notice.watchId);
+          },
+        },
+      });
+
+      notifications.dismiss(notice.id);
+    }
+  }, [notifications, navigate, page]);
 
   const openRepair = (id: string) => {
     setTaskId(null);
@@ -308,6 +337,10 @@ export const App = () => {
         )}
 
         <main className="main-area">
+          <GlobalNotifications
+            preference={snapshot?.settings.notification_preference}
+            onRuntimeStatus={setRuntimePhase}
+          />
           <TitleBar
             onPalette={() => setPalette(true)}
             onSidebar={sidebar ? undefined : toggleSidebar}
@@ -319,78 +352,18 @@ export const App = () => {
             </p>
           )}
 
-          {error && (
-            <div className="global-error">
-              <div>
-                <strong>Couldn't complete the operation</strong>
-                <details>
-                  <summary>Technical details</summary>
-                  <pre>{error}</pre>
-                </details>
-              </div>
-
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label="Dismiss error"
-                onClick={() => setError("")}
-              >
-                <X size={14} />
-              </Button>
-            </div>
-          )}
-
-          {notifications.notices.length > 0 && page !== "Issue Watch" && (
-            <div
-              className="watch-notifications"
-              role="log"
-              aria-live="polite"
-              aria-label="Issue Watch notifications"
-            >
-              {notifications.notices.map((notice) => (
-                <div key={notice.id}>
-                  <Search size={16} />
-                  <div>
-                    <strong>{notice.text}</strong>
-                    <small>Counts include dismissed results.</small>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        navigate("Issue Watch");
-                        setWatchId(notice.watchId);
-                        notifications.dismiss(notice.id);
-                      }}
-                    >
-                      View results
-                    </Button>
-                  </div>
-
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-label="Dismiss scan notification"
-                    onClick={() => notifications.dismiss(notice.id)}
-                  >
-                    <X size={14} />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
           {content}
         </main>
 
-        {settingsOpen && (
-          <SettingsPage
-            settings={snapshot?.settings}
-            root={snapshot?.root}
-            diagnostics={snapshot?.persistence}
-            snapshot={snapshot || undefined}
-            refresh={refresh}
-            close={() => setSettingsOpen(false)}
-          />
-        )}
+        <SettingsPage
+          open={settingsOpen}
+          settings={snapshot?.settings}
+          root={snapshot?.root}
+          diagnostics={snapshot?.persistence}
+          snapshot={snapshot || undefined}
+          refresh={refresh}
+          close={() => setSettingsOpen(false)}
+        />
 
         {palette && (
           <CommandPalette

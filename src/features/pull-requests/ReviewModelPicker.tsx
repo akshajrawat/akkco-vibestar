@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, X } from "lucide-react";
 
-import type { Settings } from "../../../backend/domain";
+import type { AgentConfiguration } from "../../../backend/domain";
 import {
   supportedEfforts,
   configurationError,
@@ -13,7 +13,7 @@ import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/Select";
 import { ProviderIcon } from "../../components/ui/ProviderIcon";
 
-type Configuration = Settings["utility_ai"];
+type Configuration = AgentConfiguration;
 
 const ModelOptions = ({
   value,
@@ -138,7 +138,7 @@ const ModelOptions = ({
       {loading && <small>Loading available models…</small>}
       {error && <p className="warning">{error}</p>}
       <Button size="sm" variant="ghost" onClick={reset}>
-        Use settings default
+        Use CLI default
       </Button>
     </section>
   );

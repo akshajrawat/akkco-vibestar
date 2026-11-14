@@ -56,9 +56,10 @@ Create tasks with the **+** beside the sidebar search field. Search loaded tasks
 issue number or status; press Escape to clear. The sidebar lists tasks independently, with queued and
 executing work in **Working**. Both sections collapse independently. The bottom icons open Vibers,
 Pull Requests, Issues, Usage and Settings. Settings opens a centered configuration workspace over
-the current task. Manage Repositories and Providers there, search categories, and save or reset shared
-preferences from the header. Category changes retain drafts; closing with unsaved changes asks for
-confirmation. Closing Settings returns to the same mounted workspace. Usage keeps its bottom icon.
+the current task. Manage Repositories and Providers there, search categories, and adjust automatically saved preferences. Failed saves restore the last
+persisted value and show a failure toast. Change the setting again to retry. General → Notifications defaults to Necessary only; All notifications
+also shows task completion and routine runtime updates. Errors and required input always appear.
+Category changes retain local drafts. Environment changes ask before restarting the backend. Closing Settings returns to the same mounted workspace. Usage keeps its bottom icon.
 Use `Ctrl+Shift+P` → **Go to Tasks** to return to the task overview.
 Collapse the sidebar beside the Vibestar name or with `Ctrl+B`; use the workspace's small reopen
 button to bring it back.

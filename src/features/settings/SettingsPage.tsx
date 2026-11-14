@@ -19,6 +19,7 @@ export const SettingsPage = ({
   refresh,
   snapshot,
   close,
+  open = true,
 }: {
   settings?: Settings;
   root?: string;
@@ -26,6 +27,7 @@ export const SettingsPage = ({
   diagnostics?: Snapshot["persistence"];
   snapshot?: Snapshot;
   close: () => void;
+  open?: boolean;
 }) => {
   const draft = useSettingsDraft(settings, refresh);
   const { value, setValue } = draft;
@@ -34,6 +36,8 @@ export const SettingsPage = ({
 
   const requestClose = () => {
     void draft.flush?.();
+    setSection("General");
+    setVisited(["General"]);
     close();
   };
 
@@ -41,6 +45,8 @@ export const SettingsPage = ({
     setSection(category);
     setVisited((current) => (current.includes(category) ? current : [...current, category]));
   };
+
+  if (!open) return null;
 
   return (
     <WorkspaceOverlay label="Settings" className="settings-workspace" onClose={requestClose}>

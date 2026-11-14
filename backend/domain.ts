@@ -55,6 +55,12 @@ export const FollowupConfigSchema = z.object({
   config: StageConfigSchema,
 });
 
+export const AgentConfigurationSchema = StageConfigSchema.extend({
+  provider: z.enum(["antigravity", "codex"]),
+});
+
+export type AgentConfiguration = z.infer<typeof AgentConfigurationSchema>;
+
 export const PipelineStageConfigSchema = StageConfigSchema.extend({
   provider: z.enum(["codex", "antigravity"]).optional(),
 });
@@ -83,20 +89,8 @@ export const SettingsSchema = z
     antigravity_review: PipelineStageConfigSchema.optional(),
     codex_plan: PipelineStageConfigSchema,
     codex_implementation: PipelineStageConfigSchema,
-    utility_ai: StageConfigSchema.extend({
-      provider: z.enum(["antigravity", "codex"]),
-    }).default({
-      provider: "antigravity",
-      model: "",
-      effort: "medium",
-      timeout_secs: 120,
-    }),
     default_editor: z.enum(["", "code", "cursor", "windsurf", "codium"]).default(""),
-    review_ai: StageConfigSchema.extend({
-      provider: z.enum(["antigravity", "codex"]),
-    })
-      .nullable()
-      .default(null),
+    notification_preference: z.enum(["necessary", "all"]).default("necessary"),
     repository_discovery: z
       .object({
         roots: z.array(z.string().min(1).max(2000)).max(30),
@@ -121,36 +115,6 @@ export const SettingsSchema = z
           message: error,
         });
     }
-
-    if (settings.review_ai) {
-      const reviewError = modelEffortError(
-        settings.review_ai.provider,
-        settings.review_ai.model,
-        settings.review_ai.effort,
-      );
-
-      if (reviewError)
-        context.addIssue({
-          code: "custom",
-          path: ["review_ai", "effort"],
-          message: reviewError,
-        });
-    }
-
-    if (settings.utility_ai.provider === "antigravity") {
-      const utilityError = modelEffortError(
-        "antigravity",
-        settings.utility_ai.model,
-        settings.utility_ai.effort,
-      );
-
-      if (utilityError)
-        context.addIssue({
-          code: "custom",
-          path: ["utility_ai", "effort"],
-          message: utilityError,
-        });
-    }
   });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -173,16 +137,10 @@ export const pipelineConfiguration = (
 export const defaultSettings: Settings = {
   concurrency: 2,
   default_editor: "",
-  review_ai: null,
+  notification_preference: "necessary",
   antigravity: { model: "", effort: "high", timeout_secs: 1800 },
   codex_plan: { model: "", effort: "high", timeout_secs: 1800 },
   codex_implementation: { model: "", effort: "high", timeout_secs: 3600 },
-  utility_ai: {
-    provider: "antigravity",
-    model: "",
-    effort: "medium",
-    timeout_secs: 120,
-  },
   repository_discovery: {
     roots: ["~/projects", "~/repos", "~/src", "~/code", "~/workspace"],
     max_depth: 4,

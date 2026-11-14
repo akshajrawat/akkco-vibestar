@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, screen } from "electron";
+import { app, BrowserWindow, ipcMain, shell, Menu, screen, dialog } from "electron";
 import { mkdir, writeFile, cp, access } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -65,6 +65,7 @@ const main = async () => {
   Menu.setApplicationMenu(null);
   const configPath = join(app.getPath("userData"), "desktop.json");
   let config = await readDesktopConfig(configPath);
+  let changingRuntime = false;
   if (!app.isPackaged && process.env.VIBESTAR_DEV_URL && process.env.VIBESTAR_DEV_WSL_CONFIG)
     config = z
       .object({
@@ -81,7 +82,7 @@ const main = async () => {
   const startCore = () => {
     bridge = new CoreBridge(coreDir, config);
     bridge.on("event", (event) => window?.webContents.send("core:event", event));
-    if (process.platform !== "win32" || config.distro) bridge.start();
+    if (process.platform !== "win32" || config.distro) void bridge.start();
   };
 
   startCore();
@@ -96,6 +97,7 @@ const main = async () => {
     try {
       const p = z.object({ method: z.string().max(100), params: z.unknown() }).parse(input);
       if (!bridge) throw new Error("Core not initialized");
+      if (changingRuntime) throw new Error("The runtime is restarting. Retry when it is ready.");
       return { ok: true, result: await bridge.request(p.method, p.params) };
     } catch (error) {
       const failure = error as Error & {
@@ -132,7 +134,12 @@ const main = async () => {
         .map((s) => s.trim())
         .filter(Boolean);
     } else distros = [process.env.WSL_DISTRO_NAME || "Local Linux"];
-    return { config, distros, native_windows: process.platform === "win32" };
+    return {
+      config,
+      distros,
+      native_windows: process.platform === "win32",
+      runtime_status: bridge?.runtimeStatus,
+    };
   });
 
   ipcMain.handle("desktop:save", async (event, input) => {
@@ -155,23 +162,59 @@ const main = async () => {
       })
       .parse(input);
 
-    if (JSON.stringify(updated) === JSON.stringify(config)) return;
-    await bridge?.stop();
-    config = updated;
-    await saveDesktopConfig(configPath, config);
-    startCore();
+    if (JSON.stringify(updated) === JSON.stringify(config)) return true;
+    if (changingRuntime) throw new Error("A runtime change is already in progress.");
+    changingRuntime = true;
+    try {
+      const answer = await dialog.showMessageBox(window!, {
+        type: "question",
+        title: "Restart execution environment?",
+        message: "Save these environment changes and restart the backend?",
+        detail:
+          "Running tasks and terminals must finish first. Your selected WSL distribution will only change if you chose a different one here.",
+        buttons: ["Cancel", "Save and restart"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+
+      if (answer.response !== 1) return false;
+      await bridge?.prepareRestart();
+      await bridge?.stop();
+      try {
+        await saveDesktopConfig(configPath, updated);
+        config = updated;
+      } finally {
+        startCore();
+      }
+
+      return true;
+    } finally {
+      changingRuntime = false;
+    }
   });
 
   ipcMain.handle("desktop:install", async (event) => {
     trusted(event);
     if (!bridge) throw new Error("Save your distro first");
-    await bridge.stop();
+    if (changingRuntime) throw new Error("A runtime change is already in progress.");
+    changingRuntime = true;
+    try {
+      await bridge.repair();
+    } finally {
+      changingRuntime = false;
+    }
+  });
 
-    await bridge.install((text) =>
-      window?.webContents.send("core:event", { event: "install.output", text }),
-    );
-
-    startCore();
+  ipcMain.handle("desktop:retry", async (event) => {
+    trusted(event);
+    if (!bridge) throw new Error("Core not initialized");
+    if (changingRuntime) throw new Error("A runtime change is already in progress.");
+    changingRuntime = true;
+    try {
+      await bridge.retry();
+    } finally {
+      changingRuntime = false;
+    }
   });
 
   ipcMain.handle("desktop:external", async (event, url) => {

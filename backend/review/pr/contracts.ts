@@ -1,7 +1,15 @@
 import { z } from "zod";
 
-import { StageConfigSchema, type Settings } from "../../domain";
+import { AgentConfigurationSchema, type AgentConfiguration } from "../../domain";
 import { PullRequestStateSchema, type PullRequestState } from "../../scheduled/contracts";
+
+/** Existing PR controls default to the provider CLI; every run captures its own selection. */
+export const defaultReviewConfiguration: AgentConfiguration = {
+  provider: "antigravity",
+  model: "",
+  effort: "medium",
+  timeout_secs: 120,
+};
 
 export const ReviewAnalysisSchema = z
   .object({
@@ -75,7 +83,7 @@ export interface PRAnalysisSession {
   started_at: string;
   ended_at: string | null;
   phase: string;
-  configuration: Settings["utility_ai"];
+  configuration: AgentConfiguration;
   snapshot?: PullRequestState;
   method?: "deterministic" | "utility_ai" | "reused";
   changes?: string[];
@@ -97,9 +105,7 @@ export const PRAnalysisSessionSchema = z
     started_at: z.string().optional(),
     ended_at: z.string().nullable().optional(),
     phase: z.string().optional(),
-    configuration: StageConfigSchema.extend({
-      provider: z.enum(["codex", "antigravity"]),
-    }).optional(),
+    configuration: AgentConfigurationSchema.optional(),
     snapshot: PullRequestStateSchema.optional(),
     method: z.enum(["deterministic", "utility_ai", "reused"]).optional(),
     changes: z.array(z.string()).optional(),

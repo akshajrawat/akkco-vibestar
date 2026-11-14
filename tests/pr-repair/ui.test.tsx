@@ -1,3 +1,4 @@
+import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -55,7 +56,7 @@ const session: RepairSession = {
     phase: "complete",
     started_at: "2026-10-14T10:00:00Z",
     ended_at: "2026-10-14T10:00:00Z",
-    configuration: defaultSettings.utility_ai,
+    configuration: defaultReviewConfiguration,
     snapshot: {
       ...prSnapshot,
       identity: { ...prSnapshot.identity!, baseRepository: "oppia/oppia" },

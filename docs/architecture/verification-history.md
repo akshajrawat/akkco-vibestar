@@ -341,3 +341,143 @@ data roots and inert provider tools. Its current canvas capture is
 
 Native Windows and WSL checks, installed-browser acceptance, live providers and real GitHub writes
 were not run.
+
+## 2026-11-14 — Notifications, runtime recovery and settings autosave
+
+Added the shared bottom-right notification service and one modal-aware Toaster. Necessary only is
+the persisted default; errors, required input, blocking warnings and essential installation progress
+remain visible. A display cache preserves the acknowledged preference before core startup completes.
+Settings use serialized field patches, roll failed saves back to acknowledged values and retry without
+overwriting newer edits. Desktop environment changes require native confirmation and an atomic
+core activity refusal before restart. Managed WSL setup reuses the installer, checks bundled bytes,
+locked dependencies and native ABI, holds core ownership during installation and leaves healthy
+helpers alone on Retry. Custom helpers remain user-managed; Linux launches skip WSL setup.
+
+Removed the retired global AI settings while retaining historical captured configurations and method
+labels. Existing PR controls select models per operation. Old global preferences are ignored on read
+and removed by a later settings save; new checks initially use the provider CLI default. Users who
+previously selected a global model should choose it in the existing PR controls. Node and system build
+prerequisites must already be available in the selected distro.
+
+Validation:
+
+- `npm run verify`: formatting, lint, types, 398 regular tests (one skip), 210 integration tests,
+  148 security tests, seven terminal tests and the production build; 763 passing deterministic tests.
+- Focused notification/settings regression run: 14 passing tests after the final renderer lifecycle fix.
+- Built Electron acceptance under Xvfb: Settings, PR analysis, PR watch, PR repair and Issue Watch;
+  five files and five passing cases in the final acceptance batch. These use isolated roots and inert
+  provider/GitHub fixtures. No live inference or GitHub writes ran.
+- Settings captures cover 1280×720, 1440×900, 800×540 and 390×640, keyboard focus, reduced motion,
+  custom accent tokens, failure rollback/Retry, restart persistence and cancelled environment changes.
+  The notification dropdown shares Task styling and its computed border, background, padding,
+  radius and typography match Concurrency. Repository search remains transparent at rest, on hover
+  and on focus, with 15px text, a 19px icon and improved padding.
+- WSL script fixtures cover missing/outdated helpers, manifest/ABI changes, installation failure and
+  recovery, healthy reuse, owned data-directory refusal and runtime aliases. Native Windows/WSL
+  launch, installation prerequisites and process shutdown were not exercised on this Linux host.
+
+Screenshot deliverables (actual built Electron captures):
+
+- [Notification preference dropdown](../screenshots/settings-notifications.png).
+- [Repository search](../screenshots/settings-repository-toolbar.png).
+- [Settings rollback and Retry](../screenshots/settings-save-rollback.png).
+- [Bottom-right runtime progress](../screenshots/notifications-bottom-right.png).
+
+Temporary fixture data, logs and unused screenshots were removed. No commit or push was made.
+
+Modified files for this change:
+
+- `ARCHITECTURE.md`
+- `README.md`
+- `backend/domain.ts`
+- `backend/execution/agents/utility-ai.ts`
+- `backend/execution/engine.ts`
+- `backend/execution/engine/agents.ts`
+- `backend/main.ts`
+- `backend/review/pr/contracts.ts`
+- `backend/review/pr/watch.ts`
+- `backend/review/service.ts`
+- `backend/scheduled/scheduler.ts`
+- `docs/architecture/verification-history.md`
+- `docs/development.md`
+- `docs/screenshots/notifications-bottom-right.png`
+- `docs/screenshots/settings-notifications.png`
+- `docs/screenshots/settings-repository-toolbar.png`
+- `docs/screenshots/settings-save-rollback.png`
+- `docs/testing.md`
+- `electron/bridge.ts`
+- `electron/contracts.ts`
+- `electron/main.ts`
+- `electron/preload.ts`
+- `package-lock.json`
+- `package.json`
+- `src/app/App.tsx`
+- `src/app/GlobalNotifications.tsx`
+- `src/app/useTaskNotifications.ts`
+- `src/features/issue-watch/WatchEditor.tsx`
+- `src/features/pull-requests/PrDetails.tsx`
+- `src/features/pull-requests/ReviewModelPicker.tsx`
+- `src/features/pull-requests/ScheduledPage.tsx`
+- `src/features/repositories/RepositoryPage.tsx`
+- `src/features/settings/ExecutionSettings.tsx`
+- `src/features/settings/GeneralSettings.tsx`
+- `src/features/settings/SettingsPage.tsx`
+- `src/features/settings/useAutosave.ts`
+- `src/features/settings/useSettingsDraft.ts`
+- `src/hooks/useWorkspace.ts`
+- `src/lib/notifications.tsx`
+- `src/styles/components/notifications.css`
+- `src/styles/components/pages.css`
+- `src/styles/features/issue-watch-results.css`
+- `src/styles/features/settings-workspace.css`
+- `src/styles/index.css`
+- `tests/desktop/desktop-issue-watch.test.ts`
+- `tests/desktop/desktop-pr-repair.test.ts`
+- `tests/desktop/desktop-pr-watch.test.ts`
+- `tests/desktop/desktop-settings.test.ts`
+- `tests/integration/core-bridge.test.ts`
+- `tests/integration/integration.test.ts`
+- `tests/integration/pr-batches.test.ts`
+- `tests/integration/pr-watch.test.ts`
+- `tests/integration/product-quality.test.ts`
+- `tests/integration/runtime-recovery.test.ts`
+- `tests/integration/scope.test.ts`
+- `tests/integration/settings.test.ts`
+- `tests/pr-repair/fixtures.ts`
+- `tests/pr-repair/ui.test.tsx`
+- `tests/security/runtime-recovery.test.ts`
+- `tests/unit/notifications.test.tsx`
+- `tests/unit/pr-review-ui.test.tsx`
+- `tests/unit/settings-workspace.test.tsx`
+
+## 2026-11-14 — Confirm successful settings saves
+
+Settings now show a success notification after the complete autosave queue has been acknowledged,
+including Execution settings. Rapid edits produce one confirmation. Failed or cancelled batches do
+not emit success; failure rollback and Retry remain intact. Success follows All notifications, while
+save failures remain essential and visible under Necessary only.
+
+The focused notification/settings run passed 15 tests. The production build (including typecheck)
+and built Electron Settings fixture passed. Electron verifies the success-to-error replacement and
+captures both actual toast cards, rather than a mockup:
+
+- [Success toast](../screenshots/settings-toast-success.png).
+- [Failure toast with Retry](../screenshots/settings-toast-failure.png).
+- [Successful save in Settings](../screenshots/settings-save-success.png).
+- [Failed save in Settings](../screenshots/settings-save-rollback.png).
+
+Changed `src/features/settings/useAutosave.ts`, `tests/unit/settings-workspace.test.tsx`,
+`tests/desktop/desktop-settings.test.ts` and these screenshot/evidence files. Temporary Electron data
+and unused captures were removed. No commit or push was made.
+
+## 2026-11-14 — Simplify settings failure toasts
+
+Removed the Retry action from settings-save failure notifications. Failed saves still restore the
+acknowledged value; changing the setting again submits a fresh save. Removed the unused retry-version
+tracking, updated current documentation and refreshed the failure screenshots. Runtime recovery keeps
+its existing Retry action.
+
+The focused notification/settings run passed 15 tests, the production build including typecheck
+passed, and the built Electron Settings fixture passed with an explicit absence check for Retry and
+successful resubmission through the original dropdown. Temporary fixture data and unused captures
+were removed. No commit or push was made.

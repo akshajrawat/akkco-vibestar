@@ -4,6 +4,7 @@ import { AdeError, now } from "../../domain";
 import type { Engine } from "../../execution/engine";
 import { redact } from "../../execution/runtime/process";
 import type { GitHubService } from "../../github/service";
+import { defaultReviewConfiguration } from "./contracts";
 import { PRWatchReader, type PRWatchContext } from "./watch-github";
 import {
   PRWatchStartSchema,
@@ -83,11 +84,10 @@ export class PRWatch {
     if (this.active || this.state?.request_id === request.request_id) return this.state;
 
     const previous = this.state?.items || [];
-    const settings = this.engine.db.settings();
 
     const configuration = request.configuration
       ? { ...request.configuration.config, provider: request.configuration.provider }
-      : settings.review_ai || settings.utility_ai;
+      : defaultReviewConfiguration;
 
     this.state = {
       request_id: request.request_id,

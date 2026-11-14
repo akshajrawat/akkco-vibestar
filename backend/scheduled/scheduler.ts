@@ -2,11 +2,11 @@ import { ActionSchema } from "./action";
 import { z } from "zod";
 import type { GitHubPullRequest } from "../github/contracts";
 import { randomUUID } from "node:crypto";
-import { now, AdeError, type Settings } from "../domain";
+import { now, AdeError, type AgentConfiguration } from "../domain";
 import type { Engine } from "../execution/engine";
 import { redact } from "../execution/runtime/process";
 import { PRAnalysis } from "../review/pr/analysis";
-import type { PRAnalysisSession } from "../review/pr/contracts";
+import { defaultReviewConfiguration, type PRAnalysisSession } from "../review/pr/contracts";
 import { GitHubMonitor } from "./github";
 import {
   ScheduleInput,
@@ -196,7 +196,7 @@ export class Scheduler {
     id: string,
     requestId: string = randomUUID(),
     options?: {
-      configuration: Settings["utility_ai"];
+      configuration: AgentConfiguration;
       authorizeInference?: () => void;
     },
   ) => this.launch(id, requestId, true, options);
@@ -210,7 +210,7 @@ export class Scheduler {
     id: string,
     requestId: string,
     options: {
-      configuration: Settings["utility_ai"];
+      configuration: AgentConfiguration;
       authorizeInference?: () => void;
     },
   ) => {
@@ -230,7 +230,7 @@ export class Scheduler {
     requestId: string,
     semantic: boolean,
     options?: {
-      configuration: Settings["utility_ai"];
+      configuration: AgentConfiguration;
       authorizeInference?: () => void;
     },
   ) => {
@@ -259,11 +259,7 @@ export class Scheduler {
       started_at: now(),
       ended_at: null,
       phase: "Fetching complete GitHub context",
-      configuration: structuredClone(
-        options?.configuration ||
-          this.engine.db.settings().review_ai ||
-          this.engine.db.settings().utility_ai,
-      ),
+      configuration: structuredClone(options?.configuration || defaultReviewConfiguration),
     };
 
     let release = () => {};

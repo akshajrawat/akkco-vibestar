@@ -1,3 +1,4 @@
+import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -171,7 +172,7 @@ export const repairFixture = async (
     started_at: now(),
     ended_at: now(),
     phase: "Complete",
-    configuration: engine.db.settings().utility_ai,
+    configuration: defaultReviewConfiguration,
     snapshot,
     report: {
       summary: "Three review observations",

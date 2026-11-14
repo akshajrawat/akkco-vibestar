@@ -18,6 +18,7 @@ const api: DesktopApi = {
   desktopSettings: () => ipcRenderer.invoke("desktop:settings"),
   saveDesktopSettings: (config) => ipcRenderer.invoke("desktop:save", config),
   installHelper: () => ipcRenderer.invoke("desktop:install"),
+  retryRuntime: () => ipcRenderer.invoke("desktop:retry"),
   openExternal: (url) => ipcRenderer.invoke("desktop:external", url),
 };
 
