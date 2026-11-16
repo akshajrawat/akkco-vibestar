@@ -1,4 +1,4 @@
-import type { FlowDefinition, FlowNode } from "./contracts";
+import type { AgentProfile, FlowDefinition, FlowNode } from "./contracts";
 
 export const builtInProfiles = {
   planner: "e1bc5ab8-3a96-4d53-96c5-3103cf484501",
@@ -6,6 +6,9 @@ export const builtInProfiles = {
   implementer: "e1bc5ab8-3a96-4d53-96c5-3103cf484503",
   reviewer: "e1bc5ab8-3a96-4d53-96c5-3103cf484504",
 } as const;
+
+export const isCustomViber = (profile: Pick<AgentProfile, "id" | "appearance">) =>
+  !!profile.appearance && !Object.values(builtInProfiles).some((id) => id === profile.id);
 
 export const flowTemplates = [
   { id: "plan-build", name: "Planner → Implementer", description: "Plan, approve, then build." },

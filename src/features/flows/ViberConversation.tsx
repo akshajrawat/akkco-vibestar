@@ -31,6 +31,8 @@ export const ViberConversation = ({
   busy,
   action,
   output,
+  compact = false,
+  modelControl,
 }: {
   detail: Detail;
   workspace: FlowWorkspace;
@@ -41,6 +43,8 @@ export const ViberConversation = ({
   busy: boolean;
   action: (method: string, params: unknown) => Promise<boolean>;
   output: () => void;
+  compact?: boolean;
+  modelControl?: React.ReactNode;
 }) => {
   const taskId = detail.task.id;
   const id = viberConversationKey(taskId, node.id, node.profile_id);
@@ -202,9 +206,17 @@ export const ViberConversation = ({
       }
       conversation={
         <>
+          {compact && messages[0] && (
+            <time className="viber-chat-date" dateTime={messages[0].created_at}>
+              {new Date(messages[0].created_at).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </time>
+          )}
           {!messages.length && !runs.length && (
             <div className="chat-welcome">
-              <ViberFace />
+              <ViberFace profile={profile} />
               <h1>Hey, I’m {node.name}.</h1>
               <p>
                 This conversation belongs to this Viber in this task. Select the context to share.
@@ -304,16 +316,19 @@ export const ViberConversation = ({
             </Button>
           )}
           <Composer
+            compact={compact}
             id={id}
             label="Viber conversation"
             placeholder={`Message ${node.name}…`}
             sendLabel="Send message"
             onSend={() => void send()}
             model={
-              <span>
-                {profile?.name || node.name} · {execution?.access} ·{" "}
-                {execution?.model || "CLI default"}
-              </span>
+              modelControl || (
+                <span>
+                  {profile?.name || node.name} · {execution?.access} ·{" "}
+                  {execution?.model || "CLI default"}
+                </span>
+              )
             }
             context={[]}
             busy={busy}

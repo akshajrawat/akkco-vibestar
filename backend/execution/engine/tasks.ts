@@ -10,6 +10,7 @@ import {
 } from "../../domain";
 import { fetchIssue } from "../../workspace/issue";
 import { GeneralTaskCreateSchema, IssueTaskCreateSchema } from "../../flows/contracts";
+import { initializeProfiles } from "../../flows/defaults";
 import { FlowStore } from "../../flows/store";
 import { instantiateTemplate, type TemplateId } from "../../flows/templates";
 import type { z } from "zod";
@@ -26,6 +27,8 @@ export class TaskLifecycle {
   private readonly creatingTasks = new Map<string, { digest: string; promise: Promise<Task> }>();
 
   private saveInitialFlow = (task: Task, profileId: string, template?: TemplateId) => {
+    if (template) initializeProfiles(this.host.db);
+
     const flows = new FlowStore(this.host.db);
     const profile = flows.profile(profileId);
 

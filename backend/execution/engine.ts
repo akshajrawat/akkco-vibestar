@@ -26,7 +26,6 @@ import { FlowStore } from "../flows/store";
 import { FlowRunStore } from "../flows/run-store";
 import { assertManagedWorkspace } from "../workspace/managed";
 import { FlowExecution } from "./engine/flows";
-import { initializeProfiles } from "../flows/defaults";
 import { migrateLegacyTasks } from "../flows/legacy-migration";
 
 export class Engine extends EventEmitter {
@@ -107,7 +106,6 @@ export class Engine extends EventEmitter {
     this.db = database;
     this.flows = new FlowStore(database);
     this.flowRuns = new FlowRunStore(database);
-    initializeProfiles(database);
     this.git = new GitWorkspace(root, (id) => this.db.repository(id), gitTransport);
 
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>

@@ -1,0 +1,770 @@
+.sidebar {
+  --sidebar-active: #101621;
+}
+
+.sidebar-brand-header {
+  gap: 4px;
+  padding-inline: 10px;
+  container-type: inline-size;
+}
+
+.sidebar-brand {
+  flex: 1;
+  gap: 6px;
+}
+
+.sidebar-brand span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-modes {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.sidebar-mode {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.sidebar-mode:hover {
+  background: var(--background-hover);
+}
+
+.sidebar-mode[aria-pressed="true"] {
+  background: var(--sidebar-active);
+}
+
+.sidebar-header,
+.sidebar-vibers,
+.sidebar-tasks {
+  background: var(--sidebar-active);
+}
+
+.sidebar-search,
+.sidebar-search:focus-within {
+  border: 0;
+  box-shadow: none;
+}
+
+.sidebar-vibers {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.sidebar-viber {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+}
+
+.sidebar-viber:hover {
+  background: var(--background-panel);
+}
+
+.sidebar-viber[aria-current="page"] {
+  background: var(--background-elevated);
+}
+
+.sidebar-viber .viber-face {
+  width: 40px;
+  height: 40px;
+}
+
+.sidebar-viber span {
+  min-width: 0;
+}
+
+.sidebar-viber strong,
+.sidebar-viber small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-viber small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.workspace-overlay.viber-editor-overlay {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, calc(100vw - 40px));
+  height: fit-content;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+  border: 0;
+}
+
+.viber-editor-heading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 12px;
+  padding: 18px 24px 14px;
+}
+
+.viber-editor-heading > svg {
+  color: var(--accent);
+}
+
+.viber-editor-heading h2 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.viber-editor-heading p {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.viber-editor-heading .button {
+  margin-left: auto;
+}
+
+.viber-profile-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.viber-editor-content {
+  min-height: 0;
+  padding: 4px 24px;
+}
+
+.viber-editor-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(220px, 1fr);
+  align-items: center;
+  gap: 16px 32px;
+}
+
+.viber-identity-fields {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.viber-profile-editor label {
+  margin: 0;
+  gap: 5px;
+}
+
+.viber-profile-editor input,
+.viber-profile-editor textarea,
+.viber-profile-editor .select-trigger {
+  border: 0;
+  border-radius: 8px;
+  background: var(--background-elevated);
+}
+
+.viber-profile-editor textarea {
+  min-height: 52px;
+  max-height: 100px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.viber-profile-editor textarea[aria-label="Instructions"] {
+  height: 88px;
+}
+
+.viber-profile-editor input:focus-visible,
+.viber-profile-editor textarea:focus-visible {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.viber-live-preview {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+}
+
+.viber-live-preview > .viber-face {
+  width: min(100%, 220px);
+  height: auto;
+}
+
+.avatar-builder {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.avatar-categories {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.avatar-categories button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.avatar-categories [aria-selected="true"] {
+  background: var(--background-elevated);
+}
+
+.avatar-options-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.avatar-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
+  gap: 6px;
+  min-height: 76px;
+}
+
+.avatar-options > button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: 3px;
+  padding: 6px 3px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+}
+
+.avatar-options button:hover,
+.avatar-categories button:hover {
+  background: var(--background-hover);
+}
+
+.avatar-options button[aria-pressed="true"] {
+  background: var(--background-elevated);
+}
+
+.avatar-options .viber-face {
+  width: 44px;
+  height: 44px;
+}
+
+.avatar-color {
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+}
+
+.viber-profile-editor .avatar-custom-color {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.avatar-custom-color input {
+  width: 110px;
+  font-family: var(--font-mono);
+}
+
+.avatar-custom-color small {
+  color: var(--accent-red);
+}
+
+.viber-editor-actions {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px 18px;
+}
+
+.viber-editor-actions .button:not(.primary) {
+  border: 0;
+  background: transparent;
+}
+
+.viber-welcome-page {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  min-height: 0;
+  overflow: auto;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.viber-welcome-guide {
+  width: min(100%, 480px);
+}
+
+.viber-welcome-guide > .viber-face {
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 18px;
+}
+
+.viber-welcome-guide h1 {
+  margin-bottom: 12px;
+  font-size: clamp(28px, 3vw, 36px);
+  letter-spacing: -1px;
+  font-weight: 600;
+}
+
+.viber-welcome-guide p {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.viber-welcome-guide > .button {
+  margin-top: 24px;
+}
+
+.viber-chat-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.viber-chat-page-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border: 0;
+}
+
+.viber-chat-page-header .viber-face {
+  width: 30px;
+  height: 30px;
+}
+
+.viber-chat-page-header > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.viber-chat-page-header small {
+  font-size: 11px;
+  display: block;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viber-chat-page .chat-main {
+  --chat-reading-width: 760px;
+  --chat-gutter: clamp(12px, 3vw, 28px);
+}
+
+.viber-chat-page .event-timeline {
+  padding-top: 14px;
+  padding-bottom: 20px;
+}
+
+.viber-chat-page .chat-draft .event-timeline {
+  flex: 0 1 auto;
+  margin-top: auto;
+}
+
+.viber-chat-page .chat-draft .composer-lane {
+  margin-bottom: auto;
+}
+
+.viber-chat-welcome {
+  padding-bottom: 8px;
+}
+
+.viber-chat-welcome > .viber-face {
+  width: 140px;
+  height: 140px;
+  margin: 0 auto 22px;
+}
+
+.viber-chat-page .chat-welcome h1 {
+  font-size: clamp(28px, 3vw, 36px);
+  font-weight: 500;
+  letter-spacing: -1px;
+}
+
+.viber-idle {
+  animation: viber-float 4s ease-in-out infinite;
+}
+
+@keyframes viber-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(3deg);
+  }
+}
+
+.viber-chat-history {
+  position: absolute;
+  right: 24px;
+  top: 85px;
+  z-index: 2;
+  padding: 8px;
+  background: var(--background-panel);
+  border-radius: 8px;
+  max-width: 320px;
+}
+
+.viber-chat-history > .button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.viber-chat-date {
+  display: block;
+  margin-bottom: 18px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.viber-chat-page .user-message,
+.viber-chat-page .saved-assistant-message,
+.viber-chat-page .message-event,
+.viber-chat-page .agent-turn > .agent-response {
+  width: fit-content;
+  max-width: 78%;
+  padding: 10px 13px;
+  border: 0;
+  border-radius: 12px;
+  margin-block: 6px;
+}
+
+.viber-chat-page .user-message {
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+  background: color-mix(in srgb, var(--background-sidebar) 75%, black);
+}
+
+.viber-chat-page .saved-assistant-message,
+.viber-chat-page .message-event,
+.viber-chat-page .agent-turn > .agent-response {
+  margin-right: auto;
+  border-bottom-left-radius: 4px;
+  background: var(--background-elevated);
+}
+
+.viber-chat-page .agent-turn {
+  margin: 6px 0;
+}
+
+.viber-chat-page .user-message p,
+.viber-chat-page .agent-response {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.viber-chat-page .saved-assistant-message {
+  position: relative;
+}
+
+.viber-chat-page .user-message .message-actions,
+.viber-chat-page .saved-assistant-message .message-actions {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  height: 28px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.viber-chat-page .user-message:hover .message-actions,
+.viber-chat-page .user-message:focus-within .message-actions,
+.viber-chat-page .saved-assistant-message:hover .message-actions,
+.viber-chat-page .saved-assistant-message:focus-within .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.viber-chat-page .chat-input,
+.viber-chat-page .chat-input:has(textarea:focus) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 122px;
+  padding: 14px 16px 12px;
+  border: 0;
+  outline: 0;
+  box-shadow: 0 8px 28px var(--shadow);
+  border-radius: 18px;
+  background: var(--background-elevated);
+}
+
+.viber-chat-page .chat-input textarea,
+.viber-chat-page .chat-input textarea:focus {
+  min-height: 42px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.viber-chat-page .composer-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.viber-chat-page .composer-model {
+  min-width: 0;
+  max-width: calc(100% - 80px);
+}
+
+.viber-chat-page .composer-model .select-trigger {
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  min-height: 28px;
+  font-size: 13px;
+}
+
+.viber-model-effort {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.viber-chat-page .context-picker-anchor > .button,
+.viber-chat-page .composer-toolbar > .primary {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+}
+
+.viber-chat-page .composer-toolbar > .primary {
+  background: var(--foreground);
+  color: var(--background-app);
+}
+
+.viber-model-popover {
+  flex-direction: row;
+  gap: 10px;
+  height: 360px;
+  padding: 10px;
+  border: 0;
+  background: var(--background-sidebar);
+}
+
+.viber-model-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 40px;
+}
+
+.viber-model-providers button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.viber-model-providers button[aria-pressed="true"],
+.viber-model-providers button:hover {
+  background: var(--background-hover);
+}
+
+.viber-model-popover .select-search {
+  border: 0;
+  padding: 4px 8px 10px;
+}
+
+.viber-model-popover .select-options,
+.viber-model-reasoning {
+  scrollbar-width: none;
+}
+
+.viber-model-popover .select-options::-webkit-scrollbar,
+.viber-model-reasoning::-webkit-scrollbar {
+  display: none;
+}
+
+.viber-model-reasoning {
+  flex: 0 0 38%;
+  min-width: 0;
+  overflow: auto;
+  padding-left: 8px;
+}
+
+.viber-model-reasoning header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 8px;
+  color: var(--text-muted);
+}
+
+.viber-model-reasoning header small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viber-model-reasoning button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 9px 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.viber-model-reasoning button:hover,
+.viber-model-reasoning button[aria-pressed="true"] {
+  background: var(--background-hover);
+}
+
+.viber-model-reasoning p {
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+@container (max-width: 190px) {
+  .sidebar-brand span {
+    display: none;
+  }
+}
+
+@media (max-height: 740px) and (min-width: 701px) {
+  .viber-editor-heading {
+    padding-block: 12px 8px;
+  }
+  .viber-editor-main {
+    gap: 10px 24px;
+  }
+  .viber-identity-fields {
+    gap: 7px;
+  }
+  .viber-profile-editor textarea[aria-label="Instructions"] {
+    height: 64px;
+  }
+  .viber-editor-actions {
+    padding-block: 10px 12px;
+  }
+}
+
+@media (max-width: 700px), (max-height: 600px) {
+  .viber-editor-content {
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .workspace-overlay.viber-editor-overlay {
+    width: calc(100vw - 24px);
+  }
+  .viber-editor-heading {
+    padding: 14px 16px 10px;
+  }
+  .viber-editor-heading h2 {
+    font-size: 18px;
+  }
+  .viber-editor-content {
+    padding-inline: 16px;
+  }
+  .viber-editor-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .viber-live-preview {
+    grid-row: 1;
+  }
+  .viber-live-preview > .viber-face {
+    width: 100px;
+  }
+  .avatar-categories {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .viber-editor-actions {
+    padding-inline: 16px;
+  }
+  .viber-model-popover {
+    gap: 6px;
+    padding: 8px;
+  }
+  .viber-model-reasoning {
+    flex-basis: 37%;
+    padding: 0;
+  }
+  .viber-model-providers {
+    flex-basis: 32px;
+  }
+  .viber-model-providers button {
+    width: 32px;
+  }
+  .viber-chat-page .user-message,
+  .viber-chat-page .saved-assistant-message,
+  .viber-chat-page .message-event {
+    max-width: 88%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viber-idle {
+    animation: none;
+  }
+}

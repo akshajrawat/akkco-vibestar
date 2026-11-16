@@ -1,4 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useOverlayPortal } from "./WorkspaceOverlay";
@@ -21,6 +29,13 @@ export const Select = ({
   disabled = false,
   searchable = false,
   id,
+  navigation,
+  details,
+  popoverClassName = "",
+  selectedLabel,
+  selectedIcon,
+  closeOnSelect = true,
+  onOpenChange,
 }: {
   value: string;
   options: SelectOption[];
@@ -30,6 +45,13 @@ export const Select = ({
   disabled?: boolean;
   searchable?: boolean;
   id?: string;
+  navigation?: ReactNode;
+  details?: ReactNode;
+  popoverClassName?: string;
+  selectedLabel?: ReactNode;
+  selectedIcon?: ReactNode;
+  closeOnSelect?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) => {
   const overlay = useOverlayPortal();
   const generated = useId();
@@ -38,10 +60,12 @@ export const Select = ({
   const popup = useRef<HTMLDivElement>(null);
   const keyboard = useRef<HTMLInputElement | HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const opened = useRef(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(value);
   const [position, setPosition] = useState({ left: 0, top: 0, width: 260, maxHeight: 300 });
   const selected = options.find((option) => option.value === value);
+  const expanded = Boolean(details);
 
   const filtered = options.filter((option) =>
     `${option.label} ${option.description || ""}`.toLowerCase().includes(query.toLowerCase()),
@@ -51,15 +75,23 @@ export const Select = ({
   const current = available.find((option) => option.value === active) || available[0];
   const activeId = current ? `${listId}-${options.indexOf(current)}` : undefined;
 
-  const close = (restore = true) => {
-    setOpen(false);
-    if (restore) trigger.current?.focus();
-  };
+  const close = useCallback(
+    (restore = true) => {
+      if (!opened.current) return;
+      opened.current = false;
+      setOpen(false);
+      onOpenChange?.(false);
+      if (restore) trigger.current?.focus();
+    },
+    [onOpenChange],
+  );
 
   const show = () => {
+    opened.current = true;
     setQuery("");
     setActive(value);
     setOpen(true);
+    onOpenChange?.(true);
   };
 
   useLayoutEffect(() => {
@@ -68,7 +100,7 @@ export const Select = ({
     const place = () => {
       const rect = trigger.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = Math.min(Math.max(rect.width, 260), window.innerWidth - 24);
+      const width = Math.min(Math.max(rect.width, expanded ? 600 : 260), window.innerWidth - 24);
       const below = window.innerHeight - rect.bottom - 18;
       const above = rect.top - 18;
 
@@ -77,7 +109,11 @@ export const Select = ({
         (popup.current?.querySelector(".select-search")?.getBoundingClientRect().height || 0) +
         12;
 
-      const desiredHeight = Math.min(360, contentHeight || 360);
+      const desiredHeight = Math.min(
+        360,
+        expanded ? Math.max(contentHeight, 320) : contentHeight || 360,
+      );
+
       const useBelow = below >= Math.min(desiredHeight, above);
       const maxHeight = Math.min(desiredHeight, useBelow ? below : above);
       const top = useBelow ? rect.bottom + 6 : Math.max(12, rect.top - maxHeight - 6);
@@ -98,7 +134,7 @@ export const Select = ({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open]);
+  }, [open, expanded]);
 
   useEffect(() => {
     if (!open) return;
@@ -108,12 +144,12 @@ export const Select = ({
         !popup.current?.contains(event.target as Node) &&
         !trigger.current?.contains(event.target as Node)
       )
-        setOpen(false);
+        close(false);
     };
 
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
-  }, [open]);
+  }, [open, close]);
 
   useEffect(() => {
     if (open && activeId) document.getElementById(activeId)?.scrollIntoView?.({ block: "nearest" });
@@ -122,7 +158,7 @@ export const Select = ({
   const choose = (option: SelectOption) => {
     if (option.disabled || disabled || trigger.current?.matches(":disabled")) return;
     onChange(option.value);
-    close();
+    if (closeOnSelect) close();
   };
 
   return (
@@ -151,10 +187,10 @@ export const Select = ({
           }
         }}
       >
-        {selected?.icon}
+        {selectedIcon || selected?.icon}
         <span className="select-value">
-          <span>{selected?.label || placeholder}</span>
-          {selected?.description && <small>{selected.description}</small>}
+          <span>{selectedLabel || selected?.label || placeholder}</span>
+          {!selectedLabel && selected?.description && <small>{selected.description}</small>}
         </span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
@@ -162,16 +198,26 @@ export const Select = ({
         createPortal(
           <div
             ref={popup}
-            className="select-popover"
+            className={`select-popover ${popoverClassName}`}
             style={position}
             onMouseDown={(event) => event.stopPropagation()}
+            onBlur={(event) => {
+              if (
+                (navigation || details) &&
+                event.relatedTarget !== trigger.current &&
+                !event.currentTarget.contains(event.relatedTarget)
+              )
+                close(false);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();
                 close();
-              } else if (event.key === "Tab") {
+              } else if (event.key === "Tab" && !navigation && !details) {
                 close();
+              } else if (event.target !== keyboard.current) {
+                return;
               } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
                 event.preventDefault();
                 const index = available.findIndex((option) => option.value === current?.value);
@@ -191,67 +237,71 @@ export const Select = ({
               }
             }}
           >
-            {searchable && (
-              <div className="select-search">
-                <Search size={14} aria-hidden="true" />
-                <input
-                  ref={(element) => {
-                    keyboard.current = element;
-                  }}
-                  role="combobox"
-                  aria-label={`Search ${label.toLowerCase()}`}
-                  aria-autocomplete="list"
-                  aria-expanded="true"
-                  aria-controls={listId}
-                  aria-activedescendant={activeId}
-                  placeholder="Search…"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-            )}
-            <div
-              id={listId}
-              ref={
-                searchable
-                  ? undefined
-                  : (element) => {
+            {navigation}
+            <div className="select-main">
+              {searchable && (
+                <div className="select-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    ref={(element) => {
                       keyboard.current = element;
-                    }
-              }
-              role="listbox"
-              aria-label={label}
-              tabIndex={searchable ? undefined : 0}
-              aria-activedescendant={searchable ? undefined : activeId}
-              className="select-options"
-            >
-              {filtered.map((option) => (
-                <div
-                  id={`${listId}-${options.indexOf(option)}`}
-                  key={option.value}
-                  data-value={option.value}
-                  role="option"
-                  aria-selected={option.value === value}
-                  aria-disabled={option.disabled || undefined}
-                  className={`select-option${current === option ? " active" : ""}`}
-                  onPointerMove={() => !option.disabled && setActive(option.value)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => choose(option)}
-                >
-                  {option.icon}
-                  <span className="select-value">
-                    <span>{option.label}</span>
-                    {option.description && <small>{option.description}</small>}
-                  </span>
-                  {option.value === value && <Check size={14} aria-hidden="true" />}
+                    }}
+                    role="combobox"
+                    aria-label={`Search ${label.toLowerCase()}`}
+                    aria-autocomplete="list"
+                    aria-expanded="true"
+                    aria-controls={listId}
+                    aria-activedescendant={activeId}
+                    placeholder="Search…"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
                 </div>
-              ))}
-              {!filtered.length && (
-                <p className="select-empty" role="status">
-                  No matches found
-                </p>
               )}
+              <div
+                id={listId}
+                ref={
+                  searchable
+                    ? undefined
+                    : (element) => {
+                        keyboard.current = element;
+                      }
+                }
+                role="listbox"
+                aria-label={label}
+                tabIndex={searchable ? undefined : 0}
+                aria-activedescendant={searchable ? undefined : activeId}
+                className="select-options"
+              >
+                {filtered.map((option) => (
+                  <div
+                    id={`${listId}-${options.indexOf(option)}`}
+                    key={option.value}
+                    data-value={option.value}
+                    role="option"
+                    aria-selected={option.value === value}
+                    aria-disabled={option.disabled || undefined}
+                    className={`select-option${current === option ? " active" : ""}`}
+                    onPointerMove={() => !option.disabled && setActive(option.value)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => choose(option)}
+                  >
+                    {option.icon}
+                    <span className="select-value">
+                      <span>{option.label}</span>
+                      {option.description && <small>{option.description}</small>}
+                    </span>
+                    {option.value === value && <Check size={14} aria-hidden="true" />}
+                  </div>
+                ))}
+                {!filtered.length && (
+                  <p className="select-empty" role="status">
+                    No matches found
+                  </p>
+                )}
+              </div>
             </div>
+            {details}
           </div>,
           overlay?.current || document.body,
         )}

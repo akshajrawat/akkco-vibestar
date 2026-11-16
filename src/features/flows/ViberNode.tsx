@@ -34,7 +34,7 @@ const ViberNode = ({ data, selected }: NodeProps<ViberCanvasNode>) => {
       <div className="viber-shell">
         <Handle type="target" position={Position.Left} aria-label="Input connection" />
         {node.type === "agent" ? (
-          <ViberFace />
+          <ViberFace profile={attempt?.configuration.agent?.profile || profile} />
         ) : node.type === "command" ? (
           <TerminalSquare size={30} />
         ) : (

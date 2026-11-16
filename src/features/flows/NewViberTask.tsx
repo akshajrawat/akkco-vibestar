@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { flowTemplates, builtInProfiles, type TemplateId } from "../../../backend/flows/templates";
+import { flowTemplates, isCustomViber, type TemplateId } from "../../../backend/flows/templates";
 import type { AgentProfile } from "../../../backend/flows/contracts";
 import type { Repository, Task } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
@@ -25,7 +25,7 @@ export const NewViberTask = ({
   issueTask: () => void;
 }) => {
   const [profiles, setProfiles] = useState<AgentProfile[]>([]);
-  const [profile, setProfile] = useState<string>(initialProfileId || builtInProfiles.implementer);
+  const [profile, setProfile] = useState<string>(initialProfileId || "");
   const [goal, setGoal] = useState("");
   const [repository, setRepository] = useState(initialRepositoryId);
   const [template, setTemplate] = useState<"solo" | TemplateId>("solo");
@@ -37,7 +37,14 @@ export const NewViberTask = ({
 
   const load = () =>
     void rpc<AgentProfile[]>("profile.list")
-      .then(setProfiles)
+      .then((profiles) => {
+        const custom = profiles.filter(isCustomViber);
+        setProfiles(custom);
+
+        setProfile((selected) =>
+          custom.some((profile) => profile.id === selected) ? selected : custom[0]?.id || "",
+        );
+      })
       .catch((e) => setError(errorMessage(e)));
 
   useEffect(load, []);
@@ -94,6 +101,9 @@ export const NewViberTask = ({
             }
           }}
         >
+          {!profiles.length && (
+            <p className="subtle">Create a Viber from the Vibers screen to start a task.</p>
+          )}
           <label>
             Goal
             <textarea

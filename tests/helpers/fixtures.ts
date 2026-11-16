@@ -4,6 +4,7 @@ import { isAbsolute, join } from "node:path";
 
 import { checked } from "../../backend/execution/runtime/process";
 import { now, type Repository, type Task } from "../../backend/domain";
+import { initializeProfiles } from "../../backend/flows/defaults";
 import { Engine } from "../../backend/execution/engine";
 import { AgentProfileSchema, type AgentProfile } from "../../backend/flows/contracts";
 import type { FlowRun } from "../../backend/flows/run-contracts";
@@ -19,11 +20,15 @@ const fixtureTransport = (url: string) => {
   return url;
 };
 
-export const createFixtureEngine = (
+export const createFixtureEngine = async (
   root: string,
   providers?: Parameters<typeof Engine.create>[1],
   transport = fixtureTransport,
-) => Engine.create(root, providers, transport);
+) => {
+  const engine = await Engine.create(root, providers, transport);
+  initializeProfiles(engine.db);
+  return engine;
+};
 
 export const fixtureRepository = async (engine: Engine, dir: string) => {
   const upstream = join(dir, "upstream");

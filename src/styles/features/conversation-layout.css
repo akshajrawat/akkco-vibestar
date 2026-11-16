@@ -19,7 +19,7 @@
 .chat-workspace .chat-main {
   --chat-reading-width: 800px;
   --chat-gutter: clamp(20px, 3vw, 40px);
-  background: #0d0e10;
+  background: var(--background-app);
   color: var(--text-primary);
   position: relative;
 }
@@ -105,7 +105,7 @@
 }
 
 .chat-workspace .user-message {
-  background: #1c4078;
+  background: color-mix(in srgb, var(--accent) 24%, var(--background-panel));
   border-radius: 24px;
   padding: 14px 18px;
   margin-block: 24px 34px;

@@ -297,7 +297,11 @@ it("protects unsaved Viber profile edits on Escape and preserves them when conti
     target: { value: "Unsaved instructions" },
   });
 
-  fireEvent.keyDown(screen.getByLabelText("Instructions"), { key: "Escape" });
+  fireEvent(
+    screen.getByRole("dialog", { name: "Edit Viber profile" }),
+    new Event("cancel", { cancelable: true }),
+  );
+
   expect(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).toBeTruthy();
   expect(close).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));

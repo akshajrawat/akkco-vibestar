@@ -314,7 +314,7 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
         .waitFor();
 
       expect(await sidebar.locator(".execution-indicator, .sidebar-task-status").count()).toBe(0);
-      expect(await sidebar.getByRole("navigation").getByRole("button").count()).toBe(5);
+      expect(await sidebar.getByRole("navigation").getByRole("button").count()).toBe(4);
 
       expect(
         await sidebar.getByRole("button", { name: /Migrate Playwright.*Completed/ }).count(),

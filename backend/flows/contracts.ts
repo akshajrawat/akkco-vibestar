@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { AgentExecutionSchema, WorkspaceAccessSchema } from "../execution/contracts";
 
+import { ViberAppearanceSchema } from "./appearance";
+
 const identity = z.string().uuid();
 const instructions = z.string().max(32000);
 
@@ -39,6 +41,8 @@ export const AgentProfileSchema = z
     revision: z.number().int().positive(),
     name: z.string().trim().min(1).max(100),
     instructions,
+    description: z.string().max(2000).optional(),
+    appearance: ViberAppearanceSchema.optional(),
     execution: FlowExecutionSchema,
     supported_access: z.array(WorkspaceAccessSchema).min(1).max(2),
   })

@@ -8,7 +8,11 @@ import { NewTask } from "../features/tasks/NewTask";
 import { HistoricalTask } from "../features/flows/HistoricalTask";
 import { FlowWorkspace } from "../features/flows/FlowWorkspace";
 import { NewViberTask } from "../features/flows/NewViberTask";
-import { ProfileLibrary } from "../features/flows/ProfileLibrary";
+import type { AgentProfile } from "../../backend/flows/contracts";
+import { ViberChat } from "../features/flows/ViberChat";
+import { ProfileEditor } from "../features/flows/ProfileEditor";
+import { useProfiles } from "../features/flows/useProfiles";
+import { ViberWelcome } from "../features/flows/ViberWelcome";
 import { ProvidersPage } from "../features/providers/ProvidersPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { Button } from "../components/ui/button";
@@ -53,10 +57,32 @@ const navigation = [
 export const App = () => {
   const { snapshot, error, setError, refresh, revision } = useWorkspace();
   usePRWatch(snapshot?.capabilities?.pr_quick_watch === true);
+  const { profiles, error: profilesError, refresh: refreshProfiles } = useProfiles(revision);
+  const [selectedViber, setSelectedViber] = useState<string>();
+  const [profileEditor, setProfileEditor] = useState<AgentProfile>();
+
+  const createViber = () => {
+    if (!snapshot) return;
+
+    setProfileEditor({
+      id: crypto.randomUUID(),
+      revision: 0,
+      name: "",
+      description: "",
+      instructions: "",
+      supported_access: ["read-only", "workspace-write"],
+      execution: {
+        ...snapshot.settings.codex_implementation,
+        provider: snapshot.settings.codex_implementation.provider || "codex",
+        access: "workspace-write",
+        output: "conversation",
+      },
+    });
+  };
+
   const [page, setPage] = useState<Page>("Tasks");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [runtimePhase, setRuntimePhase] = useState<string>();
-  const [newViberProfile, setNewViberProfile] = useState<string>();
 
   const [taskId, setTaskId] = useState<string | null>(() =>
     localStorage.getItem("vibestar.activeTask"),
@@ -141,6 +167,7 @@ export const App = () => {
     }
 
     setPage(p);
+    if (p === "Vibers") setSelectedViber(undefined);
     setWatchId(null);
     setTaskId(null);
     setRepairId(null);
@@ -187,6 +214,13 @@ export const App = () => {
         ),
     ).length;
 
+  const openViber = (profile: AgentProfile) => {
+    setSelectedViber(profile.id);
+    setPage("Vibers");
+  };
+
+  const chatProfile = profiles.find((profile) => profile.id === selectedViber);
+
   const content =
     page === "Scheduled" && snapshot ? (
       <ScheduledPage
@@ -205,20 +239,19 @@ export const App = () => {
           setNewTask(true);
         }}
       />
+    ) : page === "Vibers" && chatProfile ? (
+      <ViberChat
+        key={chatProfile.id}
+        profile={chatProfile}
+        revision={revision}
+        edit={setProfileEditor}
+        openTask={(id) => {
+          updateTaskView(id, { flowSection: "logs" });
+          open(id);
+        }}
+      />
     ) : page === "Vibers" ? (
-      <div className="viber-library-page">
-        <ProfileLibrary
-          revision={revision}
-          chat={(profileId) => {
-            setNewViberProfile(profileId);
-            setNewTask(true);
-          }}
-          openInstance={(id, nodeId) => {
-            updateTaskView(id, { flowSection: "chat", flowNode: nodeId });
-            open(id);
-          }}
-        />
-      </div>
+      <ViberWelcome create={createViber} disabled={!snapshot} hasVibers={profiles.length > 0} />
     ) : page === "Usage" ? (
       <UsageView
         openRun={(row) => {
@@ -320,6 +353,11 @@ export const App = () => {
             count={count}
             taskId={taskId}
             newTask={() => setNewTask(true)}
+            profiles={profiles}
+            profilesError={profilesError}
+            createViber={createViber}
+            selectViber={openViber}
+            selectedViber={selectedViber}
             navigate={navigate}
             open={open}
             onError={onError}
@@ -364,6 +402,15 @@ export const App = () => {
           refresh={refresh}
           close={() => setSettingsOpen(false)}
         />
+
+        {profileEditor && (
+          <ProfileEditor
+            key={profileEditor.id}
+            profile={profileEditor}
+            close={() => setProfileEditor(undefined)}
+            saved={refreshProfiles}
+          />
+        )}
 
         {palette && (
           <CommandPalette
@@ -475,16 +522,13 @@ export const App = () => {
           <NewViberTask
             repositories={snapshot.repositories}
             initialRepositoryId={newTaskRepository}
-            initialProfileId={newViberProfile}
             close={() => {
               setNewTask(false);
               setNewTaskRepository(undefined);
-              setNewViberProfile(undefined);
             }}
             created={async (id) => {
               await refresh();
               open(id);
-              if (newViberProfile) updateTaskView(id, { flowSection: "chat" });
             }}
             issueTask={() => setIssueTask(true)}
           />

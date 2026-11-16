@@ -89,9 +89,9 @@ export const GlobalNotifications = ({
         style: {
           background: "var(--background-elevated)",
           color: "var(--text-primary)",
-          border: "1px solid var(--border-default)",
+          border: "none",
           padding: 0,
-          maxWidth: "min(420px, calc(100vw - 32px))",
+          maxWidth: "min(360px, calc(100vw - 32px))",
         },
       }}
     />,

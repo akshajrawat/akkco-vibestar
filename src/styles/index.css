@@ -31,4 +31,5 @@
 @import "./features/task-navigation.css";
 @import "./features/flows.css";
 @import "./features/settings-workspace.css";
+@import "./features/viber-appearance.css";
 @import "./components/notifications.css";

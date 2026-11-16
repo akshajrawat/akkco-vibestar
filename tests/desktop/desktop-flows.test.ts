@@ -104,6 +104,26 @@ it.skipIf(process.env.VIBESTAR_FLOW_DESKTOP_TEST !== "1")(
       PATH: `${blocked}:${process.env.PATH}`,
     });
 
+    engine.flows.saveProfile(
+      {
+        ...engine.flows.profile(builtInProfiles.implementer),
+        id: randomUUID(),
+        name: "My Viber",
+        appearance: {
+          version: 1,
+          shape: "circle",
+          color: "#2478ff",
+          eyes: "neutral",
+          eyebrows: "none",
+          glasses: "none",
+          device: "none",
+          accessory: "none",
+        },
+        revision: 1,
+      },
+      null,
+    );
+
     const core = await createFixtureEngine(join(dir, "empty-core"));
     await core.close();
 
@@ -495,12 +515,18 @@ it.skipIf(process.env.VIBESTAR_FLOW_DESKTOP_TEST !== "1")(
       await page.getByRole("button", { name: "Reject", exact: true }).click();
       expect(provider.requests).toHaveLength(3);
       expect(errors).toEqual([]);
-      await page.getByRole("button", { name: "Vibers", exact: true }).click();
+      await page.getByRole("button", { name: "Show Vibers", exact: true }).click();
       await page.getByRole("heading", { name: "Your Vibers", exact: true }).waitFor();
+      expect(await page.locator(".sidebar-viber").count()).toBe(1);
+      await page.getByRole("button", { name: "Show Tasks", exact: true }).click();
 
       await page
-        .getByRole("button", { name: "Planner · Draft the Viber crew", exact: true })
+        .getByRole("complementary", { name: "Workspace navigation" })
+        .getByRole("button", { name: /^Draft the Viber crew/ })
         .click();
+
+      await page.getByRole("button", { name: "Chat", exact: true }).click();
+      await page.getByLabel("Chat with Viber", { exact: true }).selectOption(first.id);
 
       await page.getByText("I inspected the selected task.", { exact: true }).first().waitFor();
       expect(await page.getByLabel("Chat with Viber", { exact: true }).inputValue()).toBe(first.id);

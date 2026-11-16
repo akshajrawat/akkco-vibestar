@@ -1,3 +1,4 @@
+import { isCustomViber } from "../../../backend/flows/templates";
 import type {
   AgentProfile,
   FlowDefinition,
@@ -156,11 +157,13 @@ export const FlowInspector = ({
                 update({ ...node, profile_id: event.target.value, overrides: {} })
               }
             >
-              {profiles.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
+              {profiles
+                .filter((item) => isCustomViber(item) || item.id === node.profile_id)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
             </select>
           </label>
           {profile && (

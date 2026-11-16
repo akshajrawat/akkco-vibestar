@@ -286,7 +286,7 @@ it("offers the same keyboard context menu for tasks without a repository", () =>
   expect(document.activeElement).toBe(row);
 });
 
-it("keeps exactly five named icon destinations, PR attention and the header create action", async () => {
+it("keeps four named tool destinations, PR attention and the header create action", async () => {
   const { NavigationSidebar } = await import("../../src/app/NavigationSidebar");
   const { defaultSettings } = await import("../../backend/domain");
   const navigate = vi.fn();
@@ -301,6 +301,10 @@ it("keeps exactly five named icon destinations, PR attention and the header crea
     count: 2,
     taskId: null,
     newTask,
+    profiles: [],
+    profilesError: "",
+    createViber: vi.fn(),
+    selectViber: vi.fn(),
     navigate,
     open: vi.fn(),
     onError: vi.fn(),
@@ -314,7 +318,7 @@ it("keeps exactly five named icon destinations, PR attention and the header crea
     within(dock)
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label")),
-  ).toEqual(["Vibers", "Pull Requests", "Issues", "Usage", "Settings"]);
+  ).toEqual(["Pull Requests", "Issues", "Usage", "Settings"]);
 
   expect(within(dock).getByText("2 need attention")).toBeTruthy();
 
@@ -323,7 +327,6 @@ it("keeps exactly five named icon destinations, PR attention and the header crea
   );
 
   for (const [name, destination] of [
-    ["Vibers", "Vibers"],
     ["Pull Requests", "Scheduled"],
     ["Issues", "Issue Watch"],
     ["Usage", "Usage"],
@@ -337,6 +340,15 @@ it("keeps exactly five named icon destinations, PR attention and the header crea
 
   fireEvent.click(screen.getByRole("button", { name: "New task" }));
   expect(newTask).toHaveBeenCalledOnce();
+  const modes = screen.getByRole("group", { name: "Sidebar mode" });
+  expect(modes.closest(".sidebar-brand-header")).toBeTruthy();
+  fireEvent.click(within(modes).getByRole("button", { name: "Show Vibers" }));
+  expect(screen.getByRole("searchbox", { name: "Search vibers" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Create Viber" }));
+  expect(props.createViber).toHaveBeenCalledOnce();
+  expect(newTask).toHaveBeenCalledOnce();
+  fireEvent.click(within(modes).getByRole("button", { name: "Show Tasks" }));
+  expect(screen.getByRole("searchbox", { name: "Search tasks" })).toBeTruthy();
   expect(screen.queryByText("LOCAL")).toBeNull();
   expect(screen.queryByText(/agent slots|Local workspace/)).toBeNull();
   expect(screen.getByText("Vibestar")).toBeTruthy();
@@ -507,6 +519,10 @@ const searchableSidebar = async () => {
       count={0}
       taskId={task.id}
       newTask={newTask}
+      profiles={[]}
+      profilesError=""
+      createViber={vi.fn()}
+      selectViber={vi.fn()}
       navigate={vi.fn()}
       open={open}
       onError={vi.fn()}

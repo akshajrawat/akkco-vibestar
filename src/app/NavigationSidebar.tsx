@@ -1,16 +1,12 @@
-import { useState, type Ref } from "react";
-import { Plus, Search, PanelLeftClose } from "lucide-react";
+import { Activity, useState, type Ref } from "react";
+import { Plus, Search, PanelLeftClose, Bot, ListTodo } from "lucide-react";
+import type { AgentProfile } from "../../backend/flows/contracts";
+import { ViberFace } from "../features/flows/ViberFace";
 import vibestarLogo from "../../assets/icon.svg";
 import type { Page, Snapshot } from "../lib/types";
 import { TaskNavigation } from "../features/tasks/TaskNavigation";
 
-// Compact filled glyphs keep the five destinations readable at the minimum pane width.
 const dock = [
-  [
-    "Vibers",
-    "Vibers",
-    "M11 2h2v3h4a3 3 0 0 1 3 3v2h2v7h-2v1a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-1H2v-7h2V8a3 3 0 0 1 3-3h4V2ZM8 9a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm8 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM8 16v2h8v-2H8Z",
-  ],
   [
     "Scheduled",
     "Pull Requests",
@@ -37,6 +33,11 @@ interface NavigationSidebarProps {
   count: number;
   taskId: string | null;
   newTask: () => void;
+  profiles: AgentProfile[];
+  profilesError: string;
+  createViber: () => void;
+  selectViber: (profile: AgentProfile) => void;
+  selectedViber?: string;
   navigate: (page: Page) => void;
   open: (id: string) => void;
   onError: (error: string) => void;
@@ -52,13 +53,56 @@ export const NavigationSidebar = ({
   count,
   taskId,
   newTask,
+  profiles,
+  profilesError,
+  createViber,
+  selectViber,
+  selectedViber,
   navigate,
   open,
   onError,
   toggleSidebar,
   toggleRef,
 }: NavigationSidebarProps) => {
-  const [search, setSearch] = useState("");
+  const [selectedMode, setSelectedMode] = useState<"Tasks" | "Vibers">("Tasks");
+  const mode = page === "Vibers" || page === "Tasks" ? page : selectedMode;
+  const [queries, setQueries] = useState({ Tasks: "", Vibers: "" });
+  const search = queries[mode];
+  const setSearch = (value: string) => setQueries({ ...queries, [mode]: value });
+
+  const header = (tasksToggle?: React.ReactNode) => (
+    <div className="sidebar-header">
+      <label className="sidebar-search">
+        <Search size={14} aria-hidden="true" />
+        <input
+          type="search"
+          aria-label={`Search ${mode.toLowerCase()}`}
+          placeholder={`Search ${mode.toLowerCase()}…`}
+          autoComplete="off"
+          spellCheck={false}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && search && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              event.stopPropagation();
+              setSearch("");
+            }
+          }}
+        />
+      </label>
+      <button
+        className="sidebar-new-task"
+        aria-label={mode === "Tasks" ? "New task" : "Create Viber"}
+        title={mode === "Tasks" ? "New task" : "Create Viber"}
+        onClick={mode === "Tasks" ? newTask : createViber}
+        disabled={!snapshot}
+      >
+        <Plus size={19} aria-hidden="true" />
+      </button>
+      {tasksToggle}
+    </div>
+  );
 
   return (
     <aside className="sidebar" style={{ width }} aria-label="Workspace navigation">
@@ -66,6 +110,28 @@ export const NavigationSidebar = ({
         <div className="sidebar-brand">
           <img src={vibestarLogo} width="24" height="24" alt="" />
           <span>Vibestar</span>
+        </div>
+        <div className="sidebar-modes" role="group" aria-label="Sidebar mode">
+          {(
+            [
+              ["Vibers", Bot],
+              ["Tasks", ListTodo],
+            ] as const
+          ).map(([value, Icon]) => (
+            <button
+              key={value}
+              className="sidebar-mode"
+              aria-label={`Show ${value}`}
+              title={value}
+              aria-pressed={mode === value}
+              onClick={() => {
+                setSelectedMode(value);
+                navigate(value);
+              }}
+            >
+              <Icon size={16} aria-hidden="true" />
+            </button>
+          ))}
         </div>
         <button
           ref={toggleRef}
@@ -78,49 +144,63 @@ export const NavigationSidebar = ({
           <PanelLeftClose size={16} aria-hidden="true" />
         </button>
       </div>
-      <TaskNavigation
-        renderHeader={(tasksToggle) => (
-          <div className="sidebar-header">
-            <label className="sidebar-search">
-              <Search size={14} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="Search tasks"
-                placeholder="Search"
-                autoComplete="off"
-                spellCheck={false}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape" && search && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setSearch("");
+      <Activity mode={mode === "Tasks" ? "visible" : "hidden"}>
+        <TaskNavigation
+          renderHeader={(tasksToggle) => header(tasksToggle)}
+          query={search}
+          revision={revision}
+          flowStates={snapshot?.flow_states}
+          repositories={snapshot?.repositories || []}
+          tasks={snapshot?.tasks || []}
+          selected={taskId}
+          open={open}
+          onError={onError}
+        />
+      </Activity>
+      {mode === "Vibers" && (
+        <>
+          {header()}
+          <div className="sidebar-vibers" aria-label="Viber profiles">
+            {profilesError && (
+              <p role="alert" className="error">
+                {profilesError}
+              </p>
+            )}
+            {profiles
+              .filter((profile) =>
+                `${profile.name} ${profile.description || ""}`
+                  .toLowerCase()
+                  .includes(search.trim().toLowerCase()),
+              )
+              .map((profile) => (
+                <button
+                  className="sidebar-viber"
+                  key={profile.id}
+                  onClick={() => selectViber(profile)}
+                  title={`Chat with ${profile.name}`}
+                  aria-current={
+                    page === "Vibers" && selectedViber === profile.id ? "page" : undefined
                   }
-                }}
-              />
-            </label>
-            <button
-              className="sidebar-new-task"
-              aria-label="New task"
-              title="New task"
-              onClick={newTask}
-              disabled={!snapshot}
-            >
-              <Plus size={19} strokeWidth={3} aria-hidden="true" />
-            </button>
-            {tasksToggle}
+                >
+                  <ViberFace profile={profile} />
+                  <span>
+                    <strong>{profile.name}</strong>
+                    <small>{profile.description || profile.execution.provider}</small>
+                  </span>
+                </button>
+              ))}
+            {!profiles.some((profile) =>
+              `${profile.name} ${profile.description || ""}`
+                .toLowerCase()
+                .includes(search.trim().toLowerCase()),
+            ) && (
+              <p className="empty-row">
+                {search ? "No matching Vibers." : "Create your first Viber."}
+              </p>
+            )}
           </div>
-        )}
-        query={search}
-        revision={revision}
-        flowStates={snapshot?.flow_states}
-        repositories={snapshot?.repositories || []}
-        tasks={snapshot?.tasks || []}
-        selected={taskId}
-        open={open}
-        onError={onError}
-      />
+        </>
+      )}
 
       <nav className="sidebar-tools" aria-label="Workspace tools">
         {dock.map(([destination, label, path]) => (

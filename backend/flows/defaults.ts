@@ -4,7 +4,6 @@ import type { AgentProfile } from "./contracts";
 import { FlowStore } from "./store";
 import { builtInProfiles } from "./templates";
 
-/** Seed saved settings once; later application launches never overwrite profile edits. */
 export const initializeProfiles = (db: Database) => {
   if (
     Object.values(builtInProfiles).every(

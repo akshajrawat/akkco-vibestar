@@ -225,7 +225,8 @@
 }
 
 .tree-task-entry.selected {
-  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  background: var(--background-selected);
+  box-shadow: none;
 }
 
 .tree-task {

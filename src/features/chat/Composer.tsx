@@ -39,6 +39,7 @@ export const Composer = ({
   notice,
   onEdit,
   maxLength = 32000,
+  compact = false,
 }: {
   id: string;
   label: string;
@@ -55,6 +56,7 @@ export const Composer = ({
   notice?: string;
   onEdit?: () => void;
   maxLength?: number;
+  compact?: boolean;
 }) => {
   const view = useTaskView(id);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -71,8 +73,8 @@ export const Composer = ({
     const field = textarea.current;
     if (!field) return;
     field.style.height = "auto";
-    field.style.height = `${Math.max(56, Math.min(field.scrollHeight, 240))}px`;
-  }, [view.draft, view.expandedTool]);
+    field.style.height = `${Math.max(compact ? 24 : 56, Math.min(field.scrollHeight, 240))}px`;
+  }, [view.draft, view.expandedTool, compact]);
 
   const attach = async (source: ContextOption, value = "") => {
     if (attaching) return;
@@ -115,7 +117,7 @@ export const Composer = ({
 
   return (
     <form
-      className="chat-input"
+      className={`chat-input ${compact ? "chat-input-compact" : ""}`}
       onSubmit={(event) => {
         event.preventDefault();
         if (!busy && !disabled && content && !tooLong) onSend();
@@ -151,7 +153,7 @@ export const Composer = ({
         ref={textarea}
         aria-label={label}
         aria-describedby={`composer-hint-${id}`}
-        rows={2}
+        rows={compact ? 1 : 2}
         value={view.draft}
         placeholder={placeholder}
         onChange={(event) => {
@@ -183,7 +185,8 @@ export const Composer = ({
               setError("");
             }}
           >
-            <Plus size={14} /> Context
+            <Plus size={14} />
+            {!compact && " Context"}
           </Button>
 
           {open && (
@@ -288,7 +291,7 @@ export const Composer = ({
           </Button>
         )}
         <span className="spacer" />
-        {model}
+        {compact ? <div className="composer-model">{model}</div> : model}
         {stop ? (
           <Button
             type="button"

@@ -24,6 +24,7 @@ import type { z } from "zod";
 import { Button } from "../../components/ui/button";
 import { FlowInspector, type FlowInputChoice } from "./FlowInspector";
 import { graphError, pruneBindings, staleNodes } from "./graph";
+import { isCustomViber } from "../../../backend/flows/templates";
 import { ViberFace } from "./ViberFace";
 import { viberNodeTypes, type ViberCanvasNode } from "./ViberNode";
 
@@ -251,7 +252,7 @@ const Canvas = ({
         <div className="flow-palette-heading">
           THE VIBERS<small>Your crew, your flow.</small>
         </div>
-        {profiles.map((profile) => (
+        {profiles.filter(isCustomViber).map((profile) => (
           <button
             key={profile.id}
             className="flow-palette-viber"
@@ -262,7 +263,7 @@ const Canvas = ({
             }}
             onClick={() => add("agent", profile)}
           >
-            <ViberFace />
+            <ViberFace profile={profile} />
             <span>
               <strong>{profile.name}</strong>
               <small>
@@ -275,10 +276,12 @@ const Canvas = ({
         <Button
           size="sm"
           variant="ghost"
-          disabled={!profiles.length}
-          onClick={() =>
-            editProfile({ ...profiles[0], id: crypto.randomUUID(), revision: 0, name: "New Viber" })
-          }
+          disabled={!profiles.some(isCustomViber)}
+          onClick={() => {
+            const profile = profiles.find(isCustomViber);
+            if (profile)
+              editProfile({ ...profile, id: crypto.randomUUID(), revision: 0, name: "New Viber" });
+          }}
         >
           <Plus size={12} />
           New Viber profile

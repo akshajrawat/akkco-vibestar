@@ -165,7 +165,7 @@
   min-height: 340px;
   background: var(--background-app);
   --xy-edge-stroke: var(--border-strong);
-  --xy-edge-stroke-selected: var(--accent-purple);
+  --xy-edge-stroke-selected: var(--accent);
   --xy-controls-button-background-color: var(--background-panel);
   --xy-controls-button-color: var(--foreground);
   --xy-controls-button-border-color: var(--border-subtle);
@@ -177,7 +177,7 @@
 }
 
 .flow-canvas .react-flow__node:focus-visible {
-  outline: 1px dashed var(--accent-purple);
+  outline: 1px dashed var(--accent);
   outline-offset: 8px;
   border-radius: 18px;
 }
@@ -201,7 +201,7 @@
   box-shadow:
     inset 0 -7px 0 #0002,
     0 9px 25px #0002;
-  color: var(--accent-purple);
+  color: var(--accent);
   transition:
     box-shadow 180ms,
     border-color 180ms;
@@ -220,38 +220,15 @@
 }
 
 .viber-face {
-  width: 58px;
-  height: 41px;
-  display: inline-flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 18px 18px 15px 15px;
-  background: #17171d;
-  border: 1px solid #ffffff0e;
-  box-shadow: inset 0 2px 8px #0004;
-}
-
-.viber-face i {
-  width: 9px;
-  height: 13px;
-  border-radius: 5px;
-  background: #d2c0f4;
-  box-shadow: 0 0 10px #c1a7f82b;
+  width: 64px;
+  height: 64px;
+  display: block;
+  flex-shrink: 0;
 }
 
 .flow-palette .viber-face {
-  width: 32px;
-  height: 29px;
-  flex-shrink: 0;
-  border-radius: 12px;
-  gap: 5px;
-  background: var(--background-elevated);
-}
-
-.flow-palette .viber-face i {
-  width: 4px;
-  height: 7px;
+  width: 42px;
+  height: 42px;
 }
 
 .viber-node strong {
@@ -291,19 +268,19 @@
 }
 
 .viber-shell .react-flow__handle:hover {
-  background: var(--accent-purple);
-  outline: 5px solid #b7a0e81a;
+  background: var(--accent);
+  outline: 5px solid color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .viber-node.selected .viber-shell {
-  border-color: var(--accent-purple);
+  border-color: var(--accent);
   box-shadow:
-    0 0 0 5px #b7a0e812,
+    0 0 0 5px color-mix(in srgb, var(--accent) 7%, transparent),
     inset 0 -7px 0 #0002;
 }
 
 .viber-node.running .viber-shell {
-  border-color: var(--accent-purple);
+  border-color: var(--accent);
   animation: viber-working 2.4s ease-in-out infinite;
 }
 
@@ -329,10 +306,6 @@
 .viber-node.failed .viber-shell,
 .viber-node.rejected .viber-shell {
   border-color: var(--accent-red);
-}
-
-.viber-node.completed .viber-face i {
-  background: #acd9b8;
 }
 
 .flow-canvas-caption {
@@ -431,7 +404,7 @@ label.viber-checkbox input {
   height: 14px;
   flex-shrink: 0;
   margin-top: 2px;
-  accent-color: var(--accent-purple);
+  accent-color: var(--accent);
 }
 
 .flow-node-actions {
@@ -515,15 +488,13 @@ label.viber-checkbox input {
   display: none;
 }
 
-.new-viber-task,
-.viber-profile-editor {
+.new-viber-task {
   width: min(540px, calc(100vw - 40px));
   max-height: calc(100vh - 48px);
   overflow: auto;
 }
 
-.new-viber-task form,
-.viber-profile-editor form {
+.new-viber-task form {
   margin-top: 24px;
 }
 
@@ -612,12 +583,12 @@ label.viber-checkbox input {
   0%,
   100% {
     transform: translateY(0);
-    box-shadow: 0 0 0 0 #b7a0e80a;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 4%, transparent);
   }
 
   50% {
-    transform: translateY(-3px);
-    box-shadow: 0 0 0 7px #b7a0e80a;
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 4%, transparent);
   }
 }
 

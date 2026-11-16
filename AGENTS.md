@@ -1,121 +1,84 @@
-# Working on Akkco Vibestar
+// DO NOT MODIFY THIS FILE
 
-## Overview
+## Core Principles
 
-Vibestar is a local Electron workspace for issue contributions, PR repairs and
-manual issue discovery. Read `ARCHITECTURE.md` before changing architectural code.
-The renderer presents state; the Linux/WSL Node core owns all execution authority.
+- Understand the existing implementation before making changes.
+- Make the smallest correct change that satisfies the requirements.
+- Follow repository-specific conventions, architecture and tooling.
+- Preserve existing behavior unless a change is explicitly requested.
+- Prefer simple, readable solutions over unnecessary abstractions.
+- Never introduce speculative features, refactors or dependencies.
 
-## Repository map
+## Code Quality
 
-- `src/app`: app composition, desktop navigation and title bar.
-- `src/features`: feature-owned components, state, hooks and renderer contracts.
-- `src/components/ui`: reusable UI primitives; `shared` and `diff`: shared workspace controls.
-- `src/hooks`: reusable React hooks; `src/lib`: transport, view state and display utilities.
-- `src/styles/index.css`: ordered CSS imports. Preserve cascade order when moving rules.
-- `backend/execution/engine.ts`: stable engine façade and startup/shutdown composition.
-- `backend/execution/engine`: shared scheduling, task lifecycle and captured flow/conversation execution.
-- `backend/execution/{agents,providers,runtime,output,terminals,verification}`: execution support.
-- `backend/rpc`: domain request handlers; `backend/rpc.ts`: service composition and dispatch.
-- `backend/{github,issue-watch,review,workspace,storage}`: trusted domain services.
-- `electron`: main process, isolated preload, stdio bridge and desktop contracts.
-- `tests/{unit,integration,security,terminals,desktop,live}`: named suite categories.
-- `tests/{workspace,verification,pr-repair,issue-watch,diff}`: domain regressions.
-- `tests/helpers`: shared fixture constructors. Keep domain-only fixtures with their tests.
+- Follow the repository's formatter, linter and type conventions.
+- Reuse existing utilities, schemas and established patterns.
+- Keep functions focused, responsibilities clear and public APIs minimal.
+- Prefer readable control flow over compressed or clever code.
+- Keep files organized by responsibility; avoid unnecessary indirection.
+- Prefer self-explanatory code. Add comments only for non-obvious
+  invariants, constraints or reasoning.
+- Do not use comments to justify workarounds or architectural flaws.
+- Avoid silent failures, arbitrary delays and unnecessary fallback logic.
+- Prefer arrow functions for new functions and callbacks where appropriate.
+  Follow repository conventions when function declarations are preferable.
+- Import only what is needed. Avoid unused imports, unnecessary
+  dependencies and broad module imports when specific imports suffice.
+- Prefer asynchronous, non-blocking filesystem APIs over synchronous
+  equivalents, especially in servers and UI-sensitive processes.
 
-## Code conventions
+## Deterministic Guardrails
 
-Follow the repository-wide formatting configuration. Prettier is authoritative.
-Use npm for dependencies and scripts. Prefer inferred types when they are clear.
-Use `import type` for type-only dependencies, particularly renderer/backend contracts.
-Small local types can stay inline; name substantial domain concepts and shared boundaries.
-Prefer existing canonical Zod schemas and inferred types over duplicate contracts.
-Use clear syntax and async filesystem APIs; do not impose syntax changes solely for uniformity.
+- Prefer architecture, types, lint rules and tests over instructions
+  that merely ask agents to avoid mistakes.
+- When repeated mistakes occur, identify their root cause and propose
+  an enforceable solution.
+- Do not copy known anti-patterns simply because they already exist.
+- Prefer fixing underlying problems over introducing workarounds.
+- Do not introduce new rules or abstractions for hypothetical issues.
 
-Keep public exports minimal. Internal helpers need no package barrel or public API.
-Reuse existing error, display, parsing, focus, layout and ownership utilities.
-Add concise block comments for architectural entrypoints and non-obvious invariants;
-avoid comments that simply repeat a trivial function's name.
+## React Guidelines (When Applicable)
 
-Keep directories flat while they contain only a few related files. Group growing
-responsibilities by domain, without empty folders or symmetrical `index.ts` files.
-Move feature code to its owner instead of treating nearby reuse as global utility.
+- Avoid `useEffect` unless synchronizing with an external system.
+- Prefer derived state, event handlers and established hooks.
+- Prefer `useSyncExternalStore` for external store subscriptions.
+- Necessary Effects must have correct dependencies and cleanup.
+- Never suppress dependency warnings to hide incorrect Effects.
+- Avoid timers, polling and animation frames as workarounds for
+  broken state management or lifecycle logic.
+- Keep expensive computations off performance-critical UI paths.
 
-## Code Readability
+## Security and Change Safety
 
-Code must be organized for human review. Separate logical sections with blank
-lines, keep functions focused, avoid compressed control flow, and prefer explicit
-readable code over dense expressions. Passing Prettier is necessary but not
-sufficient.
+- Respect existing architectural boundaries and security guarantees.
+- Validate untrusted inputs and follow least-privilege principles.
+- Never expose credentials or sensitive data.
+- Use safe process execution; avoid shell injection.
+- Inspect the current worktree and preserve existing user changes.
+- Never delete user data or modify external systems without authorization.
+- Do not commit, push, release or publish changes unless requested.
+- Use isolated test environments and avoid production data.
 
-Keep import groups together, with a blank line after each group. Separate top-level
-functions and classes, and put blank lines between class methods. Use spacing to
-mark meaningful phases and conclusions; keep short related statements compact.
-Avoid adding a blank line after every statement. Prettier and ESLint enforce layout.
+## Testing and Verification
 
-## Security invariants
-
-- Keep renderer Node integration disabled, context isolation and Chromium sandbox enabled.
-- Validate the main-frame IPC sender and every host mutation's input/confirmation.
-- Preserve core capability negotiation before unsupported mutations.
-- Use argv arrays. Do not interpolate repository paths or model text into a shell.
-- Require the outer sandbox and provider restrictions for agents and verification; missing isolation fails closed.
-- Explicit user-operated terminals use the normal Linux/WSL shell and user permissions, like VS Code.
-- Planning/review stays read-only. Agent implementation access is limited to its owned assignment.
-- Keep shared execution slots, maintenance leases and cancellation state authoritative.
-- Canonicalize managed paths, reject aliases and prove worktree/branch/common-directory ownership.
-- Never remove imported source checkouts or unknown/dirty/unpublished work automatically.
-- Keep content fingerprints and integrity Git output separate from redacted display output.
-- Preserve SQLite migrations, backup-before-upgrade, ownership checks and corrupt-record bytes.
-- Provider authentication/session directories are a trusted CLI boundary; do not extract credentials.
-- Persist bounded redacted logs, not OAuth tokens. Preserve streaming redaction across chunks.
-- Distinguish observed command outcomes from provider reports and missing evidence.
-- Preserve explicit workflow startup, approval gates and saved-instruction decisions.
-- The lightweight PR watch checks once per app launch and on explicit recheck; detailed PR analysis and Issue Watch require explicit requests. Never replay interrupted runs or add background inference timers.
-- Git commits and pushes are manual terminal commands; do not restore application publication endpoints.
-- Optional contributor hooks are not a security boundary. `--no-verify` cannot waive host guards.
-- Contributor hook installers must preserve existing private hooks and hook configuration.
-- Cancellation/restart must not replay provider runs or remote writes.
-
-## Testing
-
-Run tests for code changes, choosing the specific affected test files first:
-
-```bash
-npm exec -- vitest run tests/unit/frontend.test.tsx
-npm exec -- vitest run tests/security/task-ownership.test.ts
-```
-
-`npm test` runs regular unit and domain regressions. Separate projects are available
-through `test:integration`, `test:security` and `test:tui`. Follow the named project
-boundaries when changing test discovery or CI; do not duplicate a full suite in each job.
-
-For interactive terminal behavior, run `npm run test:tui` in addition to relevant
-unit/type/format checks. Execution, storage, Git and authorization changes need the
-relevant integration/security tests. Renderer/style changes need applicable built
-Electron fixtures, keyboard checks and visual comparisons.
-
-Use `npm run verify` for substantial refactors and before final acceptance. It runs
-formatting, lint, types, all deterministic suites and the production build. Desktop,
-installed-browser and native Windows checks have separate prerequisites in `docs/testing.md`.
-Never run live-provider or GitHub-write tests without explicit authorization.
-
-## Source and change discipline
-
-Inspect the current worktree before relying on earlier context. Preserve user edits.
-Keep changes within the task; explain required architectural contract changes first.
-Refactor behavior-preservingly unless a behavior change is explicitly requested.
-Do not invent passing evidence, subscription limits, ownership or migration defaults.
-Do not add speculative abstractions or replace working libraries merely to simplify a tree.
-
-Do not automatically commit, push, tag, release, post messages or change repository settings.
-Do not wipe application state or user-owned files. Tests must use temporary isolated roots,
-local remotes and inert fixture providers rather than live accounts or production data.
+- Run the smallest relevant tests first, then broader checks when needed.
+- Use the repository's existing verification tools and commands.
+- Verify observable behavior, not only compilation or unit tests.
+- Test relevant edge cases, state transitions and failure paths.
+- For UI changes, exercise affected interactions when practical.
+- Inspect screenshots, logs or traces when useful.
+- Prefer repeatable, deterministic verification over AI-only review.
+- Do not add new testing frameworks without a demonstrated need.
+- Never claim tests or runtime verification passed without executing them.
+- Report actual results, limitations and unverified assumptions.
 
 ## Documentation
 
-Update `ARCHITECTURE.md` when responsibilities, boundaries or data flows change.
-Update README for setup/user-facing entry points and detailed guides for operational contracts.
-Trivial implementation, comment and spelling changes do not require architecture edits.
-Keep chronological evidence in the historical verification record, not the README.
-Preserve third-party notices and avoid unsupported licensing or release claims.
+- Do not routinely modify documentation for unrelated code changes.
+- Update documentation only when explicitly requested or when changes
+  would otherwise leave important existing documentation incorrect.
+- Keep documentation minimal, accurate and relevant.
+- Prefer executable checks and clear APIs over prose-based rules.
+- Avoid unnecessary Markdown files, repetitive explanations and
+  comments documenting implementation history.
+- Preserve required licensing and third-party notices.
