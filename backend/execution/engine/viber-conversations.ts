@@ -1,6 +1,10 @@
 import { AdeError, now } from "../../domain";
 import type { z } from "zod";
-import { ConversationScopeSchema, ViberChatSchema } from "../../flows/run-contracts";
+import {
+  ConversationScopeSchema,
+  ConversationSelectionSchema,
+  ViberChatSchema,
+} from "../../flows/run-contracts";
 import { resolveNodeInputs } from "../../flows/context";
 import type { FlowDispatchStore } from "../../flows/dispatch-store";
 import type { Engine } from "../engine";
@@ -104,7 +108,33 @@ export class ViberConversationRequests {
         { kind: "message" as const, message_id: input.request_id },
       ];
 
+      const stored = this.host.db.all<{ selection: string }>(
+        "SELECT selection FROM viber_session_settings WHERE task_id=? AND node_id=?",
+        task.id,
+        node.id,
+      )[0];
+
+      const defaults = { ...profile.execution, ...node.overrides };
+
+      const selection =
+        input.selection ||
+        (stored
+          ? ConversationSelectionSchema.parse(JSON.parse(stored.selection))
+          : ConversationSelectionSchema.parse({
+              provider: defaults.provider,
+              model: defaults.model,
+              effort: defaults.effort,
+            }));
+
+      this.host.db.run(
+        "INSERT INTO viber_session_settings VALUES(?,?,?) ON CONFLICT(task_id,node_id) DO UPDATE SET selection=excluded.selection",
+        task.id,
+        node.id,
+        JSON.stringify(selection),
+      );
+
       const scope = ConversationScopeSchema.parse({
+        ...(selection ? { selection } : {}),
         node_id: node.id,
         inputs: inputs.filter(
           (binding, index) =>

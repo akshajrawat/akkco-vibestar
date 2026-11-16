@@ -1,3 +1,4 @@
+import { ConversationSelectionSchema } from "./run-contracts";
 import { AdeError } from "../domain";
 import type { Engine } from "../execution/engine";
 import type { FlowRun, NodeAttempt } from "./run-contracts";
@@ -104,6 +105,14 @@ export const flowWorkspace = (engine: Engine, taskId: string) => {
     layout: engine.flows.layout(task.flow_id),
     runs,
     conversations,
+    conversation_settings: Object.fromEntries(
+      engine.db
+        .all<{ node_id: string; selection: string }>(
+          "SELECT node_id,selection FROM viber_session_settings WHERE task_id=?",
+          taskId,
+        )
+        .map((row) => [row.node_id, ConversationSelectionSchema.parse(JSON.parse(row.selection))]),
+    ),
     conversation_attempts: conversations.flatMap((run) => engine.flowRuns.attempts(run.id)),
     invalidations: Object.fromEntries(
       runs.map((run) => [run.id, engine.flowRuns.invalidation(run.id)]),
@@ -126,7 +135,12 @@ export type FlowWorkspace = ReturnType<typeof flowWorkspace>;
 /** Reusable identities point to ordinary task instances; listing them starts no inference. */
 export const viberInstances = (engine: Engine) =>
   engine.db.tasks().flatMap((task) => {
-    if (!task.flow_id) return [];
+    if (
+      !task.flow_id ||
+      engine.db.all("SELECT task_id FROM retired_viber_conversations WHERE task_id=?", task.id)
+        .length
+    )
+      return [];
     try {
       const saved = engine.flows.definition(task.flow_id);
       return saved.definition.nodes

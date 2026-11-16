@@ -23,7 +23,7 @@ export const ProfileEditor = ({
   const [draft, setDraft] = useState(profile);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const appearance = draft.appearance || defaultAppearance(draft.id);
+  const appearance = draft.appearance || defaultAppearance();
   const [customColor, setCustomColor] = useState(appearance.color);
 
   const [confirmClose, setConfirmClose] = useState(false);

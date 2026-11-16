@@ -9,6 +9,20 @@ vi.mock("../../src/features/flows/ViberConversation", () => ({
   ViberConversation: () => <p>Existing conversation view</p>,
 }));
 
+vi.mock("../../src/features/flows/ViberModelPicker", () => ({
+  ViberModelPicker: ({
+    execution,
+    change,
+  }: {
+    execution: typeof viberProfile.execution;
+    change: (value: typeof viberProfile.execution) => void;
+  }) => (
+    <button onClick={() => change({ ...execution, model: "session-only" })}>
+      Model {execution.model}
+    </button>
+  ),
+}));
+
 const rpc = vi.fn();
 
 afterEach(() => {
@@ -49,6 +63,8 @@ it("opens a Viber into chat without execution and reuses the existing APIs on ex
   expect(edit).toHaveBeenCalledOnce();
   expect(edit).toHaveBeenCalledWith(viberProfile);
 
+  fireEvent.click(screen.getByRole("button", { name: "Model fixture-model" }));
+
   fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
     target: { value: "Explain this idea" },
   });
@@ -69,8 +85,14 @@ it("opens a Viber into chat without execution and reuses the existing APIs on ex
     node_id: workspace.revision.definition.nodes[0].id,
     profile_id: viberProfile.id,
     content: "Explain this idea",
+    selection: { provider: "codex", model: "session-only", effort: "low" },
     history_ids: [],
   });
 
-  expect(rpc.mock.calls.some(([method]) => method === "flow.start")).toBe(false);
+  expect(
+    rpc.mock.calls.some(([method]) => method === "flow.start" || method === "profile.save"),
+  ).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  expect(screen.getByRole("button", { name: "Model fixture-model" })).toBeTruthy();
 });

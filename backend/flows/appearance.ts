@@ -76,75 +76,7 @@ const base: ViberAppearance = {
   accessory: "none",
 };
 
-export const avatarPresets: { name: string; appearance: ViberAppearance }[] = [
-  {
-    name: "Planner",
-    appearance: {
-      ...base,
-      shape: "triangle",
-      accessory: "headphones",
-      device: "laptop",
-      eyes: "wide",
-    },
-  },
-  {
-    name: "Developer",
-    appearance: {
-      ...base,
-      glasses: "square",
-      eyebrows: "focused",
-      device: "code-panel",
-      accessory: "headphones",
-    },
-  },
-  {
-    name: "Reviewer",
-    appearance: {
-      ...base,
-      color: avatarColors.Purple,
-      glasses: "round",
-      eyes: "focused",
-      eyebrows: "raised",
-    },
-  },
-  {
-    name: "Tester",
-    appearance: {
-      ...base,
-      color: avatarColors.Orange,
-      accessory: "cap",
-      device: "tablet",
-      eyes: "curious",
-    },
-  },
-  {
-    name: "Analyst",
-    appearance: {
-      ...base,
-      shape: "circle",
-      color: avatarColors.Green,
-      glasses: "oval",
-      eyes: "wide",
-    },
-  },
-  {
-    name: "Researcher",
-    appearance: {
-      ...base,
-      shape: "rounded-square",
-      color: avatarColors.Pink,
-      accessory: "wizard-hat",
-      device: "phone",
-      eyes: "sparkle",
-    },
-  },
-];
-
-export const defaultAppearance = (identity: string): ViberAppearance => {
-  let hash = 0;
-  for (const character of identity) hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
-  return { ...avatarPresets[hash % avatarPresets.length].appearance };
-};
+export const defaultAppearance = (): ViberAppearance => ({ ...base });
 
 export const randomAppearance = (): ViberAppearance => {
   const pick = <T>(options: readonly T[]): T => options[Math.floor(Math.random() * options.length)];

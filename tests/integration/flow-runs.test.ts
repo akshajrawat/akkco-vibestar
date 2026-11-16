@@ -724,3 +724,29 @@ it("cancels pending approval without manufacturing a decision and interrupts cor
     ]),
   );
 });
+
+it("captures conversation model overrides without mutating profile defaults or other runs", () => {
+  const { definitions, runs, profile, agent, flowId, save } = fixture();
+  const node = agent();
+  save([node]);
+  const selection = { provider: "antigravity" as const, model: "session-model", effort: "high" };
+
+  const run = runs.createRun(
+    { flow_id: flowId, revision: 1, task_id: "task", request_id: randomUUID(), goal: "Chat" },
+    "user",
+    { node_id: node.id, inputs: [], selection },
+  );
+
+  expect(runs.run(run.id).snapshot.agents[node.id].execution).toMatchObject(selection);
+  expect(definitions.profile(profile.id)).toEqual(profile);
+  runs.setRunStatus(run.id, "queued", "cancelled");
+
+  const next = runs.createRun(
+    { flow_id: flowId, revision: 1, task_id: "task", request_id: randomUUID(), goal: "New chat" },
+    "user",
+    { node_id: node.id, inputs: [] },
+  );
+
+  expect(next.snapshot.agents[node.id].execution.provider).toBe(profile.execution.provider);
+  expect(next.snapshot.agents[node.id].execution.model).toBe(profile.execution.model);
+});

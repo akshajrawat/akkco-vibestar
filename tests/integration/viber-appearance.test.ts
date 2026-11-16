@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
-import { avatarPresets, defaultAppearance } from "../../backend/flows/appearance";
+import { defaultAppearance } from "../../backend/flows/appearance";
 import { Rpc } from "../../backend/rpc";
 import { createFixtureEngine } from "../helpers/fixtures";
 
@@ -27,7 +27,7 @@ it("round-trips appearance and description through profile RPC and database reop
     expect(original.appearance).toBeUndefined();
     expect(engine.flows.profile(original.id)).toEqual(original);
     expect(bytes()).toBe(legacy);
-    const appearance = { ...avatarPresets[1].appearance, color: "#123aBc", lips: "smile" as const };
+    const appearance = { ...defaultAppearance(), color: "#123aBc", lips: "smile" as const };
     const profile = { ...original, id: randomUUID(), appearance, description: "Fixture avatar" };
     await rpc.call("profile.save", { profile, expected_revision: null });
 
@@ -64,7 +64,7 @@ it("round-trips appearance and description through profile RPC and database reop
       description: "Legacy Viber, new look",
     });
 
-    expect(defaultAppearance(original.id)).toEqual(defaultAppearance(original.id));
+    expect(defaultAppearance()).toEqual(defaultAppearance());
     expect(bytes()).toBe(legacy);
     expect(engine.db.all("SELECT id FROM flow_runs")).toHaveLength(0);
   } finally {
@@ -95,7 +95,7 @@ it("starts a fresh core without default Vibers and preserves existing task profi
       ...builtIn,
       id: randomUUID(),
       name: "My Buddy",
-      appearance: defaultAppearance("buddy"),
+      appearance: defaultAppearance(),
     };
 
     engine.flows.saveProfile(custom, null);

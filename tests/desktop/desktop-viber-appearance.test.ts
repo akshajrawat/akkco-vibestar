@@ -446,15 +446,8 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
       expect(profileSaves.length).toBe(savedBeforeSelection);
       await page.keyboard.press("Escape");
 
-      await expect
-        .poll(() => engine.flows.profile(profile.id).execution)
-        .toMatchObject({
-          provider: "antigravity",
-          model: "gemini-3.8-flash-low",
-          effort: "low",
-        });
-
-      expect(profileSaves.length).toBe(savedBeforeSelection + 1);
+      expect(engine.flows.profile(profile.id).execution).toEqual(profile.execution);
+      expect(profileSaves.length).toBe(savedBeforeSelection);
       const composer = chat.locator(".chat-input");
 
       expect(await composer.evaluate((element) => getComputedStyle(element).borderWidth)).toBe(

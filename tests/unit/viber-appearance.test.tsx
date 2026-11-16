@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 it("validates every layer option and rejects unsupported versions, unknown parts and invalid colors", () => {
-  const base = defaultAppearance("legacy-id");
+  const base = defaultAppearance();
   for (const [key, value] of Object.entries(ViberAppearanceSchema.shape)) {
     const field = key === "lips" ? ViberAppearanceSchema.shape.lips.unwrap() : value;
     if (!("options" in field)) continue;
@@ -50,7 +50,7 @@ it("validates every layer option and rejects unsupported versions, unknown parts
   ])
     expect(ViberAppearanceSchema.safeParse({ ...base, ...input }).success).toBe(false);
   expect(AgentProfileSchema.parse(viberProfile)).toEqual(viberProfile);
-  expect(defaultAppearance(viberProfile.id)).toEqual(defaultAppearance(viberProfile.id));
+  expect(defaultAppearance()).toEqual(defaultAppearance());
   expect(viberProfile.appearance).toBeUndefined();
   for (let index = 0; index < 30; index++)
     expect(ViberAppearanceSchema.safeParse(randomAppearance()).success).toBe(true);
@@ -88,7 +88,7 @@ it("keeps appearance selections across categories and saves customizations using
       revision: viberProfile.revision + 1,
       description: "An independent developer.",
       appearance: {
-        ...defaultAppearance(viberProfile.id),
+        ...defaultAppearance(),
         shape: "diamond",
         color: "#123abc",
         eyes: "wink",

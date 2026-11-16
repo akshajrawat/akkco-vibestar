@@ -120,6 +120,7 @@ it("executes solo chat through the graph runner, retains request identity, and s
     expected_revision: 1,
     request_id: randomUUID(),
     content: "Edit answer.txt directly",
+    selection: { provider: "codex", model: "next-model", effort: "high" },
     history_ids: [],
     profile_id: builtInProfiles.implementer,
     inputs: [{ kind: "task-goal" }],
@@ -127,6 +128,18 @@ it("executes solo chat through the graph runner, retains request identity, and s
 
   const run = (await rpc.call("viber.chat", input)) as FlowRun;
   await finished(run);
+  expect(engine.flows.profile(builtInProfiles.implementer).execution.effort).toBe("low");
+
+  expect(
+    engine.db
+      .all<{ selection: string }>(
+        "SELECT selection FROM viber_session_settings WHERE task_id=?",
+        created.id,
+      )
+      .map((row) => JSON.parse(row.selection)),
+  ).toEqual([input.selection]);
+
+  expect(run.snapshot.agents[input.node_id].execution.effort).toBe("high");
   expect(provider.requests).toHaveLength(1);
   expect(provider.requests[0]).toMatchObject({ stage: 0, access: "workspace-write" });
   expect(engine.db.task(created.id).stage).toBe(0);
@@ -156,10 +169,12 @@ it("executes solo chat through the graph runner, retains request identity, and s
     expected_revision: current.revision.revision,
     request_id: randomUUID(),
     content: "Continue with the selected reply",
+    selection: undefined,
     history_ids: [assistant.id],
   })) as FlowRun;
 
   await finished(next);
+  expect(next.snapshot.agents[input.node_id].execution.effort).toBe("high");
   const captured = engine.flowRuns.attempts(next.id)[0];
   expect(captured.inputs.filter((entry) => entry.binding.kind === "message")).toHaveLength(2);
 

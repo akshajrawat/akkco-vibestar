@@ -56,7 +56,9 @@ export const callFlows = async (
       return viberInstances(e);
     case "profile.list":
       return e.db
-        .all<{ id: string }>("SELECT id FROM agent_profiles ORDER BY created_at,id")
+        .all<{ id: string }>(
+          "SELECT id FROM agent_profiles WHERE id NOT IN (SELECT profile_id FROM retired_viber_profiles) ORDER BY created_at,id",
+        )
         .flatMap(({ id }) => {
           try {
             return [e.flows.profile(id)];

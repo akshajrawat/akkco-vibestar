@@ -6,6 +6,12 @@ import { AgentProfileSchema, FlowNodeSchema, InputBindingSchema } from "./contra
 const identity = z.string().uuid();
 const fingerprint = z.string().min(1).max(500);
 
+export const ConversationSelectionSchema = AgentExecutionSchema.pick({
+  provider: true,
+  model: true,
+  effort: true,
+});
+
 export const ViberChatSchema = z
   .object({
     task_id: identity,
@@ -16,12 +22,14 @@ export const ViberChatSchema = z
     history_ids: z.array(identity).max(50),
     profile_id: identity,
     inputs: z.array(InputBindingSchema).max(49),
+    selection: ConversationSelectionSchema.optional(),
   })
   .strict();
 
 export const ConversationScopeSchema = z
   .object({
     node_id: identity,
+    selection: ConversationSelectionSchema.optional(),
     inputs: z
       .array(InputBindingSchema)
       .max(100)

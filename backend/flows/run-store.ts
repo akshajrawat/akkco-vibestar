@@ -48,7 +48,7 @@ const scopedDefinition = (
       {
         ...node,
         inputs: conversation.inputs,
-        overrides: { ...node.overrides, output: "conversation" },
+        overrides: { ...node.overrides, ...conversation.selection, output: "conversation" },
         completion: { verification: "record-only", review: "none" },
       },
     ],

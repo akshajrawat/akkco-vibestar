@@ -141,6 +141,15 @@ export const ViberConversation = ({
       expected_revision: workspace.revision.revision,
       history_ids: history,
       inputs,
+      ...(view.followupProvider
+        ? {
+            selection: {
+              provider: view.followupProvider,
+              model: view.followupModel || "",
+              effort: view.followupEffort || profile?.execution.effort || "high",
+            },
+          }
+        : {}),
     };
 
     const signature = JSON.stringify({ content, ...configuration });

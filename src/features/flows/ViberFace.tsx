@@ -19,7 +19,7 @@ export const ViberFace = ({
   profile?: Pick<AgentProfile, "id" | "appearance">;
   appearance?: ViberAppearance;
 }) => {
-  const parts = appearance || profile?.appearance || defaultAppearance(profile?.id || "vibestar");
+  const parts = appearance || profile?.appearance || defaultAppearance();
   return (
     <svg className={`viber-face ${className}`} viewBox="0 0 160 160" fill="none" aria-hidden="true">
       <ellipse cx="80" cy="146" rx="48" ry="5" fill="#060d1b" opacity=".3" />

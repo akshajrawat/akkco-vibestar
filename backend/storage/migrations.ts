@@ -375,4 +375,28 @@ CREATE TABLE flow_run_invalidations(run_id TEXT PRIMARY KEY REFERENCES flow_runs
 CREATE TRIGGER flow_run_invalidation_immutable BEFORE UPDATE ON flow_run_invalidations BEGIN SELECT RAISE(ABORT,'Flow workspace invalidation evidence is immutable'); END;
 `,
   },
+  {
+    version: 37,
+    sql: `
+CREATE TABLE retired_viber_profiles(profile_id TEXT PRIMARY KEY);
+INSERT INTO retired_viber_profiles SELECT id FROM agent_profiles WHERE id NOT IN ('e1bc5ab8-3a96-4d53-96c5-3103cf484501','e1bc5ab8-3a96-4d53-96c5-3103cf484502','e1bc5ab8-3a96-4d53-96c5-3103cf484503','e1bc5ab8-3a96-4d53-96c5-3103cf484504');
+CREATE TABLE retired_viber_conversations(task_id TEXT PRIMARY KEY REFERENCES tasks(id));
+INSERT INTO retired_viber_conversations
+SELECT DISTINCT f.task_id FROM flow_definitions f JOIN flow_revisions r ON r.flow_id=f.id AND r.revision=f.current_revision
+WHERE json_extract(r.data,'$.definition.name')='Solo Viber'
+AND json_array_length(json_extract(r.data,'$.definition.nodes'))=1
+AND json_extract(r.data,'$.definition.nodes[0].profile_id') IN (SELECT profile_id FROM retired_viber_profiles)
+AND EXISTS(SELECT 1 FROM task_messages m WHERE m.task_id=f.task_id AND m.purpose='chat')
+AND NOT EXISTS(SELECT 1 FROM flow_runs runs WHERE runs.task_id=f.task_id AND runs.kind='flow');
+CREATE TEMP TABLE unused_viber_profiles AS
+SELECT profile_id FROM retired_viber_profiles p
+WHERE NOT EXISTS(SELECT 1 FROM flow_revisions r,json_tree(r.data) j WHERE j.key='profile_id' AND j.value=p.profile_id)
+AND NOT EXISTS(SELECT 1 FROM flow_runs r,json_tree(r.snapshot) j WHERE j.key='id' AND j.value=p.profile_id)
+AND NOT EXISTS(SELECT 1 FROM task_messages m WHERE m.viber_profile_id=p.profile_id);
+DELETE FROM agent_profile_revisions WHERE profile_id IN (SELECT profile_id FROM unused_viber_profiles);
+DELETE FROM agent_profiles WHERE id IN (SELECT profile_id FROM unused_viber_profiles);
+DROP TABLE unused_viber_profiles;
+CREATE TABLE viber_session_settings(task_id TEXT NOT NULL REFERENCES tasks(id),node_id TEXT NOT NULL,selection TEXT NOT NULL CHECK(json_valid(selection)),PRIMARY KEY(task_id,node_id));
+`,
+  },
 ];

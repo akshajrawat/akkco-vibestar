@@ -5,7 +5,7 @@ import type { AgentProfile } from "../../../backend/flows/contracts";
 import type { FlowWorkspace, ViberInstance } from "../../../backend/flows/workspace";
 import type { Detail, Task } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
-import { getTaskView, updateTaskView } from "../../lib/taskView";
+import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
 import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
@@ -24,15 +24,6 @@ export const ViberChat = ({
   edit: (profile: AgentProfile) => void;
   openTask: (taskId: string) => void;
 }) => {
-  const [overrideProfile, setOverrideProfile] = useState<AgentProfile | null>(null);
-
-  const configuration =
-    overrideProfile &&
-    overrideProfile.id === profile.id &&
-    overrideProfile.revision >= profile.revision
-      ? overrideProfile
-      : profile;
-
   const [session, setSession] = useState<{ task_id: string; node_id: string }>();
   const [instances, setInstances] = useState<ViberInstance[]>([]);
   const [error, setError] = useState("");
@@ -40,6 +31,22 @@ export const ViberChat = ({
   const request = useRef({ signature: "", id: "", task: null as Task | null });
   const starting = useRef(false);
   const draftId = `viber:${profile.id}:new-chat`;
+
+  const sessionKey = session
+    ? `${session.task_id}:viber:${session.node_id}:${profile.id}`
+    : draftId;
+
+  const selectionView = useTaskView(sessionKey);
+
+  const selection = selectionView.followupProvider
+    ? {
+        provider: selectionView.followupProvider,
+        model: selectionView.followupModel || "",
+        effort: selectionView.followupEffort || profile.execution.effort,
+      }
+    : undefined;
+
+  const configuration = { ...profile, execution: { ...profile.execution, ...selection } };
 
   useEffect(() => {
     let active = true;
@@ -52,6 +59,24 @@ export const ViberChat = ({
       .catch((reason) => {
         if (active) setError(errorMessage(reason));
       });
+
+    if (session) {
+      const key = `${session.task_id}:viber:${session.node_id}:${profile.id}`;
+
+      void rpc<FlowWorkspace>("flow.workspace", { task_id: session.task_id })
+        .then((workspace) => {
+          const saved = workspace.conversation_settings?.[session.node_id];
+          if (active && saved && !getTaskView(key).followupProvider)
+            updateTaskView(key, {
+              followupProvider: saved.provider,
+              followupModel: saved.model,
+              followupEffort: saved.effort,
+            });
+        })
+        .catch((reason) => {
+          if (active) setError(errorMessage(reason));
+        });
+    }
 
     return () => {
       active = false;
@@ -66,7 +91,7 @@ export const ViberChat = ({
     setBusy(true);
     setError("");
     try {
-      const signature = JSON.stringify({ content, profile_id: profile.id });
+      const signature = JSON.stringify({ content, profile_id: profile.id, selection });
       if (request.current.signature !== signature)
         request.current = { signature, id: crypto.randomUUID(), task: null };
 
@@ -100,9 +125,23 @@ export const ViberChat = ({
         inputs: node.inputs,
         request_id: request.current.id,
         content,
+        ...(selection ? { selection } : {}),
       });
 
-      updateTaskView(draftId, { draft: "", draftContext: [] });
+      updateTaskView(`${task.id}:viber:${node.id}:${profile.id}`, {
+        followupProvider: selection?.provider || null,
+        followupModel: selection?.model || null,
+        followupEffort: selection?.effort || null,
+      });
+
+      updateTaskView(draftId, {
+        draft: "",
+        draftContext: [],
+        followupProvider: null,
+        followupModel: null,
+        followupEffort: null,
+      });
+
       setSession({ task_id: task.id, node_id: node.id });
       request.current = { signature: "", id: "", task: null };
     } catch (reason) {
@@ -117,12 +156,11 @@ export const ViberChat = ({
     <ViberModelPicker
       execution={configuration.execution}
       change={(execution) => {
-        void rpc<AgentProfile>("profile.save", {
-          profile: { ...configuration, execution, revision: configuration.revision + 1 },
-          expected_revision: configuration.revision,
-        })
-          .then(setOverrideProfile)
-          .catch((reason) => setError(errorMessage(reason)));
+        updateTaskView(sessionKey, {
+          followupProvider: execution.provider,
+          followupModel: execution.model,
+          followupEffort: execution.effort,
+        });
       }}
     />
   );
@@ -144,7 +182,15 @@ export const ViberChat = ({
           aria-label="New chat"
           title="New chat"
           disabled={busy}
-          onClick={() => setSession(undefined)}
+          onClick={() => {
+            updateTaskView(draftId, {
+              followupProvider: null,
+              followupModel: null,
+              followupEffort: null,
+            });
+
+            setSession(undefined);
+          }}
         >
           <MessageSquarePlus size={15} />
         </Button>
@@ -153,7 +199,7 @@ export const ViberChat = ({
           size="icon"
           aria-label="Edit Viber"
           title="Edit Viber"
-          onClick={() => edit(configuration)}
+          onClick={() => edit(profile)}
         >
           <Pencil size={14} />
         </Button>

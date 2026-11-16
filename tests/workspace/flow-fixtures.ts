@@ -78,6 +78,7 @@ export const viberWorkspace = (detail: Detail): FlowWorkspace => ({
   capabilities: { continuations: 1, conversations: 1 },
   conversations: [],
   conversation_attempts: [],
+  conversation_settings: {},
   invalidations: {},
   layout: null,
   runs: [],
