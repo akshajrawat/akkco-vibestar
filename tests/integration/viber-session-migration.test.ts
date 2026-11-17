@@ -150,6 +150,7 @@ it("preserves version 38 sessions without inventing native continuity or workspa
     const profile = randomUUID();
     const session = randomUUID();
     const message = randomUUID();
+    const failed = randomUUID();
     const timestamp = "2026-11-01T00:00:00.000Z";
     const selection = { provider: "codex", model: "old-model", effort: "high" };
     const configuration = JSON.stringify({ request_id: session, profile_id: profile, selection });
@@ -174,6 +175,12 @@ it("preserves version 38 sessions without inventing native continuity or workspa
       )
       .run(message, session, timestamp);
 
+    old
+      .prepare(
+        "INSERT INTO viber_messages(id,session_id,role,content,status,created_at) VALUES(?,?,'user','Unknown execution outcome','failed',?)",
+      )
+      .run(failed, session, timestamp);
+
     old.close();
     db = await Database.open(path);
     const { ViberSessionStore } = await import("../../apps/core/vibers/store");
@@ -181,7 +188,11 @@ it("preserves version 38 sessions without inventing native continuity or workspa
 
     expect(store.detail(session, profile)).toMatchObject({
       session: { repository_id: null, thread: null, selection },
-      messages: [{ id: message, content: "Retained answer" }],
+      recovery_required: true,
+      messages: [
+        { id: message, content: "Retained answer" },
+        { id: failed, effects: "possible" },
+      ],
     });
 
     expect(

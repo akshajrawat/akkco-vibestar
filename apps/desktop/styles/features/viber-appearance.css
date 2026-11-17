@@ -437,22 +437,87 @@
   }
 }
 
-.viber-chat-history {
-  position: absolute;
-  right: 24px;
-  top: 85px;
-  z-index: 2;
-  padding: 8px;
-  background: var(--background-panel);
-  border-radius: 8px;
-  max-width: 320px;
+.viber-chat-page-header > .viber-chat-history {
+  flex: 0 1 auto;
+  max-width: 140px;
 }
 
-.viber-chat-history > .button {
-  display: block;
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.viber-chat-history .select-trigger,
+.viber-session-bar .select-trigger,
+.viber-repository-attachment .select-trigger {
+  width: auto;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+}
+
+.viber-session-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 24px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.viber-session-bar > .select-trigger {
+  margin-left: auto;
+}
+
+.viber-repository-attachment {
+  width: calc(100% - var(--chat-gutter) - var(--chat-gutter));
+  max-width: var(--chat-reading-width);
+  margin: 0 auto;
+}
+
+.viber-repository-attachment > .select-trigger {
+  width: fit-content;
+}
+
+.viber-repository-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: var(--background-panel);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.viber-repository-chip .button {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.viber-recovery-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 24px;
+  overflow: auto;
+}
+
+.viber-recovery-dialog > * + * {
+  margin-top: 14px;
+}
+
+.viber-recovery-inspection,
+.viber-recovery-inspection pre {
+  max-height: 50vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.viber-recovery-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .viber-chat-date {

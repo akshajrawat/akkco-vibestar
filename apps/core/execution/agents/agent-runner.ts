@@ -448,6 +448,13 @@ export class AgentRunner {
         model: config.model || detection.models.find((m) => m.isDefault)?.id || "",
       };
 
+      if (options.viberSession && !selectedConfig.model) {
+        throw new AdeError(
+          "model",
+          "Choose a model before sending a message. The CLI did not report its default model.",
+        );
+      }
+
       if (options.viberSession && options.conversation?.threadId) {
         new ViberSessionStore(this.db).assertThread(
           options.viberSession.sessionId,
@@ -525,6 +532,11 @@ export class AgentRunner {
       }
 
       this.emit({ event: "changed", task_id: task?.id, repair_id: repair?.id });
+      signal.throwIfAborted();
+      if (options.viberSession) {
+        new ViberSessionStore(this.db).markInvocation(options.viberSession.messageId);
+      }
+
       invoked = true;
 
       const output = await execute({

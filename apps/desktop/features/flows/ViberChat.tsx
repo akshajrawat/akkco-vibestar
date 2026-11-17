@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquarePlus, Pencil } from "lucide-react";
+import { MessageSquarePlus, Pencil, Paperclip, X } from "lucide-react";
 import type { AgentProfile } from "../../../core/flows/contracts";
 import type { ViberInstance } from "../../../core/flows/workspace";
 import type { ViberSession } from "../../../core/vibers/contracts";
@@ -13,6 +13,9 @@ import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { ViberFace } from "./ViberFace";
 import { ViberSessionChat } from "./ViberSessionChat";
+import { RunError } from "../chat/RunError";
+import { useProviders } from "../../hooks/useWorkspace";
+import { configurationError } from "../../../core/execution/providers/contracts";
 
 export const ViberChat = ({
   profile,
@@ -36,12 +39,23 @@ export const ViberChat = ({
   const starting = useRef(false);
   const draftId = `viber:${profile.id}:new-chat`;
   const view = useTaskView(draftId);
+  const { providers } = useProviders();
 
   const selection = {
     provider: view.followupProvider || profile.execution.provider,
     model: view.followupModel ?? profile.execution.model,
     effort: view.followupEffort || profile.execution.effort,
   };
+
+  const provider = providers.find((provider) => provider.provider === selection.provider);
+
+  const invalid = provider
+    ? !selection.model && !provider.models.some((model) => model.isDefault)
+      ? "Choose a model before sending a message."
+      : configurationError(provider, { ...profile.execution, ...selection })
+    : null;
+
+  const repository = repositories.find((repository) => repository.id === repositoryId);
 
   useEffect(() => {
     let active = true;
@@ -76,7 +90,7 @@ export const ViberChat = ({
   }, [profile.id, revision, sessionId]);
 
   const start = async () => {
-    if (starting.current) {
+    if (starting.current || invalid) {
       return;
     }
 
@@ -97,7 +111,15 @@ export const ViberChat = ({
       });
 
       if (request.current.signature !== signature) {
-        request.current = { signature, id: crypto.randomUUID(), session: null };
+        const saved = getTaskView(draftId).messageRequest;
+
+        request.current = {
+          signature,
+          id: saved?.signature === signature ? saved.id : crypto.randomUUID(),
+          session: null,
+        };
+
+        updateTaskView(draftId, { messageRequest: { signature, id: request.current.id } });
       }
 
       const session =
@@ -126,6 +148,7 @@ export const ViberChat = ({
         followupProvider: null,
         followupModel: null,
         followupEffort: null,
+        messageRequest: null,
       });
 
       setSessionId(session.id);
@@ -141,6 +164,7 @@ export const ViberChat = ({
   const modelControl = (
     <ViberModelPicker
       execution={{ ...profile.execution, ...selection }}
+      disabled={busy}
       change={(execution) => {
         updateTaskView(draftId, {
           followupProvider: execution.provider,
@@ -173,9 +197,12 @@ export const ViberChat = ({
               followupProvider: null,
               followupModel: null,
               followupEffort: null,
+              messageRequest: null,
             });
 
             request.current = { signature: "", id: "", session: null };
+            setRepositoryId("");
+            setError("");
             setSessionId(undefined);
           }}
         >
@@ -190,40 +217,34 @@ export const ViberChat = ({
         >
           <Pencil size={14} />
         </Button>
-      </header>
-      {!!(sessions.length || instances.length) && (
-        <details className="viber-chat-history">
-          <summary>Conversations</summary>
-          {sessions.map((session) => (
-            <Button
-              key={session.id}
-              variant="ghost"
-              size="sm"
-              onClick={(event) => {
-                setSessionId(session.id);
-                event.currentTarget.closest("details")!.open = false;
+        {!!(sessions.length || instances.length) && (
+          <div className="viber-chat-history">
+            <Select
+              label="Chat history"
+              value={sessionId || ""}
+              selectedLabel="Chat history"
+              searchable
+              disabled={busy}
+              options={[
+                ...sessions.map((session) => ({ value: session.id, label: session.title })),
+                ...instances.map((instance) => ({
+                  value: `task:${instance.task_id}:${instance.node_id}`,
+                  label: `Task · ${instance.goal.slice(0, 90)}`,
+                })),
+              ]}
+              onChange={(value) => {
+                if (value.startsWith("task:")) {
+                  openTask(value.split(":")[1]);
+                } else {
+                  setError("");
+                  setSessionId(value);
+                }
               }}
-            >
-              {session.title}
-            </Button>
-          ))}
-          {instances.map((instance) => (
-            <Button
-              key={`${instance.task_id}:${instance.node_id}`}
-              variant="ghost"
-              size="sm"
-              onClick={() => openTask(instance.task_id)}
-            >
-              Task · {instance.goal.slice(0, 90)}
-            </Button>
-          ))}
-        </details>
-      )}
-      {error && (
-        <p className="error-box" role="alert">
-          {error}
-        </p>
-      )}
+            />
+          </div>
+        )}
+      </header>
+      {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
       {sessionId ? (
         <ViberSessionChat
           key={sessionId}
@@ -245,20 +266,41 @@ export const ViberChat = ({
           }
           composer={
             <>
-              <Select
-                label="Repository workspace"
-                value={repositoryId}
-                disabled={busy}
-                onChange={setRepositoryId}
-                searchable
-                options={[
-                  { value: "", label: "No repository · isolated files" },
-                  ...repositories.map((repo) => ({
-                    value: repo.id,
-                    label: `${repo.owner}/${repo.name}`,
-                  })),
-                ]}
-              />
+              <div className="viber-repository-attachment">
+                {repository ? (
+                  <span className="viber-repository-chip">
+                    {repository.owner}/{repository.name}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Remove repository"
+                      disabled={busy}
+                      onClick={() => setRepositoryId("")}
+                    >
+                      <X size={13} />
+                    </Button>
+                  </span>
+                ) : (
+                  <Select
+                    label="Attach repository"
+                    selectedLabel={
+                      <>
+                        <Paperclip size={14} /> Attach repository
+                      </>
+                    }
+                    value={repositoryId}
+                    disabled={busy}
+                    onChange={setRepositoryId}
+                    searchable
+                    options={[
+                      ...repositories.map((repo) => ({
+                        value: repo.id,
+                        label: `${repo.owner}/${repo.name}`,
+                      })),
+                    ]}
+                  />
+                )}
+              </div>
               <Composer
                 compact
                 id={draftId}
@@ -274,6 +316,7 @@ export const ViberChat = ({
                   },
                 ]}
                 busy={busy}
+                disabled={!!invalid}
                 model={modelControl}
                 hint="Each chat owns a separate workspace. Repository chats use a dedicated Git worktree."
               />

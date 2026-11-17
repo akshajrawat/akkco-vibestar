@@ -403,3 +403,77 @@ it("rejects symlinked session workspaces and mismatched runner snapshots before 
 
   expect(provider.requests).toHaveLength(1);
 });
+
+it("allows explicit retry after proven pre-invocation failures without resetting a retained native thread", async () => {
+  const session = await create();
+  await send(session);
+  const first = await settled(session);
+  const thread = first.session.thread;
+  const invalid = { request_id: randomUUID(), selection: { ...selection, effort: "ultra" } };
+  await send(session, invalid);
+  const failed = await settled(session, "failed");
+  expect(failed.recovery_required).toBe(false);
+  expect(failed.messages.at(-1)).toMatchObject({ effects: "none", status: "failed" });
+  expect(failed.session.thread).toEqual(thread);
+  expect(provider.requests).toHaveLength(1);
+  await send(session, invalid);
+  expect(provider.requests).toHaveLength(1);
+
+  await rpc.close();
+  await engine.close();
+  engine = await createFixtureEngine(join(dir, "data"), () => provider);
+  rpc = new Rpc(engine);
+  expect((await detail(session)).recovery_required).toBe(false);
+  await send(session, { selection });
+  await settled(session);
+  expect(provider.requests.at(-1)?.conversation).toEqual({ threadId: thread?.thread_id });
+});
+
+it("keeps outcomes uncertain after invocation even without reported tools, and enforces inspection scope", async () => {
+  const session = await create();
+  await send(session);
+  await settled(session);
+  provider.mode = "failure";
+  await send(session);
+  const failed = await settled(session, "failed");
+  expect(failed.recovery_required).toBe(true);
+  expect(failed.messages.at(-1)?.effects).toBe("possible");
+  await expect(send(session, { new_thread: true })).rejects.toThrow("acknowledge");
+  const scope = { session_id: session.id, profile_id: profileId };
+  expect(await rpc.call("viber.session.inspect", scope)).toMatchObject({ files: ["answer.txt"] });
+
+  expect(await rpc.call("viber.session.inspect", { ...scope, path: "answer.txt" })).toMatchObject({
+    text: "Session file",
+  });
+
+  await expect(rpc.call("viber.session.inspect", { ...scope, path: "../private" })).rejects.toThrow(
+    "Select a file",
+  );
+
+  await expect(
+    rpc.call("viber.session.inspect", { ...scope, profile_id: builtInProfiles.planner }),
+  ).rejects.toThrow("not found");
+
+  expect(provider.requests).toHaveLength(2);
+  provider.mode = "success";
+  await send(session, { acknowledge_uncertain: true });
+  expect((await settled(session)).recovery_required).toBe(false);
+});
+
+it("creates an isolated conversation from profile defaults without requiring a repository or selection", async () => {
+  const profile = engine.flows.profile(profileId);
+
+  const session = (await rpc.call("viber.session.create", {
+    request_id: randomUUID(),
+    profile_id: profileId,
+  })) as ViberSession;
+
+  expect(session.selection).toEqual({
+    provider: profile.execution.provider,
+    model: profile.execution.model,
+    effort: profile.execution.effort,
+  });
+
+  expect(session.repository_id).toBeNull();
+  expect(provider.requests).toHaveLength(0);
+});

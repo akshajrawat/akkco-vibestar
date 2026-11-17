@@ -296,7 +296,7 @@ describe("domain and persistence", () => {
       db.saveSettings({ ...defaultSettings, concurrency: 3 });
 
       expect(db.all("SELECT MAX(version) AS version FROM schema_migrations")).toEqual([
-        { version: 39 },
+        { version: 40 },
       ]);
 
       expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
@@ -381,7 +381,7 @@ it("upgrades the V2 database additively without changing authorized queued tasks
 
     expect(
       current.all<{ version: number }>("SELECT version FROM schema_migrations").at(-1)?.version,
-    ).toBe(39);
+    ).toBe(40);
   } finally {
     current.close();
     await rm(dir, { recursive: true, force: true });

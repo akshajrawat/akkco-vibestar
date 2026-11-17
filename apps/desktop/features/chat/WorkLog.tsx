@@ -6,7 +6,11 @@ import { duration } from "../../lib/format";
 const WorkDuration = ({ run }: { run: Run }) => {
   const running = run.status === "running";
   if (running) {
-    return <>Thinking</>;
+    return (
+      <span className="working-shimmer" role="status">
+        Working…
+      </span>
+    );
   }
 
   if (!running && !run.ended_at) {

@@ -7,6 +7,7 @@ import {
 } from "../vibers/contracts";
 import type { RpcServices } from "./services";
 import { AdeError } from "../domain";
+import { managedFiles } from "../flows/files";
 
 export const viberSessionMethods = [
   "viber.session.create",
@@ -14,6 +15,7 @@ export const viberSessionMethods = [
   "viber.session.detail",
   "viber.session.send",
   "viber.session.cancel",
+  "viber.session.inspect",
 ] as const;
 
 export const callViberSessions = async (
@@ -41,6 +43,31 @@ export const callViberSessions = async (
 
     case "viber.session.send":
       return sessions.send(ViberSessionSendSchema.parse(raw));
+    case "viber.session.inspect": {
+      const input = ViberSessionScopeSchema.extend({ path: z.string().min(1).max(2000).optional() })
+        .strict()
+        .parse(raw);
+
+      sessions.store.session(input.session_id, input.profile_id);
+      const workspace = sessions.store.workspace(input.session_id);
+      await engine.git.assertOwnedTask(workspace);
+      if (!workspace.repo_id) {
+        return managedFiles(engine.root, workspace, input.path);
+      }
+
+      const diff = await engine.git.diff(workspace);
+      if (input.path && !diff.files.some((file) => file.path === input.path)) {
+        throw new AdeError("isolation", "Select a changed file from this conversation.");
+      }
+
+      const file = input.path ? await engine.git.file(workspace, input.path) : null;
+      return {
+        files: diff.files.map((file) => file.path),
+        path: input.path || null,
+        text: file ? (file.binary ? "Binary file" : file.modified) : null,
+      };
+    }
+
     case "viber.session.cancel": {
       engine.assertAvailable();
       const input = ViberSessionScopeSchema.parse(raw);

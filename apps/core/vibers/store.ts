@@ -64,7 +64,15 @@ export class ViberSessionStore {
       }
 
       const profile = new FlowStore(this.db).profile(input.profile_id);
-      const selection = ConversationSelectionSchema.parse(input.selection || profile.execution);
+
+      const selection = ConversationSelectionSchema.parse(
+        input.selection || {
+          provider: profile.execution.provider,
+          model: profile.execution.model,
+          effort: profile.execution.effort,
+        },
+      );
+
       const timestamp = now();
       const repo = input.repository_id ? this.db.repository(input.repository_id) : null;
       if (repo && (repo.connected === false || repo.clone_status === "cloning")) {
@@ -190,6 +198,7 @@ export class ViberSessionStore {
     const repo = session.repository_id ? this.db.repository(session.repository_id) : null;
     return {
       session,
+      recovery_required: this.requiresRecovery(sessionId, profileId),
       workspace: assignment
         ? { path: assignment.worktree_path, repository: repo ? `${repo.owner}/${repo.name}` : null }
         : null,
@@ -197,6 +206,28 @@ export class ViberSessionStore {
         .all("SELECT * FROM viber_messages WHERE session_id=? ORDER BY rowid", sessionId)
         .map((row) => ViberMessageSchema.parse(row)),
     };
+  };
+
+  requiresRecovery = (sessionId: string, profileId: string) => {
+    const session = this.session(sessionId, profileId);
+
+    const last = this.db.all<{ status: string; effects: string }>(
+      "SELECT status,effects FROM viber_messages WHERE session_id=? AND role='user' ORDER BY rowid DESC LIMIT 1",
+      sessionId,
+    )[0];
+
+    return (
+      session.thread?.status === "uncertain" ||
+      !!(last && last.status !== "completed" && last.effects !== "none")
+    );
+  };
+
+  markInvocation = (messageId: string) => {
+    // Persist uncertainty before starting the process, including across a core crash.
+    this.db.run(
+      "UPDATE viber_messages SET effects='possible' WHERE id=? AND status='pending'",
+      messageId,
+    );
   };
 
   previous = (input: z.output<typeof ViberSessionSendSchema>) => {
@@ -246,15 +277,7 @@ export class ViberSessionStore {
       const execution = { ...profile.execution, ...selection, output: "conversation" as const };
       this.workspace(session.id);
 
-      const last = this.db.all<{ status: string }>(
-        "SELECT status FROM viber_messages WHERE session_id=? AND role='user' ORDER BY rowid DESC LIMIT 1",
-        session.id,
-      )[0];
-
-      if (
-        (session.thread?.status === "uncertain" || (last && last.status !== "completed")) &&
-        !input.acknowledge_uncertain
-      ) {
+      if (this.requiresRecovery(session.id, input.profile_id) && !input.acknowledge_uncertain) {
         throw new AdeError(
           "recovery",
           "The previous turn may have changed files or executed commands. Inspect its activity and acknowledge the uncertain outcome before sending a new instruction. No operation was replayed.",
@@ -323,7 +346,7 @@ export class ViberSessionStore {
       });
 
       this.db.run(
-        "INSERT INTO viber_messages(id,session_id,role,content,status,configuration,created_at) VALUES(?,?,'user',?,'pending',?,?)",
+        "INSERT INTO viber_messages(id,session_id,role,content,status,configuration,created_at,effects) VALUES(?,?,'user',?,'pending',?,?,'none')",
         input.request_id,
         session.id,
         redact(input.content),
@@ -445,8 +468,8 @@ export class ViberSessionStore {
     error?: string,
   ) =>
     this.db.transaction(() => {
-      const row = this.db.all<{ session_id: string; run_id: string | null }>(
-        "SELECT session_id,run_id FROM viber_messages WHERE id=? AND status='pending'",
+      const row = this.db.all<{ session_id: string; run_id: string | null; effects: string }>(
+        "SELECT session_id,run_id,effects FROM viber_messages WHERE id=? AND status='pending'",
         messageId,
       )[0];
 
@@ -474,10 +497,12 @@ export class ViberSessionStore {
 
       this.db.run("UPDATE viber_sessions SET updated_at=? WHERE id=?", now(), row.session_id);
 
-      this.db.run(
-        "UPDATE viber_sessions SET thread=json_set(thread,'$.status',?) WHERE id=? AND thread IS NOT NULL",
-        status === "completed" ? "ready" : "uncertain",
-        row.session_id,
-      );
+      if (status === "completed" || row.effects !== "none") {
+        this.db.run(
+          "UPDATE viber_sessions SET thread=json_set(thread,'$.status',?) WHERE id=? AND thread IS NOT NULL",
+          status === "completed" ? "ready" : "uncertain",
+          row.session_id,
+        );
+      }
     });
 }

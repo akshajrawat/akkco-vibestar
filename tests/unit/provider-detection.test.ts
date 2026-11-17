@@ -144,3 +144,43 @@ it("uses discovered Codex model efforts, including newer supported levels", asyn
     }),
   ).toContain("not available");
 });
+
+it("uses automatic reasoning for Antigravity Claude models and never sends an unsupported effort flag", async () => {
+  vi.mocked(capture).mockImplementation(async (_program, args) => ({
+    duration_ms: 1,
+    code: 0,
+    stderr: "",
+    stdout:
+      args[0] === "models"
+        ? "claude-opus-4-6-thinking\tClaude Opus\nclaude-sonnet-4-6\tClaude Sonnet\n"
+        : "--mode --sandbox --effort --input-format --output-format --json-schema --conversation",
+  }));
+
+  const provider = new AntigravityProvider();
+  const detection = await provider.detect("/tmp");
+  for (const model of detection.models) {
+    expect(model.supportedEfforts).toEqual(["default"]);
+
+    expect(
+      configurationError(detection, { model: model.id, effort: "high", timeout_secs: 30 }),
+    ).toContain("does not support");
+
+    expect(
+      configurationError(detection, { model: model.id, effort: "default", timeout_secs: 30 }),
+    ).toBeNull();
+
+    const invocation = provider.invocation({
+      runId: "test",
+      cwd: "/tmp",
+      stage: 0,
+      access: "workspace-write",
+      config: { model: model.id, effort: "default", timeout_secs: 30 },
+      prompt: "Hello",
+      schemaPath: "",
+      schema: {},
+      conversation: {},
+    });
+
+    expect(invocation.args).not.toContain("--effort");
+  }
+});

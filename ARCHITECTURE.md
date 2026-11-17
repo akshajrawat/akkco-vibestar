@@ -116,8 +116,8 @@ Git worktree through the shared workspace service. Repository-free chats use own
 Turns use AgentRunner and the existing sandbox, events and usage records. Saved native Codex
 app-server and Antigravity conversation identities survive restarts; resumed turns send only the new
 message. Provider/model or instruction/access changes start fresh context without replaying history.
-Failed, cancelled and interrupted turns require an explicit uncertainty acknowledgement before a new
-instruction; invalid native threads never trigger an automatic fallback. Legacy chats without owned
+Failed, cancelled and interrupted turns require explicit recovery confirmation unless durable evidence
+proves provider execution never began; invalid native threads never trigger an automatic fallback. Legacy chats without owned
 workspace evidence remain readable and require a new chat for execution. Data-root relocation refuses
 prepared Viber workspaces to preserve native path bindings; use the old location instead.
 

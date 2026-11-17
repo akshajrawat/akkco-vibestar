@@ -8,9 +8,9 @@ import {
 } from "./contracts";
 import type { NormalizedEvent } from "../../domain";
 
-// These CLI models expose adjustable thinking effort rather than fixed variants.
-// New unsuffixed models require an explicit capability entry before execution.
-const adjustableModels = new Set(["claude-sonnet-4-6", "claude-opus-4-6-thinking"]);
+// The CLI exposes these models with provider-managed reasoning and rejects --effort.
+// Unknown unsuffixed models stay unavailable until their capabilities are known.
+const automaticModels = new Set(["claude-sonnet-4-6", "claude-opus-4-6-thinking"]);
 
 export class AntigravityProvider implements AgentProvider {
   readonly name = "antigravity";
@@ -52,7 +52,7 @@ export class AntigravityProvider implements AgentProvider {
             return {
               id,
               label,
-              supportedEfforts: effort ? [effort] : adjustableModels.has(id) ? d.efforts : [],
+              supportedEfforts: effort ? [effort] : automaticModels.has(id) ? ["default"] : [],
             };
           });
 
@@ -90,8 +90,7 @@ export class AntigravityProvider implements AgentProvider {
       "stream-json",
       "--output-format",
       "stream-json",
-      "--effort",
-      r.config.effort,
+      ...(r.config.effort === "default" ? [] : ["--effort", r.config.effort]),
       ...(r.config.model ? ["--model", r.config.model] : []),
       ...(r.conversation?.threadId ? ["--conversation", r.conversation.threadId] : []),
       ...(r.conversation ? [] : ["--json-schema", r.schemaPath]),

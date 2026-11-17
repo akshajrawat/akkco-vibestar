@@ -50,10 +50,10 @@ it("keeps a long prompt compact and lets the user expand and collapse its comple
   expect(body.classList.contains("expanded")).toBe(false);
 });
 
-it("keeps Thinking collapsible before tools arrive and preserves a disclosure on a plain completed reply", () => {
+it("keeps the working indicator collapsible before tools arrive and preserves a disclosure on a plain completed reply", () => {
   const ui = render(<AgentTimeline compact runs={[run]} events={[]} />);
   const log = ui.container.querySelector<HTMLDetailsElement>(".work-log")!;
-  expect(log.querySelector("summary")?.textContent).toBe("Thinking");
+  expect(log.querySelector("summary")?.textContent).toBe("Working…");
   expect(log.querySelector("summary svg")).not.toBeNull();
   expect(log.open).toBe(false);
   expect(log.textContent).toContain("Waiting for agent activity");

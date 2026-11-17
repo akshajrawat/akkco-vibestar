@@ -37,6 +37,7 @@ export const AgentTimeline = ({
   runSummary,
   compact = false,
   showPrompts = false,
+  standalone = false,
 }: {
   events: AgentEvent[];
   runs: Run[];
@@ -51,6 +52,7 @@ export const AgentTimeline = ({
   runSummary?: (run: Run) => React.ReactNode;
   compact?: boolean;
   showPrompts?: boolean;
+  standalone?: boolean;
 }) => {
   const entries = useMemo(() => agentEntries(events, search), [events, search]);
 
@@ -620,6 +622,10 @@ export const AgentTimeline = ({
         : undefined;
 
     const visible = local.filter((row) => {
+      if (standalone && ["run.failed", "run.cancelled"].includes(row.event.kind)) {
+        return false;
+      }
+
       if (row.event.kind === "run.failed" && run.error) {
         return false;
       }
@@ -728,7 +734,7 @@ export const AgentTimeline = ({
                   ))}
                 </details>
               )}
-            {run.error && <RunError error={run.error} run={run} />}
+            {run.error && <RunError error={run.error} run={run} conversation={standalone} />}
             {runSummary?.(run)}
             {!compact && run.id && (
               <div className="turn-outcome">

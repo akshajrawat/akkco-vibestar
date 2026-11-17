@@ -35,7 +35,7 @@ vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
           {
             id: "claude-sonnet-4-6",
             label: "Claude Sonnet 4.6 (Thinking)",
-            supportedEfforts: ["low", "high", "xhigh"],
+            supportedEfforts: ["default"],
           },
           { id: "oss-120b-medium", label: "OSS 120B (Medium)", supportedEfforts: ["medium"] },
         ],
@@ -121,7 +121,7 @@ it("keeps model and reasoning edits in one open picker and saves the final confi
   );
 });
 
-it("maps grouped reasoning choices back to discovered CLI IDs and preserves adjustable model IDs", () => {
+it("maps grouped reasoning choices to discovered CLI IDs and supports models with automatic reasoning", () => {
   const change = vi.fn();
 
   render(
@@ -159,14 +159,16 @@ it("maps grouped reasoning choices back to discovered CLI IDs and preserves adju
 
   fireEvent.click(trigger);
   fireEvent.click(screen.getByRole("option", { name: "Claude Sonnet 4.6 (Thinking)" }));
-  fireEvent.click(screen.getByRole("button", { name: "Extra High" }));
+  expect(screen.queryByRole("button", { name: "High" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Extra High" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Automatic" }));
   fireEvent.click(trigger);
 
   expect(change).toHaveBeenLastCalledWith(
     expect.objectContaining({
       provider: "antigravity",
       model: "claude-sonnet-4-6",
-      effort: "xhigh",
+      effort: "default",
     }),
   );
 

@@ -175,6 +175,14 @@ it.each(["codex", "antigravity"] as const)(
         "base\nchanged\n",
       );
 
+      expect(
+        await rpc.call("viber.session.inspect", {
+          session_id: session.id,
+          profile_id: profileId,
+          path: "source.txt",
+        }),
+      ).toMatchObject({ files: ["source.txt"], text: "base\nchanged\n" });
+
       expect(events).toEqual(
         expect.arrayContaining(["file.changed", "command.finished", "message", "run.completed"]),
       );

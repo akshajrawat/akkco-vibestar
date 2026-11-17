@@ -67,6 +67,7 @@ export const ViberMessageSchema = z.object({
   run_id: identity.nullable(),
   created_at: z.string(),
   error: z.string().nullable(),
+  effects: z.enum(["none", "possible"]).default("possible"),
 });
 
 export type ViberSession = z.infer<typeof ViberSessionSchema>;
@@ -76,4 +77,5 @@ export interface ViberSessionDetail {
   session: ViberSession;
   messages: ViberMessage[];
   workspace: { path: string; repository: string | null } | null;
+  recovery_required: boolean;
 }

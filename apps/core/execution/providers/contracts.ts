@@ -34,7 +34,7 @@ export interface ProviderDetection {
 export const supportedEfforts = (d: ProviderDetection | undefined, model: string) =>
   (model ? d?.models.find((m) => m.id === model) : d?.models.find((m) => m.isDefault))
     ?.supportedEfforts ||
-  d?.efforts ||
+  (!model ? d?.efforts : []) ||
   [];
 
 export const configurationError = (d: ProviderDetection, config: StageConfig) => {

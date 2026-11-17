@@ -13,6 +13,7 @@ import { ProviderIcon } from "../../components/ui/ProviderIcon";
 const providerNames = { codex: "Codex", antigravity: "Antigravity" } as const;
 
 const effortNames: Record<string, string> = {
+  default: "Automatic",
   none: "None",
   minimal: "Minimal",
   low: "Low",
@@ -73,9 +74,11 @@ const groupModels = (provider: string, models: ProviderDetection["models"]) => {
 export const ViberModelPicker = ({
   execution,
   change,
+  disabled = false,
 }: {
   execution: AgentProfile["execution"];
   change: (execution: AgentProfile["execution"]) => void;
+  disabled?: boolean;
 }) => {
   const { providers } = useProviders();
   const [browsingProvider, setBrowsingProvider] = useState(execution.provider);
@@ -108,16 +111,23 @@ export const ViberModelPicker = ({
     value: `${browsingProvider}:${group.id}`,
     label: group.label,
     icon: <ProviderIcon provider={browsingProvider} model={group.id} />,
+    disabled: !group.efforts.length,
   }));
 
   const value = `${current.provider}:${selectedGroup?.id || current.model}`;
   if (sameProvider && current.model && !options.some((option) => option.value === value)) {
-    options.push({ value, label: name, icon: <ProviderIcon provider={current.provider} /> });
+    options.push({
+      value,
+      label: name,
+      icon: <ProviderIcon provider={current.provider} />,
+      disabled: true,
+    });
   }
 
   return (
     <Select
       label="Model"
+      disabled={disabled}
       searchable
       closeOnSelect={false}
       onOpenChange={(open) => {

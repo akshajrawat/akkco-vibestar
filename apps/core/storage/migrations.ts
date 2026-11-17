@@ -427,4 +427,8 @@ CREATE TRIGGER viber_repository_immutable BEFORE UPDATE OF repository_id ON vibe
 CREATE TRIGGER viber_workspace_owner_immutable BEFORE UPDATE OF workspace ON viber_sessions WHEN json_extract(OLD.workspace,'$.id') IS NOT json_extract(NEW.workspace,'$.id') OR json_extract(OLD.workspace,'$.repo_id') IS NOT json_extract(NEW.workspace,'$.repo_id') BEGIN SELECT RAISE(ABORT,'Viber workspace ownership is immutable'); END;
 `,
   },
+  {
+    version: 40,
+    sql: `ALTER TABLE viber_messages ADD COLUMN effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible'));`,
+  },
 ];

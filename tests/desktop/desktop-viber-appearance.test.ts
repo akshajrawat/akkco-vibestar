@@ -409,14 +409,17 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
         lips: "smile",
       });
 
-      const conversation = engine.createGeneralTask({
+      const conversation = engine.viberSessions.store.create({
         request_id: randomUUID(),
-        goal: "Review a launch update",
         profile_id: profile.id,
-        repository_id: null,
       });
 
-      const chatNode = engine.flows.definition(conversation.flow_id!).definition.nodes[0];
+      engine.db.run(
+        "UPDATE viber_sessions SET title=? WHERE id=?",
+        "Review a launch update",
+        conversation.id,
+      );
+
       for (const [role, content, time] of [
         ["user", "What is the latest update on the launch?", "2026-11-14T09:41:00.000Z"],
         [
@@ -427,14 +430,12 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
         ["user", "Perfect. Keep me posted this week.", "2026-11-14T09:41:10.000Z"],
       ]) {
         engine.db.run(
-          "INSERT INTO task_messages(id,task_id,role,content,created_at,status,purpose,flow_node_id,viber_profile_id) VALUES(?,?,?,?,?,'chat_completed','chat',?,?)",
+          "INSERT INTO viber_messages(id,session_id,role,content,created_at,status) VALUES(?,?,?,?,?,'completed')",
           randomUUID(),
           conversation.id,
           role,
           content,
           time,
-          chatNode.id,
-          profile.id,
         );
       }
 
@@ -470,8 +471,9 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
 
       expect((await composer.boundingBox())!.height).toBeGreaterThanOrEqual(110);
       expect(await chat.locator(".viber-chat-welcome .viber-idle").count()).toBe(1);
-      await chat.locator(".viber-chat-history > summary").click();
-      await chat.getByRole("button", { name: "Review a launch update", exact: true }).click();
+      await chat.getByRole("combobox", { name: "Chat history" }).click();
+
+      await page.getByRole("option", { name: "Review a launch update", exact: true }).click();
 
       await chat
         .getByText(
@@ -485,7 +487,7 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
       const incoming = chat.locator(".saved-assistant-message").first();
       expect((await incoming.boundingBox())!.height).toBeLessThanOrEqual(60);
       expect((await outgoing.boundingBox())!.x).toBeGreaterThan((await incoming.boundingBox())!.x);
-      const savedPrompt = chat.getByRole("textbox", { name: "Viber conversation" });
+      const savedPrompt = chat.getByRole("textbox", { name: "Message Orbit" });
       await savedPrompt.click();
 
       expect(await savedPrompt.evaluate((element) => getComputedStyle(element).borderWidth)).toBe(

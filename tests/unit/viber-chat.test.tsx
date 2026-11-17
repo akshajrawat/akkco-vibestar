@@ -23,6 +23,10 @@ vi.mock("../../apps/desktop/features/flows/ViberModelPicker", () => ({
   ),
 }));
 
+vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
+  useProviders: () => ({ providers: [] }),
+}));
+
 const rpc = vi.fn();
 
 afterEach(() => {
@@ -89,7 +93,7 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
   expect(edit).toHaveBeenCalledOnce();
   expect(edit).toHaveBeenCalledWith(viberProfile);
 
-  fireEvent.click(screen.getByRole("combobox", { name: "Repository workspace" }));
+  fireEvent.click(screen.getByRole("combobox", { name: "Attach repository" }));
   fireEvent.click(screen.getByRole("option", { name: /owned\/repository/ }));
   expect(screen.queryByRole("option", { name: /hidden/ })).toBeNull();
 
@@ -134,4 +138,41 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
 
   fireEvent.click(screen.getByRole("button", { name: "New chat" }));
   expect(screen.getByRole("button", { name: "Model fixture-model" })).toBeTruthy();
+});
+
+it("defaults to isolated files and keeps repository attachment optional, searchable and removable", async () => {
+  const repository = { id: crypto.randomUUID(), owner: "owned", name: "repo" };
+
+  rpc.mockImplementation(async (method: string) =>
+    method === "snapshot" ? { repositories: [repository] } : [],
+  );
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberChat profile={viberProfile} revision={0} edit={vi.fn()} openTask={vi.fn()} />);
+  expect(screen.queryByRole("combobox", { name: "Repository workspace" })).toBeNull();
+  fireEvent.click(screen.getByRole("combobox", { name: "Attach repository" }));
+  await screen.findByRole("option", { name: "owned/repo" });
+
+  fireEvent.change(screen.getByRole("combobox", { name: "Search attach repository" }), {
+    target: { value: "owned" },
+  });
+
+  fireEvent.click(screen.getByRole("option", { name: "owned/repo" }));
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(screen.queryByRole("combobox", { name: "Attach repository" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Remove repository" }));
+  expect(screen.getByRole("combobox", { name: "Attach repository" })).toBeTruthy();
+
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
+    target: { value: "Hello" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "viber.session.create",
+      expect.not.objectContaining({ repository_id: expect.anything() }),
+    ),
+  );
 });
