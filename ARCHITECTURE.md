@@ -110,6 +110,17 @@ intervals come from the existing read-only task and flow projections, with bound
 Display timers never poll the core or start execution; task, flow and conversation completion remain
 separate facts.
 
+Standalone Viber sessions own their workspace and provider thread independently of Tasks and graphs.
+An optional connected repository is captured at chat creation; execution prepares a dedicated owned
+Git worktree through the shared workspace service. Repository-free chats use owned managed files.
+Turns use AgentRunner and the existing sandbox, events and usage records. Saved native Codex
+app-server and Antigravity conversation identities survive restarts; resumed turns send only the new
+message. Provider/model or instruction/access changes start fresh context without replaying history.
+Failed, cancelled and interrupted turns require an explicit uncertainty acknowledgement before a new
+instruction; invalid native threads never trigger an automatic fallback. Legacy chats without owned
+workspace evidence remain readable and require a new chat for execution. Data-root relocation refuses
+prepared Viber workspaces to preserve native path bindings; use the old location instead.
+
 ## Persistence, verification and recovery
 
 SQLite migrations are additive and run with a private backup before upgrade. Recovery retains

@@ -19,7 +19,7 @@ import { Database } from "../../apps/core/storage/database";
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
-  "completes an Oppia-shaped manual PR analysis, isolated repair, independent review and manual terminal Git commands through built Electron IPC",
+  "completes an Vibestar-shaped manual PR analysis, isolated repair, independent review and manual terminal Git commands through built Electron IPC",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-repair-desktop-"));
 

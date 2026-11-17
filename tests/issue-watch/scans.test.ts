@@ -31,7 +31,7 @@ it("creates immutable idempotent watches, reads history across restart, and neve
   const input = {
     request_id: randomUUID(),
     name: "Saved watch",
-    repository: "oppia/oppia",
+    repository: "vibestar/vibestar",
     configuration: watchConfiguration(),
   };
 
@@ -91,7 +91,7 @@ it("dynamically excludes tracker members, enforces current metadata and blocks i
   const configuration = watchConfiguration("Open issues", {
     excluded_labels: ["triage needed"],
     unassigned_only: true,
-    trackers: [{ url: "https://github.com/oppia/oppia/issues/27409", comments: "none" }],
+    trackers: [{ url: "https://github.com/vibestar/vibestar/issues/27409", comments: "none" }],
   });
 
   const { watch } = await f.create(configuration);
@@ -129,7 +129,7 @@ it("dynamically excludes tracker members, enforces current metadata and blocks i
     f.service.store.sources(watch.id, second.id).find((source) => source.kind === "tracker")?.text,
   ).toContain("#1");
 
-  f.overrides.set("repos/oppia/oppia/issues/27409", () => {
+  f.overrides.set("repos/vibestar/vibestar/issues/27409", () => {
     throw new Error("Rate limited required tracker");
   });
 
@@ -189,12 +189,12 @@ it("reserves one durable manual scan, rejects payload/cross-watch reuse and canc
     release = resolve;
   });
 
-  f.overrides.set("repos/oppia/oppia", async () => {
+  f.overrides.set("repos/vibestar/vibestar", async () => {
     await gate;
     return {
-      node_id: "R_oppia",
-      full_name: "oppia/oppia",
-      html_url: "https://github.com/oppia/oppia",
+      node_id: "R_vibestar",
+      full_name: "vibestar/vibestar",
+      html_url: "https://github.com/vibestar/vibestar",
     };
   });
 
@@ -232,7 +232,7 @@ it("preserves partial discoveries and the old baseline when search/context budge
   expect(baseline.status).toBe("completed");
 
   f.overrides.set(
-    "search/issues?q=repo%3Aoppia%2Foppia%20is%3Aissue%20is%3Aopen&sort=created&order=desc&per_page=10&page=1",
+    "search/issues?q=repo%3Avibestar%2Fvibestar%20is%3Aissue%20is%3Aopen&sort=created&order=desc&per_page=10&page=1",
     {
       total_count: 9999,
       incomplete_results: true,
@@ -240,7 +240,7 @@ it("preserves partial discoveries and the old baseline when search/context budge
         {
           node_id: "I_1",
           number: 1,
-          html_url: "https://github.com/oppia/oppia/issues/1",
+          html_url: "https://github.com/vibestar/vibestar/issues/1",
         },
       ],
     },
@@ -252,10 +252,10 @@ it("preserves partial discoveries and the old baseline when search/context budge
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(baseline.id);
   expect(f.service.store.candidates(watch.id, partial.id)).toHaveLength(1);
 
-  f.overrides.set("repos/oppia/oppia", {
+  f.overrides.set("repos/vibestar/vibestar", {
     node_id: "R_impostor",
-    full_name: "oppia/oppia",
-    html_url: "https://github.com/oppia/oppia",
+    full_name: "vibestar/vibestar",
+    html_url: "https://github.com/vibestar/vibestar",
   });
 
   const failed = await f.scan(watch.id);
@@ -301,7 +301,7 @@ it("keeps Antigravity's new integration unsupported without invoking it or readi
   const result = (await f.service.save({
     request_id: randomUUID(),
     name: "Unsupported",
-    repository: "oppia/oppia",
+    repository: "vibestar/vibestar",
     configuration,
   })) as Awaited<ReturnType<typeof f.service.store.saveRevision>>;
 
@@ -352,7 +352,7 @@ it("distinguishes reentry, criteria changes, actual creation and historical unkn
       watch_id: watch.id,
       expected_revision: 1,
       name: "New criteria",
-      repository: "oppia/oppia",
+      repository: "vibestar/vibestar",
       configuration: watchConfiguration("Open issues", {
         excluded_labels: ["exclude"],
       }),
@@ -408,23 +408,23 @@ it("stores claim and competing PR facts while retaining uncertainty from missing
       event: "cross-referenced",
       source: {
         issue: {
-          html_url: "https://github.com/oppia/oppia/pull/50",
+          html_url: "https://github.com/vibestar/vibestar/pull/50",
           pull_request: {},
         },
       },
     },
   ]);
 
-  f.overrides.set("repos/oppia/oppia/pulls/50", {
+  f.overrides.set("repos/vibestar/vibestar/pulls/50", {
     node_id: "PR_50",
-    html_url: "https://github.com/oppia/oppia/pull/50",
+    html_url: "https://github.com/vibestar/vibestar/pull/50",
     title: "Competing change",
     body: "Fixes #1",
     state: "open",
     merged_at: null,
     updated_at: issue.updated_at,
     user: { login: "alice" },
-    base: { repo: { node_id: "R_oppia" } },
+    base: { repo: { node_id: "R_vibestar" } },
   });
 
   const competing = await f.scan(watch.id);
@@ -435,11 +435,11 @@ it("stores claim and competing PR facts while retaining uncertainty from missing
     claim_state: "competing_pr_detected",
   });
 
-  f.overrides.set("repos/oppia/oppia/community/profile", () => {
+  f.overrides.set("repos/vibestar/vibestar/community/profile", () => {
     throw new Error("policy unavailable");
   });
 
-  f.overrides.set("repos/oppia/oppia/issues/2/timeline?per_page=100&page=1", () => {
+  f.overrides.set("repos/vibestar/vibestar/issues/2/timeline?per_page=100&page=1", () => {
     throw new Error("timeline unavailable");
   });
 
@@ -460,7 +460,7 @@ it("preserves watch revisions, source history and baselines through actual data-
     watchConfiguration("Open issues", {
       trackers: [
         {
-          url: "https://github.com/oppia/oppia/issues/27409",
+          url: "https://github.com/vibestar/vibestar/issues/27409",
           comments: "none",
         },
       ],
@@ -489,7 +489,7 @@ it("keeps provisional dismissals local and compact reads separate from immutable
   const f = await setup();
   const { watch } = await f.create();
 
-  f.overrides.set("repos/oppia/oppia/community/profile", {
+  f.overrides.set("repos/vibestar/vibestar/community/profile", {
     files: { contributing: null },
   });
 
@@ -553,7 +553,7 @@ it("keeps provisional dismissals local and compact reads separate from immutable
 
   expect(f.service.store.dispositions(watch.id).get("I_1")).toBeNull();
   expect(f.service.store.candidate(watch.id, partial.id, "I_1")).toEqual(original);
-  f.overrides.delete("repos/oppia/oppia/community/profile");
+  f.overrides.delete("repos/vibestar/vibestar/community/profile");
   const complete = await f.scan(watch.id);
   expect(complete.status).toBe("completed");
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBe(complete.id);
@@ -587,7 +587,7 @@ it("pins required tracker identities across canonical renames and refuses replac
   const f = await setup();
 
   const tracker = {
-    ...githubIssue(99, "https://github.com/oppia/oppia/issues/2"),
+    ...githubIssue(99, "https://github.com/vibestar/vibestar/issues/2"),
     node_id: "I_tracker",
     html_url: "https://github.com/tracker/repo/issues/99",
   };

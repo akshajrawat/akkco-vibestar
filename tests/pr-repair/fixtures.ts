@@ -78,13 +78,13 @@ export const repairFixture = async (
 
   await checked(
     "git",
-    ["remote", "set-url", "upstream", "https://github.com/oppia/oppia.git"],
+    ["remote", "set-url", "upstream", "https://github.com/vibestar/vibestar.git"],
     source,
   );
 
   await checked(
     "git",
-    ["remote", "add", "origin", "https://github.com/akshajrawat/oppia.git"],
+    ["remote", "add", "origin", "https://github.com/sample-user/vibestar.git"],
     source,
   );
 
@@ -93,11 +93,11 @@ export const repairFixture = async (
 
   const repo: Repository = {
     id: repoId,
-    owner: "oppia",
-    name: "oppia",
+    owner: "vibestar",
+    name: "vibestar",
     path: source,
-    upstream_url: "https://github.com/oppia/oppia.git",
-    origin_url: "https://github.com/akshajrawat/oppia.git",
+    upstream_url: "https://github.com/vibestar/vibestar.git",
+    origin_url: "https://github.com/sample-user/vibestar.git",
     base_branch: baseBranch,
     source: options.imported ? "imported" : "managed",
     connected: true,
@@ -109,12 +109,12 @@ export const repairFixture = async (
   const id = randomUUID();
 
   const identity = {
-    url: "https://github.com/oppia/oppia/pull/27527",
+    url: "https://github.com/vibestar/vibestar/pull/27527",
     number: 27527,
     id: "PR_27527",
-    upstream: { name: "oppia/oppia", id: "R_upstream", url: repo.upstream_url },
+    upstream: { name: "vibestar/vibestar", id: "R_upstream", url: repo.upstream_url },
     head: {
-      name: "akshajrawat/oppia",
+      name: "sample-user/vibestar",
       id: "R_fork",
       url: repo.origin_url!,
       branch: "fix-translation-tests",
@@ -137,7 +137,7 @@ export const repairFixture = async (
         number: 26831,
         title: "Migrate acceptance tests",
         body: "Migrate the existing acceptance scenario while preserving its exploration, selectors and draft behavior. Whole-issue implementation context is retained; this repair addresses only selected reviewer concerns.",
-        url: "https://github.com/oppia/oppia/issues/26831",
+        url: "https://github.com/vibestar/vibestar/issues/26831",
       },
     ],
     identity: {

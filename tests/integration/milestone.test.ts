@@ -29,13 +29,13 @@ it("honors the selected checkout for an older deferred clone registration", asyn
     const { upstream } = await fixtureRepository(engine, dir);
     const home = join(dir, "home");
     await mkdir(home);
-    const paths = [join(home, "a-oppia"), join(home, "z-oppia")];
+    const paths = [join(home, "a-vibestar"), join(home, "z-vibestar")];
     for (const path of paths) {
       await checked("git", ["clone", upstream, path], dir);
 
       await checked(
         "git",
-        ["remote", "set-url", "origin", "https://github.com/oppia/oppia.git"],
+        ["remote", "set-url", "origin", "https://github.com/vibestar/vibestar.git"],
         path,
       );
     }
@@ -46,7 +46,7 @@ it("honors the selected checkout for an older deferred clone registration", asyn
     });
 
     const registered = await engine.register(
-      "https://github.com/oppia/oppia.git",
+      "https://github.com/vibestar/vibestar.git",
       null,
       "main",
       true,
@@ -143,13 +143,13 @@ it("indexes an existing checkout and creates isolated worktrees while preserving
     const { upstream } = await fixtureRepository(engine, dir);
     const home = join(dir, "home");
     await mkdir(home);
-    const source = join(home, "oppia");
+    const source = join(home, "vibestar");
     await checked("git", ["clone", upstream, source], dir);
-    await checked("git", ["remote", "set-url", "origin", "git@github.com:me/oppia.git"], source);
+    await checked("git", ["remote", "set-url", "origin", "git@github.com:me/vibestar.git"], source);
 
     await checked(
       "git",
-      ["remote", "add", "upstream", "https://github.com/oppia/oppia.git"],
+      ["remote", "add", "upstream", "https://github.com/vibestar/vibestar.git"],
       source,
     );
 
@@ -166,17 +166,17 @@ it("indexes an existing checkout and creates isolated worktrees while preserving
     expect(index.repositories[0]).toMatchObject({
       path: source,
       branch: "main",
-      identities: ["me/oppia", "oppia/oppia"],
+      identities: ["me/vibestar", "vibestar/vibestar"],
     });
 
-    expect(discoveryRoot("~/oppia", home)).toBe(source);
+    expect(discoveryRoot("~/vibestar", home)).toBe(source);
     expect(() => discoveryRoot("/")).toThrow();
     expect(() => discoveryRoot("/mnt/c")).toThrow();
     const clone = vi.spyOn(engine.git, "clone");
 
     const imported = await engine.register(
-      "https://github.com/oppia/oppia.git",
-      "git@github.com:me/oppia.git",
+      "https://github.com/vibestar/vibestar.git",
+      "git@github.com:me/vibestar.git",
       "main",
       true,
       source,
@@ -191,7 +191,7 @@ it("indexes an existing checkout and creates isolated worktrees while preserving
       id: "isolated-task",
       repo_id: imported.id,
       issue_number: 1,
-      issue_url: "https://github.com/oppia/oppia/issues/1",
+      issue_url: "https://github.com/vibestar/vibestar/issues/1",
       claimed_scope: "source.txt",
       notes: "",
       issue: {},
@@ -214,7 +214,7 @@ it("indexes an existing checkout and creates isolated worktrees while preserving
     expect(await checked("git", ["status", "--porcelain=v1", "--branch"], source)).toBe(before);
 
     expect(await checked("git", ["remote", "get-url", "origin"], source)).toBe(
-      "git@github.com:me/oppia.git",
+      "git@github.com:me/vibestar.git",
     );
 
     expect(task.worktree_path.startsWith(join(engine.root, "worktrees"))).toBe(true);

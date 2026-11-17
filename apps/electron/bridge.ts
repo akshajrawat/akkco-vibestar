@@ -364,7 +364,7 @@ export class CoreBridge extends EventEmitter {
         this.viberConversationsAvailable =
           this.agentFlowsAvailable && info.viber_conversations === 1;
 
-        this.viberSessionsAvailable = info.viber_sessions === 1;
+        this.viberSessionsAvailable = info.viber_sessions === 2;
         this.finalReviewSettingsAvailable = info.independent_final_review === true;
         this.browserVerificationAvailable = info.browser_verification_environment === true;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
@@ -595,7 +595,7 @@ export class CoreBridge extends EventEmitter {
             ...(this.agentFlowsAvailable ? { agent_flows: 1 } : {}),
             ...(this.flowContinuationsAvailable ? { flow_continuations: 1 } : {}),
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
-            ...(this.viberSessionsAvailable ? { viber_sessions: 1 } : {}),
+            ...(this.viberSessionsAvailable ? { viber_sessions: 2 } : {}),
             manual_issue_watch: this.issueWatchAvailable,
             issue_watch_contract: this.issueWatchAvailable ? 1 : null,
             issue_watch_batches: this.issueWatchBatchesAvailable ? 1 : null,

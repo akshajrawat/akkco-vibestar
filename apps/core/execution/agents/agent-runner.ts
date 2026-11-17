@@ -136,10 +136,8 @@ export class AgentRunner {
         options.scanId ||
         options.watchId ||
         options.nodeAttemptId ||
-        options.conversation?.threadId ||
         !conversation ||
-        t.id !== options.viberSession.sessionId ||
-        options.workspace !== join(this.root, "workspaces", "vibers", t.id)
+        t.id !== options.viberSession.sessionId
       ) {
         throw new AdeError(
           "isolation",
@@ -152,12 +150,25 @@ export class AgentRunner {
         options.viberSession.messageId,
         execution,
         options.prompt,
+        options.conversation,
       );
     }
 
     const repair = options?.repair;
     const owner = task || repair || null;
-    const assignment = owner;
+
+    const viberWorkspace = options.viberSession
+      ? new ViberSessionStore(this.db).workspace(options.viberSession.sessionId)
+      : null;
+
+    if (viberWorkspace && options.workspace !== viberWorkspace.worktree_path) {
+      throw new AdeError(
+        "isolation",
+        "Standalone Viber turns require their own captured session workspace.",
+      );
+    }
+
+    const assignment = owner || viberWorkspace;
     const fingerprint = repair ? this.git.repairFingerprint : this.git.fingerprint;
     if (!assignment && !options?.workspace) {
       throw new AdeError("invalid_state", "Detached analysis requires a managed PR workspace");
@@ -196,7 +207,7 @@ export class AgentRunner {
     const usage = new Usage(this.db);
 
     const repositoryId =
-      owner?.repo_id ||
+      assignment?.repo_id ||
       (options.telemetryTaskId ? this.db.task(options.telemetryTaskId).repo_id : null);
 
     const repo = repositoryId ? this.db.repository(repositoryId) : null;
@@ -381,13 +392,20 @@ export class AgentRunner {
     let code: number | null = null;
     let invoked = false;
     let officialCodex = false;
+    let completedTurn = false;
+    let nativeThreadId: string | null = null;
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
       if (options.nodeAttemptId) {
         new FlowRunStore(this.db).attachExecution(options.nodeAttemptId, id, "agent");
       }
 
-      cwd = assignment ? await this.git.assertTask(assignment) : options!.workspace!;
+      cwd = viberWorkspace
+        ? await this.git.assertOwnedTask(viberWorkspace)
+        : assignment
+          ? await this.git.assertTask(assignment)
+          : options!.workspace!;
+
       const detection = await this.detect(provider, signal);
       if (signal.aborted) {
         throw new AdeError("cancelled", "Run cancelled");
@@ -409,6 +427,17 @@ export class AgentRunner {
         );
       }
 
+      if (
+        options.viberSession &&
+        ["codex", "antigravity"].includes(detection.provider) &&
+        !detection.capabilities.includes("native-conversations")
+      ) {
+        throw new AdeError(
+          "provider_unavailable",
+          "Update the official provider CLI before using persistent native Viber conversations.",
+        );
+      }
+
       const invalid = configurationError(detection, config);
       if (invalid) {
         throw new AdeError("model", invalid);
@@ -418,6 +447,14 @@ export class AgentRunner {
         ...config,
         model: config.model || detection.models.find((m) => m.isDefault)?.id || "",
       };
+
+      if (options.viberSession && options.conversation?.threadId) {
+        new ViberSessionStore(this.db).assertThread(
+          options.viberSession.sessionId,
+          options.conversation.threadId,
+          selectedConfig.model,
+        );
+      }
 
       if (selectedConfig.model && !config.model) {
         this.db.run(`UPDATE ${table} SET model=? WHERE id=?`, selectedConfig.model, id);
@@ -541,6 +578,16 @@ export class AgentRunner {
           });
 
           if (conversationId) {
+            if (options.viberSession) {
+              new ViberSessionStore(this.db).recordThread(
+                options.viberSession.sessionId,
+                options.viberSession.messageId,
+                conversationId,
+                selectedConfig.model,
+              );
+            }
+
+            nativeThreadId = conversationId;
             this.db.run("UPDATE ai_usage SET provider_session_id=? WHERE id=?", conversationId, id);
             this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
           }
@@ -568,6 +615,10 @@ export class AgentRunner {
 
             if (event.kind === "run.failed") {
               failure = event.data;
+            }
+
+            if (event.kind === "run.completed") {
+              completedTurn = true;
             }
 
             if (!task && !repair) {
@@ -611,6 +662,13 @@ export class AgentRunner {
           "provider_failed",
           `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
           { provider: provider.name, stage, code },
+        );
+      }
+
+      if (options.viberSession && (!completedTurn || !nativeThreadId)) {
+        throw new AdeError(
+          "provider_failed",
+          "Provider exited without a completed native turn and thread identity. Inspect activity before explicitly continuing; no automatic replay is allowed.",
         );
       }
 

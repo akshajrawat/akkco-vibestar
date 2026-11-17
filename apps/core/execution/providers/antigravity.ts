@@ -70,6 +70,9 @@ export class AntigravityProvider implements AgentProvider {
       }
 
       d.capabilities = ["plan-mode", "sandbox", "structured-events", "schema", "model-discovery"];
+      if ((help.stdout + help.stderr).includes("--conversation")) {
+        d.capabilities.push("native-conversations");
+      }
     } catch (e) {
       d.error = String(e);
     }
@@ -303,12 +306,17 @@ export class AntigravityProvider implements AgentProvider {
     return plan;
   };
 
-  conversationId = (raw: Record<string, unknown>) =>
-    typeof raw.session_id === "string"
-      ? raw.session_id
-      : typeof raw.conversation_id === "string"
-        ? raw.conversation_id
-        : typeof object(raw.result).conversation_id === "string"
-          ? (object(raw.result).conversation_id as string)
-          : null;
+  conversationId = (raw: Record<string, unknown>) => {
+    const init = object(raw.init);
+    const result = object(raw.result);
+
+    const id =
+      raw.conversation_id ??
+      init.conversation_id ??
+      result.conversation_id ??
+      raw.session_id ??
+      init.session_id;
+
+    return typeof id === "string" && id.length > 0 ? id : null;
+  };
 }

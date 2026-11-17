@@ -37,7 +37,7 @@ beforeEach(() => {
         ? "gemini-3.8-flash-high\tGemini 3.8 Flash High\nclaude-sonnet-4-6\tClaude Sonnet\n"
         : args[0] === "login"
           ? "Logged in using ChatGPT"
-          : "--mode --sandbox --effort --input-format --output-format --json-schema",
+          : "--mode --sandbox --effort --input-format --output-format --json-schema --conversation",
     stderr: "",
   }));
 });
@@ -64,7 +64,7 @@ it("shows unavailable Antigravity authentication without fabricating an account"
   vi.mocked(capture).mockImplementation(async (_program, args) => ({
     duration_ms: 1,
     code: args[0] === "models" ? 1 : 0,
-    stdout: "--mode --sandbox --effort --input-format --output-format --json-schema",
+    stdout: "--mode --sandbox --effort --input-format --output-format --json-schema --conversation",
     stderr: "Sign in required",
   }));
 
@@ -82,7 +82,7 @@ it("rejects Antigravity versions without streamed stdin support before execution
   vi.mocked(capture).mockResolvedValue({
     duration_ms: 1,
     code: 0,
-    stdout: "--mode --sandbox --effort --output-format --json-schema",
+    stdout: "--mode --sandbox --effort --output-format --json-schema --conversation",
     stderr: "",
   });
 
@@ -100,7 +100,7 @@ it("requires explicit capabilities for newly discovered unsuffixed Antigravity m
     stdout:
       args[0] === "models"
         ? "future-model\tFuture model\n"
-        : "--mode --sandbox --effort --input-format --output-format --json-schema",
+        : "--mode --sandbox --effort --input-format --output-format --json-schema --conversation",
     stderr: "",
   }));
 

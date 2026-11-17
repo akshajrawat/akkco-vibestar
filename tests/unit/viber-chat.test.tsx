@@ -39,9 +39,19 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
     selection: { provider: "codex", model: "session-only", effort: "low" },
   };
 
+  const repositoryId = crypto.randomUUID();
   let fail = true;
 
   rpc.mockImplementation(async (method: string) => {
+    if (method === "snapshot") {
+      return {
+        repositories: [
+          { id: repositoryId, owner: "owned", name: "repository" },
+          { id: "disconnected", connected: false, owner: "hidden", name: "repository" },
+        ],
+      };
+    }
+
     if (method === "providers.detect") {
       return [];
     }
@@ -73,11 +83,15 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
   expect(screen.getByRole("heading", { name: "Ready when you are." })).toBeTruthy();
 
   await waitFor(() => expect(rpc).toHaveBeenCalledWith("viber.instances", {}));
-  expect(rpc.mock.calls.filter(([method]) => method !== "providers.detect")).toHaveLength(2);
+  expect(rpc.mock.calls.filter(([method]) => method !== "providers.detect")).toHaveLength(3);
   expect(document.querySelector(".flow-editor")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Edit Viber" }));
   expect(edit).toHaveBeenCalledOnce();
   expect(edit).toHaveBeenCalledWith(viberProfile);
+
+  fireEvent.click(screen.getByRole("combobox", { name: "Repository workspace" }));
+  fireEvent.click(screen.getByRole("option", { name: /owned\/repository/ }));
+  expect(screen.queryByRole("option", { name: /hidden/ })).toBeNull();
 
   fireEvent.click(screen.getByRole("button", { name: "Model fixture-model" }));
 
@@ -92,6 +106,12 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
   expect(screen.queryByRole("heading", { name: "Ready when you are." })).toBeNull();
   expect(document.querySelector(".viber-chat-welcome")).toBeNull();
   expect(rpc.mock.calls.filter(([method]) => method === "viber.session.create")).toHaveLength(1);
+
+  expect(rpc).toHaveBeenCalledWith(
+    "viber.session.create",
+    expect.objectContaining({ repository_id: repositoryId }),
+  );
+
   const sends = rpc.mock.calls.filter(([method]) => method === "viber.session.send");
   expect(sends).toHaveLength(2);
   expect(sends[0]).toEqual(sends[1]);

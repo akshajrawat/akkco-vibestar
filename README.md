@@ -14,14 +14,6 @@ evidence. It does not commit or publish work for you.
 - Discover GitHub issues with manually started, bounded Issue Watch scans.
 - Use the built-in terminal for manual Git commands and commits.
 
-## Screenshots
-
-![Editable Viber graph in the task workspace](docs/screenshots/vibers.png)
-
-Also see the [compact task sidebar](docs/screenshots/sidebar.png),
-[pull request inbox](docs/screenshots/pr-inbox.png), and
-[repository picker](docs/screenshots/repositories.png).
-
 ## Supported platforms and requirements
 
 Vibestar runs on a Linux desktop or on Windows with WSL2 and a Linux execution distribution. The

@@ -1,5 +1,3 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import type { z } from "zod";
 
 import type { Engine } from "../engine";
@@ -8,7 +6,8 @@ import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 import { ViberSessionStore } from "../../vibers/store";
 import { ViberSessionSendSchema } from "../../vibers/contracts";
-import { managedPath } from "../../workspace/paths";
+import { prepareManagedWorkspace } from "../../workspace/managed";
+import { AdeError } from "../../domain";
 import { redact } from "../runtime/process";
 
 /** Explicit turns use the same foreground admission, cancellation and runner as other executions. */
@@ -16,7 +15,7 @@ export class ViberSessions {
   readonly store: ViberSessionStore;
 
   constructor(
-    private readonly host: Pick<Engine, "db" | "root" | "changed" | "assertAvailable">,
+    private readonly host: Pick<Engine, "db" | "root" | "git" | "changed" | "assertAvailable">,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
     private readonly operations: Pick<
@@ -46,13 +45,27 @@ export class ViberSessions {
       this.state.repositoryController.signal,
       async (signal) => {
         try {
-          const workspace = await managedPath(
-            this.host.root,
-            join(this.host.root, "workspaces", "vibers", input.session_id),
-          );
+          let assignment = this.store.workspace(input.session_id);
+          if (assignment.repo_id) {
+            const repo = this.host.db.repository(assignment.repo_id);
+            if (repo.connected === false || repo.clone_status === "cloning") {
+              throw new AdeError(
+                "repository_missing",
+                "Reconnect this session's repository before executing.",
+              );
+            }
 
-          await mkdir(workspace, { recursive: true, mode: 0o700 });
-          await managedPath(this.host.root, workspace);
+            if (!assignment.worktree_path || assignment.workspace_checkpoint?.state !== "ready") {
+              await this.host.git.prepare(repo, assignment, signal, (value) =>
+                this.store.saveWorkspace(input.session_id, value),
+              );
+            }
+          } else {
+            assignment = await prepareManagedWorkspace(this.host.root, assignment);
+          }
+
+          this.store.saveWorkspace(input.session_id, assignment);
+          const workspace = await this.host.git.assertOwnedTask(assignment);
           signal.throwIfAborted();
 
           const output = await this.runner.runConfigured(
@@ -63,6 +76,7 @@ export class ViberSessions {
               prompt: snapshot.prompt,
               purpose: `${snapshot.profile.name} session`,
               workspace,
+              conversation: snapshot.conversation,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
             },
           );

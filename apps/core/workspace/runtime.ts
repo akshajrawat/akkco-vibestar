@@ -86,7 +86,7 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
     }
   }
 
-  // Some projects install their toolchain beside the checkout (e.g. oppia_tools).
+  // Some projects install their toolchain beside the checkout (e.g. project_tools).
   // Preserve that explicit project naming convention inside the sandbox only.
   const toolchainName = `${basename(source)}_tools`;
   const toolchain = join(dirname(source), toolchainName);

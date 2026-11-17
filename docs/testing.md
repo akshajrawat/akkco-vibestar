@@ -174,6 +174,5 @@ Maintainers can later require all eight named statuses in branch protection. No
 repository settings are changed by this work. YAML and local commands can be validated
 locally; actual GitHub-hosted status execution requires a separately authorized push.
 
-The [verification record](architecture/verification-history.md) captures the latest local
-acceptance run. [Workflow contracts](architecture/workflows.md) describe current execution
+[Workflow contracts](architecture/workflows.md) describe current execution
 behavior; this guide defines how the test suites exercise it.

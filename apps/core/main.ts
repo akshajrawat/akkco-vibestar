@@ -86,7 +86,7 @@ const main = async () => {
             agent_flows: 1,
             flow_continuations: 1,
             viber_conversations: 1,
-            viber_sessions: 1,
+            viber_sessions: 2,
             independent_final_review: true,
             browser_verification_environment: true,
             manual_user_terminal: 1,

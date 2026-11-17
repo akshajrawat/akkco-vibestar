@@ -33,7 +33,8 @@ export class CodexProvider implements AgentProvider {
     try {
       d.version = await checked("codex", ["--version"], cwd, signal);
       d.installed = true;
-      verifyFlags(await checked("codex", ["--help"], cwd, signal), ["--no-daemon"]);
+      const rootHelp = await checked("codex", ["--help"], cwd, signal);
+      verifyFlags(rootHelp, ["--no-daemon"]);
       const help = await checked("codex", ["exec", "--help"], cwd, signal);
 
       verifyFlags(help, [
@@ -52,6 +53,10 @@ export class CodexProvider implements AgentProvider {
         "schema",
         "subscription-auth",
       ];
+
+      if (rootHelp.includes("app-server")) {
+        d.capabilities.push("native-conversations");
+      }
 
       const login = await capture("codex", ["login", "status"], cwd, signal);
       const output = login.stdout + login.stderr;

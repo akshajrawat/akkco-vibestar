@@ -42,13 +42,13 @@ it.each([undefined, "saved-thread"])(
     });
 
     invocation.inputProtocol.receive(
-      JSON.stringify({ id: 1, result: { thread: { id: "real-thread" } } }),
+      JSON.stringify({ id: 1, result: { thread: { id: threadId || "real-thread" } } }),
     );
 
     expect(messages[3]).toMatchObject({
       method: "turn/start",
       params: {
-        threadId: "real-thread",
+        threadId: threadId || "real-thread",
         model: "requested-model",
         sandboxPolicy: { type: "readOnly" },
         input: [{ type: "text", text: "hello" }],
@@ -141,6 +141,32 @@ it("fails closed on protocol errors and unknown turn outcomes", () => {
   expect(() =>
     protocol.receive('{"method":"turn/completed","params":{"turn":{"status":"unknown"}}}'),
   ).toThrow("unknown turn outcome");
+});
+
+it("never dispatches a turn or starts a fallback when resume returns a different thread", () => {
+  const messages: unknown[] = [];
+
+  const protocol = codexConversation({
+    ...request,
+    conversation: { threadId: "saved" },
+  }).inputProtocol;
+
+  protocol.start(
+    (message) => messages.push(message),
+    () => {},
+  );
+
+  protocol.receive('{"id":0,"result":{}}');
+
+  expect(() => protocol.receive('{"id":1,"result":{"thread":{"id":"foreign"}}}')).toThrow(
+    "different thread",
+  );
+
+  expect(messages).toHaveLength(3);
+
+  expect(messages).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ method: "turn/start" })]),
+  );
 });
 
 it("keeps a provider's reported transport retry separate from a failed turn", () => {

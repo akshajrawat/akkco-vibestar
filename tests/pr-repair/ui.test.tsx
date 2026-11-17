@@ -30,16 +30,16 @@ const session: RepairSession = {
   identity: {
     id: "PR_27527",
     number: 27527,
-    url: "https://github.com/oppia/oppia/pull/27527",
+    url: "https://github.com/vibestar/vibestar/pull/27527",
     upstream: {
-      name: "oppia/oppia",
+      name: "vibestar/vibestar",
       id: "R_base",
-      url: "https://github.com/oppia/oppia.git",
+      url: "https://github.com/vibestar/vibestar.git",
     },
     head: {
-      name: "akshajrawat/oppia",
+      name: "sample-user/vibestar",
       id: "R_head",
-      url: "https://github.com/akshajrawat/oppia.git",
+      url: "https://github.com/sample-user/vibestar.git",
       branch: "fix-translation-tests",
       sha: "a".repeat(40),
     },
@@ -59,7 +59,7 @@ const session: RepairSession = {
     configuration: defaultReviewConfiguration,
     snapshot: {
       ...prSnapshot,
-      identity: { ...prSnapshot.identity!, baseRepository: "oppia/oppia" },
+      identity: { ...prSnapshot.identity!, baseRepository: "vibestar/vibestar" },
     },
     report: {
       summary: "Three concerns",
@@ -170,12 +170,12 @@ it("preserves reviewer text, item deselection and instructions while requiring a
       repositories={[
         {
           id: "repo",
-          owner: "oppia",
-          name: "oppia",
+          owner: "vibestar",
+          name: "vibestar",
           upstream_url: session.identity.upstream.url,
           origin_url: null,
           base_branch: "develop",
-          path: "/personal/oppia",
+          path: "/workspace/vibestar",
           connected: true,
           source: "imported",
           created_at: session.created_at,

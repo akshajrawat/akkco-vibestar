@@ -89,7 +89,7 @@ it("retires fixed-stage completion authority while retaining legacy completed hi
       repo_id: repo.id,
       id: randomUUID(),
       issue_number: 1,
-      issue_url: "https://github.com/oppia/oppia/issues/1",
+      issue_url: "https://github.com/vibestar/vibestar/issues/1",
       claimed_scope: "legacy",
       notes: "",
       issue: {},

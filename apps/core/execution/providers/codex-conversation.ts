@@ -66,10 +66,19 @@ export const codexConversation = (request: AgentRunRequest) => {
           },
         });
       } else if (response.id === 1 && phase === "thread") {
-        threadId = object(object(response.result).thread).id as string;
-        if (typeof threadId !== "string" || !threadId) {
+        const returnedId = object(object(response.result).thread).id;
+        if (typeof returnedId !== "string" || !returnedId) {
           throw new AdeError("provider_failed", "Codex returned no conversation identity.");
         }
+
+        if (threadId && returnedId !== threadId) {
+          throw new AdeError(
+            "provider_failed",
+            "Codex resumed a different thread. Start a new thread explicitly; the turn was not dispatched.",
+          );
+        }
+
+        threadId = returnedId;
 
         phase = "turn";
 

@@ -100,8 +100,12 @@ it.each(["duplicate", "short-page", "incomplete", "pull-request"])(
       );
 
       const result = await reader.discover(
-        { id: "R_oppia", full_name: "oppia/oppia", url: "https://github.com/oppia/oppia" },
-        "repo:oppia/oppia is:issue is:open",
+        {
+          id: "R_vibestar",
+          full_name: "vibestar/vibestar",
+          url: "https://github.com/vibestar/vibestar",
+        },
+        "repo:vibestar/vibestar is:issue is:open",
       );
 
       expect(result.complete).toBe(false);

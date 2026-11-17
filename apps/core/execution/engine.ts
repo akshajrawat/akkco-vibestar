@@ -193,7 +193,7 @@ export class Engine extends EventEmitter {
         pid: number;
         process_identity: string;
       }>(
-        "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.identity') FROM pr_repairs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM repair_publications WHERE status='pushing' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM git_finalizations WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL",
+        "SELECT pid,process_identity FROM agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM test_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM terminal_sessions WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM scheduled_agent_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT pid,process_identity FROM utility_runs WHERE status='running' AND pid IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.identity') FROM pr_repairs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.workspace.operation.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM repair_publications WHERE status='pushing' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL UNION ALL SELECT json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid'),json_extract(CASE WHEN json_valid(data) THEN data END,'$.process_identity') FROM git_finalizations WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.pid') IS NOT NULL UNION ALL SELECT json_extract(workspace,'$.workspace_checkpoint.operation.pid'),json_extract(workspace,'$.workspace_checkpoint.operation.identity') FROM viber_sessions WHERE workspace IS NOT NULL AND json_extract(workspace,'$.workspace_checkpoint.operation.pid') IS NOT NULL",
       )) {
         if (
           Number.isSafeInteger(run.pid) &&
@@ -211,6 +211,10 @@ export class Engine extends EventEmitter {
           terminateGroup(operation.pid, "SIGKILL");
         }
       }
+
+      engine.db.run(
+        "UPDATE viber_sessions SET workspace=json_set(workspace,'$.workspace_checkpoint.operation',NULL) WHERE workspace IS NOT NULL AND json_extract(workspace,'$.workspace_checkpoint.operation') IS NOT NULL",
+      );
 
       migrateLegacyTasks(engine.db);
 

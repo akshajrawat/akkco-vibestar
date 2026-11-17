@@ -8,21 +8,21 @@ it("reads immutable PR/fork IDs, the actual head/base refs, current base SHA and
 
   const upstream = {
     node_id: "R_upstream",
-    full_name: "oppia/oppia",
-    clone_url: "https://github.com/oppia/oppia.git",
+    full_name: "vibestar/vibestar",
+    clone_url: "https://github.com/vibestar/vibestar.git",
   };
 
   const head = {
     node_id: "R_fork",
-    full_name: "akshajrawat/oppia",
-    clone_url: "https://github.com/akshajrawat/oppia.git",
+    full_name: "sample-user/vibestar",
+    clone_url: "https://github.com/sample-user/vibestar.git",
     permissions: { push: true },
   };
 
   const metadata = {
     node_id: "PR_27527",
     number: 27527,
-    html_url: "https://github.com/oppia/oppia/pull/27527",
+    html_url: "https://github.com/vibestar/vibestar/pull/27527",
     state: "open",
     head: { ref: "fix/translation-tests", sha: "a".repeat(40), repo: head },
     base: { ref: "develop", sha: "b".repeat(40), repo: upstream },

@@ -5,6 +5,8 @@ import type { ViberInstance } from "../../../core/flows/workspace";
 import type { ViberSession } from "../../../core/vibers/contracts";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
+import type { Snapshot, Repository } from "../../lib/types";
+import { Select } from "../../components/ui/Select";
 import { Button } from "../../components/ui/button";
 import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
@@ -25,6 +27,8 @@ export const ViberChat = ({
 }) => {
   const [sessionId, setSessionId] = useState<string>();
   const [sessions, setSessions] = useState<ViberSession[]>([]);
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [repositoryId, setRepositoryId] = useState("");
   const [instances, setInstances] = useState<ViberInstance[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,10 +49,18 @@ export const ViberChat = ({
     void Promise.all([
       rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id }),
       rpc<ViberInstance[]>("viber.instances"),
+      rpc<Snapshot>("snapshot"),
     ])
-      .then(([sessions, instances]) => {
+      .then(([sessions, instances, snapshot]) => {
         if (active) {
           setSessions(sessions);
+
+          setRepositories(
+            snapshot.repositories.filter(
+              (repo) => repo.connected !== false && repo.clone_status !== "cloning",
+            ),
+          );
+
           setInstances(instances.filter((instance) => instance.profile_id === profile.id));
         }
       })
@@ -77,7 +89,13 @@ export const ViberChat = ({
     setBusy(true);
     setError("");
     try {
-      const signature = JSON.stringify({ content, profile_id: profile.id, selection });
+      const signature = JSON.stringify({
+        content,
+        profile_id: profile.id,
+        selection,
+        repositoryId,
+      });
+
       if (request.current.signature !== signature) {
         request.current = { signature, id: crypto.randomUUID(), session: null };
       }
@@ -88,6 +106,7 @@ export const ViberChat = ({
           request_id: request.current.id,
           profile_id: profile.id,
           selection,
+          ...(repositoryId ? { repository_id: repositoryId } : {}),
         }));
 
       request.current.session = session;
@@ -225,24 +244,40 @@ export const ViberChat = ({
             </div>
           }
           composer={
-            <Composer
-              compact
-              id={draftId}
-              label={`Message ${profile.name}`}
-              placeholder={`Ask ${profile.name} anything…`}
-              sendLabel="Send message"
-              onSend={() => void start()}
-              context={[
-                {
-                  label: "Text",
-                  input: "Context text",
-                  load: async (text) => ({ label: "Attached text", text }),
-                },
-              ]}
-              busy={busy}
-              model={modelControl}
-              hint="Enter to send · Shift+Enter for a new line"
-            />
+            <>
+              <Select
+                label="Repository workspace"
+                value={repositoryId}
+                disabled={busy}
+                onChange={setRepositoryId}
+                searchable
+                options={[
+                  { value: "", label: "No repository · isolated files" },
+                  ...repositories.map((repo) => ({
+                    value: repo.id,
+                    label: `${repo.owner}/${repo.name}`,
+                  })),
+                ]}
+              />
+              <Composer
+                compact
+                id={draftId}
+                label={`Message ${profile.name}`}
+                placeholder={`Ask ${profile.name} anything…`}
+                sendLabel="Send message"
+                onSend={() => void start()}
+                context={[
+                  {
+                    label: "Text",
+                    input: "Context text",
+                    load: async (text) => ({ label: "Attached text", text }),
+                  },
+                ]}
+                busy={busy}
+                model={modelControl}
+                hint="Each chat owns a separate workspace. Repository chats use a dedicated Git worktree."
+              />
+            </>
           }
         />
       )}

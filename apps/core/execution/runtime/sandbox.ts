@@ -10,6 +10,8 @@ import { taskRuntime } from "../../workspace/runtime";
 import type { VerificationEnvironment } from "../verification/browser/contracts";
 import type { ProcessInputProtocol } from "./process";
 import { assertManagedWorkspace } from "../../workspace/managed";
+import { ViberSessionStore } from "../../vibers/store";
+import { GitWorkspace } from "../../workspace/git";
 
 export const sandboxInvocation = async (
   root: string,
@@ -45,13 +47,17 @@ export const sandboxInvocation = async (
       : await taskRoot(root, task, db.repository(task.repo_id))
     : await realpath(analysisWorkspace || "");
 
-  if (
-    viberSessionId &&
-    (task ||
-      cwd !== join(root, "workspaces", "vibers", viberSessionId) ||
-      !db.all("SELECT id FROM viber_sessions WHERE id=?", viberSessionId).length)
-  ) {
-    throw new AdeError("isolation", "Viber workspace does not match its saved session.");
+  if (viberSessionId) {
+    const saved = new ViberSessionStore(db).workspace(viberSessionId);
+    if (
+      !task ||
+      task.id !== saved.id ||
+      task.repo_id !== saved.repo_id ||
+      task.worktree_path !== saved.worktree_path ||
+      cwd !== (await new GitWorkspace(root, db.repository).assertOwnedTask(saved))
+    ) {
+      throw new AdeError("isolation", "Viber workspace does not match its saved session.");
+    }
   }
 
   if (!task && !viberSessionId && !inside(join(root, "cache", "utility"), cwd)) {

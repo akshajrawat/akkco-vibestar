@@ -12,7 +12,7 @@ import { WatchLimitsSchema } from "../../apps/core/issue-watch/contracts";
 import { previewRules } from "../../apps/core/issue-watch/rules";
 
 export const watchConfiguration = (prompt = "Open issues", controls = {}) => {
-  const preview = previewRules({ repository: "oppia/oppia", prompt, controls });
+  const preview = previewRules({ repository: "vibestar/vibestar", prompt, controls });
   return {
     prompt,
     rules: preview.rules,
@@ -34,7 +34,7 @@ export const watchConfiguration = (prompt = "Open issues", controls = {}) => {
 export const githubIssue = (number: number, body = `Original issue ${number}`) => ({
   node_id: `I_${number}`,
   number,
-  html_url: `https://github.com/oppia/oppia/issues/${number}`,
+  html_url: `https://github.com/vibestar/vibestar/issues/${number}`,
   title: `Issue ${number}`,
   body,
   state: "open",
@@ -67,11 +67,11 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
       return structuredClone(typeof value === "function" ? await value() : value) as never;
     }
 
-    if (endpoint === "repos/oppia/oppia") {
+    if (endpoint === "repos/vibestar/vibestar") {
       return {
-        node_id: "R_oppia",
-        full_name: "oppia/oppia",
-        html_url: "https://github.com/oppia/oppia",
+        node_id: "R_vibestar",
+        full_name: "vibestar/vibestar",
+        html_url: "https://github.com/vibestar/vibestar",
       } as never;
     }
 
@@ -101,17 +101,17 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
       return {
         files: {
           contributing: {
-            url: "https://api.github.com/repos/oppia/oppia/contents/CONTRIBUTING.md",
+            url: "https://api.github.com/repos/vibestar/vibestar/contents/CONTRIBUTING.md",
           },
         },
       } as never;
     }
 
-    if (endpoint === "repos/oppia/oppia/contents/CONTRIBUTING.md") {
+    if (endpoint === "repos/vibestar/vibestar/contents/CONTRIBUTING.md") {
       return {
         type: "file",
         sha: "policy-sha",
-        html_url: "https://github.com/oppia/oppia/blob/main/CONTRIBUTING.md",
+        html_url: "https://github.com/vibestar/vibestar/blob/main/CONTRIBUTING.md",
         content: Buffer.from("Keep changes focused and discuss unclear requirements.").toString(
           "base64",
         ),
@@ -121,7 +121,7 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
     }
 
     const match = endpoint.match(
-      /^repos\/oppia\/oppia\/issues\/(\d+)(?:\/(comments|timeline)\?per_page=100&page=(\d+))?$/,
+      /^repos\/vibestar\/vibestar\/issues\/(\d+)(?:\/(comments|timeline)\?per_page=100&page=(\d+))?$/,
     );
 
     if (match) {
@@ -150,8 +150,8 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
   const create = async (configuration = watchConfiguration()) => {
     const result = await service.save({
       request_id: randomUUID(),
-      name: "Oppia opportunities",
-      repository: "https://github.com/Oppia/Oppia",
+      name: "Vibestar opportunities",
+      repository: "https://github.com/Vibestar/Vibestar",
       configuration,
     });
 

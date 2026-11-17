@@ -11,9 +11,9 @@ import type { Snapshot } from "../../apps/desktop/lib/types";
 const require = createRequire(import.meta.url);
 
 it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
-  "connects the real Oppia checkout and verifies explicit task selection in Electron",
+  "connects the real Vibestar checkout and verifies explicit task selection in Electron",
   async () => {
-    const source = "/home/aksha/oppia";
+    const source = "/workspace/vibestar";
 
     const before = {
       branch: await checked("git", ["branch", "--show-current"], source),
@@ -90,10 +90,10 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
         await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
 
-      await page.screenshot({ path: join(evidence, "oppia-verified.png") });
+      await page.screenshot({ path: join(evidence, "vibestar-verified.png") });
       await dialog.getByRole("button", { name: "Connect repository", exact: true }).click();
       await dialog.waitFor({ state: "hidden" });
-      await page.getByRole("button", { name: "Details and actions for oppia/oppia" }).click();
+      await page.getByRole("button", { name: "Details and actions for vibestar/vibestar" }).click();
       await page.locator(".active-repository-row").getByText(source, { exact: true }).waitFor();
 
       await page.screenshot({
@@ -107,8 +107,8 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
         source: "imported",
         connected: true,
         base_branch: "develop",
-        owner: "oppia",
-        name: "oppia",
+        owner: "vibestar",
+        name: "vibestar",
       });
 
       expect(await page.evaluate(() => window.vibestar.rpc("repositories.index"))).toMatchObject({
@@ -123,7 +123,11 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
       });
 
       expect(await taskDialog.getByLabel("Repository", { exact: true }).inputValue()).toBe(repo.id);
-      await taskDialog.getByLabel("Issue URL").fill("https://github.com/oppia/oppia/issues/26831");
+
+      await taskDialog
+        .getByLabel("Issue URL")
+        .fill("https://github.com/vibestar/vibestar/issues/26831");
+
       await taskDialog.locator(".resolved-issue strong").waitFor({ timeout: 60000 });
       expect(await taskDialog.innerText()).toContain("Matched from issue URL");
       expect(await taskDialog.innerText()).toContain(root + "/worktrees/" + repo.id);
@@ -132,7 +136,7 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
         await taskDialog.getByRole("button", { name: "Create task", exact: false }).isEnabled(),
       ).toBe(true);
 
-      await page.screenshot({ path: join(evidence, "new-task-oppia.png") });
+      await page.screenshot({ path: join(evidence, "new-task-vibestar.png") });
       await taskDialog.getByLabel("Issue URL").fill("https://github.com/facebook/react/issues/1");
       await taskDialog.getByText("Repository mismatch", { exact: true }).waitFor();
 
@@ -145,7 +149,7 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
       });
 
       await taskDialog.getByRole("button", { name: "Close", exact: true }).click();
-      await page.getByRole("button", { name: "Details and actions for oppia/oppia" }).click();
+      await page.getByRole("button", { name: "Details and actions for vibestar/vibestar" }).click();
 
       await page
         .locator(".active-repository-row")

@@ -27,7 +27,8 @@ export const ViberSessionChat = ({
   const [data, setData] = useState<SessionDetail>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [excludedHistory, setExcludedHistory] = useState<string[]>([]);
+  const [newThread, setNewThread] = useState(false);
+  const [acknowledgeUncertain, setAcknowledgeUncertain] = useState(false);
   const sending = useRef(false);
   const request = useRef({ signature: "", id: "" });
 
@@ -64,16 +65,16 @@ export const ViberSessionChat = ({
     effort: view.followupEffort || data?.session.selection.effort || profile.execution.effort,
   };
 
-  const completed = data?.messages.filter((message) => message.status === "completed") || [];
+  const previousTurn = data?.messages.filter((message) => message.role === "user").at(-1);
 
-  const history = completed
-    .filter((message) => !excludedHistory.includes(message.id))
-    .map((message) => message.id);
+  const uncertain =
+    data?.session.thread?.status === "uncertain" ||
+    (previousTurn && ["failed", "cancelled", "interrupted"].includes(previousTurn.status));
 
   const active = data?.messages.some((message) => message.status === "pending");
 
   const send = async () => {
-    if (sending.current || !data || active || history.length > 50) {
+    if (sending.current || !data || active || (uncertain && !acknowledgeUncertain)) {
       return;
     }
 
@@ -90,7 +91,9 @@ export const ViberSessionChat = ({
         session_id: sessionId,
         profile_id: profile.id,
         content,
-        history_ids: history,
+        history_ids: [],
+        ...(newThread ? { new_thread: true } : {}),
+        ...(acknowledgeUncertain ? { acknowledge_uncertain: true } : {}),
         selection,
       };
 
@@ -103,6 +106,8 @@ export const ViberSessionChat = ({
       updateTaskView(id, { draft: "", draftContext: [] });
       request.current = { signature: "", id: "" };
       setData(await load());
+      setNewThread(false);
+      setAcknowledgeUncertain(false);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -124,6 +129,12 @@ export const ViberSessionChat = ({
         empty={!data?.messages.length}
         activity={
           <>
+            {data?.workspace && (
+              <p className="flow-draft-notice" title={data.workspace.path}>
+                Workspace · {data.workspace.repository || "Isolated files"}
+                {data.workspace.path && <span> · {data.workspace.path}</span>}
+              </p>
+            )}
             {active && (
               <p className="flow-draft-notice">
                 {profile.name} · Running{" "}
@@ -171,40 +182,32 @@ export const ViberSessionChat = ({
         }
         composer={
           <>
-            {!!completed.length && (
-              <details className="flow-history">
-                <summary>Context · {history.length} messages</summary>
-                {!!excludedHistory.length && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy || active}
-                    onClick={() => setExcludedHistory([])}
-                  >
-                    Include full conversation
-                  </Button>
-                )}
-                {history.length > 50 && (
-                  <p className="flow-inline-error">Select at most 50 messages for this turn.</p>
-                )}
-                {completed.map((message) => (
-                  <label className="viber-checkbox" key={message.id}>
-                    <input
-                      type="checkbox"
-                      checked={history.includes(message.id)}
-                      disabled={busy || active}
-                      onChange={(event) =>
-                        setExcludedHistory(
-                          event.target.checked
-                            ? excludedHistory.filter((id) => id !== message.id)
-                            : [...excludedHistory, message.id],
-                        )
-                      }
-                    />
-                    {message.role} · {message.content.slice(0, 90)}
-                  </label>
-                ))}
-              </details>
+            {data &&
+              (selection.provider !== data.session.selection.provider ||
+                selection.model !== data.session.selection.model) && (
+                <p className="flow-draft-notice">
+                  The next message starts a fresh provider thread. Previous messages and workspace
+                  files remain saved.
+                </p>
+              )}
+            <label className="viber-checkbox">
+              <input
+                type="checkbox"
+                checked={newThread}
+                disabled={busy || active}
+                onChange={(event) => setNewThread(event.target.checked)}
+              />
+              Start a new provider thread (saved messages and files are retained)
+            </label>
+            {uncertain && !active && (
+              <label className="viber-checkbox">
+                <input
+                  type="checkbox"
+                  checked={acknowledgeUncertain}
+                  onChange={(event) => setAcknowledgeUncertain(event.target.checked)}
+                />
+                I inspected the previous turn; commands or file changes may already have occurred.
+              </label>
             )}
             <Composer
               compact
@@ -221,7 +224,7 @@ export const ViberSessionChat = ({
                 },
               ]}
               busy={busy}
-              disabled={!data || active || history.length > 50}
+              disabled={!data || active || (uncertain && !acknowledgeUncertain)}
               model={
                 <ViberModelPicker
                   execution={{ ...profile.execution, ...selection }}
@@ -234,7 +237,7 @@ export const ViberSessionChat = ({
                   }
                 />
               }
-              hint="Enter to send · Shift+Enter for a new line"
+              hint="The provider retains conversation context. Changing provider or model starts a fresh thread."
             />
           </>
         }

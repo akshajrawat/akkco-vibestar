@@ -157,7 +157,7 @@ it("previews and saves a watch without inference or a scan, using an explicitly 
   });
 
   fireEvent.change(within(dialog).getByLabelText("GitHub repository"), {
-    target: { value: "oppia/oppia" },
+    target: { value: "vibestar/vibestar" },
   });
 
   fireEvent.change(within(dialog).getByLabelText("Describe issues to find"), {
@@ -195,7 +195,7 @@ it("saves ordinary natural-language preferences without an interpretation dropdo
   });
 
   fireEvent.change(within(editor).getByLabelText("GitHub repository"), {
-    target: { value: "oppia/oppia" },
+    target: { value: "vibestar/vibestar" },
   });
 
   fireEvent.change(within(editor).getByLabelText("Describe issues to find"), {
@@ -239,12 +239,12 @@ it("keeps completed results visible during real pending GitHub activity and canc
     release = resolve;
   });
 
-  f.overrides.set("repos/oppia/oppia", async () => {
+  f.overrides.set("repos/vibestar/vibestar", async () => {
     await pending;
     return {
-      node_id: "R_oppia",
-      full_name: "oppia/oppia",
-      html_url: "https://github.com/oppia/oppia",
+      node_id: "R_vibestar",
+      full_name: "vibestar/vibestar",
+      html_url: "https://github.com/vibestar/vibestar",
     };
   });
 
@@ -294,7 +294,7 @@ it("opens saved results and the existing prefilled task form without queueing a 
   };
 
   render(<Handoff />);
-  fireEvent.click(await screen.findByRole("button", { name: /Oppia opportunities/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /Vibestar opportunities/ }));
   fireEvent.click(await screen.findByRole("button", { name: "Scan now" }));
   await screen.findByText("Scan complete");
   expect(f.service.store.history(watch.id)).toHaveLength(1);
@@ -307,7 +307,7 @@ it("opens saved results and the existing prefilled task form without queueing a 
   const form = screen.getByRole("dialog", { name: "New task" });
 
   expect((within(form).getByLabelText("Issue URL") as HTMLInputElement).value).toBe(
-    "https://github.com/oppia/oppia/issues/1",
+    "https://github.com/vibestar/vibestar/issues/1",
   );
 
   expect(
@@ -326,7 +326,7 @@ it("isolates unsafe Markdown, skips images and opens only verified HTTPS GitHub 
   const rendered = render(
     <IssueMarkdown
       text={
-        "<script>alert(1)</script>\n\n![remote image](https://evil.test/pixel)\n\n[bad](javascript:alert(1)) [external](https://evil.test/a) [issue](https://github.com/oppia/oppia/issues/1)"
+        "<script>alert(1)</script>\n\n![remote image](https://evil.test/pixel)\n\n[bad](javascript:alert(1)) [external](https://evil.test/a) [issue](https://github.com/vibestar/vibestar/issues/1)"
       }
       onError={error}
     />,
@@ -338,7 +338,7 @@ it("isolates unsafe Markdown, skips images and opens only verified HTTPS GitHub 
   fireEvent.click(screen.getByRole("link", { name: "issue" }));
 
   expect(window.vibestar.openExternal).toHaveBeenCalledWith(
-    "https://github.com/oppia/oppia/issues/1",
+    "https://github.com/vibestar/vibestar/issues/1",
   );
 });
 
@@ -400,12 +400,12 @@ it("opens a full-width watch list and returns to it without scanning", async () 
   await f.create();
   const infer = vi.spyOn(f.engine.utility, "run");
   render(<IssueWatchPage snapshot={snapshot} startTask={vi.fn()} />);
-  const topic = await screen.findByRole("button", { name: /Oppia opportunities/ });
+  const topic = await screen.findByRole("button", { name: /Vibestar opportunities/ });
   expect(screen.queryByRole("button", { name: "Scan now" })).toBeNull();
   fireEvent.click(topic);
   await screen.findByRole("button", { name: "Scan now" });
   fireEvent.click(screen.getByRole("button", { name: "All watches" }));
-  await screen.findByRole("button", { name: /Oppia opportunities/ });
+  await screen.findByRole("button", { name: /Vibestar opportunities/ });
   expect(screen.queryByRole("button", { name: "Scan now" })).toBeNull();
 
   expect(api.mock.calls.some(([method]) => /issueWatch\.(scan|retry|continue)$/.test(method))).toBe(

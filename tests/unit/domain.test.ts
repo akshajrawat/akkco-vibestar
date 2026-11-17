@@ -222,7 +222,7 @@ describe("domain and persistence", () => {
   });
 
   it("parses GitHub issue URLs and rejects unrelated input", () => {
-    expect(parseIssue("https://github.com/oppia/oppia/issues/26831").number).toBe(26831);
+    expect(parseIssue("https://github.com/vibestar/vibestar/issues/26831").number).toBe(26831);
     for (const url of [
       "http://github.com/a/b/issues/1",
       "https://evil.com/a/b/issues/1",
@@ -251,9 +251,9 @@ describe("domain and persistence", () => {
   });
 
   it("validates remotes and provider-specific effort", () => {
-    expect(remoteIdentity("git@github.com:oppia/oppia.git")).toEqual({
-      owner: "oppia",
-      name: "oppia",
+    expect(remoteIdentity("git@github.com:vibestar/vibestar.git")).toEqual({
+      owner: "vibestar",
+      name: "vibestar",
     });
 
     expect(() => remoteIdentity("https://example.com/owner/repo")).toThrow();
@@ -296,7 +296,7 @@ describe("domain and persistence", () => {
       db.saveSettings({ ...defaultSettings, concurrency: 3 });
 
       expect(db.all("SELECT MAX(version) AS version FROM schema_migrations")).toEqual([
-        { version: 38 },
+        { version: 39 },
       ]);
 
       expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
@@ -381,7 +381,7 @@ it("upgrades the V2 database additively without changing authorized queued tasks
 
     expect(
       current.all<{ version: number }>("SELECT version FROM schema_migrations").at(-1)?.version,
-    ).toBe(38);
+    ).toBe(39);
   } finally {
     current.close();
     await rm(dir, { recursive: true, force: true });

@@ -156,7 +156,7 @@ it("stops all watch requests after a rate limit and requires an explicit retry a
   const { watch } = await f.create();
 
   const endpoint =
-    "search/issues?q=repo%3Aoppia%2Foppia%20is%3Aissue%20is%3Aopen&sort=created&order=desc&per_page=10&page=1";
+    "search/issues?q=repo%3Avibestar%2Fvibestar%20is%3Aissue%20is%3Aopen&sort=created&order=desc&per_page=10&page=1";
 
   f.overrides.set(endpoint, () => {
     throw new Error("GitHub CLI: You have exceeded a secondary rate limit. (HTTP 403)");
@@ -191,7 +191,7 @@ it("persists conditional response bodies, revalidates them with GitHub and never
       'HTTP/2.0 200 OK\r\nETag: "one"\r\nContent-Type: application/json\r\n\r\n{"title":"saved"}',
     );
 
-  const endpoint = "repos/oppia/oppia/issues/1";
+  const endpoint = "repos/vibestar/vibestar/issues/1";
 
   expect(await client.api(endpoint, undefined, f.service.store.httpCache)).toEqual({
     title: "saved",

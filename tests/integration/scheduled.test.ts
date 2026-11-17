@@ -565,11 +565,11 @@ it("interrupts an in-flight analysis on shutdown and does not replay it after re
 });
 
 it("validates PR URLs and retains legacy change detection", () => {
-  expect(parsePullRequest("https://github.com/oppia/oppia/pull/42").number).toBe(42);
+  expect(parsePullRequest("https://github.com/vibestar/vibestar/pull/42").number).toBe(42);
   for (const url of [
-    "https://github.com/oppia/oppia/issues/42",
-    "https://github.com/oppia/oppia/pull/42?x=1",
-    "https://github.com:8080/oppia/oppia/pull/42",
+    "https://github.com/vibestar/vibestar/issues/42",
+    "https://github.com/vibestar/vibestar/pull/42?x=1",
+    "https://github.com:8080/vibestar/vibestar/pull/42",
   ]) {
     expect(() => parsePullRequest(url)).toThrow();
   }

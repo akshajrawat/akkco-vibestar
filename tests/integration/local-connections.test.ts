@@ -30,14 +30,14 @@ it("migrates the repository uniqueness constraint without losing historical task
 
   const repository = {
     id: "old",
-    owner: "oppia",
-    name: "oppia",
+    owner: "vibestar",
+    name: "vibestar",
     path: "/old/checkout",
   };
 
   legacy
     .prepare("INSERT INTO repositories VALUES(?,?,?,?)")
-    .run("old", "oppia", "oppia", JSON.stringify(repository));
+    .run("old", "vibestar", "vibestar", JSON.stringify(repository));
 
   legacy
     .prepare("INSERT INTO tasks VALUES(?,?,?,?,?,?,?)")
@@ -65,8 +65,8 @@ it("migrates the repository uniqueness constraint without losing historical task
     db.run(
       "INSERT INTO repositories VALUES(?,?,?,?)",
       "new",
-      "oppia",
-      "oppia",
+      "vibestar",
+      "vibestar",
       JSON.stringify({ ...repository, id: "new", path: "/new/checkout" }),
     );
 
@@ -76,8 +76,8 @@ it("migrates the repository uniqueness constraint without losing historical task
       db.run(
         "INSERT INTO repositories VALUES(?,?,?,?)",
         "duplicate",
-        "Oppia",
-        "Oppia",
+        "Vibestar",
+        "Vibestar",
         JSON.stringify(repository),
       ),
     ).toThrow();
@@ -89,7 +89,7 @@ it("migrates the repository uniqueness constraint without losing historical task
   }
 });
 
-const checkout = async (dir: string, name = "oppia") => {
+const checkout = async (dir: string, name = "vibestar") => {
   const path = join(dir, name);
   await mkdir(path);
   await processes.checked("git", ["init", "-b", "develop"], path);
@@ -101,19 +101,19 @@ const checkout = async (dir: string, name = "oppia") => {
 
   await processes.checked(
     "git",
-    ["remote", "add", "origin", "https://github.com/akshajrawat/oppia.git"],
+    ["remote", "add", "origin", "https://github.com/sample-user/vibestar.git"],
     path,
   );
 
   await processes.checked(
     "git",
-    ["remote", "add", "upstream", "https://github.com/oppia/oppia.git"],
+    ["remote", "add", "upstream", "https://github.com/vibestar/vibestar.git"],
     path,
   );
 
   await processes.checked(
     "git",
-    ["remote", "add", "reviewer", "git@github.com:reviewer/oppia.git"],
+    ["remote", "add", "reviewer", "git@github.com:reviewer/vibestar.git"],
     path,
   );
 
@@ -168,12 +168,12 @@ it("verifies all remotes without scanning, explicitly connects and persists inde
     });
 
     expect(verified.remotes.map((r) => r.identity)).toEqual(
-      expect.arrayContaining(["oppia/oppia", "akshajrawat/oppia", "reviewer/oppia"]),
+      expect.arrayContaining(["vibestar/vibestar", "sample-user/vibestar", "reviewer/vibestar"]),
     );
 
     expect(repository).toMatchObject({
-      owner: "oppia",
-      name: "oppia",
+      owner: "vibestar",
+      name: "vibestar",
       path,
       source: "imported",
       connected: true,
@@ -182,7 +182,7 @@ it("verifies all remotes without scanning, explicitly connects and persists inde
 
     expect(scan).not.toHaveBeenCalled();
     expect(clone).not.toHaveBeenCalled();
-    const other = await connect(rpc, await checkout(dir, "other-oppia"));
+    const other = await connect(rpc, await checkout(dir, "other-vibestar"));
     expect(other.repository.id).not.toBe(repository.id);
     expect(engine.db.repositories()).toHaveLength(2);
     await rpc.close();
@@ -242,7 +242,7 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
     const originalConfig = await readFile(join(path, ".git", "config"), "utf8");
     const clone = vi.spyOn(engine.git, "clone");
     const use = vi.spyOn(rpc.github, "useLocally");
-    const issue_url = "https://github.com/oppia/oppia/issues/26831";
+    const issue_url = "https://github.com/vibestar/vibestar/issues/26831";
 
     await expect(
       rpc.call("task.createIssue", {
@@ -442,20 +442,24 @@ it("rejects invalid/non-Git paths, unsafe Windows paths and stale verification; 
 
     const verified = await engine.verifyLocalRepository({
       environment: "windows",
-      path: "D:\\Projects\\oppia",
+      path: "D:\\Projects\\vibestar",
     });
 
-    expect(conversion).toHaveBeenCalledWith("wslpath", ["-u", "D:\\Projects\\oppia"], engine.root);
+    expect(conversion).toHaveBeenCalledWith(
+      "wslpath",
+      ["-u", "D:\\Projects\\vibestar"],
+      engine.root,
+    );
 
     expect(verified).toMatchObject({
       path,
-      windows_path: "D:\\Projects\\oppia",
+      windows_path: "D:\\Projects\\vibestar",
       environment: "windows",
     });
 
     await processes.checked(
       "git",
-      ["remote", "set-url", "upstream", "https://github.com/other/oppia.git"],
+      ["remote", "set-url", "upstream", "https://github.com/other/vibestar.git"],
       path,
     );
 
@@ -521,8 +525,8 @@ it("requires an explicit upstream for ambiguous remotes and an explicit base whe
     });
 
     expect(repo).toMatchObject({
-      owner: "oppia",
-      name: "oppia",
+      owner: "vibestar",
+      name: "vibestar",
       upstream_remote: "project",
     });
 

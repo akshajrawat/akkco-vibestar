@@ -152,7 +152,7 @@ it("skips inference when deterministic exclusions reject every candidate", async
   const { watch } = await f.create(
     watchConfiguration("Open issues. Prefer focused changes.", {
       excluded_issues: [1, 2, 27409].map((number) => ({
-        repository: "oppia/oppia",
+        repository: "vibestar/vibestar",
         number,
       })),
     }),
@@ -298,7 +298,7 @@ it("requires explicit continuation selection and gives it a new one-call attempt
   const configuration = watchConfiguration("Open issues. Prefer focused changes.", {
     trackers: [
       {
-        url: "https://github.com/oppia/oppia/issues/27409",
+        url: "https://github.com/vibestar/vibestar/issues/27409",
         comments: "none",
       },
     ],

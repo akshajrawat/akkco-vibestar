@@ -144,6 +144,16 @@ export const migrateDataRoot = async (source: string, target: string) => {
 
     db = await Database.open(join(staging, "state", "vibestar.sqlite"));
     db.assertOwnershipRecords();
+    if (
+      db.all(
+        "SELECT id FROM viber_sessions WHERE workspace IS NOT NULL AND json_extract(workspace,'$.worktree_path')<>''",
+      ).length
+    ) {
+      throw new AdeError(
+        "migration",
+        "Owned Viber workspaces require keeping the old location. Choose Use old location to preserve native threads and files safely.",
+      );
+    }
 
     const translated = (path: string) =>
       inside(source, path) ? join(target, relative(source, path)) : path;

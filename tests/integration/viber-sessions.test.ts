@@ -33,7 +33,7 @@ class SessionProvider extends FixtureProvider {
             ? "process.exit(2)"
             : `
         require('node:fs').writeFileSync('answer.txt','Session file');
-        console.log(JSON.stringify({type:'thread.started',thread_id:'fixture-thread'}));
+        console.log(JSON.stringify({type:'thread.started',thread_id:${JSON.stringify(request.conversation?.threadId || request.runId)}}));
         console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Saved session answer.'}}));
         console.log(JSON.stringify({type:'turn.completed'}));
       `,
@@ -153,7 +153,7 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
 
   expect(provider.requests[0].conversation).toEqual({});
   expect(provider.requests[0].config).toMatchObject(selection);
-  const cwd = join(engine.root, "workspaces", "vibers", session.id);
+  const cwd = engine.viberSessions.store.workspace(session.id).worktree_path;
   expect(provider.requests[0].cwd).toBe(cwd);
   expect(await readFile(join(cwd, "answer.txt"), "utf8")).toBe("Session file");
 
@@ -179,17 +179,12 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
   expect(await detail(session)).toEqual(first);
   expect(await send(session, input)).toEqual(retained);
   expect(provider.requests).toHaveLength(1);
-  await send(session, { content: "A new answer", history_ids: [first.messages[1].id] });
+  await send(session, { content: "A new answer" });
   await settled(session);
   expect(provider.requests[1].config).toMatchObject(selection);
-  expect(provider.requests[1].conversation).toEqual({});
-
-  expect(JSON.parse(provider.requests[1].prompt.split("\n\n")[1]).inputs[0]).toEqual({
-    role: "assistant",
-    content: "Saved session answer.",
-  });
-
-  expect(provider.requests[1].prompt).not.toContain("Write the first answer");
+  expect(provider.requests[1].conversation).toEqual({ threadId: first.session.thread?.thread_id });
+  expect(provider.requests[1].prompt).toBe("A new answer");
+  expect((await detail(session)).session.thread?.thread_id).toBe(first.session.thread?.thread_id);
   expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
 });
 
@@ -306,7 +301,10 @@ it("enforces shared execution capacity, serializes one session, supports cancell
   expect(failed.messages).toHaveLength(1);
   expect(failed.runs[0].status).toBe("failed");
   expect(failed.events.some((event) => event.kind === "run.failed")).toBe(true);
-  await expect(send(one, { history_ids: [pending.id] })).rejects.toThrow("completed messages");
+
+  await expect(
+    send(one, { history_ids: [pending.id], acknowledge_uncertain: true }),
+  ).rejects.toThrow("completed messages");
 });
 
 it("marks shutdown and recovered pending turns interrupted without automatically invoking a provider", async () => {
@@ -350,8 +348,8 @@ it("rejects symlinked session workspaces and mismatched runner snapshots before 
   await settled(one);
 
   await symlink(
-    join(engine.root, "workspaces", "vibers", one.id),
-    join(engine.root, "workspaces", "vibers", two.id),
+    join(engine.root, "workspaces", engine.viberSessions.store.workspace(one.id).id),
+    join(engine.root, "workspaces", engine.viberSessions.store.workspace(two.id).id),
   );
 
   await send(two);
@@ -378,7 +376,8 @@ it("rejects symlinked session workspaces and mismatched runner snapshots before 
   const options = {
     purpose: "session",
     prompt: snapshot.prompt,
-    workspace: join(engine.root, "workspaces", "vibers", one.id),
+    conversation: snapshot.conversation,
+    workspace: engine.viberSessions.store.workspace(one.id).worktree_path,
     viberSession: { sessionId: one.id, messageId: snapshot.request.request_id },
   };
 
@@ -400,7 +399,7 @@ it("rejects symlinked session workspaces and mismatched runner snapshots before 
       ...options,
       conversation: { threadId: "foreign-thread" },
     }),
-  ).rejects.toThrow("captured session workspace");
+  ).rejects.toThrow("unconsumed message snapshot");
 
   expect(provider.requests).toHaveLength(1);
 });

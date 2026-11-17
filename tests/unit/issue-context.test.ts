@@ -17,10 +17,10 @@ afterEach(() => {
 
 it("retrieves the complete issue and paginated comments plus linked PRs from text and timeline, including fork review context", async () => {
   api.mockImplementation(async (endpoint: string) => {
-    if (endpoint === "repos/oppia/oppia/issues/26831") {
+    if (endpoint === "repos/vibestar/vibestar/issues/26831") {
       return {
         title: "Migration",
-        body: "Full body https://github.com/oppia/oppia/pull/10",
+        body: "Full body https://github.com/vibestar/vibestar/pull/10",
         state: "open",
       };
     }
@@ -38,13 +38,16 @@ it("retrieves the complete issue and paginated comments plus linked PRs from tex
       return [
         {
           source: {
-            issue: { html_url: "https://github.com/fork/oppia/pull/11" },
+            issue: { html_url: "https://github.com/fork/vibestar/pull/11" },
           },
         },
       ];
     }
 
-    if (endpoint === "repos/oppia/oppia/pulls/10" || endpoint === "repos/fork/oppia/pulls/11") {
+    if (
+      endpoint === "repos/vibestar/vibestar/pulls/10" ||
+      endpoint === "repos/fork/vibestar/pulls/11"
+    ) {
       return {
         title: "Related implementation",
         body: "PR full requirements",
@@ -67,7 +70,7 @@ it("retrieves the complete issue and paginated comments plus linked PRs from tex
   });
 
   const context = await fetchIssue(
-    parseIssue("https://github.com/oppia/oppia/issues/26831"),
+    parseIssue("https://github.com/vibestar/vibestar/issues/26831"),
     "/tmp",
   );
 

@@ -328,6 +328,10 @@ export class Database {
       );
 
       this.run(
+        "UPDATE viber_sessions SET thread=json_set(thread,'$.status','uncertain') WHERE thread IS NOT NULL AND id IN (SELECT session_id FROM viber_messages WHERE status='pending')",
+      );
+
+      this.run(
         "UPDATE viber_messages SET status='interrupted',error='Execution core stopped; send a new message to retry' WHERE status='pending'",
       );
 

@@ -905,6 +905,13 @@ export class StorageService {
 
   private removeRepositoryData = async (id: string) => {
     const e = this.engine;
+    if (e.db.all("SELECT id FROM viber_sessions WHERE repository_id=?", id).length) {
+      throw new AdeError(
+        "viber_history",
+        "This repository owns Viber sessions. Preserve their workspaces and history before removing its connection.",
+      );
+    }
+
     if (e.db.all("SELECT id FROM pr_repairs WHERE repo_id=?", id).length) {
       throw new AdeError(
         "repair_history",

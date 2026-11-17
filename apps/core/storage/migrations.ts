@@ -416,4 +416,15 @@ CREATE INDEX viber_session_runs ON utility_runs(viber_session_id,started_at);
 ALTER TABLE ai_usage ADD COLUMN viber_session_id TEXT REFERENCES viber_sessions(id);
 `,
   },
+  {
+    version: 39,
+    sql: `
+ALTER TABLE viber_sessions ADD COLUMN repository_id TEXT REFERENCES repositories(id);
+ALTER TABLE viber_sessions ADD COLUMN workspace TEXT CHECK(workspace IS NULL OR json_valid(workspace));
+ALTER TABLE viber_sessions ADD COLUMN thread TEXT CHECK(thread IS NULL OR json_valid(thread));
+CREATE UNIQUE INDEX viber_native_thread ON viber_sessions(json_extract(thread,'$.provider'),json_extract(thread,'$.thread_id')) WHERE thread IS NOT NULL;
+CREATE TRIGGER viber_repository_immutable BEFORE UPDATE OF repository_id ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber repository ownership is immutable'); END;
+CREATE TRIGGER viber_workspace_owner_immutable BEFORE UPDATE OF workspace ON viber_sessions WHEN json_extract(OLD.workspace,'$.id') IS NOT json_extract(NEW.workspace,'$.id') OR json_extract(OLD.workspace,'$.repo_id') IS NOT json_extract(NEW.workspace,'$.repo_id') BEGIN SELECT RAISE(ABORT,'Viber workspace ownership is immutable'); END;
+`,
+  },
 ];

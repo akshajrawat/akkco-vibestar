@@ -1,8 +1,10 @@
 import { it, expect } from "vitest";
 
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { build } from "esbuild";
 
 import { CoreBridge } from "../../apps/electron/bridge";
 
@@ -26,6 +28,52 @@ process.stdout.write(JSON.stringify({id:request.id,result})+'\\n');
 });
 lines.on('close',()=>process.exit(0));
 });`;
+
+it.skipIf(process.platform === "win32")(
+  "negotiates persistent Viber sessions through the production stdio core entry point",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "vibestar-native-bridge-"));
+
+    const bridge = new CoreBridge(directory, {
+      distro: "",
+      data_home: join(directory, "data"),
+      helper_path: "",
+    });
+
+    try {
+      await build({
+        entryPoints: ["apps/core/main.ts"],
+        outfile: join(directory, "core.cjs"),
+        bundle: true,
+        platform: "node",
+        target: "node22",
+        format: "cjs",
+        external: ["better-sqlite3", "node-pty"],
+      });
+
+      await symlink(join(process.cwd(), "node_modules"), join(directory, "node_modules"));
+      await bridge.start();
+
+      await expect(
+        bridge.request("viber.session.list", { profile_id: randomUUID() }),
+      ).resolves.toEqual([]);
+
+      await expect(bridge.request("snapshot")).resolves.toMatchObject({
+        capabilities: { viber_sessions: 2 },
+        tasks: [],
+      });
+
+      await expect(bridge.request("usage.info")).resolves.toMatchObject({
+        capabilities: { viber_sessions: 2 },
+        runs: { count: 0 },
+      });
+    } finally {
+      await bridge.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  30000,
+);
 
 it.skipIf(process.platform === "win32")(
   "negotiates Viber profiles and graph execution before forwarding new requests",
@@ -77,7 +125,7 @@ it.skipIf(process.platform === "win32")(
         join(dir, "core.cjs"),
         helper().replace(
           "pipeline_approvals:true,",
-          "pipeline_approvals:true,flow_continuations:1,viber_conversations:1,viber_sessions:1,",
+          "pipeline_approvals:true,flow_continuations:1,viber_conversations:1,viber_sessions:2,",
         ),
       );
 

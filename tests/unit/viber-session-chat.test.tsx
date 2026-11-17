@@ -58,7 +58,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("restores a saved session's model selection and sends only its selected completed history, with idempotent retry", async () => {
+it("restores a saved session's model selection and uses native context, with idempotent retry", async () => {
   let fail = true;
 
   rpc.mockImplementation(async (method: string) => {
@@ -79,7 +79,6 @@ it("restores a saved session's model selection and sends only its selected compl
   await screen.findByText("Previous answer");
   expect(screen.getByRole("button", { name: "Model codex persisted-model low" })).toBeTruthy();
   expect(rpc.mock.calls.map(([method]) => method)).toEqual(["viber.session.detail"]);
-  fireEvent.click(screen.getByRole("checkbox", { name: "user · Previous question" }));
   fireEvent.click(screen.getByRole("button", { name: "Model codex persisted-model low" }));
 
   fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
@@ -101,7 +100,7 @@ it("restores a saved session's model selection and sends only its selected compl
     session_id: sessionId,
     profile_id: viberProfile.id,
     content: "Follow up",
-    history_ids: [answerId],
+    history_ids: [],
     selection: { provider: "antigravity", model: "changed-model", effort: "high" },
   });
 
@@ -176,46 +175,47 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
   expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
 
   expect((screen.getByRole("button", { name: "Send message" }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
+
+  fireEvent.click(screen.getByRole("checkbox", { name: /I inspected the previous turn/ }));
+
+  expect((screen.getByRole("button", { name: "Send message" }) as HTMLButtonElement).disabled).toBe(
     false,
   );
 });
 
-it("includes new replies after excluding older context and offers a full-conversation reset", async () => {
-  let current = stored;
-  rpc.mockImplementation(async () => current);
-  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+it("sends beyond 50 saved messages and starts a fresh thread only when explicitly selected", async () => {
+  const messages = Array.from({ length: 60 }, (_, index) => ({
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: `Answer ${index}`,
+    status: "completed",
+  }));
 
-  const view = render(
-    <ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />,
+  rpc.mockImplementation(async (method: string) =>
+    method === "viber.session.detail" ? { ...stored, messages } : {},
   );
 
-  await screen.findByText("Previous answer");
-  fireEvent.click(screen.getByRole("checkbox", { name: "user · Previous question" }));
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
+  await screen.findByText("Answer 59");
 
-  current = {
-    ...stored,
-    messages: [
-      ...stored.messages,
-      { id: crypto.randomUUID(), role: "assistant", content: "New answer", status: "completed" },
-    ],
-  };
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
+    target: { value: "Continue" },
+  });
 
-  view.rerender(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={1} />);
-  await screen.findByText("New answer");
+  fireEvent.click(screen.getByRole("checkbox", { name: /Start a new provider thread/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
-  expect(
-    (screen.getByRole("checkbox", { name: "assistant · New answer" }) as HTMLInputElement).checked,
-  ).toBe(true);
-
-  expect(
-    (screen.getByRole("checkbox", { name: "user · Previous question" }) as HTMLInputElement)
-      .checked,
-  ).toBe(false);
-
-  fireEvent.click(screen.getByRole("button", { name: "Include full conversation" }));
-
-  expect(
-    (screen.getByRole("checkbox", { name: "user · Previous question" }) as HTMLInputElement)
-      .checked,
-  ).toBe(true);
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "viber.session.send",
+      expect.objectContaining({
+        history_ids: [],
+        content: "Continue",
+        new_thread: true,
+      }),
+    ),
+  );
 });

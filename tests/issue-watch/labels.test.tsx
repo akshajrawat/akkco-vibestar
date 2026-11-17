@@ -11,33 +11,37 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const link = "https://github.com/oppia/oppia/issues?q=state%3Aopen%20label%3A%22triage%20needed%22";
+const link =
+  "https://github.com/vibestar/vibestar/issues?q=state%3Aopen%20label%3A%22triage%20needed%22";
 
 it("decodes exact labels from Markdown, encoded GitHub search, plain names and multiple URL lines", () => {
-  expect(parseLabelInput(`[triage needed](${link})`, "oppia/oppia")).toEqual(["triage needed"]);
-
-  expect(
-    parseLabelInput("https://github.com/oppia/oppia/labels/triage%20needed", "oppia/oppia"),
-  ).toEqual(["triage needed"]);
-
-  expect(parseLabelInput("area: tests", "oppia/oppia")).toEqual(["area: tests"]);
-  expect(() => parseLabelInput(link + "%ZZ", "oppia/oppia")).toThrow("malformed");
-  expect(() => parseLabelInput("www.example.com/label", "oppia/oppia")).toThrow();
-
-  expect(parseLabelInput(link + "\nhelp wanted, bug", "https://github.com/oppia/oppia")).toEqual([
+  expect(parseLabelInput(`[triage needed](${link})`, "vibestar/vibestar")).toEqual([
     "triage needed",
-    "help wanted",
-    "bug",
   ]);
 
+  expect(
+    parseLabelInput(
+      "https://github.com/vibestar/vibestar/labels/triage%20needed",
+      "vibestar/vibestar",
+    ),
+  ).toEqual(["triage needed"]);
+
+  expect(parseLabelInput("area: tests", "vibestar/vibestar")).toEqual(["area: tests"]);
+  expect(() => parseLabelInput(link + "%ZZ", "vibestar/vibestar")).toThrow("malformed");
+  expect(() => parseLabelInput("www.example.com/label", "vibestar/vibestar")).toThrow();
+
+  expect(
+    parseLabelInput(link + "\nhelp wanted, bug", "https://github.com/vibestar/vibestar"),
+  ).toEqual(["triage needed", "help wanted", "bug"]);
+
   for (const input of [
-    link.replace("oppia/oppia", "other/repo"),
-    "https://example.com/oppia/oppia/issues?q=label:bug",
+    link.replace("vibestar/vibestar", "other/repo"),
+    "https://example.com/vibestar/vibestar/issues?q=label:bug",
     "javascript:alert(1)",
     "<img src=x onerror=alert(1)>",
-    "https://github.com/oppia/oppia/issues?q=state:open",
+    "https://github.com/vibestar/vibestar/issues?q=state:open",
   ]) {
-    expect(() => parseLabelInput(input, "oppia/oppia")).toThrow();
+    expect(() => parseLabelInput(input, "vibestar/vibestar")).toThrow();
   }
 });
 
@@ -51,7 +55,7 @@ it("supports pasted and URI-dropped links as removable text chips and loads offi
 
   const Control = () => {
     const [labels, setLabels] = useState<string[]>([]);
-    return <LabelExclusions repository="oppia/oppia" labels={labels} change={setLabels} />;
+    return <LabelExclusions repository="vibestar/vibestar" labels={labels} change={setLabels} />;
   };
 
   render(<Control />);
@@ -82,6 +86,6 @@ it("supports pasted and URI-dropped links as removable text chips and loads offi
   expect(screen.queryByRole("button", { name: "Remove label help wanted" })).toBeNull();
 
   expect(rpc).toHaveBeenCalledExactlyOnceWith("issueWatch.labels", {
-    repository: "oppia/oppia",
+    repository: "vibestar/vibestar",
   });
 });

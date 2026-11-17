@@ -209,7 +209,13 @@ it("binds HTTPS transport, gh authentication and redirect policy without contact
   await gitExecute(
     {
       program: "git",
-      args: ["ls-remote", "--refs", "--", "git@github.com:oppia/oppia.git", "refs/heads/develop"],
+      args: [
+        "ls-remote",
+        "--refs",
+        "--",
+        "git@github.com:vibestar/vibestar.git",
+        "refs/heads/develop",
+      ],
       cwd: source,
     },
     async (request) => {
@@ -218,7 +224,7 @@ it("binds HTTPS transport, gh authentication and redirect policy without contact
     },
   );
 
-  expect(invocation?.args).toContain("https://github.com/oppia/oppia.git");
+  expect(invocation?.args).toContain("https://github.com/vibestar/vibestar.git");
   expect(invocation?.args).toContain("credential.helper=");
 
   expect(invocation?.args).toContain(
@@ -232,7 +238,7 @@ it("binds HTTPS transport, gh authentication and redirect policy without contact
     "https://unexpected.invalid/repo",
     source,
     "file:///tmp/fixture",
-    "https://github.com/oppia/oppia.git?redirect=1",
+    "https://github.com/vibestar/vibestar.git?redirect=1",
   ]) {
     await expect(
       gitExecute({

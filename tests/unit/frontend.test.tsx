@@ -73,7 +73,7 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
   const created = vi.fn();
 
   const preview = {
-    reference: { owner: "oppia", repo: "oppia", number: 26831 },
+    reference: { owner: "vibestar", repo: "vibestar", number: 26831 },
     issue: {
       title: "Migrate tests",
       body: "All checklist items",
@@ -81,16 +81,16 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
     },
     repository: {
       id: "selected-local",
-      owner: "oppia",
-      name: "oppia",
-      path: "/home/aksha/oppia",
+      owner: "vibestar",
+      name: "vibestar",
+      path: "/workspace/vibestar",
       base_branch: "develop",
       source: "imported",
     },
     resolved: {
       repository: {},
-      upstream_url: "https://github.com/oppia/oppia.git",
-      origin_url: "https://github.com/akshajrawat/oppia.git",
+      upstream_url: "https://github.com/vibestar/vibestar.git",
+      origin_url: "https://github.com/sample-user/vibestar.git",
       base_branch: "develop",
     },
   };
@@ -119,7 +119,7 @@ it("resolves a pasted issue and sends distinct whole/partial scope semantics", a
   render(<NewTask close={() => {}} created={created} />);
 
   fireEvent.change(screen.getByLabelText("Issue URL"), {
-    target: { value: "https://github.com/oppia/oppia/issues/26831" },
+    target: { value: "https://github.com/vibestar/vibestar/issues/26831" },
   });
 
   expect(await screen.findByText("Migrate tests")).toBeTruthy();
@@ -411,7 +411,7 @@ it("collapses PR reasoning and highlights active analysis above a previous appro
 
   const job = {
     id: "watch",
-    url: "https://github.com/oppia/oppia/pull/27527",
+    url: "https://github.com/vibestar/vibestar/pull/27527",
     task_id: null,
     interval_minutes: 60,
     verify_codex: false,
@@ -495,10 +495,10 @@ it("shows active connections and an All GitHub catalog without legacy filters or
         repository_index: {
           repositories: [
             {
-              path: "/home/aksha/oppia",
-              origin: "https://github.com/me/oppia.git",
-              upstream: "https://github.com/oppia/oppia.git",
-              identities: ["oppia/oppia"],
+              path: "/workspace/vibestar",
+              origin: "https://github.com/me/vibestar.git",
+              upstream: "https://github.com/vibestar/vibestar.git",
+              identities: ["vibestar/vibestar"],
               branch: "personal",
               default_branch: "develop",
               environment: "wsl",
@@ -522,7 +522,7 @@ it("shows active connections and an All GitHub catalog without legacy filters or
   }
 
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-  expect((screen.getByLabelText("Path") as HTMLInputElement).value).toBe("/home/aksha/oppia");
+  expect((screen.getByLabelText("Path") as HTMLInputElement).value).toBe("/workspace/vibestar");
   expect(rpc).not.toHaveBeenCalled();
 });
 
@@ -532,7 +532,7 @@ it("verifies a manually entered checkout before connecting and invalidates previ
 
   const verified = {
     verification_id: "verified",
-    path: "/home/aksha/oppia",
+    path: "/workspace/vibestar",
     environment: "wsl",
     distro: "Ubuntu",
     branch: "my-feature",
@@ -540,14 +540,14 @@ it("verifies a manually entered checkout before connecting and invalidates previ
     remotes: [
       {
         name: "origin",
-        identity: "akshajrawat/oppia",
-        url: "https://github.com/akshajrawat/oppia.git",
+        identity: "sample-user/vibestar",
+        url: "https://github.com/sample-user/vibestar.git",
         default_branch: "develop",
       },
       {
         name: "upstream",
-        identity: "oppia/oppia",
-        url: "https://github.com/oppia/oppia.git",
+        identity: "vibestar/vibestar",
+        url: "https://github.com/vibestar/vibestar.git",
         default_branch: "develop",
       },
     ],
@@ -568,7 +568,7 @@ it("verifies a manually entered checkout before connecting and invalidates previ
   render(<ConnectLocalRepository distro="Ubuntu" close={vi.fn()} connected={connected} />);
 
   fireEvent.change(screen.getByLabelText("Path"), {
-    target: { value: "/home/aksha/oppia" },
+    target: { value: "/workspace/vibestar" },
   });
 
   expect(screen.queryByRole("button", { name: "Connect repository" })).toBeNull();
@@ -577,11 +577,11 @@ it("verifies a manually entered checkout before connecting and invalidates previ
 
   expect(rpc).toHaveBeenCalledWith("repository.verifyLocal", {
     environment: "wsl",
-    path: "/home/aksha/oppia",
+    path: "/workspace/vibestar",
   });
 
   expect(screen.getByRole("combobox", { name: "Upstream repository" }).textContent).toContain(
-    "oppia/oppia",
+    "vibestar/vibestar",
   );
 
   expect(screen.getByRole("combobox", { name: "Base branch" }).textContent).toContain("develop");
@@ -651,20 +651,20 @@ it("selects a managed repository found through a canonical lookup without re-imp
 });
 
 it("shows only active repositories, visibly matches a pasted issue, and blocks a user's mismatched selection", async () => {
-  const oppia = {
-    id: "oppia-local",
-    owner: "oppia",
-    name: "oppia",
-    upstream_url: "https://github.com/oppia/oppia.git",
-    origin_url: "https://github.com/akshajrawat/oppia.git",
+  const vibestarRepo = {
+    id: "vibestar-local",
+    owner: "vibestar",
+    name: "vibestar",
+    upstream_url: "https://github.com/vibestar/vibestar.git",
+    origin_url: "https://github.com/sample-user/vibestar.git",
     base_branch: "develop",
-    path: "/home/aksha/oppia",
+    path: "/workspace/vibestar",
     source: "imported",
     connected: true,
   };
 
   const react = {
-    ...oppia,
+    ...vibestarRepo,
     id: "react-local",
     owner: "facebook",
     name: "react",
@@ -672,7 +672,7 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
   };
 
   const disconnected = {
-    ...oppia,
+    ...vibestarRepo,
     id: "old",
     path: "/old-checkout",
     connected: false,
@@ -684,13 +684,13 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
         ? {
             root: "/home/aksha/.akkco-vibestar",
             settings: defaultSettings,
-            repositories: [react, oppia, disconnected],
+            repositories: [react, vibestarRepo, disconnected],
           }
         : method === "task.preview"
           ? {
-              reference: { owner: "oppia", repo: "oppia", number: 26831 },
-              issue: { title: "Oppia issue", body: "Requirements" },
-              repository: oppia,
+              reference: { owner: "vibestar", repo: "vibestar", number: 26831 },
+              issue: { title: "Vibestar sample issue", body: "Requirements" },
+              repository: vibestarRepo,
             }
           : [],
     ),
@@ -706,15 +706,19 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
   expect(screen.queryByRole("option", { name: /old-checkout/ })).toBeNull();
 
   fireEvent.change(screen.getByLabelText("Issue URL"), {
-    target: { value: "https://github.com/oppia/oppia/issues/26831" },
+    target: { value: "https://github.com/vibestar/vibestar/issues/26831" },
   });
 
-  await screen.findByText("Oppia issue");
-  expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain("oppia/oppia");
+  await screen.findByText("Vibestar sample issue");
+
+  expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain(
+    "vibestar/vibestar",
+  );
+
   expect(screen.getByText(/Matched from issue URL/)).toBeTruthy();
 
   expect(
-    screen.getByText("/home/aksha/.akkco-vibestar/worktrees/oppia-local/26831-…"),
+    screen.getByText("/home/aksha/.akkco-vibestar/worktrees/vibestar-local/26831-…"),
   ).toBeTruthy();
 
   fireEvent.click(screen.getByRole("combobox", { name: "Repository" }));
@@ -731,6 +735,9 @@ it("shows only active repositories, visibly matches a pasted issue, and blocks a
   ).toBe(true);
 
   expect(rpc).not.toHaveBeenCalledWith("task.createIssue", expect.anything());
-  fireEvent.click(screen.getByRole("button", { name: "Switch to oppia/oppia" }));
-  expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain("oppia/oppia");
+  fireEvent.click(screen.getByRole("button", { name: "Switch to vibestar/vibestar" }));
+
+  expect(screen.getByRole("combobox", { name: "Repository" }).textContent).toContain(
+    "vibestar/vibestar",
+  );
 });

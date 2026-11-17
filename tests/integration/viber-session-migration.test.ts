@@ -12,6 +12,7 @@ it("adds standalone session storage to version 37 without rewriting Task, Flow, 
   const dir = await mkdtemp(join(tmpdir(), "vibestar-session-migration-"));
   const path = join(dir, "state.sqlite");
   const old = new Sqlite(path);
+  old.pragma("foreign_keys = OFF");
   let db: Database | undefined;
   try {
     old.pragma("foreign_keys = OFF");
@@ -128,5 +129,77 @@ it("adds standalone session storage to version 37 without rewriting Task, Flow, 
 
     db?.close();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("preserves version 38 sessions without inventing native continuity or workspace ownership", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "vibestar-native-migration-"));
+  const path = join(directory, "state.sqlite");
+  const old = new Sqlite(path);
+  old.pragma("foreign_keys = OFF");
+  let db: Database | undefined;
+  try {
+    for (const migration of migrations.filter((migration) => migration.version <= 38)) {
+      old.exec(migration.sql);
+
+      old
+        .prepare("INSERT OR IGNORE INTO schema_migrations VALUES(?,?)")
+        .run(migration.version, "before");
+    }
+
+    const profile = randomUUID();
+    const session = randomUUID();
+    const message = randomUUID();
+    const timestamp = "2026-11-01T00:00:00.000Z";
+    const selection = { provider: "codex", model: "old-model", effort: "high" };
+    const configuration = JSON.stringify({ request_id: session, profile_id: profile, selection });
+    old.prepare("INSERT INTO agent_profiles VALUES(?,1,?,?)").run(profile, timestamp, timestamp);
+    old.prepare("INSERT INTO agent_profile_revisions VALUES(?,1,'{}',?)").run(profile, timestamp);
+
+    old
+      .prepare("INSERT INTO viber_sessions VALUES(?,?,?,?,?,?,?)")
+      .run(
+        session,
+        profile,
+        "Legacy chat",
+        JSON.stringify(selection),
+        configuration,
+        timestamp,
+        timestamp,
+      );
+
+    old
+      .prepare(
+        "INSERT INTO viber_messages(id,session_id,role,content,status,created_at) VALUES(?,?,'assistant','Retained answer','completed',?)",
+      )
+      .run(message, session, timestamp);
+
+    old.close();
+    db = await Database.open(path);
+    const { ViberSessionStore } = await import("../../apps/core/vibers/store");
+    const store = new ViberSessionStore(db);
+
+    expect(store.detail(session, profile)).toMatchObject({
+      session: { repository_id: null, thread: null, selection },
+      messages: [{ id: message, content: "Retained answer" }],
+    });
+
+    expect(
+      db.all<{ configuration: string }>("SELECT configuration FROM viber_sessions")[0]
+        .configuration,
+    ).toBe(configuration);
+
+    expect(() => store.workspace(session)).toThrow("legacy session");
+    expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
+    db.close();
+    db = await Database.open(path);
+    expect(new ViberSessionStore(db).detail(session, profile).session.thread).toBeNull();
+  } finally {
+    if (old.open) {
+      old.close();
+    }
+
+    db?.close();
+    await rm(directory, { recursive: true, force: true });
   }
 });
