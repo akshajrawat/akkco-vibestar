@@ -61,8 +61,8 @@ it("distinguishes explicit bans, tracker proposals and bare references", () => {
   expect(preview.rules.excluded_issues).toEqual([{ repository: "vibestar/vibestar", number: 12 }]);
 
   expect(preview.rules.trackers).toEqual([
-    { url: "https://github.com/vibestar/vibestar/issues/27409", comments: "none" },
     { url: "https://github.com/other/repo/issues/1", comments: "all" },
+    { url: "https://github.com/vibestar/vibestar/issues/27409", comments: "none" },
   ]);
 
   expect(preview.ambiguities.some((item) => item.text === "#15")).toBe(true);

@@ -14,11 +14,11 @@ it("parses visible Markdown references with repository identity and skips exampl
   ].join("\n\n");
 
   expect(markdownIssueReferences(markdown, "Vibestar/Vibestar")).toEqual([
+    { repository: "other/repo", number: 1 },
     { repository: "vibestar/vibestar", number: 1 },
     { repository: "vibestar/vibestar", number: 11 },
     { repository: "vibestar/vibestar", number: 2 },
     { repository: "vibestar/vibestar", number: 3 },
-    { repository: "other/repo", number: 1 },
   ]);
 });
 
@@ -39,8 +39,8 @@ it("recognizes closing references only in visible prose, including Markdown link
       true,
     ),
   ).toEqual([
+    { repository: "other/repo", number: 6 },
     { repository: "vibestar/vibestar", number: 3 },
     { repository: "vibestar/vibestar", number: 5 },
-    { repository: "other/repo", number: 6 },
   ]);
 });
