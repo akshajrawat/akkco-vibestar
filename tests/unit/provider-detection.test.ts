@@ -1,16 +1,16 @@
 import { it, expect, vi, beforeEach } from "vitest";
 
-import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
-import { CodexProvider } from "../../backend/execution/providers/codex";
-import { capture, checked } from "../../backend/execution/runtime/process";
-import { configurationError } from "../../backend/execution/providers/contracts";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
+import { capture, checked } from "../../apps/core/execution/runtime/process";
+import { configurationError } from "../../apps/core/execution/providers/contracts";
 
-vi.mock("../../backend/execution/runtime/process", () => ({
+vi.mock("../../apps/core/execution/runtime/process", () => ({
   capture: vi.fn(),
   checked: vi.fn(),
 }));
 
-vi.mock("../../backend/execution/providers/codex-models", () => ({
+vi.mock("../../apps/core/execution/providers/codex-models", () => ({
   discoverCodexModels: vi.fn(async () => ({
     models: [
       {

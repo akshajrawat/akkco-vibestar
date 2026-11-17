@@ -3,15 +3,15 @@ import { expect, it } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { capture, checked, processIdentity } from "../../backend/execution/runtime/process";
+import { capture, checked, processIdentity } from "../../apps/core/execution/runtime/process";
 import { spawn } from "node:child_process";
-import { RepairService } from "../../backend/review/repair/service";
-import { RepairWorkspaces } from "../../backend/review/repair/workspace";
+import { RepairService } from "../../apps/core/review/repair/service";
+import { RepairWorkspaces } from "../../apps/core/review/repair/workspace";
 import { repairFixture } from "./fixtures";
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
-import { TaskTerminals } from "../../backend/execution/terminals/task-terminals";
-import { StorageService } from "../../backend/storage/service";
-import { repairAssignment } from "../../backend/review/repair/workspace";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { TaskTerminals } from "../../apps/core/execution/terminals/task-terminals";
+import { StorageService } from "../../apps/core/storage/service";
+import { repairAssignment } from "../../apps/core/review/repair/workspace";
 
 it("reconciles an actual core restart during preparation without replaying a merge or inference", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-pr-restart-"));

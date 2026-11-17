@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { createFixtureEngine } from "../helpers/fixtures";
-import { Scheduler } from "../../backend/scheduled/scheduler";
-import { GitHubMonitor } from "../../backend/scheduled/github";
-import { PRAnalysisBatches } from "../../backend/review/pr/batches";
-import { reviewActionState } from "../../backend/review/pr/inbox";
+import { Scheduler } from "../../apps/core/scheduled/scheduler";
+import { GitHubMonitor } from "../../apps/core/scheduled/github";
+import { PRAnalysisBatches } from "../../apps/core/review/pr/batches";
+import { reviewActionState } from "../../apps/core/review/pr/inbox";
 import { analysisResult, prSnapshot } from "../helpers/pr-fixtures";
 
 let directory: string;

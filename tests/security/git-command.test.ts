@@ -2,10 +2,10 @@ import { securityWorkspace } from "./fixtures";
 import { afterEach, expect, it, vi } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { checked, execute, type ProcessRequest } from "../../backend/execution/runtime/process";
-import { gitCapture, gitChecked, gitExecute } from "../../backend/workspace/git-command";
-import { exists } from "../../backend/workspace/paths";
-import * as processes from "../../backend/execution/runtime/process";
+import { checked, execute, type ProcessRequest } from "../../apps/core/execution/runtime/process";
+import { gitCapture, gitChecked, gitExecute } from "../../apps/core/workspace/git-command";
+import { exists } from "../../apps/core/workspace/paths";
+import * as processes from "../../apps/core/execution/runtime/process";
 
 afterEach(() => {
   vi.unstubAllEnvs();

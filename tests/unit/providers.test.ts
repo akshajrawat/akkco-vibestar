@@ -1,8 +1,8 @@
 import { it, expect } from "vitest";
 
-import { CodexProvider } from "../../backend/execution/providers/codex";
-import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
-import { verifyFlags, validatePlan } from "../../backend/execution/providers/contracts";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
+import { verifyFlags, validatePlan } from "../../apps/core/execution/providers/contracts";
 
 const codex = new CodexProvider();
 const agy = new AntigravityProvider();

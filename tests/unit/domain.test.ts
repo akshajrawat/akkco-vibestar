@@ -8,11 +8,11 @@ import {
   remoteIdentity,
   defaultSettings,
   SettingsSchema,
-} from "../../backend/domain";
-import { safeFile, worktreePath } from "../../backend/workspace/paths";
-import { Database } from "../../backend/storage/database";
+} from "../../apps/core/domain";
+import { safeFile, worktreePath } from "../../apps/core/workspace/paths";
+import { Database } from "../../apps/core/storage/database";
 import BetterSqlite3 from "better-sqlite3";
-import { migrations } from "../../backend/storage/migrations";
+import { migrations } from "../../apps/core/storage/migrations";
 
 describe("domain and persistence", () => {
   it("upgrades V1 tasks to partial scope while preserving conversations and pipeline settings", async () => {

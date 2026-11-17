@@ -1,5 +1,5 @@
 import { FixtureProvider } from "../helpers/fixtures";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 
 export class IssueWatchFixtureProvider extends FixtureProvider {
   calls = 0;

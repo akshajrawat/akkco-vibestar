@@ -7,9 +7,9 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-import { Rpc } from "../../backend/rpc";
-import { builtInProfiles } from "../../backend/flows/templates";
-import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
+import { Rpc } from "../../apps/core/rpc";
+import { builtInProfiles } from "../../apps/core/flows/templates";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import {
   createFixtureEngine,
   fixtureRepository,

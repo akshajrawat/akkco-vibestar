@@ -4,10 +4,10 @@ import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { TaskTerminals } from "../../backend/execution/terminals/task-terminals";
-import { checked } from "../../backend/execution/runtime/process";
+import { TaskTerminals } from "../../apps/core/execution/terminals/task-terminals";
+import { checked } from "../../apps/core/execution/runtime/process";
 import { randomUUID } from "node:crypto";
-import { AgentProfileSchema } from "../../backend/flows/contracts";
+import { AgentProfileSchema } from "../../apps/core/flows/contracts";
 import {
   createFixtureEngine,
   fixtureRepository,

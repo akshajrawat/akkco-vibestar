@@ -4,12 +4,12 @@ import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { randomUUID } from "node:crypto";
 
-import { CommandRuns } from "../../src/features/verification/CommandRuns";
-import { LogView } from "../../src/features/chat/LogView";
-import { TaskCleanup } from "../../src/features/tasks/TaskCleanup";
-import type { Detail } from "../../src/lib/types";
-import { NodeAttemptSchema } from "../../backend/flows/run-contracts";
-import { resolveAgentNode, type FlowNode } from "../../backend/flows/contracts";
+import { CommandRuns } from "../../apps/desktop/features/verification/CommandRuns";
+import { LogView } from "../../apps/desktop/features/chat/LogView";
+import { TaskCleanup } from "../../apps/desktop/features/tasks/TaskCleanup";
+import type { Detail } from "../../apps/desktop/lib/types";
+import { NodeAttemptSchema } from "../../apps/core/flows/run-contracts";
+import { resolveAgentNode, type FlowNode } from "../../apps/core/flows/contracts";
 import { viberProfile } from "../workspace/flow-fixtures";
 
 afterEach(cleanup);

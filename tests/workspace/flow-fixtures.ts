@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import type { AgentProfile } from "../../backend/flows/contracts";
-import type { FlowWorkspace } from "../../backend/flows/workspace";
-import type { Detail } from "../../src/lib/types";
-import { builtInProfiles } from "../../backend/flows/templates";
+import type { AgentProfile } from "../../apps/core/flows/contracts";
+import type { FlowWorkspace } from "../../apps/core/flows/workspace";
+import type { Detail } from "../../apps/desktop/lib/types";
+import { builtInProfiles } from "../../apps/core/flows/templates";
 
 export const viberProfile: AgentProfile = {
   id: builtInProfiles.implementer,

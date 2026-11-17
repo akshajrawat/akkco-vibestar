@@ -5,9 +5,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { AgentRunner } from "../../backend/execution/agents/agent-runner";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
-import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
+import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import {
   createFixtureEngine,
   fixtureRepository,
@@ -18,7 +18,7 @@ import {
   waitForFixtureFlow,
 } from "../helpers/fixtures";
 
-vi.mock("../../backend/workspace/issue", () => ({
+vi.mock("../../apps/core/workspace/issue", () => ({
   fetchIssue: vi.fn(async () => ({ title: "Fixture issue", body: "Unrelated project context" })),
 }));
 

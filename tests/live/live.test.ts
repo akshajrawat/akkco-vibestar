@@ -4,11 +4,11 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings } from "../../backend/domain";
+import { defaultSettings } from "../../apps/core/domain";
 import { randomUUID } from "node:crypto";
-import { builtInProfiles } from "../../backend/flows/templates";
+import { builtInProfiles } from "../../apps/core/flows/templates";
 import { createFixtureEngine, fixtureRepository, startFixtureFlow } from "../helpers/fixtures";
-import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 
 it.skipIf(process.env.VIBESTAR_LIVE_TEST !== "1")(
   "executes the entire pipeline with REAL authenticated Antigravity and Codex CLIs",

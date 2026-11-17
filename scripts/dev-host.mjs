@@ -63,7 +63,7 @@ export const resolveDevHost = async () => {
   env.VIBESTAR_DEV_WSL_CONFIG = JSON.stringify({
     distro: process.env.WSL_DISTRO_NAME,
     data_home: process.env.VIBESTAR_HOME || "",
-    helper_path: resolve("dist-core/core.cjs"),
+    helper_path: resolve("out/core/core.cjs"),
   });
 
   const metadata = join(await mkdtemp(join(tmpdir(), "vibestar-dev-")), "window.json");

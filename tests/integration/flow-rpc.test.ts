@@ -4,13 +4,17 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import { Rpc } from "../../backend/rpc";
-import type { FlowWorkspace } from "../../backend/flows/workspace";
-import type { AgentProfile } from "../../backend/flows/contracts";
-import { FlowDefinitionSchema } from "../../backend/flows/contracts";
-import { builtInProfiles, flowTemplates, instantiateTemplate } from "../../backend/flows/templates";
-import type { FlowRun } from "../../backend/flows/run-contracts";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import { Rpc } from "../../apps/core/rpc";
+import type { FlowWorkspace } from "../../apps/core/flows/workspace";
+import type { AgentProfile } from "../../apps/core/flows/contracts";
+import { FlowDefinitionSchema } from "../../apps/core/flows/contracts";
+import {
+  builtInProfiles,
+  flowTemplates,
+  instantiateTemplate,
+} from "../../apps/core/flows/templates";
+import type { FlowRun } from "../../apps/core/flows/run-contracts";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
 
 class ConversationFixture extends FixtureProvider {

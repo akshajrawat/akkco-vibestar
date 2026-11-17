@@ -2,11 +2,11 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
-import { HistoricalChecks } from "../../src/features/flows/HistoricalChecks";
-import { RunError } from "../../src/features/chat/RunError";
-import type { Detail } from "../../src/lib/types";
-import { verificationSummary } from "../../backend/execution/verification/verification";
-import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
+import { HistoricalChecks } from "../../apps/desktop/features/flows/HistoricalChecks";
+import { RunError } from "../../apps/desktop/features/chat/RunError";
+import type { Detail } from "../../apps/desktop/lib/types";
+import { verificationSummary } from "../../apps/core/execution/verification/verification";
+import { AgentTimeline } from "../../apps/desktop/features/chat/AgentTimeline";
 
 afterEach(cleanup);
 

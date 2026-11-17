@@ -7,10 +7,10 @@ import {
   ViberAppearanceSchema,
   defaultAppearance,
   randomAppearance,
-} from "../../backend/flows/appearance";
-import { AgentProfileSchema } from "../../backend/flows/contracts";
-import { ProfileEditor } from "../../src/features/flows/ProfileEditor";
-import { ViberFace } from "../../src/features/flows/ViberFace";
+} from "../../apps/core/flows/appearance";
+import { AgentProfileSchema } from "../../apps/core/flows/contracts";
+import { ProfileEditor } from "../../apps/desktop/features/flows/ProfileEditor";
+import { ViberFace } from "../../apps/desktop/features/flows/ViberFace";
 import { viberProfile } from "../workspace/flow-fixtures";
 import { mockDialog } from "../helpers/dialog";
 

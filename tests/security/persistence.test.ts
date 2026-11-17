@@ -4,12 +4,12 @@ import { mkdtemp, rm, readdir, readFile, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import Sqlite from "better-sqlite3";
-import { Database } from "../../backend/storage/database";
-import { migrations } from "../../backend/storage/migrations";
-import { StorageService } from "../../backend/storage/service";
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
-import { createLayout, exists } from "../../backend/workspace/paths";
-import { Rpc } from "../../backend/rpc";
+import { Database } from "../../apps/core/storage/database";
+import { migrations } from "../../apps/core/storage/migrations";
+import { StorageService } from "../../apps/core/storage/service";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { createLayout, exists } from "../../apps/core/workspace/paths";
+import { Rpc } from "../../apps/core/rpc";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 import { repairFixture } from "../pr-repair/fixtures";
 

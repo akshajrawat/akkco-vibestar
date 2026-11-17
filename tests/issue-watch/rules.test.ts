@@ -4,7 +4,7 @@ import {
   confirmConfiguration,
   previewRules,
   repositoryName,
-} from "../../backend/issue-watch/rules";
+} from "../../apps/core/issue-watch/rules";
 import { watchConfiguration } from "./fixtures";
 
 it("previews the exact Oppia scenario without a model and requires unresolved decisions", () => {

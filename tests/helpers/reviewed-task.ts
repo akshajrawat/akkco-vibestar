@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings, now } from "../../backend/domain";
+import { defaultSettings, now } from "../../apps/core/domain";
 import {
   createFixtureEngine,
   fixtureRepository,

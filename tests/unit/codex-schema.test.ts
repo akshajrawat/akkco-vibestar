@@ -1,8 +1,8 @@
 import { it, expect } from "vitest";
 import { z } from "zod";
 
-import { codexSchema, codexResult } from "../../backend/execution/providers/codex-schema";
-import { ActionSchema } from "../../backend/scheduled/action";
+import { codexSchema, codexResult } from "../../apps/core/execution/providers/codex-schema";
+import { ActionSchema } from "../../apps/core/scheduled/action";
 
 it("adapts optional review fields to the official Codex strict schema and restores application optional semantics", () => {
   const schema = z.toJSONSchema(ActionSchema);

@@ -2,9 +2,9 @@ import { expect, it } from "vitest";
 
 import { runInNewContext } from "node:vm";
 
-import { browserEnvironmentProbe } from "../../backend/execution/verification/browser/probe";
-import { BrowserEnvironmentReportSchema } from "../../backend/execution/verification/browser/contracts";
-import { verificationSummary } from "../../backend/execution/verification/verification";
+import { browserEnvironmentProbe } from "../../apps/core/execution/verification/browser/probe";
+import { BrowserEnvironmentReportSchema } from "../../apps/core/execution/verification/browser/contracts";
+import { verificationSummary } from "../../apps/core/execution/verification/verification";
 
 const probe = async (
   options: {

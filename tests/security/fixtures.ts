@@ -4,9 +4,9 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { checked } from "../../backend/execution/runtime/process";
-import { GitWorkspace } from "../../backend/workspace/git";
-import { createLayout } from "../../backend/workspace/paths";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { GitWorkspace } from "../../apps/core/workspace/git";
+import { createLayout } from "../../apps/core/workspace/paths";
 
 const directories: string[] = [];
 

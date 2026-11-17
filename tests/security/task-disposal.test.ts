@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
-import * as gitCommands from "../../backend/workspace/git-command";
-import { checked, capture } from "../../backend/execution/runtime/process";
-import { StorageService } from "../../backend/storage/service";
-import { FlowStore } from "../../backend/flows/store";
-import { exists } from "../../backend/workspace/paths";
+import * as gitCommands from "../../apps/core/workspace/git-command";
+import { checked, capture } from "../../apps/core/execution/runtime/process";
+import { StorageService } from "../../apps/core/storage/service";
+import { FlowStore } from "../../apps/core/flows/store";
+import { exists } from "../../apps/core/workspace/paths";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 let directory: string;
@@ -201,7 +201,7 @@ it("preserves files, branch and ownership across restart when removing task hist
     task.base_commit_sha,
   );
 
-  const { Rpc } = await import("../../backend/rpc");
+  const { Rpc } = await import("../../apps/core/rpc");
   const rpc = new Rpc(engine);
   try {
     await expect(rpc.call("task.retry", { id: task.id })).rejects.toThrow("Unknown method");

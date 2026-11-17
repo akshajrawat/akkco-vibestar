@@ -3,14 +3,14 @@ import { selectValue } from "../helpers/select";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import type { UsageRecord } from "../../backend/execution/output/usage";
-import { OpenInEditor } from "../../src/components/shared/OpenInEditor";
-import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
-import { CurrentRun } from "../../src/features/chat/CurrentRun";
-import { UsageView } from "../../src/features/usage/UsageView";
-import type { Detail, Run } from "../../src/lib/types";
+import type { UsageRecord } from "../../apps/core/execution/output/usage";
+import { OpenInEditor } from "../../apps/desktop/components/shared/OpenInEditor";
+import { AgentTimeline } from "../../apps/desktop/features/chat/AgentTimeline";
+import { CurrentRun } from "../../apps/desktop/features/chat/CurrentRun";
+import { UsageView } from "../../apps/desktop/features/usage/UsageView";
+import type { Detail, Run } from "../../apps/desktop/lib/types";
 
-vi.mock("../../src/hooks/useWorkspace", () => ({
+vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
   useProviders: () => ({
     providers: [
       {

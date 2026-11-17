@@ -1,16 +1,16 @@
-import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
+import { defaultReviewConfiguration } from "../../apps/core/review/pr/contracts";
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-import { defaultSettings } from "../../backend/domain";
-import { SolveReview } from "../../src/features/pull-requests/repair/SolveReview";
-import { RepairWorkspace } from "../../src/features/pull-requests/repair/RepairWorkspace";
-import type { RepairDetail } from "../../src/features/pull-requests/repair/types";
-import type { RepairSession } from "../../backend/review/repair/contracts";
+import { defaultSettings } from "../../apps/core/domain";
+import { SolveReview } from "../../apps/desktop/features/pull-requests/repair/SolveReview";
+import { RepairWorkspace } from "../../apps/desktop/features/pull-requests/repair/RepairWorkspace";
+import type { RepairDetail } from "../../apps/desktop/features/pull-requests/repair/types";
+import type { RepairSession } from "../../apps/core/review/repair/contracts";
 import { observations, prSnapshot } from "../helpers/pr-fixtures";
 
-vi.mock("../../src/components/shared/TaskTerminal", () => ({
+vi.mock("../../apps/desktop/components/shared/TaskTerminal", () => ({
   TaskTerminal: () => <p>Terminal fixture view</p>,
 }));
 

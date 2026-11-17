@@ -5,16 +5,16 @@ import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Rpc } from "../../backend/rpc";
-import { GitHubMonitor } from "../../backend/scheduled/github";
-import { RepairService } from "../../backend/review/repair/service";
-import { RepairWorkspaces } from "../../backend/review/repair/workspace";
+import { Rpc } from "../../apps/core/rpc";
+import { GitHubMonitor } from "../../apps/core/scheduled/github";
+import { RepairService } from "../../apps/core/review/repair/service";
+import { RepairWorkspaces } from "../../apps/core/review/repair/workspace";
 import { repairFixture } from "../pr-repair/fixtures";
 import { RepairFixtureProvider } from "../pr-repair/provider";
 import { PRFixtureProvider } from "../helpers/pr-fixtures";
-import { checked } from "../../backend/execution/runtime/process";
-import { defaultSettings } from "../../backend/domain";
-import { Database } from "../../backend/storage/database";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { defaultSettings } from "../../apps/core/domain";
+import { Database } from "../../apps/core/storage/database";
 
 const require = createRequire(import.meta.url);
 

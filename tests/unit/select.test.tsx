@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 
-import { Select } from "../../src/components/ui/Select";
+import { Select } from "../../apps/desktop/components/ui/Select";
 
 afterEach(cleanup);
 

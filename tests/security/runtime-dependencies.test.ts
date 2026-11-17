@@ -4,8 +4,8 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { checked } from "../../backend/execution/runtime/process";
-import { taskRuntime } from "../../backend/workspace/runtime";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { taskRuntime } from "../../apps/core/workspace/runtime";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 it("refuses dependency aliases and tracked or nonempty destinations while preserving exact nested path names", async () => {

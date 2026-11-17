@@ -3,11 +3,11 @@ import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
-import { StorageService } from "../../backend/storage/service";
-import { IssueWatchStore } from "../../backend/issue-watch/store";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { StorageService } from "../../apps/core/storage/service";
+import { IssueWatchStore } from "../../apps/core/issue-watch/store";
 import { createFixtureEngine } from "../helpers/fixtures";
-import { validateSemanticReport } from "../../backend/issue-watch/semantic";
+import { validateSemanticReport } from "../../apps/core/issue-watch/semantic";
 import { watchConfiguration, watchFixture } from "./fixtures";
 
 const resources: Awaited<ReturnType<typeof watchFixture>>[] = [];

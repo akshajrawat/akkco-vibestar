@@ -2,8 +2,8 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { Composer } from "../../src/features/chat/Composer";
-import { repairContext } from "../../src/features/pull-requests/repair/context";
+import { Composer } from "../../apps/desktop/features/chat/Composer";
+import { repairContext } from "../../apps/desktop/features/pull-requests/repair/context";
 
 afterEach(() => {
   cleanup();

@@ -106,7 +106,7 @@ const rebuild = async () => {
 };
 
 await launch();
-for (const directory of ["electron", "backend"]) {
+for (const directory of ["apps/electron", "apps/core"]) {
   void (async () => {
     try {
       for await (const event of watch(directory, {

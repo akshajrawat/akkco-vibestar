@@ -10,8 +10,11 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     watch: {
-      ignored: ["**/release/**", "**/dist/**", "**/dist-core/**", "**/dist-electron/**"],
+      ignored: ["**/out/**"],
     },
   },
-  build: { chunkSizeWarningLimit: 2000 },
+  build: {
+    outDir: "out/desktop",
+    chunkSizeWarningLimit: 2000,
+  },
 });

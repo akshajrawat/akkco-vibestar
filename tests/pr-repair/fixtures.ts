@@ -1,12 +1,12 @@
-import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
+import { defaultReviewConfiguration } from "../../apps/core/review/pr/contracts";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { now, type Repository } from "../../backend/domain";
-import { checked } from "../../backend/execution/runtime/process";
-import type { Engine } from "../../backend/execution/engine";
-import type { RepairSession } from "../../backend/review/repair/contracts";
+import { now, type Repository } from "../../apps/core/domain";
+import { checked } from "../../apps/core/execution/runtime/process";
+import type { Engine } from "../../apps/core/execution/engine";
+import type { RepairSession } from "../../apps/core/review/repair/contracts";
 import { prSnapshot, observations } from "../helpers/pr-fixtures";
 
 export const repairFixture = async (

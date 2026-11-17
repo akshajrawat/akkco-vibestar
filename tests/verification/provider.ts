@@ -1,5 +1,5 @@
 import { FixtureProvider } from "../helpers/fixtures";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 
 // The failed installation is a task-sandbox /tmp fixture executable. It never
 // invokes npm, downloads a dependency or spends provider allowance.

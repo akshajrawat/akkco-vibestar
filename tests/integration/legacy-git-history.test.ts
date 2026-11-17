@@ -5,9 +5,9 @@ import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Database } from "../../backend/storage/database";
-import { migrations } from "../../backend/storage/migrations";
-import { defaultSettings } from "../../backend/domain";
+import { Database } from "../../apps/core/storage/database";
+import { migrations } from "../../apps/core/storage/migrations";
+import { defaultSettings } from "../../apps/core/domain";
 
 it("backs up version 23 before adding Git history and preserves existing task, PR and usage data across reopening", async () => {
   const root = await mkdtemp(join(tmpdir(), "vibestar-finalization-migration-"));

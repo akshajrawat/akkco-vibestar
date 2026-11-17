@@ -37,22 +37,22 @@ permissions after workspace ownership checks. See the [security guide](docs/secu
 
 ## Module ownership
 
-| Area                                                         | Responsibility                                                                    |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `electron/`                                                  | Desktop lifecycle, isolated preload, stdio bridge and platform contracts          |
-| `src/app/`                                                   | Navigation, desktop composition and global actions                                |
-| `src/features/`                                              | Feature-owned UI, local state and renderer workflows                              |
-| `src/components/` and `src/hooks/`                           | Reusable controls and hooks shared across features                                |
-| `backend/rpc/`                                               | Validated domain requests; `backend/rpc.ts` composes services and dispatch        |
-| `backend/flows/`                                             | Viber profiles, graph contracts, run persistence, context and history projections |
-| `backend/execution/`                                         | Shared scheduling, providers, sandbox, output, terminals and verification         |
-| `backend/workspace/`                                         | Git operations, path ownership, worktrees and runtime mounts                      |
-| `backend/storage/`                                           | SQLite lifecycle, migrations, recovery, inspection and conservative cleanup       |
-| `backend/review/`, `backend/github/`, `backend/issue-watch/` | Pull-request, GitHub and issue-discovery services                                 |
-| `tests/`                                                     | Unit, domain, integration, security, terminal and opt-in desktop/live coverage    |
+| Area                                                               | Responsibility                                                                    |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `apps/electron/`                                                   | Desktop lifecycle, isolated preload, stdio bridge and platform contracts          |
+| `apps/desktop/app/`                                                | Navigation, desktop composition and global actions                                |
+| `apps/desktop/features/`                                           | Feature-owned UI, local state and renderer workflows                              |
+| `apps/desktop/components/` and `apps/desktop/hooks/`               | Reusable controls and hooks shared across features                                |
+| `apps/core/rpc/`                                                   | Validated domain requests; `apps/core/rpc.ts` composes services and dispatch      |
+| `apps/core/flows/`                                                 | Viber profiles, graph contracts, run persistence, context and history projections |
+| `apps/core/execution/`                                             | Shared scheduling, providers, sandbox, output, terminals and verification         |
+| `apps/core/workspace/`                                             | Git operations, path ownership, worktrees and runtime mounts                      |
+| `apps/core/storage/`                                               | SQLite lifecycle, migrations, recovery, inspection and conservative cleanup       |
+| `apps/core/review/`, `apps/core/github/`, `apps/core/issue-watch/` | Pull-request, GitHub and issue-discovery services                                 |
+| `tests/`                                                           | Unit, domain, integration, security, terminal and opt-in desktop/live coverage    |
 
-Feature-specific code belongs with its owner. Shared renderer primitives stay under `src/components`
-and ordered CSS chapters under `src/styles/`. Detailed folder and check ownership is documented in
+Feature-specific code belongs with its owner. Shared renderer primitives stay under `apps/desktop/components`
+and ordered CSS chapters under `apps/desktop/styles/`. Detailed folder and check ownership is documented in
 the [contributor guide](CONTRIBUTING.md) and [testing guide](docs/testing.md).
 
 ## Workspace overlays
@@ -71,7 +71,7 @@ configuration changes require native confirmation; the core atomically refuses r
 exists and closes admission before stopping. Providers, Repositories and Storage reuse their existing
 feature and guarded service boundaries.
 
-One root `react-hot-toast` Toaster renders through `src/lib/notifications.tsx`. It follows the active
+One root `react-hot-toast` Toaster renders through `apps/desktop/lib/notifications.tsx`. It follows the active
 native modal's top layer without stealing focus. The saved notification preference filters optional
 messages; errors, required input, blocking warnings and essential runtime installation progress remain
 visible. A display-only cache of the acknowledged preference covers startup before the core connects;

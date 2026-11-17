@@ -2,9 +2,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { DiffView } from "../../src/components/diff/DiffView";
-import { ChangesView } from "../../src/components/shared/ChangesView";
-import type { FileDiff } from "../../src/lib/types";
+import { DiffView } from "../../apps/desktop/components/diff/DiffView";
+import { ChangesView } from "../../apps/desktop/components/shared/ChangesView";
+import type { FileDiff } from "../../apps/desktop/lib/types";
 
 afterEach(() => {
   cleanup();

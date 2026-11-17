@@ -3,7 +3,7 @@ import { StrictMode } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { usePRWatch } from "../../src/features/pull-requests/usePRWatch";
+import { usePRWatch } from "../../apps/desktop/features/pull-requests/usePRWatch";
 
 afterEach(cleanup);
 

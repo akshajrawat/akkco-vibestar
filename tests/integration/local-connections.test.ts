@@ -2,17 +2,17 @@ import { it, expect, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Engine } from "../../backend/execution/engine";
-import { Rpc } from "../../backend/rpc";
-import { parseIssue } from "../../backend/domain";
-import { builtInProfiles } from "../../backend/flows/templates";
-import * as processes from "../../backend/execution/runtime/process";
+import type { Engine } from "../../apps/core/execution/engine";
+import { Rpc } from "../../apps/core/rpc";
+import { parseIssue } from "../../apps/core/domain";
+import { builtInProfiles } from "../../apps/core/flows/templates";
+import * as processes from "../../apps/core/execution/runtime/process";
 import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
 import BetterSqlite3 from "better-sqlite3";
-import { migrations } from "../../backend/storage/migrations";
-import { Database } from "../../backend/storage/database";
+import { migrations } from "../../apps/core/storage/migrations";
+import { Database } from "../../apps/core/storage/database";
 
-vi.mock("../../backend/workspace/issue", () => ({
+vi.mock("../../apps/core/workspace/issue", () => ({
   fetchIssue: vi.fn(async () => ({ title: "Fixture issue", body: "Task A" })),
 }));
 

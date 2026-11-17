@@ -3,9 +3,9 @@ import { expect, it } from "vitest";
 import { chmod, rm, mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { createLayout, managedPath, taskRoot } from "../../backend/workspace/paths";
-import { checked } from "../../backend/execution/runtime/process";
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
+import { createLayout, managedPath, taskRoot } from "../../apps/core/workspace/paths";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
 import { securityWorkspace } from "./fixtures";
 
 it.each(["worktrees", "repos", "state", "logs", "cache", "artifacts", "runtime", "telemetry"])(

@@ -2,7 +2,7 @@ import { it, expect } from "vitest";
 
 import { tmpdir } from "node:os";
 
-import { execute, cleanEnvironment, redact } from "../../backend/execution/runtime/process";
+import { execute, cleanEnvironment, redact } from "../../apps/core/execution/runtime/process";
 
 it("passes shell metacharacters literally through argv", async () => {
   const value = 'a ; $(touch /tmp/vibestar-injection)\n "quoted"';

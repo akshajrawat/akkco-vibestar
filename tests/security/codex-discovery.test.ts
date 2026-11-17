@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
 
-import { discoverCodexModels } from "../../backend/execution/providers/codex-models";
+import { discoverCodexModels } from "../../apps/core/execution/providers/codex-models";
 
 const fixture = vi.hoisted(() => ({
   script: "",

@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { createFixtureEngine } from "../helpers/fixtures";
-import { GitHubClient } from "../../backend/github/client";
-import { IssueWatchService } from "../../backend/issue-watch/service";
-import { WatchLimitsSchema } from "../../backend/issue-watch/contracts";
-import { previewRules } from "../../backend/issue-watch/rules";
+import { GitHubClient } from "../../apps/core/github/client";
+import { IssueWatchService } from "../../apps/core/issue-watch/service";
+import { WatchLimitsSchema } from "../../apps/core/issue-watch/contracts";
+import { previewRules } from "../../apps/core/issue-watch/rules";
 
 export const watchConfiguration = (prompt = "Open issues", controls = {}) => {
   const preview = previewRules({ repository: "oppia/oppia", prompt, controls });

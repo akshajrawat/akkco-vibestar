@@ -7,7 +7,7 @@ import {
   FlowDefinitionSchema,
   resolveAgentNode,
   type FlowNode,
-} from "../../backend/flows/contracts";
+} from "../../apps/core/flows/contracts";
 
 const profile = () =>
   AgentProfileSchema.parse({

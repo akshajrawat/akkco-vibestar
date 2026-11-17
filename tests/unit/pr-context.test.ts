@@ -1,8 +1,8 @@
 import { it, expect, vi, afterEach } from "vitest";
 
-import { GitHubClient } from "../../backend/github/client";
-import { GitHubMonitor } from "../../backend/scheduled/github";
-import { PullRequestStateSchema } from "../../backend/scheduled/contracts";
+import { GitHubClient } from "../../apps/core/github/client";
+import { GitHubMonitor } from "../../apps/core/scheduled/github";
+import { PullRequestStateSchema } from "../../apps/core/scheduled/contracts";
 import { reviewBody } from "../helpers/pr-fixtures";
 
 afterEach(() => vi.restoreAllMocks());

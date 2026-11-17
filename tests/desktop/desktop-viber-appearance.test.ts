@@ -6,8 +6,8 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-import { Rpc } from "../../backend/rpc";
-import { builtInProfiles } from "../../backend/flows/templates";
+import { Rpc } from "../../apps/core/rpc";
+import { builtInProfiles } from "../../apps/core/flows/templates";
 import { createFixtureEngine } from "../helpers/fixtures";
 
 const require = createRequire(import.meta.url);

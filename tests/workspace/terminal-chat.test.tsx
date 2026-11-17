@@ -2,8 +2,8 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { CoreEvent } from "../../src/lib/types";
-import type { TaskTerminalSnapshot } from "../../backend/execution/terminals/task-terminals";
+import type { CoreEvent } from "../../apps/desktop/lib/types";
+import type { TaskTerminalSnapshot } from "../../apps/core/execution/terminals/task-terminals";
 
 const terminal = vi.hoisted(() => ({ write: vi.fn(), reset: vi.fn(), focus: vi.fn() }));
 
@@ -41,7 +41,7 @@ vi.mock("@xterm/addon-fit", () => ({
   },
 }));
 
-import { TaskTerminal } from "../../src/components/shared/TaskTerminal";
+import { TaskTerminal } from "../../apps/desktop/components/shared/TaskTerminal";
 
 beforeEach(() => {
   vi.stubGlobal(

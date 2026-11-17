@@ -1,10 +1,10 @@
 import { it, expect, vi, afterEach } from "vitest";
-import { parseIssue } from "../../backend/domain";
-import { fetchIssue } from "../../backend/workspace/issue";
+import { parseIssue } from "../../apps/core/domain";
+import { fetchIssue } from "../../apps/core/workspace/issue";
 
 const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 
-vi.mock("../../backend/github/client", () => ({
+vi.mock("../../apps/core/github/client", () => ({
   GitHubClient: class {
     api = api;
   },

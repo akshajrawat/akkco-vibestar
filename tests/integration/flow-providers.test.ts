@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
-import { builtInProfiles } from "../../backend/flows/templates";
+import { builtInProfiles } from "../../apps/core/flows/templates";
 import {
   createFixtureEngine,
   fixtureRepository,

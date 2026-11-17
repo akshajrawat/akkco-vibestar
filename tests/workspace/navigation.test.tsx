@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
-import { TaskNavigation } from "../../src/features/tasks/TaskNavigation";
+import { TaskNavigation } from "../../apps/desktop/features/tasks/TaskNavigation";
 
 afterEach(() => {
   cleanup();
@@ -287,8 +287,8 @@ it("offers the same keyboard context menu for tasks without a repository", () =>
 });
 
 it("keeps four named tool destinations, PR attention and the header create action", async () => {
-  const { NavigationSidebar } = await import("../../src/app/NavigationSidebar");
-  const { defaultSettings } = await import("../../backend/domain");
+  const { NavigationSidebar } = await import("../../apps/desktop/app/NavigationSidebar");
+  const { defaultSettings } = await import("../../apps/core/domain");
   const navigate = vi.fn();
   const newTask = vi.fn();
   const snapshot = { tasks: [], repositories: [], settings: defaultSettings, root: "/fixture" };
@@ -471,8 +471,8 @@ it("shows repository, creation age, title and the saved branch while retaining a
 });
 
 const searchableSidebar = async () => {
-  const { NavigationSidebar } = await import("../../src/app/NavigationSidebar");
-  const { defaultSettings } = await import("../../backend/domain");
+  const { NavigationSidebar } = await import("../../apps/desktop/app/NavigationSidebar");
+  const { defaultSettings } = await import("../../apps/core/domain");
   const { rpc } = bridge();
   const open = vi.fn();
   const newTask = vi.fn();

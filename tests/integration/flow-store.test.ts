@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
-import { Database } from "../../backend/storage/database";
-import { FlowStore } from "../../backend/flows/store";
-import { AgentProfileSchema, type FlowDefinition } from "../../backend/flows/contracts";
+import { Database } from "../../apps/core/storage/database";
+import { FlowStore } from "../../apps/core/flows/store";
+import { AgentProfileSchema, type FlowDefinition } from "../../apps/core/flows/contracts";
 
 it("keeps profile and flow revisions immutable across edits, layout changes and database reopening", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-flow-store-"));

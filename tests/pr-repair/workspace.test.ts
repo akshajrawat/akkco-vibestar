@@ -4,10 +4,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { capture, checked } from "../../backend/execution/runtime/process";
-import { RepairWorkspaces } from "../../backend/review/repair/workspace";
+import { capture, checked } from "../../apps/core/execution/runtime/process";
+import { RepairWorkspaces } from "../../apps/core/review/repair/workspace";
 import { repairFixture } from "./fixtures";
-import { RepairStore } from "../../backend/review/repair/store";
+import { RepairStore } from "../../apps/core/review/repair/store";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 

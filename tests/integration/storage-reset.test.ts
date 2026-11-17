@@ -3,11 +3,11 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, rename } from "node:fs/promise
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import BetterSqlite3 from "better-sqlite3";
-import { StorageService } from "../../backend/storage/service";
+import { StorageService } from "../../apps/core/storage/service";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
-import { checked } from "../../backend/execution/runtime/process";
-import { exists } from "../../backend/workspace/paths";
-import { defaultSettings } from "../../backend/domain";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { exists } from "../../apps/core/workspace/paths";
+import { defaultSettings } from "../../apps/core/domain";
 import { reviewedTaskFixture } from "../helpers/reviewed-task";
 
 it("previews exact removals, backs up valid SQLite and metadata, preserves imported sources/settings/auth and reopens without stale tasks or inference", async () => {

@@ -3,8 +3,8 @@ import type { IPty, IPtyForkOptions } from "node-pty";
 
 import { tmpdir } from "node:os";
 
-import { AuthSessions } from "../../backend/execution/terminals/auth";
-import type { CoreEvent } from "../../backend/domain";
+import { AuthSessions } from "../../apps/core/execution/terminals/auth";
+import type { CoreEvent } from "../../apps/core/domain";
 
 const fixture = vi.hoisted(() => ({ script: "", sessions: [] as IPty[] }));
 

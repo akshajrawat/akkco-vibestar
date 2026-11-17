@@ -5,12 +5,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { builtInProfiles } from "../../backend/flows/templates";
-import { fetchIssue } from "../../backend/workspace/issue";
-import { StorageService } from "../../backend/storage/service";
+import { builtInProfiles } from "../../apps/core/flows/templates";
+import { fetchIssue } from "../../apps/core/workspace/issue";
+import { StorageService } from "../../apps/core/storage/service";
 import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
 
-vi.mock("../../backend/workspace/issue", () => ({ fetchIssue: vi.fn() }));
+vi.mock("../../apps/core/workspace/issue", () => ({ fetchIssue: vi.fn() }));
 
 const context = {
   title: "Fixture issue",

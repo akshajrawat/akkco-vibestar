@@ -5,8 +5,8 @@ import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { checked } from "../../backend/execution/runtime/process";
-import type { Snapshot } from "../../src/lib/types";
+import { checked } from "../../apps/core/execution/runtime/process";
+import type { Snapshot } from "../../apps/desktop/lib/types";
 
 const require = createRequire(import.meta.url);
 

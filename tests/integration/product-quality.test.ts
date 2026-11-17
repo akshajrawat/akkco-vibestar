@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings, now } from "../../backend/domain";
+import { defaultSettings, now } from "../../apps/core/domain";
 import {
   createFixtureEngine,
   FixtureProvider,
@@ -13,17 +13,17 @@ import {
   prepareFixtureTask,
   plan1,
 } from "../helpers/fixtures";
-import { ReviewService } from "../../backend/review/service";
-import { Usage } from "../../backend/execution/output/usage";
-import { Database } from "../../backend/storage/database";
-import { limitDeltas } from "../../src/lib/usage";
-import { Editors, discoverEditors } from "../../backend/workspace/editors";
-import { Rpc } from "../../backend/rpc";
-import { CoreBridge } from "../../electron/bridge";
-import { execute } from "../../backend/execution/runtime/process";
-import { discoverCodexModels } from "../../backend/execution/providers/codex-models";
+import { ReviewService } from "../../apps/core/review/service";
+import { Usage } from "../../apps/core/execution/output/usage";
+import { Database } from "../../apps/core/storage/database";
+import { limitDeltas } from "../../apps/desktop/lib/usage";
+import { Editors, discoverEditors } from "../../apps/core/workspace/editors";
+import { Rpc } from "../../apps/core/rpc";
+import { CoreBridge } from "../../apps/electron/bridge";
+import { execute } from "../../apps/core/execution/runtime/process";
+import { discoverCodexModels } from "../../apps/core/execution/providers/codex-models";
 
-vi.mock("../../backend/execution/providers/codex-models", () => ({
+vi.mock("../../apps/core/execution/providers/codex-models", () => ({
   discoverCodexModels: vi.fn(async () => ({
     models: [],
     subscriptionLimits: {

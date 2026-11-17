@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
-import { defaultAppearance } from "../../backend/flows/appearance";
-import { Rpc } from "../../backend/rpc";
+import { defaultAppearance } from "../../apps/core/flows/appearance";
+import { Rpc } from "../../apps/core/rpc";
 import { createFixtureEngine } from "../helpers/fixtures";
 
 it("round-trips appearance and description through profile RPC and database reopen while preserving legacy bytes and revisions", async () => {
@@ -75,13 +75,13 @@ it("round-trips appearance and description through profile RPC and database reop
 });
 
 it("starts a fresh core without default Vibers and preserves existing task profile bytes on reopen", async () => {
-  const { Engine } = await import("../../backend/execution/engine");
-  const { isCustomViber } = await import("../../backend/flows/templates");
+  const { Engine } = await import("../../apps/core/execution/engine");
+  const { isCustomViber } = await import("../../apps/core/flows/templates");
   const dir = await mkdtemp(join(tmpdir(), "vibestar-no-defaults-"));
   let engine = await Engine.create(dir);
   try {
     expect(engine.db.all("SELECT id FROM agent_profiles")).toEqual([]);
-    const { initializeProfiles } = await import("../../backend/flows/defaults");
+    const { initializeProfiles } = await import("../../apps/core/flows/defaults");
     initializeProfiles(engine.db);
 
     const records = engine.db.all<{ data: string }>(

@@ -5,9 +5,9 @@ import {
   hardExclusions,
   applyContext,
   initialCandidate,
-} from "../../backend/issue-watch/eligibility";
-import { IssueSnapshotSchema } from "../../backend/issue-watch/contracts";
-import { retainedSource } from "../../backend/issue-watch/tracker-exclusions";
+} from "../../apps/core/issue-watch/eligibility";
+import { IssueSnapshotSchema } from "../../apps/core/issue-watch/contracts";
+import { retainedSource } from "../../apps/core/issue-watch/tracker-exclusions";
 import { watchConfiguration } from "./fixtures";
 
 const comment = (actor: string, body: string, day: number, association = "NONE") =>

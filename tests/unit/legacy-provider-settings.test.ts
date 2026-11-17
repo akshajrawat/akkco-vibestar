@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { defaultSettings, SettingsSchema, pipelineConfiguration } from "../../backend/domain";
+import { defaultSettings, SettingsSchema, pipelineConfiguration } from "../../apps/core/domain";
 
 it("preserves legacy defaults and validates effort against the chosen stage provider", () => {
   const legacy = SettingsSchema.parse(defaultSettings);

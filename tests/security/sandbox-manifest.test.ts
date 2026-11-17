@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 
-import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
-import { execute } from "../../backend/execution/runtime/process";
+import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
+import { execute } from "../../apps/core/execution/runtime/process";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 const fixture = vi.hoisted(() => ({ home: "" }));

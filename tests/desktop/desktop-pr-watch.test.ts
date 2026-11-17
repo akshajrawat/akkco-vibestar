@@ -6,8 +6,8 @@ import { join, resolve } from "node:path";
 import { _electron } from "playwright-core";
 import { it, expect, vi } from "vitest";
 
-import { Rpc } from "../../backend/rpc";
-import type { PRWatchContext } from "../../backend/review/pr/watch-github";
+import { Rpc } from "../../apps/core/rpc";
+import type { PRWatchContext } from "../../apps/core/review/pr/watch-github";
 import { createFixtureEngine } from "../helpers/fixtures";
 import { PRFixtureProvider } from "../helpers/pr-fixtures";
 

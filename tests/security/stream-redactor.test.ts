@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { StreamRedactor } from "../../backend/execution/output/stream-redactor";
+import { StreamRedactor } from "../../apps/core/execution/output/stream-redactor";
 
 it.each([
   "ghp_abcdefghijklmnopqrstuvwxyz123456",

@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-import { Rpc } from "../../backend/rpc";
+import { Rpc } from "../../apps/core/rpc";
 import {
   createFixtureEngine,
   fixtureRepository,
@@ -15,11 +15,11 @@ import {
   plan1,
   plan2,
 } from "../helpers/fixtures";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
-import { builtInProfiles } from "../../backend/flows/templates";
-import { migrateLegacyTask } from "../../backend/flows/legacy-migration";
-import { TaskTerminals } from "../../backend/execution/terminals/task-terminals";
-import { callTerminals } from "../../backend/rpc/terminals";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
+import { builtInProfiles } from "../../apps/core/flows/templates";
+import { migrateLegacyTask } from "../../apps/core/flows/legacy-migration";
+import { TaskTerminals } from "../../apps/core/execution/terminals/task-terminals";
+import { callTerminals } from "../../apps/core/rpc/terminals";
 
 class CanvasFixture extends FixtureProvider {
   readonly requests: AgentRunRequest[] = [];

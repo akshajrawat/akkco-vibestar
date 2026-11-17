@@ -1,15 +1,15 @@
-import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
+import { defaultReviewConfiguration } from "../../apps/core/review/pr/contracts";
 import { selectValue } from "../helpers/select";
 // @vitest-environment jsdom
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 
-import { ScheduledPage } from "../../src/features/pull-requests/ScheduledPage";
-import { PrDetails } from "../../src/features/pull-requests/PrDetails";
-import { defaultSettings } from "../../backend/domain";
-import type { Snapshot } from "../../src/lib/types";
-import type { ScheduleJob } from "../../backend/scheduled/contracts";
-import type { PRAnalysisSession } from "../../backend/review/pr/contracts";
+import { ScheduledPage } from "../../apps/desktop/features/pull-requests/ScheduledPage";
+import { PrDetails } from "../../apps/desktop/features/pull-requests/PrDetails";
+import { defaultSettings } from "../../apps/core/domain";
+import type { Snapshot } from "../../apps/desktop/lib/types";
+import type { ScheduleJob } from "../../apps/core/scheduled/contracts";
+import type { PRAnalysisSession } from "../../apps/core/review/pr/contracts";
 import { prSnapshot, observations } from "../helpers/pr-fixtures";
 
 afterEach(() => {

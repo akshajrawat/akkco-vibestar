@@ -3,14 +3,14 @@ import { selectValue } from "../helpers/select";
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 
-import { LogView } from "../../src/features/chat/LogView";
-import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
-import { AgentResponse } from "../../src/features/chat/AgentResponse";
-import { CurrentRun } from "../../src/features/chat/CurrentRun";
-import { updateTaskView } from "../../src/lib/taskView";
-import type { AgentEvent, Detail, Run } from "../../src/lib/types";
+import { LogView } from "../../apps/desktop/features/chat/LogView";
+import { AgentTimeline } from "../../apps/desktop/features/chat/AgentTimeline";
+import { AgentResponse } from "../../apps/desktop/features/chat/AgentResponse";
+import { CurrentRun } from "../../apps/desktop/features/chat/CurrentRun";
+import { updateTaskView } from "../../apps/desktop/lib/taskView";
+import type { AgentEvent, Detail, Run } from "../../apps/desktop/lib/types";
 
-vi.mock("../../src/hooks/useWorkspace", () => ({
+vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [], refresh: vi.fn() }),
 }));
 

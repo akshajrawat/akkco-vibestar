@@ -1,13 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { RepairService } from "../../backend/review/repair/service";
-import { RepairWorkspaces } from "../../backend/review/repair/workspace";
+import { RepairService } from "../../apps/core/review/repair/service";
+import { RepairWorkspaces } from "../../apps/core/review/repair/workspace";
 import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
 import { repairFixture } from "../pr-repair/fixtures";
 import { securityWorkspace } from "./fixtures";
-import { Rpc } from "../../backend/rpc";
-import { now, type Task } from "../../backend/domain";
+import { Rpc } from "../../apps/core/rpc";
+import { now, type Task } from "../../apps/core/domain";
 import { randomUUID } from "node:crypto";
 
 it("refuses repair history deletion through a post-startup managed logs alias", async () => {

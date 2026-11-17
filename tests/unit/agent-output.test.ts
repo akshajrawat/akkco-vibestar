@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
-import { Rpc } from "../../backend/rpc";
-import { now, type Task } from "../../backend/domain";
-import { readLogTail } from "../../backend/storage/logs";
-import { CommandExecutions } from "../../backend/execution/verification/command-executions";
-import { AgentRunner } from "../../backend/execution/agents/agent-runner";
+import { Rpc } from "../../apps/core/rpc";
+import { now, type Task } from "../../apps/core/domain";
+import { readLogTail } from "../../apps/core/storage/logs";
+import { CommandExecutions } from "../../apps/core/execution/verification/command-executions";
+import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
 import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
-import type { AgentEvent } from "../../src/lib/types";
+import type { AgentEvent } from "../../apps/desktop/lib/types";
 
 const taskRecord = (repoId: string): Task => ({
   id: randomUUID(),

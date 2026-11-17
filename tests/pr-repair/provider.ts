@@ -1,5 +1,5 @@
-import type { AgentProvider, AgentRunRequest } from "../../backend/execution/providers/contracts";
-import { CodexProvider } from "../../backend/execution/providers/codex";
+import type { AgentProvider, AgentRunRequest } from "../../apps/core/execution/providers/contracts";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
 
 // Only injected from tests. Production has no fixture provider selection.
 export class RepairFixtureProvider implements AgentProvider {

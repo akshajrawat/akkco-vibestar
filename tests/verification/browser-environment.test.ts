@@ -5,12 +5,12 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile, realpath } from "
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
-import { execute } from "../../backend/execution/runtime/process";
-import { Rpc } from "../../backend/rpc";
+import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
+import { execute } from "../../apps/core/execution/runtime/process";
+import { Rpc } from "../../apps/core/rpc";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
-import { taskVerification } from "../../backend/execution/verification/task-verification";
-import { Database } from "../../backend/storage/database";
+import { taskVerification } from "../../apps/core/execution/verification/task-verification";
+import { Database } from "../../apps/core/storage/database";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
 

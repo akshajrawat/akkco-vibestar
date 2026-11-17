@@ -1,10 +1,10 @@
-import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
-import { ActionSchema } from "../../backend/scheduled/action";
+import { defaultReviewConfiguration } from "../../apps/core/review/pr/contracts";
+import { ActionSchema } from "../../apps/core/scheduled/action";
 import { it, expect } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { Scheduler } from "../../backend/scheduled/scheduler";
+import { Scheduler } from "../../apps/core/scheduled/scheduler";
 import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
 
 it("analyzes unlinked PR feedback in an isolated read-only workspace without cloning repositories or creating tasks", async () => {

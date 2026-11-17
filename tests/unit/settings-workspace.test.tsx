@@ -2,18 +2,20 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { defaultSettings } from "../../backend/domain";
-import { SettingsPage } from "../../src/features/settings/SettingsPage";
-import { GlobalNotifications } from "../../src/app/GlobalNotifications";
-import { notifications } from "../../src/lib/notifications";
+import { defaultSettings } from "../../apps/core/domain";
+import { SettingsPage } from "../../apps/desktop/features/settings/SettingsPage";
+import { GlobalNotifications } from "../../apps/desktop/app/GlobalNotifications";
+import { notifications } from "../../apps/desktop/lib/notifications";
 import toast from "react-hot-toast";
-import { ConnectLocalRepository } from "../../src/features/repositories/ConnectLocalRepository";
-import { ProfileEditor } from "../../src/features/flows/ProfileEditor";
+import { ConnectLocalRepository } from "../../apps/desktop/features/repositories/ConnectLocalRepository";
+import { ProfileEditor } from "../../apps/desktop/features/flows/ProfileEditor";
 import { viberProfile } from "../workspace/flow-fixtures";
 import { selectValue } from "../helpers/select";
 import { mockDialog } from "../helpers/dialog";
 
-vi.mock("../../src/hooks/useWorkspace", () => ({ useProviders: () => ({ providers: [] }) }));
+vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
+  useProviders: () => ({ providers: [] }),
+}));
 
 const rpc = vi.fn();
 const saveDesktop = vi.fn();

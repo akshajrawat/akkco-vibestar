@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { createFixtureEngine } from "../helpers/fixtures";
-import { Rpc } from "../../backend/rpc";
-import { builtInProfiles } from "../../backend/flows/templates";
+import { Rpc } from "../../apps/core/rpc";
+import { builtInProfiles } from "../../apps/core/flows/templates";
 
 it("resets the old library once while retaining Tasks and referenced profile revisions", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-reset-"));

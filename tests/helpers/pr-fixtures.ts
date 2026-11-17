@@ -1,8 +1,8 @@
 import { FixtureProvider } from "./fixtures";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
-import { object } from "../../backend/execution/providers/contracts";
-import type { PullRequestState } from "../../backend/scheduled/contracts";
-import type { ReviewObservation } from "../../backend/review/pr/contracts";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
+import { object } from "../../apps/core/execution/providers/contracts";
+import type { PullRequestState } from "../../apps/core/scheduled/contracts";
+import type { ReviewObservation } from "../../apps/core/review/pr/contracts";
 
 export const reviewBody = `Hi, I have reviewed this and tested it locally, and it works fine in both desktop and mobile.
 

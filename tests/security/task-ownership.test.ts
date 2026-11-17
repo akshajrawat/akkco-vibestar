@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 
-import { checked, capture, processIdentity } from "../../backend/execution/runtime/process";
-import * as commands from "../../backend/workspace/git-command";
-import { exists } from "../../backend/workspace/paths";
-import { StorageService } from "../../backend/storage/service";
+import { checked, capture, processIdentity } from "../../apps/core/execution/runtime/process";
+import * as commands from "../../apps/core/workspace/git-command";
+import { exists } from "../../apps/core/workspace/paths";
+import { StorageService } from "../../apps/core/storage/service";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 let dir: string;

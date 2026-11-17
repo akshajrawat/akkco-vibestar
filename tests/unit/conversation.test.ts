@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 
-import { discussionEntries, isAcknowledgment } from "../../backend/scheduled/action";
+import { discussionEntries, isAcknowledgment } from "../../apps/core/scheduled/action";
 import { prSnapshot } from "../helpers/pr-fixtures";
-import type { PullRequestState } from "../../backend/scheduled/contracts";
+import type { PullRequestState } from "../../apps/core/scheduled/contracts";
 
 it("preserves exact source wording, authorship, thread relationships and chronology for current PR analysis", () => {
   const snapshot = structuredClone(prSnapshot);

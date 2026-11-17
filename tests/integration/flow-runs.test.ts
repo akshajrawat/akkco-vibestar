@@ -4,18 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
-import { now } from "../../backend/domain";
-import { Database } from "../../backend/storage/database";
-import { FlowStore } from "../../backend/flows/store";
-import { FlowRunStore } from "../../backend/flows/run-store";
+import { now } from "../../apps/core/domain";
+import { Database } from "../../apps/core/storage/database";
+import { FlowStore } from "../../apps/core/flows/store";
+import { FlowRunStore } from "../../apps/core/flows/run-store";
 import {
   AgentProfileSchema,
   type FlowNode,
   type FlowDefinition,
-} from "../../backend/flows/contracts";
-import { agentNodePrompt, type NodeAttempt } from "../../backend/flows/run-contracts";
+} from "../../apps/core/flows/contracts";
+import { agentNodePrompt, type NodeAttempt } from "../../apps/core/flows/run-contracts";
 import { createFixtureEngine } from "../helpers/fixtures";
-import { resolveNodeInputs } from "../../backend/flows/context";
+import { resolveNodeInputs } from "../../apps/core/flows/context";
 
 const databases: Database[] = [];
 afterEach(() => databases.splice(0).forEach((db) => db.close()));

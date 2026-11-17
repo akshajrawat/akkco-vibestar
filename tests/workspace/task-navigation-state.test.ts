@@ -4,10 +4,10 @@ import {
   flowTaskActivity,
   taskExecutionDuration,
   taskNavigationState,
-} from "../../src/features/tasks/taskNavigationState";
-import type { TaskActivity } from "../../src/features/tasks/taskNavigationState";
+} from "../../apps/desktop/features/tasks/taskNavigationState";
+import type { TaskActivity } from "../../apps/desktop/features/tasks/taskNavigationState";
 import { viberDetail, viberWorkspace } from "./flow-fixtures";
-import type { FlowRun, NodeAttempt } from "../../backend/flows/run-contracts";
+import type { FlowRun, NodeAttempt } from "../../apps/core/flows/run-contracts";
 
 const activity = (update: Partial<TaskActivity> = {}): TaskActivity => ({
   runId: "run",

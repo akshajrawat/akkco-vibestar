@@ -2,9 +2,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, act, fireEvent, render, screen } from "@testing-library/react";
 
-import { useTaskView, updateTaskView } from "../../src/lib/taskView";
-import { SecondaryWorkspace } from "../../src/features/pull-requests/repair/SecondaryWorkspace";
-import { Button } from "../../src/components/ui/button";
+import { useTaskView, updateTaskView } from "../../apps/desktop/lib/taskView";
+import { SecondaryWorkspace } from "../../apps/desktop/features/pull-requests/repair/SecondaryWorkspace";
+import { Button } from "../../apps/desktop/components/ui/button";
 
 afterEach(() => {
   cleanup();

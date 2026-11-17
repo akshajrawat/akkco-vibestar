@@ -2,11 +2,11 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 
-import { NewTask } from "../../src/features/tasks/NewTask";
-import { PrState } from "../../src/features/pull-requests/PrDetails";
-import { defaultSettings } from "../../backend/domain";
+import { NewTask } from "../../apps/desktop/features/tasks/NewTask";
+import { PrState } from "../../apps/desktop/features/pull-requests/PrDetails";
+import { defaultSettings } from "../../apps/core/domain";
 import { viberProfile } from "../workspace/flow-fixtures";
-import type { ScheduleJob } from "../../backend/scheduled/contracts";
+import type { ScheduleJob } from "../../apps/core/scheduled/contracts";
 
 afterEach(cleanup);
 

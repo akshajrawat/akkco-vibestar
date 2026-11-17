@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, symlink } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CoreBridge } from "../../electron/bridge";
+import { CoreBridge } from "../../apps/electron/bridge";
 
 /** Exercise the actual probe/installer with inert local WSL and npm executables. */
 const fixture = async () => {

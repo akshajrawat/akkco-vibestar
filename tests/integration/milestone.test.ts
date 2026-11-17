@@ -4,15 +4,15 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, stat, readdir, rename } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings, now, type Task } from "../../backend/domain";
-import { Usage } from "../../backend/execution/output/usage";
-import { StorageService } from "../../backend/storage/service";
-import { Database } from "../../backend/storage/database";
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
-import { dataRootChoice, chooseDataRoot } from "../../backend/storage/bootstrap";
-import { checked } from "../../backend/execution/runtime/process";
-import { discoveryRoot } from "../../backend/workspace/discovery";
-import { createLayout } from "../../backend/workspace/paths";
+import { defaultSettings, now, type Task } from "../../apps/core/domain";
+import { Usage } from "../../apps/core/execution/output/usage";
+import { StorageService } from "../../apps/core/storage/service";
+import { Database } from "../../apps/core/storage/database";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { dataRootChoice, chooseDataRoot } from "../../apps/core/storage/bootstrap";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { discoveryRoot } from "../../apps/core/workspace/discovery";
+import { createLayout } from "../../apps/core/workspace/paths";
 import {
   createFixtureEngine,
   fixtureRepository,

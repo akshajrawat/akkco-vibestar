@@ -5,15 +5,15 @@ import { join } from "node:path";
 import Sqlite from "better-sqlite3";
 import { expect, it } from "vitest";
 
-import { Database } from "../../backend/storage/database";
-import { migrations } from "../../backend/storage/migrations";
+import { Database } from "../../apps/core/storage/database";
+import { migrations } from "../../apps/core/storage/migrations";
 import {
   AgentProfileSchema,
   FlowNodeSchema,
   resolveAgentNode,
-} from "../../backend/flows/contracts";
-import { FlowRunStore } from "../../backend/flows/run-store";
-import { continuationPlan } from "../../backend/flows/continuation";
+} from "../../apps/core/flows/contracts";
+import { FlowRunStore } from "../../apps/core/flows/run-store";
+import { continuationPlan } from "../../apps/core/flows/continuation";
 
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 

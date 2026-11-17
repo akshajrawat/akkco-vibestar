@@ -3,13 +3,13 @@ import { it, expect, vi } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { StorageService } from "../../backend/storage/service";
-import { now, defaultSettings, type Task } from "../../backend/domain";
-import { checked, capture } from "../../backend/execution/runtime/process";
-import { exists } from "../../backend/workspace/paths";
+import { StorageService } from "../../apps/core/storage/service";
+import { now, defaultSettings, type Task } from "../../apps/core/domain";
+import { checked, capture } from "../../apps/core/execution/runtime/process";
+import { exists } from "../../apps/core/workspace/paths";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
-import { Scheduler } from "../../backend/scheduled/scheduler";
-import { GitHubMonitor } from "../../backend/scheduled/github";
+import { Scheduler } from "../../apps/core/scheduled/scheduler";
+import { GitHubMonitor } from "../../apps/core/scheduled/github";
 
 it("history deletion removes the owned branch and worktree even when worktree cleanup is deselected, preserving other branches", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-history-branch-"));

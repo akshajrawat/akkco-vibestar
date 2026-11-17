@@ -3,9 +3,9 @@ import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
 import { createFixtureEngine } from "../helpers/fixtures";
-import { IssueWatchStore } from "../../backend/issue-watch/store";
+import { IssueWatchStore } from "../../apps/core/issue-watch/store";
 import { watchConfiguration, watchFixture, githubIssue } from "./fixtures";
 
 const resources: Awaited<ReturnType<typeof watchFixture>>[] = [];

@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import { AgentProfileSchema, type FlowNode } from "../../backend/flows/contracts";
-import type { ApprovalDecision, FlowRun } from "../../backend/flows/run-contracts";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import { AgentProfileSchema, type FlowNode } from "../../apps/core/flows/contracts";
+import type { ApprovalDecision, FlowRun } from "../../apps/core/flows/run-contracts";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
-import { staleNodes } from "../../src/features/flows/graph";
+import { staleNodes } from "../../apps/desktop/features/flows/graph";
 
 class FlowFixture extends FixtureProvider {
   readonly requests: {

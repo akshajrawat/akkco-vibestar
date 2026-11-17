@@ -15,20 +15,20 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { z } from "zod";
 
-import { AgentProfileSchema } from "../../backend/flows/contracts";
-import { agentNodePrompt } from "../../backend/flows/run-contracts";
-import { resolveNodeInputs } from "../../backend/flows/context";
-import { AgentRunner } from "../../backend/execution/agents/agent-runner";
-import { StorageService } from "../../backend/storage/service";
+import { AgentProfileSchema } from "../../apps/core/flows/contracts";
+import { agentNodePrompt } from "../../apps/core/flows/run-contracts";
+import { resolveNodeInputs } from "../../apps/core/flows/context";
+import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
+import { StorageService } from "../../apps/core/storage/service";
 import {
   assertManagedWorkspace,
   prepareManagedWorkspace,
   managedWorkspaceFingerprint,
-} from "../../backend/workspace/managed";
-import { createLayout, exists } from "../../backend/workspace/paths";
-import { Database } from "../../backend/storage/database";
-import { gitChecked } from "../../backend/workspace/git-command";
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
+} from "../../apps/core/workspace/managed";
+import { createLayout, exists } from "../../apps/core/workspace/paths";
+import { Database } from "../../apps/core/storage/database";
+import { gitChecked } from "../../apps/core/workspace/git-command";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
 import { createFixtureEngine, FixtureProvider, fixtureRepository } from "../helpers/fixtures";
 
 let directory: string;

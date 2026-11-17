@@ -3,16 +3,16 @@ import { useState } from "react";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { IssueWatchPage } from "../../src/features/issue-watch/IssueWatchPage";
-import { IssueMarkdown } from "../../src/features/issue-watch/IssueMarkdown";
-import { NewTask } from "../../src/features/tasks/NewTask";
-import { useWatchNotifications } from "../../src/features/issue-watch/notifications";
-import type { CoreEvent, Snapshot } from "../../src/lib/types";
+import { IssueWatchPage } from "../../apps/desktop/features/issue-watch/IssueWatchPage";
+import { IssueMarkdown } from "../../apps/desktop/features/issue-watch/IssueMarkdown";
+import { NewTask } from "../../apps/desktop/features/tasks/NewTask";
+import { useWatchNotifications } from "../../apps/desktop/features/issue-watch/notifications";
+import type { CoreEvent, Snapshot } from "../../apps/desktop/lib/types";
 import { githubIssue, watchFixture } from "./fixtures";
-import { ScanResults } from "../../src/features/issue-watch/ScanResults";
-import type { CandidateSummary } from "../../backend/issue-watch/contracts";
+import { ScanResults } from "../../apps/desktop/features/issue-watch/ScanResults";
+import type { CandidateSummary } from "../../apps/core/issue-watch/contracts";
 
-vi.mock("../../src/hooks/useWorkspace", () => ({
+vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
   useProviders: () => ({
     providers: [
       {

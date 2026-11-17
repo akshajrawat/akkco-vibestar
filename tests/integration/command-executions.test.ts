@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Sqlite from "better-sqlite3";
-import { Database } from "../../backend/storage/database";
-import { migrations } from "../../backend/storage/migrations";
-import { CommandExecutions } from "../../backend/execution/verification/command-executions";
-import { CodexProvider } from "../../backend/execution/providers/codex";
-import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
+import { Database } from "../../apps/core/storage/database";
+import { migrations } from "../../apps/core/storage/migrations";
+import { CommandExecutions } from "../../apps/core/execution/verification/command-executions";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 
 const seed = (db: Database) => {
   db.run("INSERT INTO repositories VALUES('repo','owner','repo','{}')");

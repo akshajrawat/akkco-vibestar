@@ -1,12 +1,8 @@
 node_modules/
-dist/
-dist-core/
-dist-electron/
-release/
+out/
 coverage/
 *.log
 *.tsbuildinfo
-test-results/
 .husky/_/
 *.sqlite
 *.sqlite-wal

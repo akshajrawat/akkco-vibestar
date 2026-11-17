@@ -5,10 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { AgentRunner } from "../../backend/execution/agents/agent-runner";
-import type { AgentExecution } from "../../backend/execution/contracts";
-import { AgentProfileSchema } from "../../backend/flows/contracts";
-import { agentNodePrompt } from "../../backend/flows/run-contracts";
+import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
+import type { AgentExecution } from "../../apps/core/execution/contracts";
+import { AgentProfileSchema } from "../../apps/core/flows/contracts";
+import { agentNodePrompt } from "../../apps/core/flows/run-contracts";
 import {
   createFixtureEngine,
   fixtureRepository,

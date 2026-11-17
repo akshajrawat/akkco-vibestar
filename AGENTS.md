@@ -27,6 +27,16 @@
 - Prefer asynchronous, non-blocking filesystem APIs over synchronous
   equivalents, especially in servers and UI-sensitive processes.
 
+## Process Boundaries in case of electron
+
+- Renderer code must not directly import Electron main-process
+  or backend runtime implementations.
+- Communicate across processes through approved typed contracts
+  and IPC interfaces.
+- Shared types and schemas must not depend on privileged runtime code.
+- Enforce these boundaries through ESLint and dependency checks,
+  not agent instructions alone.
+
 ## Deterministic Guardrails
 
 - Prefer architecture, types, lint rules and tests over instructions

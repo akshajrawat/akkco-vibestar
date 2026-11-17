@@ -5,11 +5,11 @@ import { createRequire } from "node:module";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Rpc } from "../../backend/rpc";
-import { GitHubMonitor } from "../../backend/scheduled/github";
+import { Rpc } from "../../apps/core/rpc";
+import { GitHubMonitor } from "../../apps/core/scheduled/github";
 import { PRFixtureProvider, prSnapshot } from "../helpers/pr-fixtures";
-import type { Snapshot } from "../../src/lib/types";
-import type { PRAnalysisSession } from "../../backend/review/pr/contracts";
+import type { Snapshot } from "../../apps/desktop/lib/types";
+import type { PRAnalysisSession } from "../../apps/core/review/pr/contracts";
 
 const require = createRequire(import.meta.url);
 

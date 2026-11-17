@@ -11,13 +11,13 @@ import {
 } from "@testing-library/react";
 import toast from "react-hot-toast";
 
-import type { CoreEvent } from "../../backend/domain";
-import { defaultSettings } from "../../backend/domain";
-import type { Snapshot } from "../../src/lib/types";
-import { GlobalNotifications } from "../../src/app/GlobalNotifications";
-import { useTaskNotifications } from "../../src/app/useTaskNotifications";
-import { notifications } from "../../src/lib/notifications";
-import { WorkspaceOverlay } from "../../src/components/ui/WorkspaceOverlay";
+import type { CoreEvent } from "../../apps/core/domain";
+import { defaultSettings } from "../../apps/core/domain";
+import type { Snapshot } from "../../apps/desktop/lib/types";
+import { GlobalNotifications } from "../../apps/desktop/app/GlobalNotifications";
+import { useTaskNotifications } from "../../apps/desktop/app/useTaskNotifications";
+import { notifications } from "../../apps/desktop/lib/notifications";
+import { WorkspaceOverlay } from "../../apps/desktop/components/ui/WorkspaceOverlay";
 import { mockDialog } from "../helpers/dialog";
 
 let listener: (event: CoreEvent) => void;

@@ -2,17 +2,17 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { checked } from "../../backend/execution/runtime/process";
-import { now, type Repository, type Task } from "../../backend/domain";
-import { initializeProfiles } from "../../backend/flows/defaults";
-import { Engine } from "../../backend/execution/engine";
-import { AgentProfileSchema, type AgentProfile } from "../../backend/flows/contracts";
-import type { FlowRun } from "../../backend/flows/run-contracts";
-import { CodexProvider } from "../../backend/execution/providers/codex";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { now, type Repository, type Task } from "../../apps/core/domain";
+import { initializeProfiles } from "../../apps/core/flows/defaults";
+import { Engine } from "../../apps/core/execution/engine";
+import { AgentProfileSchema, type AgentProfile } from "../../apps/core/flows/contracts";
+import type { FlowRun } from "../../apps/core/flows/run-contracts";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import type {
   AgentRunRequest,
   ProviderDetection,
-} from "../../backend/execution/providers/contracts";
+} from "../../apps/core/execution/providers/contracts";
 
 const fixtureTransport = (url: string) => {
   if (!isAbsolute(url))

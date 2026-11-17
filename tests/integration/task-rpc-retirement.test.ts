@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
-import { Rpc } from "../../backend/rpc";
-import { builtInProfiles } from "../../backend/flows/templates";
+import { Rpc } from "../../apps/core/rpc";
+import { builtInProfiles } from "../../apps/core/flows/templates";
 import { createFixtureEngine } from "../helpers/fixtures";
 
 it("rejects retired task execution endpoints without mutating task history or starting providers", async () => {

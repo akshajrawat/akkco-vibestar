@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 
-import { PRIdentityReader } from "../../backend/review/repair/identity";
-import { GitHubClient } from "../../backend/github/client";
+import { PRIdentityReader } from "../../apps/core/review/repair/identity";
+import { GitHubClient } from "../../apps/core/github/client";
 
 it("reads immutable PR/fork IDs, the actual head/base refs, current base SHA and official authenticated push permission", async () => {
   const client = new GitHubClient("/tmp");

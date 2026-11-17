@@ -1,12 +1,12 @@
 import { it, expect, vi } from "vitest";
 
-import { Database } from "../../backend/storage/database";
-import { GitHubClient } from "../../backend/github/client";
-import { GitHubService } from "../../backend/github/service";
-import { Scheduler } from "../../backend/scheduled/scheduler";
-import { GitHubMonitor } from "../../backend/scheduled/github";
-import type { GitHubRepository, GitHubPullRequest } from "../../backend/github/contracts";
-import type { Engine } from "../../backend/execution/engine";
+import { Database } from "../../apps/core/storage/database";
+import { GitHubClient } from "../../apps/core/github/client";
+import { GitHubService } from "../../apps/core/github/service";
+import { Scheduler } from "../../apps/core/scheduled/scheduler";
+import { GitHubMonitor } from "../../apps/core/scheduled/github";
+import type { GitHubRepository, GitHubPullRequest } from "../../apps/core/github/contracts";
+import type { Engine } from "../../apps/core/execution/engine";
 
 const repository = (full_name: string, parent?: string): GitHubRepository => ({
   id: full_name.includes("viewer") ? 2 : 1,

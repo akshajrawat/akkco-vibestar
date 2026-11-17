@@ -6,8 +6,8 @@ import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { Rpc } from "../../backend/rpc";
-import { Database } from "../../backend/storage/database";
+import { Rpc } from "../../apps/core/rpc";
+import { Database } from "../../apps/core/storage/database";
 import { createFixtureEngine } from "../helpers/fixtures";
 import { githubIssue, watchFixture } from "../issue-watch/fixtures";
 import { IssueWatchFixtureProvider } from "../issue-watch/provider";

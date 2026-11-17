@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { verificationSummary } from "../../backend/execution/verification/verification";
+import { verificationSummary } from "../../apps/core/execution/verification/verification";
 
 const check = (name: string, command: string | null, kind = "check") => ({
   name,

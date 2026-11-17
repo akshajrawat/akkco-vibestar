@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { fetchIssue } from "../../backend/workspace/issue";
-import { Rpc } from "../../backend/rpc";
-import type { Task } from "../../backend/domain";
-import { builtInProfiles } from "../../backend/flows/templates";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import { fetchIssue } from "../../apps/core/workspace/issue";
+import { Rpc } from "../../apps/core/rpc";
+import type { Task } from "../../apps/core/domain";
+import { builtInProfiles } from "../../apps/core/flows/templates";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
 
-vi.mock("../../backend/workspace/issue", () => ({ fetchIssue: vi.fn() }));
+vi.mock("../../apps/core/workspace/issue", () => ({ fetchIssue: vi.fn() }));
 
 class IssueFixture extends FixtureProvider {
   readonly requests: AgentRunRequest[] = [];

@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { expect, it } from "vitest";
 
-import { builtInProfiles } from "../../backend/flows/templates";
-import { resolveNodeInputs } from "../../backend/flows/context";
+import { builtInProfiles } from "../../apps/core/flows/templates";
+import { resolveNodeInputs } from "../../apps/core/flows/context";
 import { createFixtureEngine, fixtureRepository } from "../helpers/fixtures";
 
 const root = process.env.VIBESTAR_SIDEBAR_DEMO_HOME;

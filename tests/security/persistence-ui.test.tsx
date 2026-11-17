@@ -1,14 +1,14 @@
 import { expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { Database } from "../../backend/storage/database";
-import { RepositoryIndex } from "../../backend/workspace/discovery";
-import type { Engine } from "../../backend/execution/engine";
-import { Rpc } from "../../backend/rpc";
-import { RepositoryPage } from "../../src/features/repositories/RepositoryPage";
-import { TaskNavigation } from "../../src/features/tasks/TaskNavigation";
-import { ScheduledPage } from "../../src/features/pull-requests/ScheduledPage";
-import type { Snapshot } from "../../src/lib/types";
+import { Database } from "../../apps/core/storage/database";
+import { RepositoryIndex } from "../../apps/core/workspace/discovery";
+import type { Engine } from "../../apps/core/execution/engine";
+import { Rpc } from "../../apps/core/rpc";
+import { RepositoryPage } from "../../apps/desktop/features/repositories/RepositoryPage";
+import { TaskNavigation } from "../../apps/desktop/features/tasks/TaskNavigation";
+import { ScheduledPage } from "../../apps/desktop/features/pull-requests/ScheduledPage";
+import type { Snapshot } from "../../apps/desktop/lib/types";
 
 it("isolates schema-invalid catalog, index, task and PR records before rendering shared history views", async () => {
   const db = new Database(":memory:");

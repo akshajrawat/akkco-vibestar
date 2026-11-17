@@ -6,15 +6,7 @@ import stylistic from "@stylistic/eslint-plugin";
 
 export default tseslint.config(
   {
-    ignores: [
-      "dist/**",
-      "dist-core/**",
-      "dist-electron/**",
-      "release/**",
-      "coverage/**",
-      "test-results/**",
-      ".husky/_/**",
-    ],
+    ignores: ["out/**", "coverage/**", ".husky/_/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -52,7 +44,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["apps/desktop/**/*.{ts,tsx}"],
     plugins: { "react-hooks": hooks },
     rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "warn" },
   },

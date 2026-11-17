@@ -3,8 +3,8 @@ import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { parseLabelInput } from "../../src/features/issue-watch/labels";
-import { LabelExclusions } from "../../src/features/issue-watch/LabelExclusions";
+import { parseLabelInput } from "../../apps/desktop/features/issue-watch/labels";
+import { LabelExclusions } from "../../apps/desktop/features/issue-watch/LabelExclusions";
 
 afterEach(() => {
   cleanup();

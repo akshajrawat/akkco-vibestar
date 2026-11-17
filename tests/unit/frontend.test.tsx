@@ -3,16 +3,16 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { afterEach, expect, it, vi } from "vitest";
 
-import { defaultSettings } from "../../backend/domain";
-import { NewTask } from "../../src/features/tasks/NewTask";
-import { parseArgv } from "../../src/features/verification/commands";
-import { tokenUsage } from "../../src/lib/format";
+import { defaultSettings } from "../../apps/core/domain";
+import { NewTask } from "../../apps/desktop/features/tasks/NewTask";
+import { parseArgv } from "../../apps/desktop/features/verification/commands";
+import { tokenUsage } from "../../apps/desktop/lib/format";
 import { viberProfile } from "../workspace/flow-fixtures";
 
 afterEach(cleanup);
 
 it("shows cancelled preparation as a compact row without a yellow box or duplicate Resume", async () => {
-  const { RunError } = await import("../../src/features/chat/RunError");
+  const { RunError } = await import("../../apps/desktop/features/chat/RunError");
 
   const { container } = render(
     <RunError error="AdeError: Run cancelled" retry={vi.fn()} logs={vi.fn()} />,
@@ -28,7 +28,7 @@ it("shows cancelled preparation as a compact row without a yellow box or duplica
 });
 
 it("identifies cancelled planning even when detection was stopped before a run was created", async () => {
-  const { RunError } = await import("../../src/features/chat/RunError");
+  const { RunError } = await import("../../apps/desktop/features/chat/RunError");
   render(<RunError error="AdeError: antigravity: AdeError: Run cancelled" stage={1} />);
   expect(screen.getByText("Task planning was stopped.")).toBeTruthy();
   expect(screen.queryByText(/implementation was stopped/)).toBeNull();
@@ -53,7 +53,7 @@ it("shows independently reported token fields without inventing a total", () => 
 });
 
 it("shows an agent's actual structured summary without dumping JSON into the conversation", async () => {
-  const { AgentResponse } = await import("../../src/features/chat/AgentResponse");
+  const { AgentResponse } = await import("../../apps/desktop/features/chat/AgentResponse");
 
   render(
     <AgentResponse
@@ -161,7 +161,7 @@ it("validates argv input", () => {
 });
 
 it("uses typed preload window controls and reflects maximize state", async () => {
-  const { TitleBar } = await import("../../src/app/TitleBar");
+  const { TitleBar } = await import("../../apps/desktop/app/TitleBar");
 
   const controls = {
     minimize: vi.fn().mockResolvedValue(undefined),
@@ -195,7 +195,7 @@ it("uses typed preload window controls and reflects maximize state", async () =>
 });
 
 it("renders a searchable directory diff tree with per-file statistics", async () => {
-  const { DiffFileTree } = await import("../../src/components/diff/DiffFileTree");
+  const { DiffFileTree } = await import("../../apps/desktop/components/diff/DiffFileTree");
   const select = vi.fn();
 
   render(
@@ -240,7 +240,7 @@ it("renders a searchable directory diff tree with per-file statistics", async ()
 });
 
 it("preserves task-specific drafts and view preferences when switching tasks", async () => {
-  const { useTaskView, updateTaskView } = await import("../../src/lib/taskView");
+  const { useTaskView, updateTaskView } = await import("../../apps/desktop/lib/taskView");
 
   const Probe = ({ id }: { id: string }) => {
     const view = useTaskView(id);
@@ -271,7 +271,7 @@ it("preserves task-specific drafts and view preferences when switching tasks", a
 });
 
 it("searches and executes real command palette actions with keyboard navigation", async () => {
-  const { CommandPalette } = await import("../../src/app/CommandPalette");
+  const { CommandPalette } = await import("../../apps/desktop/app/CommandPalette");
 
   const run = vi.fn(),
     close = vi.fn();
@@ -296,7 +296,7 @@ it("searches and executes real command palette actions with keyboard navigation"
 });
 
 it("groups tool-call updates into expandable actual command results", async () => {
-  const { AgentTimeline } = await import("../../src/features/chat/AgentTimeline");
+  const { AgentTimeline } = await import("../../apps/desktop/features/chat/AgentTimeline");
   const timestamp = new Date().toISOString();
 
   render(
@@ -338,8 +338,8 @@ it("groups tool-call updates into expandable actual command results", async () =
 });
 
 it("dismisses inline cancellations while retaining compact task status", async () => {
-  const { RunError } = await import("../../src/features/chat/RunError");
-  const { Status } = await import("../../src/components/shared/Status");
+  const { RunError } = await import("../../apps/desktop/features/chat/RunError");
+  const { Status } = await import("../../apps/desktop/components/shared/Status");
 
   render(
     <>
@@ -355,7 +355,7 @@ it("dismisses inline cancellations while retaining compact task status", async (
 });
 
 it("shows named cleanup blockers, keeps technical details collapsed, and requires explicit retry", async () => {
-  const { CleanupError } = await import("../../src/components/shared/CleanupError");
+  const { CleanupError } = await import("../../apps/desktop/components/shared/CleanupError");
 
   const blockers = [
     {
@@ -405,9 +405,9 @@ it("shows named cleanup blockers, keeps technical details collapsed, and require
 });
 
 it("collapses PR reasoning and highlights active analysis above a previous approval", async () => {
-  const { ScheduledPage } = await import("../../src/features/pull-requests/ScheduledPage");
+  const { ScheduledPage } = await import("../../apps/desktop/features/pull-requests/ScheduledPage");
   const { prSnapshot } = await import("../helpers/pr-fixtures");
-  const { ActionSchema } = await import("../../backend/scheduled/action");
+  const { ActionSchema } = await import("../../apps/core/scheduled/action");
 
   const job = {
     id: "watch",
@@ -459,7 +459,7 @@ it("collapses PR reasoning and highlights active analysis above a previous appro
 });
 
 it("normalizes legacy transport errors and structured errors without discarding their reason", async () => {
-  const { errorMessage } = await import("../../src/lib/api");
+  const { errorMessage } = await import("../../apps/desktop/lib/api");
 
   expect(
     errorMessage("Error invoking remote method 'core:rpc': Error: AdeError: Run cancelled"),
@@ -474,7 +474,9 @@ it("normalizes legacy transport errors and structured errors without discarding 
 });
 
 it("shows active connections and an All GitHub catalog without legacy filters or advanced URL forms", async () => {
-  const { RepositoryPage } = await import("../../src/features/repositories/RepositoryPage");
+  const { RepositoryPage } =
+    await import("../../apps/desktop/features/repositories/RepositoryPage");
+
   const rpc = vi.fn().mockResolvedValue({});
 
   Object.defineProperty(window, "vibestar", {
@@ -524,7 +526,7 @@ it("shows active connections and an All GitHub catalog without legacy filters or
 
 it("verifies a manually entered checkout before connecting and invalidates preview on path changes", async () => {
   const { ConnectLocalRepository } =
-    await import("../../src/features/repositories/ConnectLocalRepository");
+    await import("../../apps/desktop/features/repositories/ConnectLocalRepository");
 
   const verified = {
     verification_id: "verified",
@@ -600,7 +602,7 @@ it("verifies a manually entered checkout before connecting and invalidates previ
 
 it("selects a managed repository found through a canonical lookup without re-importing it", async () => {
   const { ConnectLocalRepository } =
-    await import("../../src/features/repositories/ConnectLocalRepository");
+    await import("../../apps/desktop/features/repositories/ConnectLocalRepository");
 
   const existing = {
     id: "managed",

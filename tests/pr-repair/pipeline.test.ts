@@ -4,8 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { RepairService } from "../../backend/review/repair/service";
-import { RepairWorkspaces } from "../../backend/review/repair/workspace";
+import { RepairService } from "../../apps/core/review/repair/service";
+import { RepairWorkspaces } from "../../apps/core/review/repair/workspace";
 import { repairFixture } from "./fixtures";
 import { RepairFixtureProvider } from "./provider";
 

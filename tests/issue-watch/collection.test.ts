@@ -1,8 +1,8 @@
 import { expect, it, vi } from "vitest";
 
-import { GitHubClient } from "../../backend/github/client";
-import { GitHubReadPool, IssueSearch } from "../../backend/github/issue-search";
-import { WatchLimitsSchema } from "../../backend/issue-watch/contracts";
+import { GitHubClient } from "../../apps/core/github/client";
+import { GitHubReadPool, IssueSearch } from "../../apps/core/github/issue-search";
+import { WatchLimitsSchema } from "../../apps/core/issue-watch/contracts";
 import { githubIssue } from "./fixtures";
 
 it("serializes shared reads and removes cancelled waiters", async () => {

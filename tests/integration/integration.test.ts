@@ -1,12 +1,12 @@
-import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
-import { ActionSchema } from "../../backend/scheduled/action";
+import { defaultReviewConfiguration } from "../../apps/core/review/pr/contracts";
+import { ActionSchema } from "../../apps/core/scheduled/action";
 import { it, expect } from "vitest";
 import { mkdtemp, writeFile, readFile, rm, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { now } from "../../backend/domain";
-import { checked } from "../../backend/execution/runtime/process";
+import { now } from "../../apps/core/domain";
+import { checked } from "../../apps/core/execution/runtime/process";
 import {
   createFixtureEngine,
   fixtureRepository,
@@ -234,7 +234,7 @@ it("explicit PR utility reasoning reuses isolation and shared slots without chan
     const task = await prepareFixtureTask(engine, repo, randomUUID(), 6);
     const before = await engine.git.fingerprint(engine.db.task(task.id));
     const artifacts = engine.db.detail(task.id).artifacts;
-    const { Scheduler } = await import("../../backend/scheduled/scheduler");
+    const { Scheduler } = await import("../../apps/core/scheduled/scheduler");
     const scheduler = new Scheduler(engine);
 
     const watch = scheduler.add({
@@ -270,7 +270,7 @@ it("explicit PR utility reasoning reuses isolation and shared slots without chan
 }, 30000);
 
 it("persists local line review notes and rejects escaping paths without legacy workflow execution", async () => {
-  const { ReviewService } = await import("../../backend/review/service");
+  const { ReviewService } = await import("../../apps/core/review/service");
   const dir = await mkdtemp(join(tmpdir(), "vibestar-review-"));
   const engine = await createFixtureEngine(join(dir, "ade"), () => new FixtureProvider());
   try {
@@ -305,7 +305,7 @@ it("persists local line review notes and rejects escaping paths without legacy w
 
     expect(engine.db.detail(task.id).messages).toEqual([]);
     expect(engine.db.detail(task.id).runs).toHaveLength(0);
-    const { Rpc } = await import("../../backend/rpc");
+    const { Rpc } = await import("../../apps/core/rpc");
     const rpc = new Rpc(engine);
     try {
       await expect(rpc.call("review.send", { id: task.id })).rejects.toThrow("Unknown method");

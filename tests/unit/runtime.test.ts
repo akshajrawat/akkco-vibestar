@@ -12,10 +12,10 @@ import {
   startFixtureFlow,
   waitForFixtureFlow,
 } from "../helpers/fixtures";
-import { checked, execute } from "../../backend/execution/runtime/process";
-import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
-import { taskRuntime } from "../../backend/workspace/runtime";
-import { CoreBridge } from "../../electron/bridge";
+import { checked, execute } from "../../apps/core/execution/runtime/process";
+import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
+import { taskRuntime } from "../../apps/core/workspace/runtime";
+import { CoreBridge } from "../../apps/electron/bridge";
 
 it("uses an installed source virtualenv and ignored dependencies read-only without exposing source files", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-runtime-"));

@@ -3,16 +3,16 @@ import { selectValue } from "../helpers/select";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { Button } from "../../src/components/ui/button";
-import { UsageCharts } from "../../src/features/usage/UsageCharts";
-import { UsageView } from "../../src/features/usage/UsageView";
-import type { UsageRecord } from "../../backend/execution/output/usage";
-import { AgentResponse } from "../../src/features/chat/AgentResponse";
+import { Button } from "../../apps/desktop/components/ui/button";
+import { UsageCharts } from "../../apps/desktop/features/usage/UsageCharts";
+import { UsageView } from "../../apps/desktop/features/usage/UsageView";
+import type { UsageRecord } from "../../apps/core/execution/output/usage";
+import { AgentResponse } from "../../apps/desktop/features/chat/AgentResponse";
 import { workspaceDetail } from "../workspace/fixtures";
-import { BrowserEnvironment } from "../../src/features/verification/BrowserEnvironment";
-import type { BrowserEnvironmentReport } from "../../backend/execution/verification/browser/contracts";
+import { BrowserEnvironment } from "../../apps/desktop/features/verification/BrowserEnvironment";
+import type { BrowserEnvironmentReport } from "../../apps/core/execution/verification/browser/contracts";
 
-vi.mock("../../src/hooks/useWorkspace", () => ({
+vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [] }),
 }));
 

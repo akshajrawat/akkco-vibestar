@@ -3,18 +3,18 @@ import { randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { FlowWorkspace } from "../../src/features/flows/FlowWorkspace";
-import { ImportedHistory } from "../../src/features/flows/ImportedHistory";
+import { FlowWorkspace } from "../../apps/desktop/features/flows/FlowWorkspace";
+import { ImportedHistory } from "../../apps/desktop/features/flows/ImportedHistory";
 import { viberDetail, viberProfile, viberWorkspace } from "./flow-fixtures";
-import { getTaskView, updateTaskView } from "../../src/lib/taskView";
-import { viberConversationKey } from "../../src/features/flows/ViberConversation";
+import { getTaskView, updateTaskView } from "../../apps/desktop/lib/taskView";
+import { viberConversationKey } from "../../apps/desktop/features/flows/ViberConversation";
 
-vi.mock("../../src/features/flows/FlowCanvas", () => ({
+vi.mock("../../apps/desktop/features/flows/FlowCanvas", () => ({
   FlowCanvas: () => <div>Canvas fixture</div>,
   ViberFace: () => <span aria-hidden="true" />,
 }));
 
-vi.mock("../../src/components/shared/TaskTerminal", () => ({
+vi.mock("../../apps/desktop/components/shared/TaskTerminal", () => ({
   TaskTerminal: () => <p>Terminal fixture</p>,
 }));
 

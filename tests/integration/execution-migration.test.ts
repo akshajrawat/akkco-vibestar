@@ -4,8 +4,8 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Database } from "../../backend/storage/database";
-import { migrations } from "../../backend/storage/migrations";
+import { Database } from "../../apps/core/storage/database";
+import { migrations } from "../../apps/core/storage/migrations";
 
 it("adds invocation snapshots without fabricating historical authority and backs up existing bytes before upgrade", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-execution-migration-"));

@@ -3,9 +3,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { sandboxInvocation } from "../../backend/execution/runtime/sandbox";
-import { execute } from "../../backend/execution/runtime/process";
-import { gitChecked } from "../../backend/workspace/git-command";
+import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
+import { execute } from "../../apps/core/execution/runtime/process";
+import { gitChecked } from "../../apps/core/workspace/git-command";
 import { createFixtureEngine, fixtureRepository, historicalTaskFixture } from "../helpers/fixtures";
 
 let directory: string;

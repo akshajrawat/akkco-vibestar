@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
-import { parseUnifiedDiff, sourceLines, splitDiffRows } from "../../src/lib/diff/parse";
-import { highlightCode } from "../../src/lib/diff/highlight";
+import { parseUnifiedDiff, sourceLines, splitDiffRows } from "../../apps/desktop/lib/diff/parse";
+import { highlightCode } from "../../apps/desktop/lib/diff/highlight";
 
 const patch =
   "@@ -1,4 +1,5 @@ function example\n start\n-const value = 1;\n+const value = 2;\n+console.log(value);\n return value;\n end\n";

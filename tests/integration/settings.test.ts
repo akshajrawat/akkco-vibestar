@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings } from "../../backend/domain";
-import { Database } from "../../backend/storage/database";
+import { defaultSettings } from "../../apps/core/domain";
+import { Database } from "../../apps/core/storage/database";
 
 it("reads legacy global AI settings without modifying their source and persists notification preferences across reopen", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-settings-compatibility-"));

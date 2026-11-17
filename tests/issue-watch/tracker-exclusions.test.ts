@@ -1,6 +1,6 @@
 import { it, expect } from "vitest";
 
-import { markdownIssueReferences } from "../../backend/issue-watch/tracker-exclusions";
+import { markdownIssueReferences } from "../../apps/core/issue-watch/tracker-exclusions";
 
 it("parses visible Markdown references with repository identity and skips examples and PRs", () => {
   const markdown = [

@@ -1,12 +1,12 @@
-import { migrations } from "../../backend/storage/migrations";
+import { migrations } from "../../apps/core/storage/migrations";
 import { expect, it, vi } from "vitest";
 import { _electron } from "playwright-core";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CoreBridge } from "../../electron/bridge";
-import type { Snapshot } from "../../src/lib/types";
+import { CoreBridge } from "../../apps/electron/bridge";
+import type { Snapshot } from "../../apps/desktop/lib/types";
 
 it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "linux")(
   "starts the packaged Linux desktop and both bundled helpers with empty isolated roots",
@@ -26,7 +26,7 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
     vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
     const reports: unknown[] = [];
     try {
-      const packageRoot = process.env.VIBESTAR_PACKAGE_DIR || "release";
+      const packageRoot = process.env.VIBESTAR_PACKAGE_DIR || "out/release";
       const linuxCore = resolve(packageRoot, "linux-unpacked/resources/core");
       const windowsCore = resolve(packageRoot, "win-unpacked/resources/core");
 

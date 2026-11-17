@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 
-import { BoundedWriter, OutputBudget } from "../../backend/execution/output/bounded-output";
+import { BoundedWriter, OutputBudget } from "../../apps/core/execution/output/bounded-output";
 
 it("limits both bytes and entries queued behind a slow log sink", async () => {
   let release!: () => void;

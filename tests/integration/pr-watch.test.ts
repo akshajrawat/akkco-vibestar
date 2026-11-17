@@ -1,4 +1,4 @@
-import { defaultReviewConfiguration } from "../../backend/review/pr/contracts";
+import { defaultReviewConfiguration } from "../../apps/core/review/pr/contracts";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,9 +6,9 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { Rpc } from "../../backend/rpc";
-import { PRWatch } from "../../backend/review/pr/watch";
-import type { PRWatchContext } from "../../backend/review/pr/watch-github";
+import { Rpc } from "../../apps/core/rpc";
+import { PRWatch } from "../../apps/core/review/pr/watch";
+import type { PRWatchContext } from "../../apps/core/review/pr/watch-github";
 import { createFixtureEngine } from "../helpers/fixtures";
 
 let dir: string;

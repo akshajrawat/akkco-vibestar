@@ -3,10 +3,10 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultSettings, now, SettingsSchema } from "../../backend/domain";
-import { Rpc } from "../../backend/rpc";
+import { defaultSettings, now, SettingsSchema } from "../../apps/core/domain";
+import { Rpc } from "../../apps/core/rpc";
 import { randomUUID } from "node:crypto";
-import { checked } from "../../backend/execution/runtime/process";
+import { checked } from "../../apps/core/execution/runtime/process";
 import { createFixtureEngine } from "../helpers/fixtures";
 
 const directories: string[] = [];

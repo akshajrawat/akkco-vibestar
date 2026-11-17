@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 
-import { GitHubClient } from "../../backend/github/client";
+import { GitHubClient } from "../../apps/core/github/client";
 import { githubIssue, watchFixture } from "./fixtures";
 
 const resources: Awaited<ReturnType<typeof watchFixture>>[] = [];

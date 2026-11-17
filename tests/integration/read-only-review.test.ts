@@ -4,7 +4,7 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { AntigravityProvider } from "../../backend/execution/providers/antigravity";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import {
   createFixtureEngine,
   fixtureRepository,
@@ -14,7 +14,7 @@ import {
   waitForFixtureFlow,
   plan1,
 } from "../helpers/fixtures";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 
 it("keeps Antigravity output schema metadata separate from the canonical result", () => {
   const adapter = new AntigravityProvider();

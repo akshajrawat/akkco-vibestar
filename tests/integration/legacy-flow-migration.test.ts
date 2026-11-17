@@ -5,17 +5,17 @@ import { join } from "node:path";
 import Sqlite from "better-sqlite3";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import { now, type Task } from "../../backend/domain";
-import { Database } from "../../backend/storage/database";
-import { migrations } from "../../backend/storage/migrations";
+import { now, type Task } from "../../apps/core/domain";
+import { Database } from "../../apps/core/storage/database";
+import { migrations } from "../../apps/core/storage/migrations";
 import {
   historicalRuns,
   legacyMigration,
   migrateLegacyTask,
   migrateLegacyTasks,
-} from "../../backend/flows/legacy-migration";
-import { Rpc } from "../../backend/rpc";
-import type { FlowWorkspace } from "../../backend/flows/workspace";
+} from "../../apps/core/flows/legacy-migration";
+import { Rpc } from "../../apps/core/rpc";
+import type { FlowWorkspace } from "../../apps/core/flows/workspace";
 import {
   createFixtureEngine,
   fixtureRepository,
@@ -24,7 +24,7 @@ import {
   plan2,
   prepareFixtureTask,
 } from "../helpers/fixtures";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 
 let directory: string;
 let engine: Awaited<ReturnType<typeof createFixtureEngine>>;

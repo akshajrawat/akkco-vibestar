@@ -4,9 +4,9 @@ import { z } from "zod";
 import {
   commandVerification,
   verificationSummary,
-} from "../../backend/execution/verification/verification";
-import { validatePlan, planSchemas } from "../../backend/execution/providers/contracts";
-import { codexResult, codexSchema } from "../../backend/execution/providers/codex-schema";
+} from "../../apps/core/execution/verification/verification";
+import { validatePlan, planSchemas } from "../../apps/core/execution/providers/contracts";
+import { codexResult, codexSchema } from "../../apps/core/execution/providers/codex-schema";
 
 const check = (
   name: string,

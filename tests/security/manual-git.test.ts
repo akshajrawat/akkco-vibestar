@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Rpc } from "../../backend/rpc";
+import { Rpc } from "../../apps/core/rpc";
 import { createFixtureEngine } from "../helpers/fixtures";
 
 it("rejects retired commit, push and destination methods without executing Git or inference", async () => {

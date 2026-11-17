@@ -4,9 +4,9 @@ Project code uses the root [MIT License](../LICENSE), with the requested notice
 `Copyright (c) 2026 akkco`. This notice does not replace third-party licenses or
 change historical author attribution.
 
-Bundled `src/assets/fonts/Geist-Sans.woff2` and `Geist-Mono.woff2` retain the SIL Open
+Bundled `apps/desktop/assets/fonts/Geist-Sans.woff2` and `Geist-Mono.woff2` retain the SIL Open
 Font License 1.1 and the Vercel/basement.studio copyright notice in
-[`public/Geist-OFL.txt`](../public/Geist-OFL.txt). Vite copies that notice into `dist`.
+[`public/Geist-OFL.txt`](../public/Geist-OFL.txt). Vite copies that notice into `out/desktop`.
 Do not remove it from packaged renderer assets.
 
 Runtime/development dependencies, Electron and native addons retain their own
@@ -30,11 +30,11 @@ into the packaged renderer alongside the font notice.
 
 ## Provider and GitHub marks
 
-The provider SVGs in `src/assets/brands/` were supplied for this milestone and
+The provider SVGs in `apps/desktop/assets/brands/` were supplied for this milestone and
 verified against [Lobe Icons](https://github.com/lobehub/lobe-icons/tree/master/packages/static-svg/icons):
 `openai.svg`, `claude-color.svg` (stored as `anthropic.svg`), `gemini-color.svg`
 (stored as `gemini.svg`), `antigravity-color.svg` (stored as `antigravity.svg`), and `github.svg`. Their MIT license is retained below
-and in `src/assets/brands/LICENSE`. This notice is included in desktop packaging.
+and in `apps/desktop/assets/brands/LICENSE`. This notice is included in desktop packaging.
 
 Brand names and marks belong to OpenAI, Anthropic, Google and GitHub respectively.
 They identify the actual tool or reported model; inclusion does not imply endorsement.

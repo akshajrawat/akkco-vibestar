@@ -2,14 +2,14 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { ViberChat } from "../../src/features/flows/ViberChat";
+import { ViberChat } from "../../apps/desktop/features/flows/ViberChat";
 import { viberDetail, viberProfile, viberWorkspace } from "../workspace/flow-fixtures";
 
-vi.mock("../../src/features/flows/ViberConversation", () => ({
+vi.mock("../../apps/desktop/features/flows/ViberConversation", () => ({
   ViberConversation: () => <p>Existing conversation view</p>,
 }));
 
-vi.mock("../../src/features/flows/ViberModelPicker", () => ({
+vi.mock("../../apps/desktop/features/flows/ViberModelPicker", () => ({
   ViberModelPicker: ({
     execution,
     change,

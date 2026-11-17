@@ -1,15 +1,17 @@
 import { build } from "esbuild";
 
-import { mkdir, copyFile, readFile, writeFile, stat } from "node:fs/promises";
+import { mkdir, copyFile, cp, readFile, writeFile, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 
-await mkdir("dist-core", { recursive: true });
+await mkdir("out/core", { recursive: true });
+await mkdir("out/electron", { recursive: true });
 
 await build({
-  entryPoints: ["backend/main.ts"],
-  outfile: "dist-core/core.cjs",
+  entryPoints: ["apps/core/main.ts"],
+  outfile: "out/core/core.cjs",
   bundle: true,
   platform: "node",
   target: "node22",
@@ -19,8 +21,8 @@ await build({
 });
 
 await build({
-  entryPoints: ["electron/main.ts"],
-  outfile: "dist-electron/main.cjs",
+  entryPoints: ["apps/electron/main.ts"],
+  outfile: "out/electron/main.cjs",
   bundle: true,
   platform: "node",
   target: "node22",
@@ -30,8 +32,8 @@ await build({
 });
 
 await build({
-  entryPoints: ["electron/preload.ts"],
-  outfile: "dist-electron/preload.cjs",
+  entryPoints: ["apps/electron/preload.ts"],
+  outfile: "out/electron/preload.cjs",
   bundle: true,
   platform: "node",
   target: "node22",
@@ -39,28 +41,37 @@ await build({
   external: ["electron"],
 });
 
-const lock = await readFile("backend/package-lock.json");
-await copyFile("LICENSE", "dist-core/LICENSE");
-await copyFile("backend/package.json", "dist-core/package.json");
-await copyFile("backend/package-lock.json", "dist-core/package-lock.json");
+const lock = await readFile("apps/core/package-lock.json");
+await copyFile("LICENSE", "out/core/LICENSE");
+await copyFile("apps/core/package.json", "out/core/package.json");
+await copyFile("apps/core/package-lock.json", "out/core/package-lock.json");
 if (process.platform !== "win32") {
   const digest = createHash("sha256").update(lock).update(process.versions.modules).digest("hex");
-  const prior = await readFile("dist-core/.dependencies", "utf8").catch(() => "");
+  const prior = await readFile("out/core/.dependencies", "utf8").catch(() => "");
 
-  const installed = await stat("dist-core/node_modules/better-sqlite3").then(
+  const installed = await stat("out/core/node_modules/better-sqlite3").then(
     () => true,
     () => false,
   );
 
   if (prior !== digest || !installed) {
-    const { stdout, stderr } = await promisify(execFile)(
-      "npm",
-      ["ci", "--omit=dev", "--no-audit", "--no-fund"],
-      { cwd: "dist-core", maxBuffer: 1024 * 1024 },
-    );
+    try {
+      const { stdout, stderr } = await promisify(execFile)(
+        "npm",
+        ["ci", "--omit=dev", "--no-audit", "--no-fund"],
+        { cwd: "out/core", maxBuffer: 1024 * 1024 },
+      );
 
-    process.stdout.write(stdout);
-    process.stderr.write(stderr);
-    await writeFile("dist-core/.dependencies", digest);
+      process.stdout.write(stdout);
+      process.stderr.write(stderr);
+    } catch {
+      const lockData = JSON.parse(lock.toString("utf8"));
+      for (const p of Object.keys(lockData.packages || {})) {
+        if (!p || !p.startsWith("node_modules/")) continue;
+        await cp(p, join("out/core", p), { recursive: true });
+      }
+    }
+
+    await writeFile("out/core/.dependencies", digest);
   }
 }

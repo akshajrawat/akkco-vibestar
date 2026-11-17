@@ -85,20 +85,20 @@ npm start
 npm run desktop:build
 ```
 
-`build` typechecks, bundles `backend/main.ts` to `dist-core/core.cjs`, bundles Electron
-main/preload to `dist-electron`, installs locked Node-native core dependencies and
-builds the renderer to `dist`. Fonts and the Geist OFL notice are bundled locally.
+`build` typechecks, bundles `apps/core/main.ts` to `out/core/core.cjs`, bundles Electron
+main/preload to `out/electron`, installs locked Node-native core dependencies and
+builds the renderer to `out/desktop`. Fonts and the Geist OFL notice are bundled locally.
 The core's SQLite/PTY addons target Node, not Electron; do not rebuild them for Electron.
-An explicit resource mapping preserves `dist-core/node_modules` in Linux-built packages.
+An explicit resource mapping preserves `out/core/node_modules` in Linux-built packages.
 Native Windows builds install the helper's Linux dependencies through its locked manifest in WSL.
 
-`desktop:build` creates a local Linux deb/unpacked app under ignored `release`.
+`desktop:build` creates a local Linux deb/unpacked app under ignored `out/release`.
 From a Windows checkout, `npm run desktop:build:windows` builds NSIS. Linux cross-builds
 may require Wine. Both commands use `--publish never`. Packaging does not prove a
 native installer/update flow works; signing and official release distribution are
 outside this milestone.
 
-Never commit generated `dist*`, `release`, coverage, local databases or test evidence.
+Never commit generated `out/`, coverage, local databases or test evidence.
 
 ## Contributor tooling
 

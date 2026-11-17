@@ -4,12 +4,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
-import { AgentRunner } from "../../backend/execution/agents/agent-runner";
-import { gitChecked, gitCapture } from "../../backend/workspace/git-command";
-import { migrateDataRoot } from "../../backend/storage/migrate-root";
-import { checked } from "../../backend/execution/runtime/process";
-import { Rpc } from "../../backend/rpc";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
+import { gitChecked, gitCapture } from "../../apps/core/workspace/git-command";
+import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { checked } from "../../apps/core/execution/runtime/process";
+import { Rpc } from "../../apps/core/rpc";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import {
   createFixtureEngine,
   fixtureRepository,

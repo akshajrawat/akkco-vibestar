@@ -3,11 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Sqlite from "better-sqlite3";
-import { migrations } from "../../backend/storage/migrations";
-import { Database } from "../../backend/storage/database";
-import { defaultSettings } from "../../backend/domain";
-import { PRAnalysis } from "../../backend/review/pr/analysis";
-import type { Engine } from "../../backend/execution/engine";
+import { migrations } from "../../apps/core/storage/migrations";
+import { Database } from "../../apps/core/storage/database";
+import { defaultSettings } from "../../apps/core/domain";
+import { PRAnalysis } from "../../apps/core/review/pr/analysis";
+import type { Engine } from "../../apps/core/execution/engine";
 import { prSnapshot } from "../helpers/pr-fixtures";
 
 it("disables every legacy automatic PR inspection while retaining snapshots, conversations, analysis and usage", async () => {

@@ -1,9 +1,9 @@
 import { expect, it } from "vitest";
 
-import { codexConversation } from "../../backend/execution/providers/codex-conversation";
-import { CodexProvider } from "../../backend/execution/providers/codex";
-import { execute } from "../../backend/execution/runtime/process";
-import type { AgentRunRequest } from "../../backend/execution/providers/contracts";
+import { codexConversation } from "../../apps/core/execution/providers/codex-conversation";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
+import { execute } from "../../apps/core/execution/runtime/process";
+import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 
 const request: AgentRunRequest = {
   runId: "run",
@@ -200,8 +200,8 @@ it("keeps stdin open through the real process transport and closes after one com
 });
 
 it("counts only this turn's reported usage when a resumed thread has older totals", async () => {
-  const { Database } = await import("../../backend/storage/database");
-  const { Usage } = await import("../../backend/execution/output/usage");
+  const { Database } = await import("../../apps/core/storage/database");
+  const { Usage } = await import("../../apps/core/execution/output/usage");
   const db = new Database(":memory:");
   try {
     const usage = new Usage(db);

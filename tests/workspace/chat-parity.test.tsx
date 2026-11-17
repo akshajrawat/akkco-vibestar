@@ -2,15 +2,15 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { AgentTimeline } from "../../src/features/chat/AgentTimeline";
-import { AgentResponse } from "../../src/features/chat/AgentResponse";
-import { ChatSurface } from "../../src/features/chat/ChatSurface";
-import { UserMessageBody } from "../../src/features/chat/UserMessageBody";
-import { RunError } from "../../src/features/chat/RunError";
-import { agentEntries, toolState } from "../../src/features/chat/output/activity";
-import { useConversationEvents } from "../../src/features/chat/output/useConversationEvents";
-import { streamingSummary } from "../../src/features/chat/output/response";
-import type { AgentEvent, Run } from "../../src/lib/types";
+import { AgentTimeline } from "../../apps/desktop/features/chat/AgentTimeline";
+import { AgentResponse } from "../../apps/desktop/features/chat/AgentResponse";
+import { ChatSurface } from "../../apps/desktop/features/chat/ChatSurface";
+import { UserMessageBody } from "../../apps/desktop/features/chat/UserMessageBody";
+import { RunError } from "../../apps/desktop/features/chat/RunError";
+import { agentEntries, toolState } from "../../apps/desktop/features/chat/output/activity";
+import { useConversationEvents } from "../../apps/desktop/features/chat/output/useConversationEvents";
+import { streamingSummary } from "../../apps/desktop/features/chat/output/response";
+import type { AgentEvent, Run } from "../../apps/desktop/lib/types";
 
 it("keeps a long prompt compact and lets the user expand and collapse its complete text", () => {
   let resized: ResizeObserverCallback = () => {};
@@ -95,7 +95,7 @@ it("keeps Thinking collapsible before tools arrive and preserves a disclosure on
   expect(screen.getByText("Ready to build.").closest(".work-log")).toBeNull();
 });
 
-vi.mock("../../src/hooks/useWorkspace", () => ({
+vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
   useProviders: () => ({ providers: [], refresh: vi.fn() }),
 }));
 

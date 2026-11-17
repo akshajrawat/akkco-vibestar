@@ -1,4 +1,4 @@
-import type { Detail } from "../../src/lib/types";
+import type { Detail } from "../../apps/desktop/lib/types";
 
 export const workspaceDetail = (id: string): Detail => ({
   task: {

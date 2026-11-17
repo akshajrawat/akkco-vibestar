@@ -4,12 +4,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Engine } from "../../backend/execution/engine";
-import { Rpc } from "../../backend/rpc";
-import { Scheduler } from "../../backend/scheduled/scheduler";
-import { GitHubMonitor } from "../../backend/scheduled/github";
-import { GitHubService } from "../../backend/github/service";
-import { changedPullRequest, parsePullRequest } from "../../backend/scheduled/contracts";
+import type { Engine } from "../../apps/core/execution/engine";
+import { Rpc } from "../../apps/core/rpc";
+import { Scheduler } from "../../apps/core/scheduled/scheduler";
+import { GitHubMonitor } from "../../apps/core/scheduled/github";
+import { GitHubService } from "../../apps/core/github/service";
+import { changedPullRequest, parsePullRequest } from "../../apps/core/scheduled/contracts";
 import { PRFixtureProvider, prSnapshot, analysisResult, reviewBody } from "../helpers/pr-fixtures";
 
 const resources: { dir: string; engine: Engine; scheduler: Scheduler }[] = [];
