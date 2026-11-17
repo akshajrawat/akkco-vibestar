@@ -198,11 +198,13 @@ public static void Run(int localX,int localY,bool drag){SetProcessDPIAware();Int
       BrowserWindow.getAllWindows()[0].getContentBounds(),
     );
 
-    for (const key of ["x", "y", "width", "height"])
+    for (const key of ["x", "y", "width", "height"]) {
       assert.ok(
         Math.abs(maximizedContent[key] - display.workArea[key]) <= 2,
         `Maximize must fit display ${display.id}: ${key}`,
       );
+    }
+
     await p.locator("main").click({ position: { x: 300, y: 300 } });
     const fullscreenStart = Date.now();
     await p.keyboard.press("F11");
@@ -214,11 +216,12 @@ public static void Run(int localX,int localY,bool drag){SetProcessDPIAware();Int
       BrowserWindow.getAllWindows()[0].getContentBounds(),
     );
 
-    for (const key of ["x", "y", "width", "height"])
+    for (const key of ["x", "y", "width", "height"]) {
       assert.ok(
         Math.abs(fullscreenContent[key] - display.bounds[key]) <= 2,
         `Fullscreen must fit display ${display.id}: ${key}`,
       );
+    }
 
     const viewport = await p.evaluate(() => ({
       width: window.innerWidth,
@@ -238,11 +241,12 @@ public static void Run(int localX,int localY,bool drag){SetProcessDPIAware();Int
     await p.getByLabel("Restore window").click();
     await p.getByLabel("Maximize window").waitFor();
     const restored = await bounds();
-    for (const key of ["x", "y", "width", "height"])
+    for (const key of ["x", "y", "width", "height"]) {
       assert.ok(
         Math.abs(restored[key] - before[key]) <= 2,
         `Restore must retain display ${display.id}: ${key}`,
       );
+    }
 
     transitions.push({
       display: display.id,

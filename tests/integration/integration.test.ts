@@ -38,7 +38,10 @@ it("creates two concurrently running worktrees, isolates same-file edits, and ig
     () =>
       new FixtureProvider(async () => {
         planning++;
-        if (planning === 2) reached();
+        if (planning === 2) {
+          reached();
+        }
+
         await gate;
       }),
   );

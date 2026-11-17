@@ -5,8 +5,14 @@ import { duration } from "../../lib/format";
 
 const WorkDuration = ({ run }: { run: Run }) => {
   const running = run.status === "running";
-  if (running) return <>Thinking</>;
-  if (!running && !run.ended_at) return <>Worked</>;
+  if (running) {
+    return <>Thinking</>;
+  }
+
+  if (!running && !run.ended_at) {
+    return <>Worked</>;
+  }
+
   return <>Worked for {duration(run.started_at, run.ended_at)}</>;
 };
 

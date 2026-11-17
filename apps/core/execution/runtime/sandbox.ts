@@ -28,11 +28,16 @@ export const sandboxInvocation = async (
   provider?: string,
   analysisWorkspace?: string,
   contextPaths: string[] = [],
+  viberSessionId?: string,
 ) => {
-  if (process.platform !== "linux")
+  if (process.platform !== "linux") {
     throw new AdeError("sandbox", "The execution core must run inside Linux/WSL.");
+  }
+
   const home = await realpath(homedir());
-  if (!task) await managedPath(root, analysisWorkspace || "");
+  if (!task) {
+    await managedPath(root, analysisWorkspace || "");
+  }
 
   const cwd = task
     ? task.workspace_kind === "managed"
@@ -40,12 +45,24 @@ export const sandboxInvocation = async (
       : await taskRoot(root, task, db.repository(task.repo_id))
     : await realpath(analysisWorkspace || "");
 
-  if (!task && !inside(join(root, "cache", "utility"), cwd))
+  if (
+    viberSessionId &&
+    (task ||
+      cwd !== join(root, "workspaces", "vibers", viberSessionId) ||
+      !db.all("SELECT id FROM viber_sessions WHERE id=?", viberSessionId).length)
+  ) {
+    throw new AdeError("isolation", "Viber workspace does not match its saved session.");
+  }
+
+  if (!task && !viberSessionId && !inside(join(root, "cache", "utility"), cwd)) {
     throw new AdeError("isolation", "PR analysis workspace is outside the managed root");
+  }
+
   const repository = task?.repo_id ? db.repository(task.repo_id) : null;
   const repo = repository ? await realpath(repository.path) : null;
-  if (repo && repository?.source !== "imported" && !inside(join(root, "repos"), repo))
+  if (repo && repository?.source !== "imported" && !inside(join(root, "repos"), repo)) {
     throw new AdeError("isolation", "Managed clone is outside the repository root");
+  }
 
   const args = [
     "--die-with-parent",
@@ -92,34 +109,48 @@ export const sandboxInvocation = async (
   ];
 
   if (invocation.verificationEnvironment === "installed_browsers") {
-    if (provider)
+    if (provider) {
       throw new AdeError(
         "sandbox",
         "Installed browser mounts are limited to explicit manual verification.",
       );
+    }
+
     const cacheParent = join(home, ".cache");
     const cache = join(cacheParent, "ms-playwright");
     const parent = await lstat(cacheParent).catch(() => null);
     const entry = await lstat(cache).catch(() => null);
-    if (parent?.isSymbolicLink() || entry?.isSymbolicLink())
+    if (parent?.isSymbolicLink() || entry?.isSymbolicLink()) {
       throw new AdeError(
         "sandbox",
         "The installed browser cache must be a physical directory, not a symlink.",
       );
-    if (entry?.isDirectory()) args.push("--ro-bind", cache, cache);
+    }
+
+    if (entry?.isDirectory()) {
+      args.push("--ro-bind", cache, cache);
+    }
+
     const chrome = "/opt/google/chrome";
     const installation = await lstat(chrome).catch(() => null);
-    if (installation?.isDirectory() && (await realpath(chrome)) === chrome)
+    if (installation?.isDirectory() && (await realpath(chrome)) === chrome) {
       args.push("--ro-bind", chrome, chrome);
+    }
   }
 
   // Bubblewrap starts with an empty root. Only reviewed system installations
   // and individual runtime configuration files are visible, never the host /.
   for (const path of ["/usr", "/bin", "/sbin", "/lib", "/lib64"]) {
-    if (!(await exists(path))) continue;
+    if (!(await exists(path))) {
+      continue;
+    }
+
     const entry = await lstat(path);
-    if (entry.isSymbolicLink()) args.push("--symlink", await readlink(path), path);
-    else args.push("--ro-bind", path, path);
+    if (entry.isSymbolicLink()) {
+      args.push("--symlink", await readlink(path), path);
+    } else {
+      args.push("--ro-bind", path, path);
+    }
   }
 
   for (const path of [
@@ -135,7 +166,9 @@ export const sandboxInvocation = async (
     "/etc/ssl/certs",
     "/etc/pki/tls/certs",
   ]) {
-    if (await exists(path)) args.push("--ro-bind", await realpath(path), path);
+    if (await exists(path)) {
+      args.push("--ro-bind", await realpath(path), path);
+    }
   }
 
   // These provider-owned directories are mounted without inspecting any credential contents.
@@ -148,13 +181,18 @@ export const sandboxInvocation = async (
       ? program
       : resolve(cwd, program.includes("/") ? program : await checked("which", [program], cwd));
 
-    if (inside(cwd, resolved)) return;
+    if (inside(cwd, resolved)) {
+      return;
+    }
+
     const executable = await realpath(resolved);
     if (
       inside("/usr", executable) ||
       ["/bin", "/sbin", "/lib", "/lib64"].some((path) => inside(path, executable))
-    )
+    ) {
       return;
+    }
+
     let installation = executable;
     // Package entrypoints need their own modules/native package siblings. Node
     // version-manager installations include the interpreter and npm toolchain.
@@ -169,13 +207,17 @@ export const sandboxInvocation = async (
         ...(suffix[0].startsWith("@") ? [suffix[1]] : []),
       );
 
-      if (suffix[0] === "@openai") installation = dirname(installation);
+      if (suffix[0] === "@openai") {
+        installation = dirname(installation);
+      }
     } else if (/\/\.nvm\/versions\/node\/[^/]+\/bin\//.test(executable)) {
       installation = dirname(dirname(executable));
     }
 
     args.push("--ro-bind", installation, installation);
-    if (resolved !== executable) args.push("--ro-bind", executable, resolved);
+    if (resolved !== executable) {
+      args.push("--ro-bind", executable, resolved);
+    }
   };
 
   await mountExecutable(invocation.program);
@@ -183,43 +225,62 @@ export const sandboxInvocation = async (
   // These are interpreter installations, not the user's home or runtime state.
   for (const program of ["node", "npm"]) {
     const detected = await checked("which", [program], root).catch(() => "");
-    if (detected) await mountExecutable(detected);
+    if (detected) {
+      await mountExecutable(detected);
+    }
   }
 
   const configurationMounts: string[] = [];
   if (provider) {
     const state = join(home, provider === "antigravity" ? ".gemini" : ".codex");
-    if (await exists(state)) args.push("--bind", await realpath(state), state);
+    if (await exists(state)) {
+      args.push("--bind", await realpath(state), state);
+    }
+
     if (invocation.isolateProviderConfig) {
-      if (provider !== "codex")
+      if (provider !== "codex") {
         throw new AdeError("sandbox", "Unsupported isolated provider configuration");
+      }
+
       const projectConfigDirectory = join(cwd, ".codex");
 
       const projectConfigParent = await lstat(projectConfigDirectory).catch(
         (error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return null;
+          if (error.code === "ENOENT") {
+            return null;
+          }
+
           throw error;
         },
       );
 
-      if (projectConfigParent?.isSymbolicLink())
+      if (projectConfigParent?.isSymbolicLink()) {
         throw new AdeError("sandbox", "Project provider configuration must not be an alias.");
+      }
+
       const configs: string[] = [];
       for (const config of [
         join(state, "config.toml"),
         join(projectConfigDirectory, "config.toml"),
       ]) {
         const entry = await lstat(config).catch((error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") return null;
+          if (error.code === "ENOENT") {
+            return null;
+          }
+
           throw error;
         });
 
-        if (entry && !entry.isFile())
+        if (entry && !entry.isFile()) {
           throw new AdeError(
             "sandbox",
             "Provider configuration must not be an alias or directory.",
           );
-        if (entry) configs.push(config);
+        }
+
+        if (entry) {
+          configs.push(config);
+        }
       }
 
       // A regular empty file works on nodev mounts; binding /dev/null here can return EACCES.
@@ -229,24 +290,37 @@ export const sandboxInvocation = async (
 
         await writeFile(blank, "", { flag: "wx", mode: 0o600 }).catch(
           (error: NodeJS.ErrnoException) => {
-            if (error.code !== "EEXIST") throw error;
+            if (error.code !== "EEXIST") {
+              throw error;
+            }
           },
         );
 
         const blankEntry = await lstat(blank);
-        if (!blankEntry.isFile() || blankEntry.size !== 0 || blankEntry.uid !== process.getuid?.())
+        if (
+          !blankEntry.isFile() ||
+          blankEntry.size !== 0 ||
+          blankEntry.uid !== process.getuid?.()
+        ) {
           throw new AdeError(
             "sandbox",
             "Isolated provider configuration was replaced or modified.",
           );
-        for (const config of configs) configurationMounts.push("--ro-bind", blank, config);
+        }
+
+        for (const config of configs) {
+          configurationMounts.push("--ro-bind", blank, config);
+        }
       }
     }
   }
 
   // Native tools installed in the user's bin directory remain available read-only.
   const localBin = join(home, ".local", "bin");
-  if (await exists(localBin)) args.push("--ro-bind", localBin, localBin);
+  if (await exists(localBin)) {
+    args.push("--ro-bind", localBin, localBin);
+  }
+
   args.push(readOnly ? "--ro-bind" : "--bind", cwd, cwd);
   if (repo) {
     const common = await realpath(
@@ -254,23 +328,31 @@ export const sandboxInvocation = async (
     );
 
     const gitdir = await realpath(await gitChecked(["rev-parse", "--absolute-git-dir"], cwd));
-    if (task?.workspace_mode !== "source" && !inside(join(common, "worktrees"), gitdir))
+    if (task?.workspace_mode !== "source" && !inside(join(common, "worktrees"), gitdir)) {
       throw new AdeError("isolation", "Task has invalid Git worktree metadata");
+    }
 
     args.push("--ro-bind", common, common);
-    if (await exists(join(common, "worktrees"))) args.push("--tmpfs", join(common, "worktrees"));
-    if (gitdir !== common)
+    if (await exists(join(common, "worktrees"))) {
+      args.push("--tmpfs", join(common, "worktrees"));
+    }
+
+    if (gitdir !== common) {
       args.push(
         readOnly || task?.workspace_mode === "source" ? "--ro-bind" : "--bind",
         gitdir,
         gitdir,
       );
+    }
   }
 
   if (repo) {
     const runtime = await taskRuntime(repo, cwd, true);
-    for (const mount of runtime.mounts) args.push("--ro-bind", mount.source, mount.target);
-    if (runtime.python && runtime.pythonPrefix)
+    for (const mount of runtime.mounts) {
+      args.push("--ro-bind", mount.source, mount.target);
+    }
+
+    if (runtime.python && runtime.pythonPrefix) {
       args.push(
         "--setenv",
         "PATH",
@@ -282,21 +364,26 @@ export const sandboxInvocation = async (
         "PYTHONDONTWRITEBYTECODE",
         "1",
       );
+    }
   }
 
   if (schemaPath) {
     await managedPath(root, schemaPath);
     const schema = await realpath(schemaPath);
-    if (!inside(join(root, "artifacts"), schema))
+    if (!inside(join(root, "artifacts"), schema)) {
       throw new AdeError("isolation", "Schema is outside managed artifacts");
+    }
+
     args.push("--ro-bind", schema, schema);
   }
 
   for (const path of contextPaths) {
     await managedPath(root, path);
     const context = await realpath(path);
-    if (!inside(join(root, "artifacts"), context))
+    if (!inside(join(root, "artifacts"), context)) {
       throw new AdeError("isolation", "Repair context is outside managed artifacts");
+    }
+
     args.push("--ro-bind", context, context);
   }
 

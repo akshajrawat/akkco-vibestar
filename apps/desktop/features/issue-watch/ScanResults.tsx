@@ -35,13 +35,18 @@ export const ScanResults = ({
   const [query, setQuery] = useState("");
 
   const [sort, setSort] = useState(() => {
-    if (discoveryOrder) return discoveryOrder;
+    if (discoveryOrder) {
+      return discoveryOrder;
+    }
+
     const saved = localStorage.getItem("vibestar.issueWatch.sort");
     return sortOptions.some((option) => option.value === saved) ? saved! : "newest";
   });
 
   useEffect(() => {
-    if (discoveryOrder) setSort(discoveryOrder);
+    if (discoveryOrder) {
+      setSort(discoveryOrder);
+    }
   }, [discoveryOrder]);
 
   const visible = candidates
@@ -50,21 +55,41 @@ export const ScanResults = ({
         !`${candidate.issue.title} #${candidate.issue.number} ${candidate.issue.labels.join(" ")}`
           .toLowerCase()
           .includes(query.toLowerCase())
-      )
+      ) {
         return false;
-      if (filter === "dismissed") return !!candidate.dismissed_at;
-      if (!showDismissed && candidate.dismissed_at) return false;
-      if (filter === "matches") return candidate.eligible;
-      if (filter === "new")
+      }
+
+      if (filter === "dismissed") {
+        return !!candidate.dismissed_at;
+      }
+
+      if (!showDismissed && candidate.dismissed_at) {
+        return false;
+      }
+
+      if (filter === "matches") {
+        return candidate.eligible;
+      }
+
+      if (filter === "new") {
         return ["new_issue", "newly_matching", "reentered", "criteria_changed"].includes(
           candidate.classification,
         );
+      }
+
       const claim = availabilityState(candidate, provisional);
-      if (filter === "available")
+      if (filter === "available") {
         return candidate.eligible && claim === "candidate_for_claim_request";
-      if (filter === "review") return candidate.eligible && claim !== "candidate_for_claim_request";
-      if (filter === "seen")
+      }
+
+      if (filter === "review") {
+        return candidate.eligible && claim !== "candidate_for_claim_request";
+      }
+
+      if (filter === "seen") {
         return ["existing_match", "not_rechecked"].includes(candidate.classification);
+      }
+
       return true;
     })
     .sort((a, b) => {
@@ -130,14 +155,18 @@ export const ScanResults = ({
         role="list"
         aria-label="Discovery results"
         onKeyDown={(event) => {
-          if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+          if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+            return;
+          }
 
           const rows = [
             ...event.currentTarget.querySelectorAll<HTMLButtonElement>(".watch-result-select"),
           ];
 
           const index = rows.indexOf(event.target as HTMLButtonElement);
-          if (index < 0) return;
+          if (index < 0) {
+            return;
+          }
 
           const next =
             event.key === "Home"

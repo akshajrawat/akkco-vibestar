@@ -63,9 +63,12 @@ export const callStorage = async (
     }
 
     case "storage.open": {
-      if (process.env.WSL_DISTRO_NAME)
+      if (process.env.WSL_DISTRO_NAME) {
         await capture("explorer.exe", [await checked("wslpath", ["-w", e.root], e.root)], e.root);
-      else await capture("xdg-open", [e.root], e.root);
+      } else {
+        await capture("xdg-open", [e.root], e.root);
+      }
+
       return null;
     }
 
@@ -106,10 +109,12 @@ export const callStorage = async (
         .parse(input);
 
       const blockers = e.cleanupBlockers();
-      if (blockers.length)
+      if (blockers.length) {
         throw new AdeError("busy", "Data reset is waiting for active operations to finish.", {
           blockers,
         });
+      }
+
       return services.storage.reset(p.preview_token);
     }
 
@@ -130,13 +135,17 @@ export const callStorage = async (
     case "task.archive": {
       e.assertAvailable();
       const p = idInput.extend({ archived: z.boolean() }).parse(input);
-      if (!p.archived && e.db.task(p.id).status === "preserved")
+      if (!p.archived && e.db.task(p.id).status === "preserved") {
         throw new AdeError(
           "invalid_state",
           "This retained worktree keeps its ownership record, but its conversation history has been removed.",
         );
-      if (e.cleanupBlockers(p.id).length || e.db.task(p.id).status === "queued")
+      }
+
+      if (e.cleanupBlockers(p.id).length || e.db.task(p.id).status === "queued") {
         throw new AdeError("busy", "Stop this task before archiving it.");
+      }
+
       e.db.saveTask({ ...e.db.task(p.id), archived: p.archived });
       e.changed(p.id);
       return null;

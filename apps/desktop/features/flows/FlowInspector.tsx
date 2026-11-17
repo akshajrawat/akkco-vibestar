@@ -78,7 +78,9 @@ export const FlowInspector = ({
   };
 
   const override = (value: Partial<NonNullable<typeof execution>>) => {
-    if (node.type === "agent") update({ ...node, overrides: { ...node.overrides, ...value } });
+    if (node.type === "agent") {
+      update({ ...node, overrides: { ...node.overrides, ...value } });
+    }
   };
 
   return (
@@ -276,7 +278,9 @@ export const FlowInspector = ({
                   if (Array.isArray(argv) && argv.every((value) => typeof value === "string")) {
                     event.target.setCustomValidity("");
                     update({ ...node, argv });
-                  } else event.target.setCustomValidity("Use a JSON array of strings.");
+                  } else {
+                    event.target.setCustomValidity("Use a JSON array of strings.");
+                  }
                 } catch {
                   event.target.setCustomValidity("Use a valid JSON array of strings.");
                 }

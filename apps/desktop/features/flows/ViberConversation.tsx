@@ -129,10 +129,14 @@ export const ViberConversation = ({
   ];
 
   const send = async () => {
-    if (sending.current || disabled || active || anotherConversation || busy || historyTooLarge)
+    if (sending.current || disabled || active || anotherConversation || busy || historyTooLarge) {
       return;
+    }
+
     const content = composerContent(view);
-    if (!content.trim() || content.length > 32000) return;
+    if (!content.trim() || content.length > 32000) {
+      return;
+    }
 
     const configuration = {
       task_id: taskId,
@@ -184,7 +188,9 @@ export const ViberConversation = ({
       } else {
         remove(request_id);
         const current = getTaskView(id);
-        if (!current.draft && !current.draftContext.length) updateTaskView(id, draft);
+        if (!current.draft && !current.draftContext.length) {
+          updateTaskView(id, draft);
+        }
       }
     } finally {
       sending.current = false;
@@ -208,7 +214,9 @@ export const ViberConversation = ({
             detail={{ runs, events, usage: detail.usage, status: turn?.status }}
             output={output}
             stop={() => {
-              if (turn) void action("flow.cancel", { run_id: turn.id });
+              if (turn) {
+                void action("flow.cancel", { run_id: turn.id });
+              }
             }}
           />
         </>

@@ -29,10 +29,14 @@ export const CleanupError = ({
 
     void rpc<ActivityBlocker[]>("storage.blockers", { task_id: taskId })
       .then((items) => {
-        if (alive) setBlockers(items);
+        if (alive) {
+          setBlockers(items);
+        }
       })
       .catch((failure) => {
-        if (alive) setStopError(errorMessage(failure));
+        if (alive) {
+          setStopError(errorMessage(failure));
+        }
       });
 
     return () => {

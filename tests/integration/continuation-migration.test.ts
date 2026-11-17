@@ -28,7 +28,10 @@ it.each([
     const path = join(dir, "state.sqlite");
     const old = new Sqlite(path);
     old.pragma("foreign_keys = OFF");
-    if (corrupt) old.pragma("ignore_check_constraints = ON");
+    if (corrupt) {
+      old.pragma("ignore_check_constraints = ON");
+    }
+
     for (const migration of migrations.filter((entry) => entry.version <= version)) {
       old.exec(migration.sql);
 
@@ -73,7 +76,10 @@ it.each([
       inputs: [{ kind: "task-goal" }],
     });
 
-    if (node.type !== "agent") throw new Error("Expected an agent fixture");
+    if (node.type !== "agent") {
+      throw new Error("Expected an agent fixture");
+    }
+
     const goal = "Preserve my historical result";
 
     const task = JSON.stringify({
@@ -179,12 +185,13 @@ it.each([
       for (const [id, run] of [
         [scopedMessage, agentId],
         [unknownMessage, null],
-      ])
+      ]) {
         old
           .prepare(
             "INSERT INTO task_messages(id,task_id,role,content,created_at,status,run_id,purpose) VALUES(?,?,'user','Original chat bytes',?,'chat_completed',?,'chat')",
           )
           .run(id, taskId, timestamp, run);
+      }
     })();
 
     old.close();
@@ -244,11 +251,11 @@ it.each([
             { execution: null, prompt: "Historical prompt" },
           ]);
 
-          if (corrupt)
+          if (corrupt) {
             expect(() =>
               continuationPlan(db, runs, { run_id: runId, revision: 1 }, "managed-v1:before"),
             ).toThrow("original data is preserved");
-          else {
+          } else {
             const plan = continuationPlan(
               db,
               runs,

@@ -63,8 +63,9 @@ const groupModels = (provider: string, models: ProviderDetection["models"]) => {
   }
 
   const order = Object.keys(effortNames);
-  for (const group of groups.values())
+  for (const group of groups.values()) {
     group.efforts.sort((left, right) => order.indexOf(left) - order.indexOf(right));
+  }
 
   return [...groups.values()];
 };
@@ -110,8 +111,9 @@ export const ViberModelPicker = ({
   }));
 
   const value = `${current.provider}:${selectedGroup?.id || current.model}`;
-  if (sameProvider && current.model && !options.some((option) => option.value === value))
+  if (sameProvider && current.model && !options.some((option) => option.value === value)) {
     options.push({ value, label: name, icon: <ProviderIcon provider={current.provider} /> });
+  }
 
   return (
     <Select
@@ -123,7 +125,10 @@ export const ViberModelPicker = ({
           setDraft(execution);
           setBrowsingProvider(execution.provider);
         } else {
-          if (draft && JSON.stringify(draft) !== JSON.stringify(execution)) change(draft);
+          if (draft && JSON.stringify(draft) !== JSON.stringify(execution)) {
+            change(draft);
+          }
+
           setDraft(null);
         }
       }}

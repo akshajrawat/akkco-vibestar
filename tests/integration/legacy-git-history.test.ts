@@ -78,8 +78,10 @@ it("backs up version 23 before adding Git history and preserves existing task, P
         ]);
 
         expect(db.settings()).toEqual(defaultSettings);
-        for (const table of ["git_finalizations", "git_operation_events", "task_git_presets"])
+        for (const table of ["git_finalizations", "git_operation_events", "task_git_presets"]) {
           expect(db.all(`SELECT * FROM ${table}`)).toEqual([]);
+        }
+
         expect(() => db.run("INSERT INTO task_git_presets VALUES('missing','{}')")).toThrow();
       } finally {
         db.close();

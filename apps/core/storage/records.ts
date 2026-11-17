@@ -21,8 +21,10 @@ export interface PersistenceDiagnostic {
 }
 
 const objectValue = (value: unknown) => {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Expected a saved object");
+  }
+
   return value as Record<string, unknown>;
 };
 
@@ -35,7 +37,10 @@ export class PersistedRecords {
 
   initialize = () => {
     this.ready = true;
-    for (const record of this.pending.values()) this.report(record);
+    for (const record of this.pending.values()) {
+      this.report(record);
+    }
+
     this.pending.clear();
   };
 
@@ -64,11 +69,14 @@ export class PersistedRecords {
   ) => {
     let value: T;
     try {
-      if (Buffer.byteLength(record.source) > 32 * 1024 * 1024)
+      if (Buffer.byteLength(record.source) > 32 * 1024 * 1024) {
         throw new Error("Saved record exceeded its decoding budget");
+      }
+
       value = parse(JSON.parse(record.source));
-      if (record.identity && String(objectValue(value)[record.identity]) !== String(record.id))
+      if (record.identity && String(objectValue(value)[record.identity]) !== String(record.id)) {
         throw new Error("Saved identity does not match its owner");
+      }
     } catch {
       this.report(record);
       throw new AdeError(
@@ -78,7 +86,7 @@ export class PersistedRecords {
       );
     }
 
-    if (this.ready)
+    if (this.ready) {
       this.db.run(
         "UPDATE persistence_diagnostics SET resolved_at=? WHERE table_name=? AND record_id=? AND column_name=? AND resolved_at IS NULL",
         now(),
@@ -86,6 +94,8 @@ export class PersistedRecords {
         String(record.id),
         record.column,
       );
+    }
+
     return value;
   };
 
@@ -93,7 +103,10 @@ export class PersistedRecords {
     try {
       return this.decode(record, parse);
     } catch (error) {
-      if (error instanceof AdeError && error.kind === "corrupt_record") return undefined;
+      if (error instanceof AdeError && error.kind === "corrupt_record") {
+        return undefined;
+      }
+
       throw error;
     }
   };

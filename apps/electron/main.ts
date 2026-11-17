@@ -11,7 +11,10 @@ import { CoreBridge, readDesktopConfig, saveDesktopConfig } from "./bridge";
 const exec = promisify(execFile);
 const isWslg = process.platform === "linux" && !!process.env.WSL_DISTRO_NAME;
 // WSLg exposes Xwayland window geometry; Wayland does not guarantee positioning.
-if (isWslg) app.commandLine.appendSwitch("ozone-platform", "x11");
+if (isWslg) {
+  app.commandLine.appendSwitch("ozone-platform", "x11");
+}
+
 let window: BrowserWindow | null = null;
 let bridge: CoreBridge | null = null;
 let quitting = false;
@@ -47,7 +50,9 @@ const main = async () => {
           await cp(join(previousProfile, name), target, {
             recursive: true,
           }).catch((error) => {
-            if (error.code !== "ENOENT") throw error;
+            if (error.code !== "ENOENT") {
+              throw error;
+            }
           });
         }
       }
@@ -66,7 +71,7 @@ const main = async () => {
   const configPath = join(app.getPath("userData"), "desktop.json");
   let config = await readDesktopConfig(configPath);
   let changingRuntime = false;
-  if (!app.isPackaged && process.env.VIBESTAR_DEV_URL && process.env.VIBESTAR_DEV_WSL_CONFIG)
+  if (!app.isPackaged && process.env.VIBESTAR_DEV_URL && process.env.VIBESTAR_DEV_WSL_CONFIG) {
     config = z
       .object({
         distro: z.string().min(1),
@@ -74,6 +79,7 @@ const main = async () => {
         helper_path: z.string().min(1),
       })
       .parse(JSON.parse(process.env.VIBESTAR_DEV_WSL_CONFIG));
+  }
 
   const coreDir = app.isPackaged
     ? join(process.resourcesPath, "core")
@@ -82,22 +88,34 @@ const main = async () => {
   const startCore = () => {
     bridge = new CoreBridge(coreDir, config);
     bridge.on("event", (event) => window?.webContents.send("core:event", event));
-    if (process.platform !== "win32" || config.distro) void bridge.start();
+    if (process.platform !== "win32" || config.distro) {
+      void bridge.start();
+    }
   };
 
   startCore();
 
   const trusted = (event: Electron.IpcMainInvokeEvent) => {
-    if (event.sender !== window?.webContents || event.senderFrame !== window?.webContents.mainFrame)
+    if (
+      event.sender !== window?.webContents ||
+      event.senderFrame !== window?.webContents.mainFrame
+    ) {
       throw new Error("Untrusted IPC sender");
+    }
   };
 
   ipcMain.handle("core:rpc", async (event, input) => {
     trusted(event);
     try {
       const p = z.object({ method: z.string().max(100), params: z.unknown() }).parse(input);
-      if (!bridge) throw new Error("Core not initialized");
-      if (changingRuntime) throw new Error("The runtime is restarting. Retry when it is ready.");
+      if (!bridge) {
+        throw new Error("Core not initialized");
+      }
+
+      if (changingRuntime) {
+        throw new Error("The runtime is restarting. Retry when it is ready.");
+      }
+
       return { ok: true, result: await bridge.request(p.method, p.params) };
     } catch (error) {
       const failure = error as Error & {
@@ -133,7 +151,10 @@ const main = async () => {
         .split(/\r?\n/)
         .map((s) => s.trim())
         .filter(Boolean);
-    } else distros = [process.env.WSL_DISTRO_NAME || "Local Linux"];
+    } else {
+      distros = [process.env.WSL_DISTRO_NAME || "Local Linux"];
+    }
+
     return {
       config,
       distros,
@@ -162,8 +183,14 @@ const main = async () => {
       })
       .parse(input);
 
-    if (JSON.stringify(updated) === JSON.stringify(config)) return true;
-    if (changingRuntime) throw new Error("A runtime change is already in progress.");
+    if (JSON.stringify(updated) === JSON.stringify(config)) {
+      return true;
+    }
+
+    if (changingRuntime) {
+      throw new Error("A runtime change is already in progress.");
+    }
+
     changingRuntime = true;
     try {
       const answer = await dialog.showMessageBox(window!, {
@@ -177,7 +204,10 @@ const main = async () => {
         cancelId: 0,
       });
 
-      if (answer.response !== 1) return false;
+      if (answer.response !== 1) {
+        return false;
+      }
+
       await bridge?.prepareRestart();
       await bridge?.stop();
       try {
@@ -195,8 +225,14 @@ const main = async () => {
 
   ipcMain.handle("desktop:install", async (event) => {
     trusted(event);
-    if (!bridge) throw new Error("Save your distro first");
-    if (changingRuntime) throw new Error("A runtime change is already in progress.");
+    if (!bridge) {
+      throw new Error("Save your distro first");
+    }
+
+    if (changingRuntime) {
+      throw new Error("A runtime change is already in progress.");
+    }
+
     changingRuntime = true;
     try {
       await bridge.repair();
@@ -207,8 +243,14 @@ const main = async () => {
 
   ipcMain.handle("desktop:retry", async (event) => {
     trusted(event);
-    if (!bridge) throw new Error("Core not initialized");
-    if (changingRuntime) throw new Error("A runtime change is already in progress.");
+    if (!bridge) {
+      throw new Error("Core not initialized");
+    }
+
+    if (changingRuntime) {
+      throw new Error("A runtime change is already in progress.");
+    }
+
     changingRuntime = true;
     try {
       await bridge.retry();
@@ -220,8 +262,10 @@ const main = async () => {
   ipcMain.handle("desktop:external", async (event, url) => {
     trusted(event);
     const u = new URL(z.string().parse(url));
-    if (u.protocol !== "https:" || u.hostname !== "github.com" || u.username || u.password)
+    if (u.protocol !== "https:" || u.hostname !== "github.com" || u.username || u.password) {
       throw new Error("Only HTTPS GitHub links may be opened");
+    }
+
     await shell.openExternal(u.href);
   });
 
@@ -276,29 +320,43 @@ const main = async () => {
     if (
       publishedState?.maximized === current.maximized &&
       publishedState.fullscreen === current.fullscreen
-    )
+    ) {
       return;
+    }
+
     publishedState = current;
     window?.webContents.send("window:state", current);
   };
 
   const setFullscreen = (fullscreen: boolean) => {
-    if (boundsTimer) clearTimeout(boundsTimer);
+    if (boundsTimer) {
+      clearTimeout(boundsTimer);
+    }
+
     boundsTimer = undefined;
     window?.setFullScreen(fullscreen);
   };
 
   const toggleMaximize = () => {
-    if (!window) return;
+    if (!window) {
+      return;
+    }
+
     if (window.isFullScreen()) {
       setFullscreen(false);
       return;
     }
 
-    if (boundsTimer) clearTimeout(boundsTimer);
+    if (boundsTimer) {
+      clearTimeout(boundsTimer);
+    }
+
     if (state().maximized) {
       window.unmaximize();
-      if (fallbackMaximized && restoreBounds) window.setBounds(restoreBounds);
+      if (fallbackMaximized && restoreBounds) {
+        window.setBounds(restoreBounds);
+      }
+
       fallbackMaximized = false;
       publishState();
       return;
@@ -309,10 +367,15 @@ const main = async () => {
     window.maximize();
     // WSLg may acknowledge maximize without resizing. Windows owns its native
     // transition and DPI geometry; a timed setBounds would fight that transition.
-    if (!isWslg) return;
+    if (!isWslg) {
+      return;
+    }
 
     boundsTimer = setTimeout(() => {
-      if (!window || window.isFullScreen() || window.isMinimized()) return;
+      if (!window || window.isFullScreen() || window.isMinimized()) {
+        return;
+      }
+
       const bounds = window.getBounds();
       if (
         Math.abs(bounds.x - workArea.x) > 20 ||
@@ -336,7 +399,9 @@ const main = async () => {
 
   ipcMain.handle("window:fullscreen", (event) => {
     trusted(event);
-    if (window) setFullscreen(!window.isFullScreen());
+    if (window) {
+      setFullscreen(!window.isFullScreen());
+    }
   });
 
   ipcMain.handle("window:close", (event) => {
@@ -377,11 +442,12 @@ const main = async () => {
   ipcMain.handle("window:drag", (event, input) => {
     trusted(event);
     const point = pointSchema.parse(input);
-    if (window && dragOrigin)
+    if (window && dragOrigin) {
       window.setPosition(
         Math.round(dragOrigin.bounds.x + point.x - dragOrigin.point.x),
         Math.round(dragOrigin.bounds.y + point.y - dragOrigin.point.y),
       );
+    }
   });
 
   ipcMain.handle("window:drag-end", (event) => {
@@ -398,7 +464,9 @@ const main = async () => {
   window.webContents.on("before-input-event", (event, input) => {
     if (input.type === "keyDown" && input.key === "F11" && !input.isAutoRepeat) {
       event.preventDefault();
-      if (window) setFullscreen(!window.isFullScreen());
+      if (window) {
+        setFullscreen(!window.isFullScreen());
+      }
     }
 
     if (input.type === "keyDown" && input.key === "Escape" && window?.isFullScreen()) {
@@ -408,21 +476,26 @@ const main = async () => {
   });
 
   window.once("closed", () => {
-    if (boundsTimer) clearTimeout(boundsTimer);
+    if (boundsTimer) {
+      clearTimeout(boundsTimer);
+    }
   });
 
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (e) => e.preventDefault());
   window.webContents.on("will-attach-webview", (e) => e.preventDefault());
-  if (process.env.VIBESTAR_DEV_URL && !app.isPackaged)
+  if (process.env.VIBESTAR_DEV_URL && !app.isPackaged) {
     await window.loadURL(process.env.VIBESTAR_DEV_URL);
-  else await window.loadFile(join(app.getAppPath(), "out", "desktop", "index.html"));
+  } else {
+    await window.loadFile(join(app.getAppPath(), "out", "desktop", "index.html"));
+  }
+
   if (
     !app.isPackaged &&
     process.env.VIBESTAR_DEV_URL &&
     process.platform === "win32" &&
     process.env.VIBESTAR_DEV_WINDOW_META
-  )
+  ) {
     await writeFile(
       process.env.VIBESTAR_DEV_WINDOW_META,
       JSON.stringify({
@@ -430,6 +503,7 @@ const main = async () => {
         pid: process.pid,
       }),
     );
+  }
 
   window.on("closed", () => {
     window = null;
@@ -452,10 +526,13 @@ const main = async () => {
 
   process.once("SIGTERM", () => app.quit());
   process.once("SIGINT", () => app.quit());
-  if (!app.isPackaged && process.env.VIBESTAR_DEV_URL)
+  if (!app.isPackaged && process.env.VIBESTAR_DEV_URL) {
     createInterface({ input: process.stdin }).on("line", (line) => {
-      if (line === "vibestar:quit") app.quit();
+      if (line === "vibestar:quit") {
+        app.quit();
+      }
     });
+  }
 };
 
 void main().catch((e) => {

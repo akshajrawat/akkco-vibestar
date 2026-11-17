@@ -72,8 +72,10 @@ it("preserves required repository browser suites, issue checks and their shared 
   ]);
 
   expect(result.canReview).toBe(false);
-  for (const name of ["Browser setup", "Repository browser suite", "Required mobile acceptance"])
+  for (const name of ["Browser setup", "Repository browser suite", "Required mobile acceptance"]) {
     expect(result.checks.find((check) => check.name === name)?.required).toBe(true);
+  }
+
   expect(result.checks.find((check) => check.name === "Browser rendering")?.required).toBe(false);
 });
 

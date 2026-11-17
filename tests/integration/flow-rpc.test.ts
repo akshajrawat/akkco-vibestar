@@ -248,7 +248,9 @@ it("lists reusable Viber instances and projects chat separately from the connect
   const created = task();
   const current = await workspace(created.id);
   const first = current.revision.definition.nodes[0];
-  if (first.type !== "agent") throw new Error("Expected fixture Viber");
+  if (first.type !== "agent") {
+    throw new Error("Expected fixture Viber");
+  }
 
   const second = {
     ...first,
@@ -406,9 +408,11 @@ it("offers exactly three valid editable templates and keeps independent reviewer
       (node) => node.type === "agent" && node.completion.review === "require-approved",
     );
 
-    for (const reviewer of reviewers)
-      if (reviewer.type === "agent")
+    for (const reviewer of reviewers) {
+      if (reviewer.type === "agent") {
         expect(engine.flows.profile(reviewer.profile_id).execution.access).toBe("read-only");
+      }
+    }
   }
 
   expect(provider.requests).toHaveLength(0);

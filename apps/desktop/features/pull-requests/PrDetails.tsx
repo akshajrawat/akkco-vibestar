@@ -98,20 +98,25 @@ export const PrDetails = ({
           }
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
 
     void refresh();
     const timer = running ? setInterval(() => void refresh(), 1000) : undefined;
     return () => {
       alive = false;
-      if (timer) clearInterval(timer);
+      if (timer) {
+        clearInterval(timer);
+      }
     };
   }, [job.id, job.last_checked_at, job.last_analyzed_at, job.status, running]);
 
   useEffect(() => {
-    if (tab === "Conversation" && sourceId)
+    if (tab === "Conversation" && sourceId) {
       document.getElementById(`pr-source-${sourceId}`)?.scrollIntoView?.({ block: "nearest" });
+    }
   }, [tab, sourceId]);
 
   const act = async (method: string, params: unknown) => {
@@ -239,7 +244,9 @@ export const PrDetails = ({
     <div
       className="modal-backdrop pr-detail-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
+        if (e.target === e.currentTarget) {
+          close();
+        }
       }}
     >
       <section
@@ -249,7 +256,10 @@ export const PrDetails = ({
         aria-label="Pull request details"
         ref={dialog}
         onKeyDown={(e) => {
-          if (e.key === "Escape") close();
+          if (e.key === "Escape") {
+            close();
+          }
+
           containDialogFocus(e);
         }}
       >

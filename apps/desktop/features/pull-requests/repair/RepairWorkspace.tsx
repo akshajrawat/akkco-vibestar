@@ -102,10 +102,14 @@ export const RepairWorkspace = ({
 
     void rpc<RepairDetail>("repair.detail", { id })
       .then((value) => {
-        if (alive) setDetail(value);
+        if (alive) {
+          setDetail(value);
+        }
       })
       .catch((e) => {
-        if (alive) setError(errorMessage(e));
+        if (alive) {
+          setError(errorMessage(e));
+        }
       });
 
     return () => {
@@ -117,14 +121,20 @@ export const RepairWorkspace = ({
 
   useEffect(() => {
     let alive = true;
-    if (prepared)
+    if (prepared) {
       void rpc<typeof reviews>("repair.reviewFiles", { id })
         .then((rows) => {
-          if (alive) setReviews(rows);
+          if (alive) {
+            setReviews(rows);
+          }
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
+    }
+
     return () => {
       alive = false;
     };
@@ -133,27 +143,39 @@ export const RepairWorkspace = ({
   useEffect(() => {
     let alive = true;
     setDiffSnapshot(undefined);
-    if (prepared)
+    if (prepared) {
       void rpc<Diff>("repair.diff", { id, layer })
         .then((value) => {
-          if (alive) setDiffSnapshot({ layer, value });
+          if (alive) {
+            setDiffSnapshot({ layer, value });
+          }
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
+    }
+
     return () => {
       alive = false;
     };
   }, [id, revision, prepared, layer]);
 
   const act = async <T,>(method: string, params: Record<string, unknown> = {}) => {
-    if (acting.current) return undefined;
+    if (acting.current) {
+      return undefined;
+    }
+
     acting.current = true;
     setBusy(true);
     setError("");
     try {
       const result = await rpc<T>(method, { id, ...params });
-      if (!(method === "repair.cleanup" && params.history === true)) await reload();
+      if (!(method === "repair.cleanup" && params.history === true)) {
+        await reload();
+      }
+
       await refresh();
       return result;
     } catch (e) {
@@ -177,7 +199,10 @@ export const RepairWorkspace = ({
     openWorkspaceTool(id, sections[name] || "pipeline");
   };
 
-  if (!detail) return <p className="empty-row">{error || "Opening PR repair workspace…"}</p>;
+  if (!detail) {
+    return <p className="empty-row">{error || "Opening PR repair workspace…"}</p>;
+  }
+
   const session = detail.session;
   const workspace = session.workspace;
   const implementationProvider = session.configuration.codex.provider || "codex";
@@ -200,7 +225,9 @@ export const RepairWorkspace = ({
     <div
       className={`workspace chat-workspace repair-workspace ${view.terminalDock && view.dockMaximized ? "dock-maximized" : ""}`}
       onKeyDown={(e) => {
-        if (e.key === "Escape" && view.dockMaximized) updateTaskView(id, { dockMaximized: false });
+        if (e.key === "Escape" && view.dockMaximized) {
+          updateTaskView(id, { dockMaximized: false });
+        }
       }}
     >
       <header className="workspace-header">
@@ -425,7 +452,10 @@ export const RepairWorkspace = ({
               }}
               onSend={() => {
                 const instructions = composerContent(view);
-                if (!instructions || instructions.length > 16000 || busy || !canFollowUp) return;
+                if (!instructions || instructions.length > 16000 || busy || !canFollowUp) {
+                  return;
+                }
+
                 const signature = JSON.stringify({ instructions });
 
                 const request_id =
@@ -457,8 +487,9 @@ export const RepairWorkspace = ({
                     updateTaskView(id, { messageRequest: null });
                   } else {
                     removeMessage(request_id);
-                    if (!composerContent(getTaskView(id))) updateTaskView(id, draftSnapshot);
-                    else
+                    if (!composerContent(getTaskView(id))) {
+                      updateTaskView(id, draftSnapshot);
+                    } else {
                       showMessage({
                         id: request_id,
                         role: "user",
@@ -466,6 +497,7 @@ export const RepairWorkspace = ({
                         created_at: new Date().toISOString(),
                         status: "failed",
                       });
+                    }
                   }
                 });
               }}
@@ -844,7 +876,10 @@ export const RepairWorkspace = ({
             aria-modal="true"
             aria-label="Remove PR repair workspace"
             onKeyDown={(e) => {
-              if (e.key === "Escape" && !busy) setCleanup(false);
+              if (e.key === "Escape" && !busy) {
+                setCleanup(false);
+              }
+
               containDialogFocus(e);
             }}
           >
@@ -867,7 +902,9 @@ export const RepairWorkspace = ({
                     confirmed: true,
                     history: false,
                   }).then((result) => {
-                    if (result) setCleanup(false);
+                    if (result) {
+                      setCleanup(false);
+                    }
                   })
                 }
               >
@@ -881,7 +918,9 @@ export const RepairWorkspace = ({
                     confirmed: true,
                     history: true,
                   }).then((result) => {
-                    if (result) back();
+                    if (result) {
+                      back();
+                    }
                   })
                 }
               >

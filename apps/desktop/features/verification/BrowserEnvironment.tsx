@@ -45,12 +45,13 @@ export const BrowserEnvironment = ({
 
         setReport(undefined);
         setNotice("Verification environment saved. Run missing checks explicitly.");
-      } else
+      } else {
         setReport(
           await rpc<BrowserEnvironmentReport>("task.browser.inspect", {
             id: task.id,
           }),
         );
+      }
     } catch (error) {
       onError(errorMessage(error));
     } finally {

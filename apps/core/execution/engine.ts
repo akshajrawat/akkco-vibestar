@@ -25,6 +25,7 @@ import { UtilityAI } from "./agents/utility-ai";
 import { FlowStore } from "../flows/store";
 import { FlowRunStore } from "../flows/run-store";
 import { assertManagedWorkspace } from "../workspace/managed";
+import { ViberSessions } from "./engine/viber-sessions";
 import { FlowExecution } from "./engine/flows";
 import { migrateLegacyTasks } from "../flows/legacy-migration";
 
@@ -50,6 +51,8 @@ export class Engine extends EventEmitter {
   readonly repositoryIndex: RepositoryIndex;
 
   readonly utility: UtilityAI;
+
+  readonly viberSessions: ViberSessions;
 
   readonly flows: FlowStore;
 
@@ -150,6 +153,12 @@ export class Engine extends EventEmitter {
       cancelFlow: (id) => this.flowExecution.cancel(id),
     });
 
+    this.viberSessions = new ViberSessions(this, this.state, this.runner, {
+      withExecutionSlot: this.withExecutionSlot,
+      assertExecutionSlot: this.scheduling.assertExecutionSlot,
+      stopActivity: this.stopActivity,
+    });
+
     this.commands = new CommandExecution(this, this.state);
 
     this.agents = new AgentOperations(this, this.state, this.runner, {
@@ -191,14 +200,16 @@ export class Engine extends EventEmitter {
           run.pid > 1 &&
           run.process_identity &&
           (await processIdentity(run.pid)) === run.process_identity
-        )
+        ) {
           terminateGroup(run.pid, "SIGKILL");
+        }
       }
 
       for (const task of engine.db.tasks()) {
         const operation = task.workspace_checkpoint?.operation;
-        if (operation?.identity && (await processIdentity(operation.pid)) === operation.identity)
+        if (operation?.identity && (await processIdentity(operation.pid)) === operation.identity) {
           terminateGroup(operation.pid, "SIGKILL");
+        }
       }
 
       migrateLegacyTasks(engine.db);
@@ -214,20 +225,24 @@ export class Engine extends EventEmitter {
           !["removing", "removed"].includes(task.workspace_checkpoint?.state || "")
         ) {
           try {
-            if (task.workspace_kind === "managed") await assertManagedWorkspace(root, task);
-            else {
+            if (task.workspace_kind === "managed") {
+              await assertManagedWorkspace(root, task);
+            } else {
               const repo = engine.db.repository(task.repo_id);
-              if (!(await exists(repo.path)) || !(await exists(task.worktree_path)))
+              if (!(await exists(repo.path)) || !(await exists(task.worktree_path))) {
                 throw new AdeError(
                   "recovery",
                   "Saved workspace preparation is missing. Restore the owned checkpoint explicitly; no creation was replayed.",
                 );
-              if (task.workspace_checkpoint?.state === "ready")
+              }
+
+              if (task.workspace_checkpoint?.state === "ready") {
                 await engine.git.assertOwnedTask(task);
-              else
+              } else {
                 await engine.git.recoverTaskPreparation(repo, task, (value) =>
                   engine.db.saveTask(value),
                 );
+              }
             }
           } catch (error) {
             engine.db.saveTask({
@@ -241,7 +256,7 @@ export class Engine extends EventEmitter {
       }
 
       const finalizations = new HistoricalFinalizations(engine.db);
-      for (const task of engine.db.tasks())
+      for (const task of engine.db.tasks()) {
         for (const record of finalizations.list(task.id)) {
           if (["preparing", "reviewing", "committing", "pushing"].includes(record.status)) {
             record.status = record.status === "pushing" ? "uncertain" : "interrupted";
@@ -254,6 +269,7 @@ export class Engine extends EventEmitter {
             finalizations.save(record);
           }
         }
+      }
 
       engine.db.recover();
       engine.flowRuns.interruptUnfinished();
@@ -349,21 +365,27 @@ export class Engine extends EventEmitter {
 
   cancel = async (id: string) => {
     this.db.task(id);
-    if (this.state.interactive.has(id))
+    if (this.state.interactive.has(id)) {
       throw new AdeError("busy", "Close the task terminal before changing execution state");
+    }
 
     const current = this.db.all<{ id: string }>(
       "SELECT id FROM flow_runs WHERE task_id=? AND status IN ('queued','running','pausing','paused','waiting') ORDER BY rowid DESC",
       id,
     );
 
-    for (const run of current) await this.flowExecution.cancel(run.id);
+    for (const run of current) {
+      await this.flowExecution.cancel(run.id);
+    }
 
     const active = [...this.state.active.entries()].filter(
       ([key, value]) => key === id || value.taskId === id,
     );
 
-    for (const [, value] of active) value.controller.abort();
+    for (const [, value] of active) {
+      value.controller.abort();
+    }
+
     await Promise.allSettled(active.map(([, value]) => value.promise));
     this.changed(id);
   };
@@ -379,18 +401,22 @@ export class Engine extends EventEmitter {
   beginShutdown = () => {
     this.state.closed = true;
     this.state.repositoryController.abort();
-    for (const a of this.state.active.values()) a.controller.abort();
+    for (const a of this.state.active.values()) {
+      a.controller.abort();
+    }
   };
 
   /** Close admission atomically after proving that a desktop restart cannot interrupt work. */
   prepareRuntimeRestart = () => {
     const blockers = this.cleanupBlockers();
-    if (blockers.length)
+    if (blockers.length) {
       throw new AdeError(
         "busy",
         "Wait for running tasks, terminals and background operations to finish before changing the runtime.",
         { blockers },
       );
+    }
+
     this.beginShutdown();
   };
 

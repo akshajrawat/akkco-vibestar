@@ -43,15 +43,20 @@ export const TaskTerminal = ({
   const prefix = owner === "repair" ? "repair.terminal" : "terminal";
 
   const attach = useCallback((value: TaskTerminalSnapshot | null) => {
-    if (value && closedSessions.current.has(value.session_id)) value = null;
+    if (value && closedSessions.current.has(value.session_id)) {
+      value = null;
+    }
+
     terminal.current?.reset();
     sessionRef.current = value?.session_id || "";
     setSnapshot(value);
     if (value) {
       terminal.current?.write(value.output);
-      for (const event of replay.current || [])
-        if (event.session_id === value.session_id && event.sequence > value.sequence)
+      for (const event of replay.current || []) {
+        if (event.session_id === value.session_id && event.sequence > value.sequence) {
           terminal.current?.write(event.text);
+        }
+      }
     }
 
     replay.current = null;
@@ -59,7 +64,10 @@ export const TaskTerminal = ({
 
   const start = useCallback(async () => {
     const target = terminal.current;
-    if (!target || opening.current === target) return;
+    if (!target || opening.current === target) {
+      return;
+    }
+
     opening.current = target;
     setStartError("");
     setBusy(true);
@@ -73,9 +81,14 @@ export const TaskTerminal = ({
         rows: Math.max(4, Math.min(200, target.rows)),
       });
 
-      if (terminal.current !== target) return;
+      if (terminal.current !== target) {
+        return;
+      }
+
       attach(value);
-      if (activeRef.current) target.focus();
+      if (activeRef.current) {
+        target.focus();
+      }
     } catch (error) {
       if (terminal.current === target) {
         replay.current = null;
@@ -83,8 +96,13 @@ export const TaskTerminal = ({
         errorRef.current(errorMessage(error));
       }
     } finally {
-      if (opening.current === target) opening.current = null;
-      if (terminal.current === target) setBusy(false);
+      if (opening.current === target) {
+        opening.current = null;
+      }
+
+      if (terminal.current === target) {
+        setBusy(false);
+      }
     }
   }, [task.id, prefix, attach]);
 
@@ -109,7 +127,10 @@ export const TaskTerminal = ({
 
     const fit = new FitAddon();
     term.loadAddon(fit);
-    if (container.current) term.open(container.current);
+    if (container.current) {
+      term.open(container.current);
+    }
+
     terminal.current = term;
     fitter.current = fit;
 
@@ -126,18 +147,24 @@ export const TaskTerminal = ({
     replay.current = [];
 
     const sub = subscribe((event) => {
-      if ((owner === "repair" ? event.repair_id : event.task_id) !== task.id) return;
+      if ((owner === "repair" ? event.repair_id : event.task_id) !== task.id) {
+        return;
+      }
+
       if (event.event === "terminal.output") {
         const sequence = (event.data as { sequence: number } | undefined)?.sequence || 0;
-        if (replay.current)
+        if (replay.current) {
           replay.current.push({ text: event.text || "", sequence, session_id: event.session_id });
-        else if (event.session_id === sessionRef.current) term.write(event.text || "");
+        } else if (event.session_id === sessionRef.current) {
+          term.write(event.text || "");
+        }
       }
 
       if (event.event === "terminal.closed" && event.session_id) {
         closedSessions.current.add(event.session_id);
-        if (closedSessions.current.size > 32)
+        if (closedSessions.current.size > 32) {
           closedSessions.current.delete(closedSessions.current.values().next().value!);
+        }
       }
 
       if (event.event === "terminal.closed" && event.session_id === sessionRef.current) {
@@ -149,7 +176,10 @@ export const TaskTerminal = ({
 
     void rpc<TaskTerminalSnapshot | null>(`${prefix}.status`, { id: task.id })
       .then((value) => {
-        if (!alive) return;
+        if (!alive) {
+          return;
+        }
+
         attach(value);
         setReady(true);
       })
@@ -162,16 +192,20 @@ export const TaskTerminal = ({
       });
 
     const input = term.onData((text) => {
-      if (sessionRef.current)
+      if (sessionRef.current) {
         void rpc(`${prefix}.input`, { id: task.id, session_id: sessionRef.current, text }).catch(
           (error) => errorRef.current(errorMessage(error)),
         );
+      }
     });
 
     let lastSize = "";
 
     const resize = () => {
-      if (!container.current?.clientHeight || !container.current.clientWidth) return;
+      if (!container.current?.clientHeight || !container.current.clientWidth) {
+        return;
+      }
+
       fit.fit();
       const size = `${term.cols}/${term.rows}`;
       if (sessionRef.current && size !== lastSize) {
@@ -187,7 +221,10 @@ export const TaskTerminal = ({
     };
 
     const observer = new ResizeObserver(resize);
-    if (container.current) observer.observe(container.current);
+    if (container.current) {
+      observer.observe(container.current);
+    }
+
     return () => {
       alive = false;
       void sub.then((unlisten) => unlisten());
@@ -201,12 +238,16 @@ export const TaskTerminal = ({
 
   // Showing the terminal is the user's shell-open action; hide/reopen retains the PTY.
   useEffect(() => {
-    if (!active || !ready) return;
+    if (!active || !ready) {
+      return;
+    }
 
     const frame = requestAnimationFrame(() => {
       fitter.current?.fit();
       terminal.current?.focus();
-      if (!sessionRef.current && task.worktree_path) void start();
+      if (!sessionRef.current && task.worktree_path) {
+        void start();
+      }
     });
 
     return () => cancelAnimationFrame(frame);
@@ -215,16 +256,26 @@ export const TaskTerminal = ({
   const close = async () => {
     const target = terminal.current;
     setBusy(true);
-    if (activeRef.current) target?.focus();
+    if (activeRef.current) {
+      target?.focus();
+    }
+
     try {
       await rpc(`${prefix}.close`, { id: task.id });
-      if (terminal.current !== target) return;
+      if (terminal.current !== target) {
+        return;
+      }
+
       sessionRef.current = "";
       setSnapshot(null);
     } catch (error) {
-      if (terminal.current === target) errorRef.current(errorMessage(error));
+      if (terminal.current === target) {
+        errorRef.current(errorMessage(error));
+      }
     } finally {
-      if (terminal.current === target) setBusy(false);
+      if (terminal.current === target) {
+        setBusy(false);
+      }
     }
   };
 

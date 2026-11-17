@@ -29,8 +29,14 @@ export const AuthDialog = ({
     let checking = false;
 
     const checkSuccess = (finished = false) => {
-      if (finished) setEnded(true);
-      if (checking) return;
+      if (finished) {
+        setEnded(true);
+      }
+
+      if (checking) {
+        return;
+      }
+
       checking = true;
 
       void rpc<import("../../lib/types").Detection[]>("providers.detect")
@@ -39,11 +45,14 @@ export const AuthDialog = ({
             alive &&
             providers.find((p) => p.provider === provider)?.connected &&
             (finished || !initiallyConnected)
-          )
+          ) {
             setConnected(true);
+          }
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         })
         .finally(() => {
           checking = false;
@@ -65,10 +74,16 @@ export const AuthDialog = ({
     }
 
     const sub = subscribe((e) => {
-      if (!alive || !e.session_id) return;
+      if (!alive || !e.session_id) {
+        return;
+      }
+
       if (e.event === "auth.output") {
-        if (e.session_id === session) term.write(e.text || "");
-        else pending.set(e.session_id, [...(pending.get(e.session_id) || []), e.text || ""]);
+        if (e.session_id === session) {
+          term.write(e.text || "");
+        } else {
+          pending.set(e.session_id, [...(pending.get(e.session_id) || []), e.text || ""]);
+        }
       }
 
       if (e.event === "auth.closed") {
@@ -88,37 +103,58 @@ export const AuthDialog = ({
           return;
         }
 
-        for (const text of pending.get(session) || []) term.write(text);
+        for (const text of pending.get(session) || []) {
+          term.write(text);
+        }
+
         pending.clear();
         setEnded(closed.has(session));
-        if (closed.has(session)) checkSuccess(true);
+        if (closed.has(session)) {
+          checkSuccess(true);
+        }
+
         term.focus();
       })
       .catch((e) => {
-        if (alive) setError(errorMessage(e));
+        if (alive) {
+          setError(errorMessage(e));
+        }
       });
 
     const input = term.onData((text) => {
-      if (session && !closed.has(session))
+      if (session && !closed.has(session)) {
         void rpc("auth.input", { session_id: session, text }).catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
+      }
     });
 
     const observer = new ResizeObserver(() => {
-      if (container.current?.clientHeight) fit.fit();
+      if (container.current?.clientHeight) {
+        fit.fit();
+      }
     });
 
     const poll = setInterval(() => {
-      if (session && !closed.has(session) && !initiallyConnected) checkSuccess();
+      if (session && !closed.has(session) && !initiallyConnected) {
+        checkSuccess();
+      }
     }, 8000);
 
-    if (container.current) observer.observe(container.current);
+    if (container.current) {
+      observer.observe(container.current);
+    }
+
     return () => {
       alive = false;
       clearInterval(poll);
       void sub.then((fn) => fn());
-      if (session) void rpc("auth.close", { session_id: session });
+      if (session) {
+        void rpc("auth.close", { session_id: session });
+      }
+
       observer.disconnect();
       input.dispose();
       term.dispose();

@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MessageSquarePlus, Pencil } from "lucide-react";
-
 import type { AgentProfile } from "../../../core/flows/contracts";
-import type { FlowWorkspace, ViberInstance } from "../../../core/flows/workspace";
-import type { Detail, Task } from "../../lib/types";
+import type { ViberInstance } from "../../../core/flows/workspace";
+import type { ViberSession } from "../../../core/vibers/contracts";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
@@ -11,7 +10,7 @@ import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { ViberFace } from "./ViberFace";
-import { ViberConversation } from "./ViberConversation";
+import { ViberSessionChat } from "./ViberSessionChat";
 
 export const ViberChat = ({
   profile,
@@ -24,114 +23,82 @@ export const ViberChat = ({
   edit: (profile: AgentProfile) => void;
   openTask: (taskId: string) => void;
 }) => {
-  const [session, setSession] = useState<{ task_id: string; node_id: string }>();
+  const [sessionId, setSessionId] = useState<string>();
+  const [sessions, setSessions] = useState<ViberSession[]>([]);
   const [instances, setInstances] = useState<ViberInstance[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const request = useRef({ signature: "", id: "", task: null as Task | null });
+  const request = useRef({ signature: "", id: "", session: null as ViberSession | null });
   const starting = useRef(false);
   const draftId = `viber:${profile.id}:new-chat`;
+  const view = useTaskView(draftId);
 
-  const sessionKey = session
-    ? `${session.task_id}:viber:${session.node_id}:${profile.id}`
-    : draftId;
-
-  const selectionView = useTaskView(sessionKey);
-
-  const selection = selectionView.followupProvider
-    ? {
-        provider: selectionView.followupProvider,
-        model: selectionView.followupModel || "",
-        effort: selectionView.followupEffort || profile.execution.effort,
-      }
-    : undefined;
-
-  const configuration = { ...profile, execution: { ...profile.execution, ...selection } };
+  const selection = {
+    provider: view.followupProvider || profile.execution.provider,
+    model: view.followupModel ?? profile.execution.model,
+    effort: view.followupEffort || profile.execution.effort,
+  };
 
   useEffect(() => {
     let active = true;
 
-    void rpc<ViberInstance[]>("viber.instances")
-      .then((instances) => {
-        if (active)
+    void Promise.all([
+      rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id }),
+      rpc<ViberInstance[]>("viber.instances"),
+    ])
+      .then(([sessions, instances]) => {
+        if (active) {
+          setSessions(sessions);
           setInstances(instances.filter((instance) => instance.profile_id === profile.id));
+        }
       })
       .catch((reason) => {
-        if (active) setError(errorMessage(reason));
+        if (active) {
+          setError(errorMessage(reason));
+        }
       });
-
-    if (session) {
-      const key = `${session.task_id}:viber:${session.node_id}:${profile.id}`;
-
-      void rpc<FlowWorkspace>("flow.workspace", { task_id: session.task_id })
-        .then((workspace) => {
-          const saved = workspace.conversation_settings?.[session.node_id];
-          if (active && saved && !getTaskView(key).followupProvider)
-            updateTaskView(key, {
-              followupProvider: saved.provider,
-              followupModel: saved.model,
-              followupEffort: saved.effort,
-            });
-        })
-        .catch((reason) => {
-          if (active) setError(errorMessage(reason));
-        });
-    }
 
     return () => {
       active = false;
     };
-  }, [profile.id, revision, session]);
+  }, [profile.id, revision, sessionId]);
 
   const start = async () => {
-    if (starting.current) return;
+    if (starting.current) {
+      return;
+    }
+
     const content = composerContent(getTaskView(draftId));
-    if (!content.trim() || content.length > 32000) return;
+    if (!content.trim() || content.length > 32000) {
+      return;
+    }
+
     starting.current = true;
     setBusy(true);
     setError("");
     try {
       const signature = JSON.stringify({ content, profile_id: profile.id, selection });
-      if (request.current.signature !== signature)
-        request.current = { signature, id: crypto.randomUUID(), task: null };
+      if (request.current.signature !== signature) {
+        request.current = { signature, id: crypto.randomUUID(), session: null };
+      }
 
-      const task =
-        request.current.task ||
-        (await rpc<Task>("task.createGeneral", {
+      const session =
+        request.current.session ||
+        (await rpc<ViberSession>("viber.session.create", {
           request_id: request.current.id,
-          goal: content,
-          repository_id: null,
           profile_id: profile.id,
+          selection,
         }));
 
-      request.current.task = task;
-      const workspace = await rpc<FlowWorkspace>("flow.workspace", { task_id: task.id });
-      if (workspace.capabilities?.conversations !== 1)
-        throw new Error("This core does not support Viber conversations.");
+      request.current.session = session;
 
-      const node = workspace.revision.definition.nodes.find(
-        (node) => node.type === "agent" && node.profile_id === profile.id,
-      );
-
-      if (!node || node.type !== "agent")
-        throw new Error("The saved Viber conversation is unavailable.");
-
-      await rpc("viber.chat", {
-        task_id: task.id,
-        node_id: node.id,
+      await rpc("viber.session.send", {
+        session_id: session.id,
         profile_id: profile.id,
-        expected_revision: workspace.revision.revision,
-        history_ids: [],
-        inputs: node.inputs,
         request_id: request.current.id,
         content,
-        ...(selection ? { selection } : {}),
-      });
-
-      updateTaskView(`${task.id}:viber:${node.id}:${profile.id}`, {
-        followupProvider: selection?.provider || null,
-        followupModel: selection?.model || null,
-        followupEffort: selection?.effort || null,
+        history_ids: [],
+        selection,
       });
 
       updateTaskView(draftId, {
@@ -142,8 +109,8 @@ export const ViberChat = ({
         followupEffort: null,
       });
 
-      setSession({ task_id: task.id, node_id: node.id });
-      request.current = { signature: "", id: "", task: null };
+      setSessionId(session.id);
+      request.current = { signature: "", id: "", session: null };
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -154,9 +121,9 @@ export const ViberChat = ({
 
   const modelControl = (
     <ViberModelPicker
-      execution={configuration.execution}
+      execution={{ ...profile.execution, ...selection }}
       change={(execution) => {
-        updateTaskView(sessionKey, {
+        updateTaskView(draftId, {
           followupProvider: execution.provider,
           followupModel: execution.model,
           followupEffort: execution.effort,
@@ -189,7 +156,8 @@ export const ViberChat = ({
               followupEffort: null,
             });
 
-            setSession(undefined);
+            request.current = { signature: "", id: "", session: null };
+            setSessionId(undefined);
           }}
         >
           <MessageSquarePlus size={15} />
@@ -204,20 +172,30 @@ export const ViberChat = ({
           <Pencil size={14} />
         </Button>
       </header>
-      {!!instances.length && (
+      {!!(sessions.length || instances.length) && (
         <details className="viber-chat-history">
           <summary>Conversations</summary>
+          {sessions.map((session) => (
+            <Button
+              key={session.id}
+              variant="ghost"
+              size="sm"
+              onClick={(event) => {
+                setSessionId(session.id);
+                event.currentTarget.closest("details")!.open = false;
+              }}
+            >
+              {session.title}
+            </Button>
+          ))}
           {instances.map((instance) => (
             <Button
               key={`${instance.task_id}:${instance.node_id}`}
               variant="ghost"
               size="sm"
-              onClick={(event) => {
-                setSession(instance);
-                event.currentTarget.closest("details")!.open = false;
-              }}
+              onClick={() => openTask(instance.task_id)}
             >
-              {instance.goal.slice(0, 90)}
+              Task · {instance.goal.slice(0, 90)}
             </Button>
           ))}
         </details>
@@ -227,14 +205,12 @@ export const ViberChat = ({
           {error}
         </p>
       )}
-      {session ? (
-        <SavedViberChat
-          key={`${session.task_id}:${session.node_id}`}
-          session={session}
+      {sessionId ? (
+        <ViberSessionChat
+          key={sessionId}
+          sessionId={sessionId}
           profile={profile}
           revision={revision}
-          openTask={openTask}
-          modelControl={modelControl}
         />
       ) : (
         <ChatSurface
@@ -271,107 +247,5 @@ export const ViberChat = ({
         />
       )}
     </section>
-  );
-};
-
-const SavedViberChat = ({
-  session,
-  profile,
-  revision,
-  openTask,
-  modelControl,
-}: {
-  modelControl: React.ReactNode;
-  session: { task_id: string; node_id: string };
-  profile: AgentProfile;
-  revision: number;
-  openTask: (taskId: string) => void;
-}) => {
-  const [data, setData] = useState<{ detail: Detail; workspace: FlowWorkspace }>();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    const [detail, workspace] = await Promise.all([
-      rpc<Detail>("task.detail", { id: session.task_id }),
-      rpc<FlowWorkspace>("flow.workspace", { task_id: session.task_id }),
-    ]);
-
-    return { detail, workspace };
-  }, [session.task_id]);
-
-  useEffect(() => {
-    let active = true;
-
-    void load()
-      .then((data) => {
-        if (active) setData(data);
-      })
-      .catch((reason) => {
-        if (active) setError(errorMessage(reason));
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [load, revision]);
-
-  const node = data?.workspace.revision.definition.nodes.find(
-    (node) => node.id === session.node_id,
-  );
-
-  const activeFlow = data?.workspace.runs.some((run) =>
-    ["queued", "running", "pausing"].includes(run.status),
-  );
-
-  const conversationActive = data?.workspace.conversations.some((run) =>
-    ["queued", "running", "pausing", "paused"].includes(run.status),
-  );
-
-  return (
-    <>
-      {error && (
-        <p className="error-box" role="alert">
-          {error}
-        </p>
-      )}
-      {data && node?.type === "agent" && data.workspace.capabilities?.conversations === 1 ? (
-        <ViberConversation
-          compact
-          modelControl={modelControl}
-          detail={data.detail}
-          workspace={data.workspace}
-          node={node}
-          profile={profile}
-          revision={revision}
-          busy={busy}
-          disabled={
-            !!activeFlow ||
-            data.detail.task.archived ||
-            data.detail.task.status === "completed" ||
-            (!!data.detail.active && !conversationActive)
-          }
-          output={() => openTask(session.task_id)}
-          action={async (method, params) => {
-            setBusy(true);
-            setError("");
-            try {
-              await rpc(method, params);
-              setData(await load());
-              return true;
-            } catch (reason) {
-              setError(errorMessage(reason));
-              return false;
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-      ) : (
-        <p className="empty-row">
-          {data ? "This saved conversation is unavailable." : "Opening conversation…"}
-        </p>
-      )}
-    </>
   );
 };

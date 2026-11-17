@@ -29,7 +29,10 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
+
     const request = ++sequence.current;
     try {
       const list: SavedWatch[] = [];
@@ -41,12 +44,20 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           ...(list.length ? { before: list[list.length - 1].id } : {}),
         });
 
-        if (request !== sequence.current) return;
+        if (request !== sequence.current) {
+          return;
+        }
+
         list.push(...watchPage);
-        if (watchPage.length < 100) break;
+        if (watchPage.length < 100) {
+          break;
+        }
       }
 
-      if (request !== sequence.current) return;
+      if (request !== sequence.current) {
+        return;
+      }
+
       setWatches(list);
       setLoaded(true);
       setMoreWatches(watchPage.length === 100);
@@ -74,7 +85,10 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
         }),
       ]);
 
-      if (request !== sequence.current) return;
+      if (request !== sequence.current) {
+        return;
+      }
+
       const nextHistory = [...firstHistory];
       let historyPage = firstHistory;
       for (let index = 1; index < historyPages && historyPage.length === 50; index++) {
@@ -84,11 +98,17 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           before: nextHistory[nextHistory.length - 1].id,
         });
 
-        if (request !== sequence.current) return;
+        if (request !== sequence.current) {
+          return;
+        }
+
         nextHistory.push(...historyPage);
       }
 
-      if (request !== sequence.current) return;
+      if (request !== sequence.current) {
+        return;
+      }
+
       setDetail(nextDetail);
       setHistory(nextHistory);
       setMoreHistory(historyPage.length === 50);
@@ -99,9 +119,15 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           scan_id: selectedScan.id,
         });
 
-        if (request !== sequence.current) return;
+        if (request !== sequence.current) {
+          return;
+        }
+
         setScan(nextScan);
-      } else setScan(null);
+      } else {
+        setScan(null);
+      }
+
       setError("");
     } catch (e) {
       if (request === sequence.current) {
@@ -122,11 +148,16 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
   }, [initialWatchId]);
 
   useEffect(() => {
-    if (watchId) localStorage.setItem("vibestar.issueWatch.selected", watchId);
+    if (watchId) {
+      localStorage.setItem("vibestar.issueWatch.selected", watchId);
+    }
   }, [watchId]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
+
     void refresh();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let disposed = false;
@@ -137,11 +168,14 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
           event.event === "utility.event" ||
           event.event === "usage.changed") &&
         !timer
-      )
+      ) {
         timer = setTimeout(() => {
           timer = undefined;
-          if (!disposed) void refresh();
+          if (!disposed) {
+            void refresh();
+          }
         }, 200);
+      }
     });
 
     const focus = () => void refresh();
@@ -149,14 +183,20 @@ export const useIssueWatch = (enabled: boolean, initialWatchId?: string | null) 
     return () => {
       disposed = true;
       invalidate();
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
+
       window.removeEventListener("focus", focus);
       void subscription.then((unsubscribe) => unsubscribe());
     };
   }, [enabled, refresh, invalidate]);
 
   const select = (id: string) => {
-    if (id === watchId && !scanId) return;
+    if (id === watchId && !scanId) {
+      return;
+    }
+
     invalidate();
     setWatchId(id);
     setScanId("");

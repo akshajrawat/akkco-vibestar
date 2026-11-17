@@ -37,8 +37,11 @@ const resultValue = (value: unknown): React.ReactNode => {
     );
   }
 
-  if (typeof value === "string") return <MarkdownContent text={value} />;
-  if (Array.isArray(value))
+  if (typeof value === "string") {
+    return <MarkdownContent text={value} />;
+  }
+
+  if (Array.isArray(value)) {
     return value.length ? (
       <ul>
         {value.map((entry, i) => (
@@ -48,7 +51,9 @@ const resultValue = (value: unknown): React.ReactNode => {
     ) : (
       <p className="subtle">None reported</p>
     );
-  if (value && typeof value === "object")
+  }
+
+  if (value && typeof value === "object") {
     return (
       <dl className="result-fields">
         {Object.entries(value).map(([key, entry]) => (
@@ -59,6 +64,8 @@ const resultValue = (value: unknown): React.ReactNode => {
         ))}
       </dl>
     );
+  }
+
   return <p>{value === null ? "Not reported" : String(value)}</p>;
 };
 
@@ -77,8 +84,9 @@ export const AgentResponse = memo(
     let fields: Record<string, unknown> | undefined;
     try {
       const value: unknown = JSON.parse(text);
-      if (value && typeof value === "object" && !Array.isArray(value))
+      if (value && typeof value === "object" && !Array.isArray(value)) {
         fields = value as Record<string, unknown>;
+      }
     } catch {
       /* Prose and incomplete streams remain readable. */
     }
@@ -120,21 +128,25 @@ export const AgentResponse = memo(
     }
 
     const partial = streamingSummary(text);
-    if (partial !== null)
+    if (partial !== null) {
       return (
         <div className="agent-response markdown" aria-busy="true">
           <MarkdownContent text={partial} />
         </div>
       );
+    }
+
     if (
       text.trimStart().startsWith("{") &&
       (structured || /"(?:summary|goal|understanding)"\s*:/.test(text))
-    )
+    ) {
       return (
         <span className="subtle" role="status">
           Receiving response…
         </span>
       );
+    }
+
     return (
       <div className="agent-response markdown">
         <MarkdownContent text={text} />

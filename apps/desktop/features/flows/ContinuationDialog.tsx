@@ -24,7 +24,10 @@ export const ContinuationDialog = ({
         aria-modal="true"
         aria-label="Apply saved flow revision"
         onKeyDown={(event) => {
-          if (event.key === "Escape" && !busy) close();
+          if (event.key === "Escape" && !busy) {
+            close();
+          }
+
           containDialogFocus(event);
         }}
       >

@@ -42,9 +42,17 @@ export class IssueWatchFixtureProvider extends FixtureProvider {
       ],
     }));
 
-    if (this.mode === "unknown") results[0].issue_id = "I_fabricated";
-    if (this.mode === "missing") results.pop();
-    if (this.mode === "forged-citation") results[0].evidence[0].source_key = "source:invented";
+    if (this.mode === "unknown") {
+      results[0].issue_id = "I_fabricated";
+    }
+
+    if (this.mode === "missing") {
+      results.pop();
+    }
+
+    if (this.mode === "forged-citation") {
+      results[0].evidence[0].source_key = "source:invented";
+    }
 
     const program =
       this.mode === "quota"

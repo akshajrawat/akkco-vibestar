@@ -7,7 +7,10 @@ import { historicalRuns, legacyMigration } from "./legacy-migration";
 export const historicalWorkspace = (engine: Engine, taskId: string) => {
   engine.db.task(taskId);
   const migration = legacyMigration(engine.db, taskId);
-  if (!migration) return null;
+  if (!migration) {
+    return null;
+  }
+
   return {
     migration,
     definition:
@@ -33,14 +36,20 @@ type TaskFlowSummary = {
 export const taskFlowSummaries = (engine: Engine) =>
   Object.fromEntries(
     engine.db.tasks().flatMap<[string, TaskFlowSummary]>((task) => {
-      if (!task.flow_id) return [];
+      if (!task.flow_id) {
+        return [];
+      }
+
       try {
         const latest = engine.db.all<{ id: string }>(
           "SELECT id FROM flow_runs WHERE task_id=? ORDER BY CASE WHEN kind='conversation' AND status IN ('queued','running','pausing','paused') THEN 0 WHEN kind='flow' THEN 1 ELSE 2 END,rowid DESC LIMIT 1",
           task.id,
         )[0];
 
-        if (!latest) return [[task.id, { status: "draft", verification: "missing", run_id: null }]];
+        if (!latest) {
+          return [[task.id, { status: "draft", verification: "missing", run_id: null }]];
+        }
+
         const run = engine.flowRuns.run(latest.id);
 
         const graph = engine.db.all<{ id: string }>(
@@ -67,8 +76,10 @@ export const taskFlowSummaries = (engine: Engine) =>
 
         return [[task.id, { status: run.status, verification, run_id: run.id }]];
       } catch (error) {
-        if (error instanceof AdeError && error.kind === "corrupt_record")
+        if (error instanceof AdeError && error.kind === "corrupt_record") {
           return [[task.id, { status: "needs_recovery", verification: "missing", run_id: null }]];
+        }
+
         throw error;
       }
     }),
@@ -77,11 +88,13 @@ export const taskFlowSummaries = (engine: Engine) =>
 /** Read projections retain validated historical snapshots and existing telemetry links. */
 export const flowWorkspace = (engine: Engine, taskId: string) => {
   const task = engine.db.task(taskId);
-  if (!task.flow_id)
+  if (!task.flow_id) {
     throw new AdeError(
       "invalid_state",
       "This task still uses its historical workflow. Its history remains available.",
     );
+  }
+
   const revision = engine.flows.definition(task.flow_id);
 
   const captured = engine.db
@@ -90,7 +103,10 @@ export const flowWorkspace = (engine: Engine, taskId: string) => {
       try {
         return [engine.flowRuns.run(id)];
       } catch (error) {
-        if (error instanceof AdeError && error.kind === "corrupt_record") return [];
+        if (error instanceof AdeError && error.kind === "corrupt_record") {
+          return [];
+        }
+
         throw error;
       }
     });
@@ -139,8 +155,10 @@ export const viberInstances = (engine: Engine) =>
       !task.flow_id ||
       engine.db.all("SELECT task_id FROM retired_viber_conversations WHERE task_id=?", task.id)
         .length
-    )
+    ) {
       return [];
+    }
+
     try {
       const saved = engine.flows.definition(task.flow_id);
       return saved.definition.nodes
@@ -157,7 +175,10 @@ export const viberInstances = (engine: Engine) =>
           status: task.status,
         }));
     } catch (error) {
-      if (error instanceof AdeError && error.kind === "corrupt_record") return [];
+      if (error instanceof AdeError && error.kind === "corrupt_record") {
+        return [];
+      }
+
       throw error;
     }
   });

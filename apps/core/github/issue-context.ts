@@ -18,8 +18,10 @@ const githubUrl = (input: string) => {
     url.username ||
     url.password ||
     url.port
-  )
+  ) {
     throw new AdeError("github_identity", "GitHub evidence returned an unsafe source URL.");
+  }
+
   return url;
 };
 
@@ -38,12 +40,14 @@ export const contributionPolicy = async (
       })
       .parse(await reader.read(`repos/${repository.full_name}/community/profile`));
 
-    if (!profile.files.contributing)
+    if (!profile.files.contributing) {
       return {
         complete: false,
         warnings: ["Contribution policy is unavailable; assignment permission is unknown."],
         source_keys: [],
       };
+    }
+
     const url = new URL(profile.files.contributing.url);
     const prefix = `/repos/${repository.full_name}/contents/`;
     if (
@@ -54,12 +58,13 @@ export const contributionPolicy = async (
       url.port ||
       !url.pathname.toLowerCase().startsWith(prefix) ||
       url.hash
-    )
+    ) {
       return {
         complete: false,
         warnings: ["External contribution policy was not fetched; inspect it manually."],
         source_keys: [],
       };
+    }
 
     const file = z
       .object({
@@ -73,7 +78,9 @@ export const contributionPolicy = async (
       .parse(await reader.read(`${url.pathname.slice(1)}${url.search}`));
 
     githubUrl(file.html_url);
-    if (file.size > 1048576) throw new Error("Contribution policy exceeds the source size limit.");
+    if (file.size > 1048576) {
+      throw new Error("Contribution policy exceeds the source size limit.");
+    }
 
     const text = new TextDecoder("utf-8", { fatal: true }).decode(
       Buffer.from(file.content, "base64"),
@@ -143,8 +150,10 @@ export const issueContext = async (
   const base = `repos/${issue.repository}/issues/${issue.number}`;
   try {
     const comments = await reader.pages(`${base}/comments`, 1000);
-    if (comments.length !== issue.comment_count)
+    if (comments.length !== issue.comment_count) {
       warnings.push("Issue comment count changed during collection.");
+    }
+
     for (const value of comments) {
       const comment = z
         .object({
@@ -159,8 +168,9 @@ export const issueContext = async (
         .parse(value);
 
       const url = githubUrl(comment.html_url);
-      if (url.pathname.toLowerCase() !== `/` + base.replace(/^repos\//, ""))
+      if (url.pathname.toLowerCase() !== `/` + base.replace(/^repos\//, "")) {
         throw new AdeError("github_identity", "Comment belongs to another issue.");
+      }
 
       retain(
         retainedSource({
@@ -227,11 +237,15 @@ export const issueContext = async (
         })
         .parse(raw);
 
-      if (event.event !== "cross-referenced" || !event.source?.issue?.pull_request) continue;
+      if (event.event !== "cross-referenced" || !event.source?.issue?.pull_request) {
+        continue;
+      }
+
       const url = githubUrl(event.source.issue.html_url);
       const match = url.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)$/);
-      if (!match || !Number.isSafeInteger(Number(match[3])))
+      if (!match || !Number.isSafeInteger(Number(match[3]))) {
         throw new AdeError("github_identity", "Timeline PR identity is invalid.");
+      }
 
       linked.set(url.href, {
         url: url.href,
@@ -240,8 +254,10 @@ export const issueContext = async (
       });
     }
 
-    if (linked.size > 10)
+    if (linked.size > 10) {
       warnings.push("More than 10 linked PRs; competing work coverage is incomplete.");
+    }
+
     for (const link of [...linked.values()].slice(0, 10)) {
       const pr = z
         .object({
@@ -257,8 +273,9 @@ export const issueContext = async (
         })
         .parse(await reader.read(`repos/${link.repository}/pulls/${link.number}`));
 
-      if (githubUrl(pr.html_url).href !== link.url)
+      if (githubUrl(pr.html_url).href !== link.url) {
         throw new AdeError("github_identity", "Linked PR identity changed.");
+      }
 
       const source = retainedSource({
         key: `pr:${issue.id}:${pr.node_id}`,
@@ -289,7 +306,7 @@ export const issueContext = async (
           reference.repository === issue.repository && reference.number === issue.number,
       );
 
-      if (pr.state === "open" && closing && pr.base.repo.node_id === issue.repository_id)
+      if (pr.state === "open" && closing && pr.base.repo.node_id === issue.repository_id) {
         evidence.push({
           kind: "open_pr",
           source_key: source.key,
@@ -297,11 +314,11 @@ export const issueContext = async (
           excerpt: source.text.slice(0, 4000),
           authority: "github_fact",
         });
-      else if (pr.state === "open")
+      } else if (pr.state === "open") {
         warnings.push(
           `Possibly related open PR ${link.url}; no confirmed closing relationship was established.`,
         );
-      else {
+      } else {
         evidence.push({
           kind: "closed_pr",
           source_key: source.key,
@@ -310,10 +327,11 @@ export const issueContext = async (
           authority: "github_fact",
         });
 
-        if (pr.merged_at)
+        if (pr.merged_at) {
           warnings.push(
             "A linked PR was merged while this issue remains open; inspect remaining work.",
           );
+        }
       }
     }
   } catch (error) {

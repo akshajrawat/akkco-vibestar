@@ -190,7 +190,10 @@ it("rolls back task and request together when reservation fails, then permits an
   const run = engine.db.run;
 
   const spy = vi.spyOn(engine.db, "run").mockImplementation((sql, ...parameters) => {
-    if (sql.startsWith("INSERT INTO task_requests")) throw new Error("fixture reservation failure");
+    if (sql.startsWith("INSERT INTO task_requests")) {
+      throw new Error("fixture reservation failure");
+    }
+
     return run(sql, ...parameters);
   });
 

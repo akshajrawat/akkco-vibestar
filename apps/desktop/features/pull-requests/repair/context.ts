@@ -33,7 +33,10 @@ export const repairContext = ({
       input: "Repository-relative file path",
       load: async (path) => {
         const result = await loadFile(path, undefined, "repair");
-        if (result.binary) throw new Error("Binary or oversized files cannot be attached as text.");
+        if (result.binary) {
+          throw new Error("Binary or oversized files cannot be attached as text.");
+        }
+
         return { label: `Worktree file: ${path}`, text: result.modified };
       },
     },

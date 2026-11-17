@@ -77,12 +77,13 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
 
     await mkdir(home);
     await mkdir(cli);
-    for (const name of ["codex", "agy", "gh"])
+    for (const name of ["codex", "agy", "gh"]) {
       await writeFile(
         join(cli, name),
         "#!/bin/sh\necho 'Real CLI disabled in fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
 
     const app = await _electron.launch({
       executablePath: require("electron") as string,
@@ -303,8 +304,10 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       await page.screenshot({ path: join(evidence, "historical-search.png") });
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Load earlier output", exact: true }).waitFor();
-      if (await page.getByRole("button", { name: "Follow output", exact: true }).count())
+      if (await page.getByRole("button", { name: "Follow output", exact: true }).count()) {
         await page.getByRole("button", { name: "Follow output", exact: true }).click();
+      }
+
       await page.getByRole("button", { name: "Pause scrolling", exact: true }).click();
 
       await page.screenshot({
@@ -363,7 +366,10 @@ it.skipIf(process.env.VIBESTAR_OUTPUT_DESKTOP_TEST !== "1")(
       console.log("Agent output failure evidence", evidence);
       throw e;
     } finally {
-      if (forward) engine.off("event", forward);
+      if (forward) {
+        engine.off("event", forward);
+      }
+
       await app.close();
       await rpc.close();
       await engine.close();

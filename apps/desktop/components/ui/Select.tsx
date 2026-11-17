@@ -77,11 +77,16 @@ export const Select = ({
 
   const close = useCallback(
     (restore = true) => {
-      if (!opened.current) return;
+      if (!opened.current) {
+        return;
+      }
+
       opened.current = false;
       setOpen(false);
       onOpenChange?.(false);
-      if (restore) trigger.current?.focus();
+      if (restore) {
+        trigger.current?.focus();
+      }
     },
     [onOpenChange],
   );
@@ -95,11 +100,16 @@ export const Select = ({
   };
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
 
     const place = () => {
       const rect = trigger.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!rect) {
+        return;
+      }
+
       const width = Math.min(Math.max(rect.width, expanded ? 600 : 260), window.innerWidth - 24);
       const below = window.innerHeight - rect.bottom - 18;
       const above = rect.top - 18;
@@ -137,14 +147,17 @@ export const Select = ({
   }, [open, expanded]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
 
     const dismiss = (event: PointerEvent) => {
       if (
         !popup.current?.contains(event.target as Node) &&
         !trigger.current?.contains(event.target as Node)
-      )
+      ) {
         close(false);
+      }
     };
 
     document.addEventListener("pointerdown", dismiss);
@@ -152,13 +165,20 @@ export const Select = ({
   }, [open, close]);
 
   useEffect(() => {
-    if (open && activeId) document.getElementById(activeId)?.scrollIntoView?.({ block: "nearest" });
+    if (open && activeId) {
+      document.getElementById(activeId)?.scrollIntoView?.({ block: "nearest" });
+    }
   }, [open, activeId]);
 
   const choose = (option: SelectOption) => {
-    if (option.disabled || disabled || trigger.current?.matches(":disabled")) return;
+    if (option.disabled || disabled || trigger.current?.matches(":disabled")) {
+      return;
+    }
+
     onChange(option.value);
-    if (closeOnSelect) close();
+    if (closeOnSelect) {
+      close();
+    }
   };
 
   return (
@@ -180,10 +200,13 @@ export const Select = ({
           if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
             event.preventDefault();
             show();
-            if (event.key === "Home")
+            if (event.key === "Home") {
               setActive(options.find((option) => !option.disabled)?.value || "");
-            if (event.key === "End")
+            }
+
+            if (event.key === "End") {
               setActive([...options].reverse().find((option) => !option.disabled)?.value || "");
+            }
           }
         }}
       >
@@ -206,8 +229,9 @@ export const Select = ({
                 (navigation || details) &&
                 event.relatedTarget !== trigger.current &&
                 !event.currentTarget.contains(event.relatedTarget)
-              )
+              ) {
                 close(false);
+              }
             }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -230,10 +254,14 @@ export const Select = ({
                       : (index + (event.key === "ArrowDown" ? 1 : -1) + available.length) %
                         available.length;
 
-                if (available[next]) setActive(available[next].value);
+                if (available[next]) {
+                  setActive(available[next].value);
+                }
               } else if (event.key === "Enter") {
                 event.preventDefault();
-                if (current) choose(current);
+                if (current) {
+                  choose(current);
+                }
               }
             }}
           >

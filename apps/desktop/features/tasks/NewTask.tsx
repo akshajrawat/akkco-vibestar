@@ -89,7 +89,10 @@ export const NewTask = ({
     : [];
 
   useEffect(() => {
-    if (manualSelection) return;
+    if (manualSelection) {
+      return;
+    }
+
     let issue: ReturnType<typeof parseIssue>;
     try {
       issue = parseIssue(url);
@@ -102,7 +105,9 @@ export const NewTask = ({
     if (matches.length === 1) {
       setRepositoryId(matches[0].id);
       setMatched(true);
-    } else setMatched(false);
+    } else {
+      setMatched(false);
+    }
   }, [url, repositories, manualSelection]);
 
   useEffect(() => {
@@ -110,8 +115,14 @@ export const NewTask = ({
     setPreview(null);
     setError("");
     setResolving(false);
-    if (!selected || mismatch) return;
-    if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+\/?$/.test(url.trim())) return;
+    if (!selected || mismatch) {
+      return;
+    }
+
+    if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+\/?$/.test(url.trim())) {
+      return;
+    }
+
     setResolving(true);
 
     const timer = setTimeout(
@@ -126,10 +137,14 @@ export const NewTask = ({
             }
           })
           .catch((e) => {
-            if (alive) setError(errorMessage(e));
+            if (alive) {
+              setError(errorMessage(e));
+            }
           })
           .finally(() => {
-            if (alive) setResolving(false);
+            if (alive) {
+              setResolving(false);
+            }
           }),
       350,
     );
@@ -144,7 +159,9 @@ export const NewTask = ({
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) close();
+        if (e.target === e.currentTarget && !busy) {
+          close();
+        }
       }}
     >
       <section
@@ -153,7 +170,9 @@ export const NewTask = ({
         aria-modal="true"
         aria-labelledby="new-task-title"
         onKeyDown={(e) => {
-          if (e.key === "Escape" && !busy) close();
+          if (e.key === "Escape" && !busy) {
+            close();
+          }
         }}
       >
         <div className="modal-heading">
@@ -166,7 +185,10 @@ export const NewTask = ({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            if (!preview || !selected || mismatch || preview.repository.id !== selected.id) return;
+            if (!preview || !selected || mismatch || preview.repository.id !== selected.id) {
+              return;
+            }
+
             setBusy(true);
             setError("");
             try {
@@ -181,11 +203,12 @@ export const NewTask = ({
               };
 
               const identity = JSON.stringify(payload);
-              if (request.current.payload !== identity)
+              if (request.current.payload !== identity) {
                 request.current = {
                   payload: identity,
                   id: crypto.randomUUID(),
                 };
+              }
 
               const task = await rpc<Task>("task.createIssue", {
                 ...payload,

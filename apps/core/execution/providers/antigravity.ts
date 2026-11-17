@@ -62,9 +62,13 @@ export class AntigravityProvider implements AgentProvider {
           ? "Authenticated account · managed by Antigravity CLI"
           : undefined;
 
-        if (!d.connected)
+        if (!d.connected) {
           d.error = "Model discovery returned no available models. Reconnect Antigravity.";
-      } else d.error = models.stderr;
+        }
+      } else {
+        d.error = models.stderr;
+      }
+
       d.capabilities = ["plan-mode", "sandbox", "structured-events", "schema", "model-discovery"];
     } catch (e) {
       d.error = String(e);
@@ -94,15 +98,22 @@ export class AntigravityProvider implements AgentProvider {
   });
 
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {
-    if (raw.event === "init") return [{ kind: "run.started", data: raw.init }];
+    if (raw.event === "init") {
+      return [{ kind: "run.started", data: raw.init }];
+    }
+
     if (raw.event === "step_update") {
       const step = object(raw.step_update);
       const type = String(step.step_type);
       // Lifecycle/input envelopes remain in raw logs, but are not reasoning.
-      if (["user_input", "finish"].includes(type)) return [];
+      if (["user_input", "finish"].includes(type)) {
+        return [];
+      }
+
       let kind: NormalizedEvent["kind"] = "analysis.status";
-      if (type === "agent_response") kind = "message";
-      else if (type === "tool") {
+      if (type === "agent_response") {
+        kind = "message";
+      } else if (type === "tool") {
         const name = String(step.tool_name || object(step.tool_info).name);
 
         kind = ["run_command", "send_command_input", "Bash"].includes(name)
@@ -120,10 +131,13 @@ export class AntigravityProvider implements AgentProvider {
                 ].includes(name)
               ? "file.changed"
               : "analysis.status";
-      } else if (type.includes("command"))
+      } else if (type.includes("command")) {
         kind = step.state === "DONE" ? "command.finished" : "command.started";
-      else if (type.includes("file") && type.includes("view")) kind = "file.read";
-      else if (type.includes("replace") || type.includes("write")) kind = "file.changed";
+      } else if (type.includes("file") && type.includes("view")) {
+        kind = "file.read";
+      } else if (type.includes("replace") || type.includes("write")) {
+        kind = "file.changed";
+      }
 
       const info = object(step.tool_info),
         params = object(info.parameters);
@@ -176,18 +190,24 @@ export class AntigravityProvider implements AgentProvider {
       ];
     }
 
-    if (raw.type === "system") return [{ kind: "run.started", data: raw }];
-    if (raw.type === "result")
+    if (raw.type === "system") {
+      return [{ kind: "run.started", data: raw }];
+    }
+
+    if (raw.type === "result") {
       return [{ kind: raw.is_error ? "run.failed" : "run.completed", data: raw }];
+    }
+
     if (raw.type === "assistant") {
       const content = object(raw.message).content;
-      if (Array.isArray(content))
+      if (Array.isArray(content)) {
         return content.map((v) => {
           const block = object(v);
           const name = String(block.name);
           let kind: NormalizedEvent["kind"] = "analysis.status";
-          if (block.type === "text") kind = "message";
-          else if (block.type === "tool_use")
+          if (block.type === "text") {
+            kind = "message";
+          } else if (block.type === "tool_use") {
             kind = ["Read", "read_file", "view_file"].includes(name)
               ? "file.read"
               : ["Edit", "Write", "write_file"].includes(name)
@@ -195,6 +215,8 @@ export class AntigravityProvider implements AgentProvider {
                 : ["Bash", "run_command"].includes(name)
                   ? "command.started"
                   : "analysis.status";
+          }
+
           const input = object(block.input);
           return {
             kind,
@@ -209,6 +231,7 @@ export class AntigravityProvider implements AgentProvider {
             },
           };
         });
+      }
     }
 
     return [
@@ -220,15 +243,23 @@ export class AntigravityProvider implements AgentProvider {
   };
 
   result = (raw: Record<string, unknown>, conversation = false) => {
-    if (raw.type !== "result" && raw.event !== "result") return undefined;
+    if (raw.type !== "result" && raw.event !== "result") {
+      return undefined;
+    }
+
     const nested = object(raw.result);
 
     const value =
       raw.structured_output ?? nested.structured_output ?? nested.response ?? raw.result;
 
-    if (value && typeof value === "object") return value;
+    if (value && typeof value === "object") {
+      return value;
+    }
+
     if (typeof value === "string") {
-      if (conversation) return { summary: value };
+      if (conversation) {
+        return { summary: value };
+      }
 
       try {
         return JSON.parse(value);
@@ -261,8 +292,14 @@ export class AntigravityProvider implements AgentProvider {
   parseStructuredOutput = (schema: Record<string, unknown>, value: unknown) => {
     const plan = { ...object(value) };
     const properties = object(schema.properties);
-    if (!("toolAction" in properties)) delete plan.toolAction;
-    if (!("toolSummary" in properties)) delete plan.toolSummary;
+    if (!("toolAction" in properties)) {
+      delete plan.toolAction;
+    }
+
+    if (!("toolSummary" in properties)) {
+      delete plan.toolSummary;
+    }
+
     return plan;
   };
 

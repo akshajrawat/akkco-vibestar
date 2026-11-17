@@ -22,7 +22,9 @@ const main = async () => {
   let choosing = false;
 
   const start = (root: string) => {
-    if (initializing) return initializing;
+    if (initializing) {
+      return initializing;
+    }
 
     initializing = (async () => {
       engine = await Engine.create(root);
@@ -37,11 +39,17 @@ const main = async () => {
     return initializing;
   };
 
-  if (!bootstrap.migration) await start(bootstrap.root);
+  if (!bootstrap.migration) {
+    await start(bootstrap.root);
+  }
+
   let stopping = false;
 
   const stop = async () => {
-    if (stopping) return;
+    if (stopping) {
+      return;
+    }
+
     stopping = true;
     engine?.beginShutdown();
     await rpc?.close();
@@ -49,8 +57,10 @@ const main = async () => {
     process.exit(0);
   };
 
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     process.on(signal, () => void stop());
+  }
+
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
   const requestSchema = z.object({
@@ -60,20 +70,23 @@ const main = async () => {
   });
 
   lines.on("line", (line) => {
-    if (line.length > 1024 * 1024) return;
+    if (line.length > 1024 * 1024) {
+      return;
+    }
 
     void (async () => {
       let request: z.infer<typeof requestSchema> | undefined;
       try {
         request = requestSchema.parse(JSON.parse(line));
         let result: unknown;
-        if (request.method === "core.info")
+        if (request.method === "core.info") {
           result = {
             build,
             protocol: 3,
             agent_flows: 1,
             flow_continuations: 1,
             viber_conversations: 1,
+            viber_sessions: 1,
             independent_final_review: true,
             browser_verification_environment: true,
             manual_user_terminal: 1,
@@ -89,12 +102,14 @@ const main = async () => {
             runtime_restart: 1,
             notification_preferences: 1,
           };
-        else if (request.method === "core.prepareRestart") {
-          if (initializing || choosing)
+        } else if (request.method === "core.prepareRestart") {
+          if (initializing || choosing) {
             throw new AdeError("busy", "Runtime initialization is in progress.");
+          }
+
           engine?.prepareRuntimeRestart();
           result = { ready: true };
-        } else if (!rpc && request.method === "snapshot")
+        } else if (!rpc && request.method === "snapshot") {
           result = {
             repositories: [],
             tasks: [],
@@ -102,9 +117,10 @@ const main = async () => {
             root: bootstrap.root,
             migration: bootstrap.migration,
           };
-        else if (!rpc && request.method === "storage.chooseRoot" && bootstrap.migration) {
-          if (initializing || choosing)
+        } else if (!rpc && request.method === "storage.chooseRoot" && bootstrap.migration) {
+          if (initializing || choosing) {
             throw new AdeError("busy", "Data initialization is already in progress");
+          }
 
           const choice = z
             .object({ choice: z.enum(["migrate", "old", "fresh"]) })
@@ -119,8 +135,10 @@ const main = async () => {
             choosing = false;
           }
         } else {
-          if (!rpc)
+          if (!rpc) {
             throw new AdeError("migration", "Choose how to use the existing Vibestar data first");
+          }
+
           result = await rpc.call(request.method, request.params);
         }
 

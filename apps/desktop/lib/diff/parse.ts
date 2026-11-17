@@ -15,9 +15,15 @@ export interface DiffHunk {
 }
 
 export const sourceLines = (text: string) => {
-  if (!text) return [];
+  if (!text) {
+    return [];
+  }
+
   const lines = text.split("\n");
-  if (lines.at(-1) === "") lines.pop();
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+
   return lines.map((line) => line.replace(/\r$/, ""));
 };
 
@@ -29,9 +35,15 @@ export const parseUnifiedDiff = (patch: string) => {
     reason,
   });
 
-  if (patch.length > 750000) return unavailable("oversized");
+  if (patch.length > 750000) {
+    return unavailable("oversized");
+  }
+
   const lines = patch.split("\n");
-  if (lines.length > 12000) return unavailable("oversized");
+  if (lines.length > 12000) {
+    return unavailable("oversized");
+  }
+
   let hunk: DiffHunk | undefined;
   let oldLine = 0;
   let newLine = 0;
@@ -44,14 +56,19 @@ export const parseUnifiedDiff = (patch: string) => {
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index].replace(/\r$/, "");
     if (line.startsWith("diff --git ")) {
-      if (!complete() || ++files > 1) return unavailable("unrecognized");
+      if (!complete() || ++files > 1) {
+        return unavailable("unrecognized");
+      }
+
       hunk = undefined;
       continue;
     }
 
     const header = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(line);
     if (header) {
-      if (!complete()) return unavailable("unrecognized");
+      if (!complete()) {
+        return unavailable("unrecognized");
+      }
 
       const [oldStart, oldCount, newStart, newCount] = [
         Number(header[1]),
@@ -63,14 +80,17 @@ export const parseUnifiedDiff = (patch: string) => {
       if (
         hunk &&
         (oldStart < hunk.oldStart + hunk.oldCount || newStart < hunk.newStart + hunk.newCount)
-      )
+      ) {
         return unavailable("unrecognized");
+      }
+
       if (
         ![oldStart, oldCount, newStart, newCount, oldStart + oldCount, newStart + newCount].every(
           Number.isSafeInteger,
         )
-      )
+      ) {
         return unavailable("unrecognized");
+      }
 
       hunk = {
         header: line,
@@ -87,36 +107,41 @@ export const parseUnifiedDiff = (patch: string) => {
       continue;
     }
 
-    if (!hunk) continue;
-    if (line.startsWith("\\ No newline at end of file"))
+    if (!hunk) {
+      continue;
+    }
+
+    if (line.startsWith("\\ No newline at end of file")) {
       hunk.lines.push({
         kind: "meta",
         text: line,
         oldLine: null,
         newLine: null,
       });
-    else if (line.startsWith("+"))
+    } else if (line.startsWith("+")) {
       hunk.lines.push({
         kind: "add",
         text: line.slice(1),
         oldLine: null,
         newLine: newLine++,
       });
-    else if (line.startsWith("-"))
+    } else if (line.startsWith("-")) {
       hunk.lines.push({
         kind: "delete",
         text: line.slice(1),
         oldLine: oldLine++,
         newLine: null,
       });
-    else if (line.startsWith(" "))
+    } else if (line.startsWith(" ")) {
       hunk.lines.push({
         kind: "context",
         text: line.slice(1),
         oldLine: oldLine++,
         newLine: newLine++,
       });
-    else if (index !== lines.length - 1 || line) return unavailable("unrecognized");
+    } else if (index !== lines.length - 1 || line) {
+      return unavailable("unrecognized");
+    }
   }
 
   if (
@@ -126,8 +151,10 @@ export const parseUnifiedDiff = (patch: string) => {
       !/^(?:diff --git|index |[+-]{3} |(?:old|new) mode|similarity index|rename (?:from|to)|Binary files)/m.test(
         patch,
       ))
-  )
+  ) {
     return unavailable("unrecognized");
+  }
+
   return { hunks, reason: null };
 };
 
@@ -137,16 +164,20 @@ export const splitDiffRows = (lines: DiffLine[]) => {
   let added: DiffLine[] = [];
 
   const flush = () => {
-    for (let index = 0; index < Math.max(removed.length, added.length); index++)
+    for (let index = 0; index < Math.max(removed.length, added.length); index++) {
       rows.push({ base: removed[index], working: added[index] });
+    }
+
     removed = [];
     added = [];
   };
 
   for (const line of lines) {
-    if (line.kind === "delete") removed.push(line);
-    else if (line.kind === "add") added.push(line);
-    else {
+    if (line.kind === "delete") {
+      removed.push(line);
+    } else if (line.kind === "add") {
+      added.push(line);
+    } else {
       flush();
       rows.push(line.kind === "meta" ? { meta: line.text } : { base: line, working: line });
     }

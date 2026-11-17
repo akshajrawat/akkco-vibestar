@@ -50,8 +50,10 @@ it("resets the old library once while retaining Tasks and referenced profile rev
       "retired_viber_profiles",
       "retired_viber_conversations",
       "viber_session_settings",
-    ])
+    ]) {
       engine.db.run(`DROP TABLE ${table}`);
+    }
+
     engine.db.run("DELETE FROM schema_migrations WHERE version=37");
     await engine.close();
     engine = await createFixtureEngine(dir);

@@ -17,7 +17,10 @@ const setup = async () => {
 };
 
 afterEach(async () => {
-  for (const resource of resources.splice(0)) await resource.close();
+  for (const resource of resources.splice(0)) {
+    await resource.close();
+  }
+
   vi.restoreAllMocks();
 });
 

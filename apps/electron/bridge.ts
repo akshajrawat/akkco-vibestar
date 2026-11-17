@@ -93,6 +93,8 @@ export class CoreBridge extends EventEmitter {
 
   private viberConversationsAvailable = false;
 
+  private viberSessionsAvailable = false;
+
   private pending = new Map<
     string,
     {
@@ -110,7 +112,10 @@ export class CoreBridge extends EventEmitter {
   }
 
   start = () => {
-    if (this.starting || this.child) return this.checking;
+    if (this.starting || this.child) {
+      return this.checking;
+    }
+
     this.starting = true;
     this.stopping = false;
     this.startup = new AbortController();
@@ -119,6 +124,7 @@ export class CoreBridge extends EventEmitter {
     this.agentFlowsAvailable = false;
     this.flowContinuationsAvailable = false;
     this.viberConversationsAvailable = false;
+    this.viberSessionsAvailable = false;
     this.manualPrAvailable = false;
     this.prReviewControlsAvailable = false;
     this.bulkPrMetadataAvailable = false;
@@ -133,10 +139,16 @@ export class CoreBridge extends EventEmitter {
 
     this.checking = this.launch()
       .catch((error) => {
-        if (this.stopping) return;
+        if (this.stopping) {
+          return;
+        }
+
         this.warning = String(error);
-        if (process.platform === "win32") this.status("failed", this.warning);
-        else this.emit("event", { event: "core.error", text: this.warning });
+        if (process.platform === "win32") {
+          this.status("failed", this.warning);
+        } else {
+          this.emit("event", { event: "core.error", text: this.warning });
+        }
       })
       .finally(() => {
         this.starting = false;
@@ -147,7 +159,10 @@ export class CoreBridge extends EventEmitter {
 
   /** Probe bytes and native dependency compatibility before loading any helper code. */
   private prepareWsl = async (bundle: Buffer) => {
-    if (!this.config.distro) throw new Error("Select a WSL distribution in Settings → Execution.");
+    if (!this.config.distro) {
+      throw new Error("Select a WSL distribution in Settings → Execution.");
+    }
+
     this.status("starting", `Starting WSL (${this.config.distro})...`);
 
     const script = `
@@ -205,19 +220,30 @@ export class CoreBridge extends EventEmitter {
       { windowsHide: true, timeout: 30000, signal: this.startup.signal },
     );
 
-    if ((JSON.parse(result.stdout) as { healthy: boolean }).healthy) return;
-    if (this.config.helper_path)
+    if ((JSON.parse(result.stdout) as { healthy: boolean }).healthy) {
+      return;
+    }
+
+    if (this.config.helper_path) {
       throw new Error(
         "The custom WSL helper is missing or incompatible; legacy automatic PR monitoring is blocked. Update the helper at the selected path, or clear Existing helper path in Settings → Execution to use the managed runtime.",
       );
+    }
+
     this.essentialSetup = true;
     await this.install((text) => this.emit("event", { event: "install.output", text }));
   };
 
   private launch = async () => {
     const bundle = await readFile(join(this.coreDir, "core.cjs"));
-    if (process.platform === "win32") await this.prepareWsl(bundle);
-    if (this.stopping) return;
+    if (process.platform === "win32") {
+      await this.prepareWsl(bundle);
+    }
+
+    if (this.stopping) {
+      return;
+    }
+
     const config = this.config;
 
     const env = {
@@ -261,9 +287,14 @@ export class CoreBridge extends EventEmitter {
         if (request) {
           clearTimeout(request.timer);
           this.pending.delete(v.id);
-          if (v.error) request.reject(Object.assign(new Error(v.error.message), v.error));
-          else request.resolve(v.result);
-        } else this.emit("event", v);
+          if (v.error) {
+            request.reject(Object.assign(new Error(v.error.message), v.error));
+          } else {
+            request.resolve(v.result);
+          }
+        } else {
+          this.emit("event", v);
+        }
       } catch {
         this.emit("event", {
           event: "core.error",
@@ -274,8 +305,9 @@ export class CoreBridge extends EventEmitter {
 
     child.stderr.on("data", (chunk) => {
       stderr = (stderr + chunk.toString()).slice(-4000);
-      if (process.platform !== "win32")
+      if (process.platform !== "win32") {
         this.emit("event", { event: "core.error", text: chunk.toString() });
+      }
     });
 
     child.on("error", (e) => this.rejectAll(`Cannot start execution core: ${e.message}`));
@@ -291,9 +323,11 @@ export class CoreBridge extends EventEmitter {
 
       this.child = null;
       if (!this.stopping) {
-        if (process.platform === "win32")
+        if (process.platform === "win32") {
           this.status("failed", stderr || "Execution runtime stopped. Retry to recover.");
-        else this.emit("event", { event: "core.closed" });
+        } else {
+          this.emit("event", { event: "core.closed" });
+        }
       }
     });
 
@@ -304,6 +338,7 @@ export class CoreBridge extends EventEmitter {
         agent_flows?: number;
         flow_continuations?: number;
         viber_conversations?: number;
+        viber_sessions?: number;
         independent_final_review?: boolean;
         browser_verification_environment?: boolean;
         manual_user_terminal?: number;
@@ -329,6 +364,7 @@ export class CoreBridge extends EventEmitter {
         this.viberConversationsAvailable =
           this.agentFlowsAvailable && info.viber_conversations === 1;
 
+        this.viberSessionsAvailable = info.viber_sessions === 1;
         this.finalReviewSettingsAvailable = info.independent_final_review === true;
         this.browserVerificationAvailable = info.browser_verification_environment === true;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
@@ -353,13 +389,18 @@ export class CoreBridge extends EventEmitter {
               : "The WSL helper differs from this desktop build. Settings → Execution → Install / update WSL helper, then restart. Usage and newer features may be incomplete until updated.";
 
         if (process.platform === "win32") {
-          if (this.warning) throw new Error(this.warning);
+          if (this.warning) {
+            throw new Error(this.warning);
+          }
+
           this.status("ready", "Runtime ready");
           this.essentialSetup = false;
         }
       })
       .catch((error) => {
-        if (process.platform === "win32") throw error;
+        if (process.platform === "win32") {
+          throw error;
+        }
 
         this.warning =
           "The execution helper could not confirm its build. Update the WSL helper in Settings → Execution and restart to ensure telemetry and review features are current.";
@@ -376,34 +417,56 @@ export class CoreBridge extends EventEmitter {
   };
 
   request = async <T>(method: string, params: unknown = {}): Promise<T> => {
-    if (method === "core.prepareRestart")
+    if (method === "core.prepareRestart") {
       throw new Error("Runtime restart is a desktop-only operation.");
+    }
+
     await this.checking;
-    if (retiredTaskMethods.has(method))
+    if (retiredTaskMethods.has(method)) {
       throw new Error("This task control is retired. Use Viber profiles and flows.");
-    if (!this.viberConversationsAvailable && method.startsWith("viber."))
+    }
+
+    if (!this.viberSessionsAvailable && method.startsWith("viber.session.")) {
+      throw new Error("Update the execution helper before using standalone Viber sessions.");
+    }
+
+    if (
+      !this.viberConversationsAvailable &&
+      !method.startsWith("viber.session.") &&
+      method.startsWith("viber.")
+    ) {
       throw new Error("Update the execution helper before chatting with individual Vibers.");
-    if (!this.flowContinuationsAvailable && method.startsWith("flow.continuation."))
+    }
+
+    if (!this.flowContinuationsAvailable && method.startsWith("flow.continuation.")) {
       throw new Error(
         "Update the execution helper before applying saved revisions with verified result reuse.",
       );
+    }
+
     if (
       !this.agentFlowsAvailable &&
       (method.startsWith("flow.") ||
         method.startsWith("profile.") ||
         ["task.createGeneral", "task.createIssue", "task.lifecycle"].includes(method))
-    )
+    ) {
       throw new Error("Update the execution helper before using Viber profiles and flows.");
+    }
+
     if (
       this.issueWatchAvailable &&
       ["issueWatch.scan", "issueWatch.retry", "issueWatch.continue"].includes(method) &&
       !this.issueWatchBatchesAvailable
-    )
+    ) {
       throw new Error("Update the execution helper to scan Issue Watch in batches of 10.");
-    if (!this.pipelineProvidersAvailable && ["repair.create", "repair.start"].includes(method))
+    }
+
+    if (!this.pipelineProvidersAvailable && ["repair.create", "repair.start"].includes(method)) {
       throw new Error(
         this.warning || "Update the execution helper before using per-stage pipeline providers.",
       );
+    }
+
     if (
       method.startsWith("git.") ||
       [
@@ -416,14 +479,22 @@ export class CoreBridge extends EventEmitter {
         "repair.reconcilePublication",
         "repair.keepLocal",
       ].includes(method)
-    )
+    ) {
       throw new Error("Use the built-in terminal to run Git commands manually.");
-    if (!this.manualTerminalAvailable && ["terminal.open", "repair.terminal.open"].includes(method))
+    }
+
+    if (
+      !this.manualTerminalAvailable &&
+      ["terminal.open", "repair.terminal.open"].includes(method)
+    ) {
       throw new Error("Update the execution helper before opening a manual user terminal.");
-    if (!this.browserVerificationAvailable && method.startsWith("task.browser."))
+    }
+
+    if (!this.browserVerificationAvailable && method.startsWith("task.browser.")) {
       throw new Error(
         "Update the execution helper before selecting or inspecting browser verification environments.",
       );
+    }
 
     const settings =
       method === "settings.save"
@@ -440,8 +511,9 @@ export class CoreBridge extends EventEmitter {
         const config = (settings as Record<string, unknown>)[key];
         return config && typeof config === "object" && "provider" in config;
       })
-    )
+    ) {
       throw new Error("Update the execution helper before saving per-stage pipeline providers.");
+    }
 
     if (
       !this.finalReviewSettingsAvailable &&
@@ -449,20 +521,26 @@ export class CoreBridge extends EventEmitter {
       typeof settings === "object" &&
       "antigravity_review" in settings &&
       settings.antigravity_review !== undefined
-    )
+    ) {
       throw new Error(
         "Update the execution helper before saving independent final review settings.",
       );
-    if (!this.issueWatchAvailable && method.startsWith("issueWatch."))
+    }
+
+    if (!this.issueWatchAvailable && method.startsWith("issueWatch.")) {
       throw new Error("Update the execution helper before using manual Issue Watch.");
+    }
+
     if (
       !this.repairAvailable &&
       method.startsWith("repair.") &&
       !["repair.list", "repair.detail", "repair.logs", "repair.events", "repair.cancel"].includes(
         method,
       )
-    )
+    ) {
       throw new Error("Update the execution helper before using PR repair.");
+    }
+
     if (
       !this.manualPrAvailable &&
       [
@@ -475,39 +553,49 @@ export class CoreBridge extends EventEmitter {
         "scheduled.enabled",
         "scheduled.fix",
       ].includes(method)
-    )
+    ) {
       throw new Error(
         this.warning || "Update the execution helper before using manual PR actions.",
       );
+    }
+
     if (
       !this.prReviewControlsAvailable &&
       ["scheduled.analyze", "scheduled.batch.start"].includes(method)
-    )
+    ) {
       throw new Error(
         "Update the execution helper before checking PRs with the selected review model.",
       );
-    if (!this.bulkPrMetadataAvailable && method === "github.pullRequests.refresh")
+    }
+
+    if (!this.bulkPrMetadataAvailable && method === "github.pullRequests.refresh") {
       throw new Error("Update the execution helper before using bulk PR metadata refresh.");
-    if (!this.quickPrWatchAvailable && method === "pr.watch.start")
+    }
+
+    if (!this.quickPrWatchAvailable && method === "pr.watch.start") {
       throw new Error("Update the execution helper before using automatic quick PR checks.");
+    }
+
     if (
       method === "settings.save" &&
       !this.notificationPreferencesAvailable &&
       settings &&
       typeof settings === "object" &&
       "notification_preference" in settings
-    )
+    ) {
       throw new Error("Update the execution helper before saving notification preferences.");
+    }
 
     try {
       const result = await this.sendRequest<T>(method, params);
-      if (method === "snapshot" && result && typeof result === "object")
+      if (method === "snapshot" && result && typeof result === "object") {
         return {
           ...result,
           capabilities: {
             ...(this.agentFlowsAvailable ? { agent_flows: 1 } : {}),
             ...(this.flowContinuationsAvailable ? { flow_continuations: 1 } : {}),
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
+            ...(this.viberSessionsAvailable ? { viber_sessions: 1 } : {}),
             manual_issue_watch: this.issueWatchAvailable,
             issue_watch_contract: this.issueWatchAvailable ? 1 : null,
             issue_watch_batches: this.issueWatchBatchesAvailable ? 1 : null,
@@ -515,17 +603,23 @@ export class CoreBridge extends EventEmitter {
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };
+      }
+
       if (
         this.warning &&
         ["snapshot", "usage.info"].includes(method) &&
         result &&
         typeof result === "object"
-      )
+      ) {
         return { ...result, warning: this.warning };
+      }
+
       return result;
     } catch (error) {
-      if (this.warning && error instanceof Error && error.message.includes("Unknown method"))
+      if (this.warning && error instanceof Error && error.message.includes("Unknown method")) {
         throw new Error(this.warning);
+      }
+
       throw error;
     }
   };
@@ -536,10 +630,12 @@ export class CoreBridge extends EventEmitter {
     timeoutMs = 1900000,
   ): Promise<T> => {
     const child = this.child;
-    if (!child || child.exitCode !== null)
+    if (!child || child.exitCode !== null) {
       return Promise.reject(
         new Error("Execution core unavailable. Use Settings to install the WSL helper."),
       );
+    }
+
     return new Promise((resolve, reject) => {
       const id = randomUUID();
 
@@ -566,7 +662,9 @@ export class CoreBridge extends EventEmitter {
     this.startup.abort();
     await this.checking;
     const child = this.child;
-    if (!child) return;
+    if (!child) {
+      return;
+    }
 
     await new Promise<void>((resolve) => {
       child.once("close", () => resolve());
@@ -585,31 +683,46 @@ export class CoreBridge extends EventEmitter {
   /** The core atomically refuses active work and closes admission before a host restart. */
   prepareRestart = async () => {
     await this.checking;
-    if (!this.child) return;
-    if (!this.runtimeRestartAvailable)
+    if (!this.child) {
+      return;
+    }
+
+    if (!this.runtimeRestartAvailable) {
       throw new Error(
         "This helper cannot safely restart while checking active work. Close the app before changing its runtime.",
       );
+    }
+
     const result = await this.sendRequest<{ ready: boolean }>("core.prepareRestart", {}, 15000);
-    if (result?.ready !== true) throw new Error("The core did not confirm a safe runtime restart.");
+    if (result?.ready !== true) {
+      throw new Error("The core did not confirm a safe runtime restart.");
+    }
   };
 
   retry = async () => {
     await this.prepareRestart();
     await this.stop();
     await this.start();
-    if ((this.runtimeStatus?.data as { phase?: string } | undefined)?.phase === "failed")
+    if ((this.runtimeStatus?.data as { phase?: string } | undefined)?.phase === "failed") {
       throw new Error(this.runtimeStatus?.text || "Runtime unavailable");
+    }
   };
 
   repair = async () => {
-    if (process.platform !== "win32") return;
-    if (!this.config.distro)
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    if (!this.config.distro) {
       throw new Error("Select a WSL distribution in Settings → Execution first.");
-    if (this.config.helper_path)
+    }
+
+    if (this.config.helper_path) {
       throw new Error(
         "The selected custom helper is user-managed. Update it at the selected path or clear Existing helper path.",
       );
+    }
+
     await this.prepareRestart();
     await this.stop();
     this.stopping = false;
@@ -620,8 +733,9 @@ export class CoreBridge extends EventEmitter {
       if (
         this.runtimeStatus?.data &&
         (this.runtimeStatus.data as { phase: string }).phase === "failed"
-      )
+      ) {
         throw new Error(this.runtimeStatus.text);
+      }
     } catch (error) {
       this.status("failed", error instanceof Error ? error.message : String(error));
       throw error;
@@ -629,17 +743,26 @@ export class CoreBridge extends EventEmitter {
   };
 
   install = async (onOutput: (text: string) => void) => {
-    if (process.platform !== "win32") return;
-    if (this.child) throw new Error("Stop the execution core before repairing its runtime.");
-    if (this.config.helper_path)
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    if (this.child) {
+      throw new Error("Stop the execution core before repairing its runtime.");
+    }
+
+    if (this.config.helper_path) {
       throw new Error(
         "The selected custom helper is user-managed. Clear Existing helper path to use the bundled runtime.",
       );
+    }
+
     this.essentialSetup = true;
     this.status("preparing", "Preparing Vibestar runtime...");
     const data: Record<string, string> = {};
-    for (const file of ["core.cjs", "package.json", "package-lock.json", "LICENSE"])
+    for (const file of ["core.cjs", "package.json", "package-lock.json", "LICENSE"]) {
       data[file] = (await readFile(join(this.coreDir, file))).toString("base64");
+    }
 
     const script = `
       const fs = require('node:fs/promises');
@@ -723,7 +846,9 @@ export class CoreBridge extends EventEmitter {
 
       const output = (text: string) => {
         diagnostic = (diagnostic + text).slice(-2000);
-        if (text) onOutput(text);
+        if (text) {
+          onOutput(text);
+        }
       };
 
       child.stdout.setEncoding("utf8");
@@ -736,13 +861,15 @@ export class CoreBridge extends EventEmitter {
       child.on("close", (code) => {
         output(stdout.finish(true));
         output(stderr.finish(true));
-        if (code === 0) resolve();
-        else
+        if (code === 0) {
+          resolve();
+        } else {
           reject(
             new Error(
               `WSL helper installation exited ${code}${diagnostic ? `: ${diagnostic.trim()}` : ""}`,
             ),
           );
+        }
       });
 
       child.stdin.end(JSON.stringify({ files: data, home: this.config.data_home }));

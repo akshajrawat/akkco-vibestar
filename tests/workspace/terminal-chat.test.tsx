@@ -70,8 +70,10 @@ it("shows shell-open failures within the terminal instead of leaving an unexplai
   const onError = vi.fn();
 
   const rpc = vi.fn(async (method: string) => {
-    if (method === "terminal.open")
+    if (method === "terminal.open") {
       throw new Error("The agent owns this workspace. Stop it before opening a terminal.");
+    }
+
     return null;
   });
 

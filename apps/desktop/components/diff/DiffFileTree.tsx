@@ -50,7 +50,10 @@ export const DiffFileTree = ({
           parent.children.set(name, node);
         }
 
-        if (index === parts.length - 1) node.file = file;
+        if (index === parts.length - 1) {
+          node.file = file;
+        }
+
         parent = node;
       });
     }
@@ -61,8 +64,12 @@ export const DiffFileTree = ({
   const toggle = (path: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+
       return next;
     });
 

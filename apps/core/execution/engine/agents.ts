@@ -73,11 +73,15 @@ export class AgentOperations {
       (request.context?.taskId && this.state.taskMaintenance.has(request.context.taskId)) ||
       this.host.isActive(key) ||
       this.state.active.size >= this.host.db.settings().concurrency
-    )
+    ) {
       throw new AdeError("busy", "Utility analysis is waiting for task execution capacity");
+    }
+
     const workspace = request.workspace || join(this.host.root, "cache", "utility", id);
-    if (request.workspace && !task)
+    if (request.workspace && !task) {
       throw new AdeError("isolation", "Utility filesystem context requires a linked isolated task");
+    }
+
     const controller = new AbortController();
 
     const output = Promise.resolve().then(async () => {

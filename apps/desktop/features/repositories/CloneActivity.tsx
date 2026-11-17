@@ -17,24 +17,36 @@ export const CloneActivity = ({
   const active = ["resolving", "cloning"].includes(activity.status);
 
   useEffect(() => {
-    if (!expanded) return;
+    if (!expanded) {
+      return;
+    }
+
     let alive = true;
 
     const load = () =>
       rpc<{ text: string }>("github.clone.logs", { id: activity.id })
         .then((r) => {
-          if (alive) setLogs(r.text);
-          if (alive) setError("");
+          if (alive) {
+            setLogs(r.text);
+          }
+
+          if (alive) {
+            setError("");
+          }
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
 
     void load();
     const timer = active ? setInterval(() => void load(), 1000) : undefined;
     return () => {
       alive = false;
-      if (timer) clearInterval(timer);
+      if (timer) {
+        clearInterval(timer);
+      }
     };
   }, [activity.id, active, expanded]);
 

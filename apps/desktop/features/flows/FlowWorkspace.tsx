@@ -84,7 +84,10 @@ export const FlowWorkspace = ({
       rpc<AgentProfile[]>("profile.list"),
     ])
       .then(([next, savedProfiles]) => {
-        if (!alive) return;
+        if (!alive) {
+          return;
+        }
+
         setWorkspace(next);
         setProfiles(savedProfiles);
         if (!dirtyRef.current) {
@@ -93,7 +96,9 @@ export const FlowWorkspace = ({
         }
       })
       .catch((reason) => {
-        if (alive) setLocalError(errorMessage(reason));
+        if (alive) {
+          setLocalError(errorMessage(reason));
+        }
       });
 
     return () => {
@@ -102,15 +107,22 @@ export const FlowWorkspace = ({
   }, [task.id, revision]);
 
   useEffect(() => {
-    if (task.workspace_kind === "managed" || !task.worktree_path || tab !== "files") return;
+    if (task.workspace_kind === "managed" || !task.worktree_path || tab !== "files") {
+      return;
+    }
+
     let alive = true;
 
     void rpc<Diff>("task.diff", { id: task.id })
       .then((value) => {
-        if (alive) setDiff(value);
+        if (alive) {
+          setDiff(value);
+        }
       })
       .catch((reason) => {
-        if (alive) setLocalError(errorMessage(reason));
+        if (alive) {
+          setLocalError(errorMessage(reason));
+        }
       });
 
     return () => {
@@ -133,8 +145,10 @@ export const FlowWorkspace = ({
     }
   };
 
-  if (!workspace || !draft)
+  if (!workspace || !draft) {
     return <div className="empty-row">{localError || "Opening Viber workspace…"}</div>;
+  }
+
   const run = workspace.runs[0];
   const active = !!run && ["queued", "running", "pausing"].includes(run.status);
 
@@ -186,8 +200,10 @@ export const FlowWorkspace = ({
 
       dirtyRef.current = false;
       setDirty(false);
-      if (pendingLayout.current)
+      if (pendingLayout.current) {
         await rpc("flow.layout", { task_id: task.id, layout: pendingLayout.current });
+      }
+
       await load();
     } catch (reason) {
       setLocalError(errorMessage(reason));
@@ -208,16 +224,22 @@ export const FlowWorkspace = ({
     };
 
     const signature = JSON.stringify(params);
-    if (request.current.signature !== signature)
+    if (request.current.signature !== signature) {
       request.current = { signature, id: crypto.randomUUID() };
+    }
 
     void action("flow.start", { ...params, request_id: request.current.id }).then((success) => {
-      if (success) request.current = { signature: "", id: "" };
+      if (success) {
+        request.current = { signature: "", id: "" };
+      }
     });
   };
 
   const previewContinuation = async () => {
-    if (!run) return;
+    if (!run) {
+      return;
+    }
+
     setBusy(true);
     setLocalError("");
     try {
@@ -463,7 +485,9 @@ export const FlowWorkspace = ({
               plan_hash: continuation.hash,
               request_id: continuationRequest.current,
             }).then((success) => {
-              if (success) setContinuation(undefined);
+              if (success) {
+                setContinuation(undefined);
+              }
             });
           }}
         />

@@ -16,8 +16,10 @@ export const parsePullRequest = (value: string) => {
     !match ||
     match.slice(1, 3).some((part) => part === "." || part === "..") ||
     !Number.isSafeInteger(Number(match[3]))
-  )
+  ) {
     throw new AdeError("invalid_input", "Use an HTTPS github.com/owner/repository/pull/number URL");
+  }
+
   return {
     owner: match[1],
     repo: match[2],
@@ -335,51 +337,77 @@ export const changedPullRequest = (previous: PullRequestState, current: PullRequ
   if (
     current.discussion &&
     JSON.stringify(previous.discussion) !== JSON.stringify(current.discussion)
-  )
+  ) {
     changes.push("Discussion chronology or authorship changed");
-  for (const comment of current.comments)
+  }
+
+  for (const comment of current.comments) {
     if (
       !previous.comments.some(
         (p) =>
           p.id === comment.id && p.body === comment.body && p.updated_at === comment.updated_at,
       )
-    )
+    ) {
       changes.push(`New or edited comment ${comment.id}: ${comment.body}`);
-  for (const review of current.reviews)
+    }
+  }
+
+  for (const review of current.reviews) {
     if (
       !previous.reviews.some(
         (p) => p.id === review.id && p.body === review.body && p.state === review.state,
       )
-    )
+    ) {
       changes.push(`Review ${review.state}: ${review.body}`);
-  if (current.reviewDecision !== previous.reviewDecision)
+    }
+  }
+
+  if (current.reviewDecision !== previous.reviewDecision) {
     changes.push(`Review decision: ${current.reviewDecision || "pending"}`);
-  for (const check of current.checks)
+  }
+
+  for (const check of current.checks) {
     if (
       !previous.checks.some(
         (p) => p.name === check.name && p.state === check.state && p.url === check.url,
       )
-    )
+    ) {
       changes.push(`CI ${check.name}: ${check.state} ${check.url}`);
-  for (const thread of current.threads || [])
+    }
+  }
+
+  for (const thread of current.threads || []) {
     if (
       !previous.threads?.some(
         (p) => p.id === thread.id && p.resolved === thread.resolved && p.body === thread.body,
       )
-    )
+    ) {
       changes.push(
         `Review thread ${thread.resolved ? "resolved" : "unresolved"}: ${thread.path} ${thread.body}`,
       );
-  if (previous.headRefOid !== current.headRefOid) changes.push("PR branch has new commits");
-  if (previous.baseRefOid && current.baseRefOid !== previous.baseRefOid)
+    }
+  }
+
+  if (previous.headRefOid !== current.headRefOid) {
+    changes.push("PR branch has new commits");
+  }
+
+  if (previous.baseRefOid && current.baseRefOid !== previous.baseRefOid) {
     changes.push("Base branch updated");
-  if (previous.mergeable !== current.mergeable)
+  }
+
+  if (previous.mergeable !== current.mergeable) {
     changes.push(
       current.mergeable === "CONFLICTING"
         ? "Merge conflicts detected"
         : `Merge status: ${current.mergeable}`,
     );
-  if (current.state !== previous.state) changes.push(`PR state: ${current.state}`);
+  }
+
+  if (current.state !== previous.state) {
+    changes.push(`PR state: ${current.state}`);
+  }
+
   return {
     changes,
     actionable: current.state === "OPEN" && changes.length > 0,

@@ -20,7 +20,10 @@ const setup = async () => {
 };
 
 afterEach(async () => {
-  for (const f of resources.splice(0)) await f.close();
+  for (const f of resources.splice(0)) {
+    await f.close();
+  }
+
   vi.restoreAllMocks();
 });
 
@@ -182,7 +185,10 @@ it("bounds semantic candidates and complete packets without invoking an automati
 
   expect(provider.calls).toBe(1);
   expect(f.service.store.get(watch.id).last_complete_scan_id).toBeNull();
-  for (const issue of f.issues.values()) issue.body = "x".repeat(200000);
+  for (const issue of f.issues.values()) {
+    issue.body = "x".repeat(200000);
+  }
+
   const oversized = await f.scan(watch.id);
   expect(oversized).toMatchObject({ status: "partial", semantic_attempts: 0 });
   expect(provider.calls).toBe(1);

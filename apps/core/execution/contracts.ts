@@ -19,5 +19,7 @@ export const AgentExecutionSchema = StageConfigSchema.extend({
   ]),
 }).strict();
 
+export const ConversationOutputSchema = z.object({ summary: z.string() }).strict();
+
 export type WorkspaceAccess = z.infer<typeof WorkspaceAccessSchema>;
 export type AgentExecution = z.infer<typeof AgentExecutionSchema>;

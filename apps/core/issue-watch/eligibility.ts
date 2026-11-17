@@ -14,21 +14,35 @@ export const hardExclusions = (
   trackerKeys: Set<string>,
 ) => {
   const reasons: string[] = [];
-  if (issue.pull_request) reasons.push("GitHub identified this item as a pull request.");
-  if (issue.state !== "open") reasons.push("Issue is closed.");
+  if (issue.pull_request) {
+    reasons.push("GitHub identified this item as a pull request.");
+  }
+
+  if (issue.state !== "open") {
+    reasons.push("Issue is closed.");
+  }
 
   const labels = issue.labels.filter((label) =>
     rules.excluded_labels.includes(label.trim().toLowerCase()),
   );
 
-  if (labels.length) reasons.push(`Excluded labels: ${labels.join(", ")}.`);
+  if (labels.length) {
+    reasons.push(`Excluded labels: ${labels.join(", ")}.`);
+  }
+
   const key = issueKey({ repository: issue.repository, number: issue.number });
-  if (rules.excluded_issues.some((reference) => issueKey(reference) === key))
+  if (rules.excluded_issues.some((reference) => issueKey(reference) === key)) {
     reasons.push("Explicitly excluded issue.");
-  if (trackerKeys.has(key))
+  }
+
+  if (trackerKeys.has(key)) {
     reasons.push("Referenced by a freshly verified excluded tracker, or is the tracker itself.");
-  if (rules.unassigned_only && issue.assignees.length)
+  }
+
+  if (rules.unassigned_only && issue.assignees.length) {
     reasons.push(`Assigned to ${issue.assignees.map((actor) => `@${actor}`).join(", ")}.`);
+  }
+
   return reasons;
 };
 
@@ -44,7 +58,10 @@ export const assessClaims = (sources: WatchSource[]) => {
       (a, b) =>
         (a.created_at || "").localeCompare(b.created_at || "") || a.key.localeCompare(b.key),
     )) {
-    if (!source.actor) continue;
+    if (!source.actor) {
+      continue;
+    }
+
     const actor = source.actor.toLowerCase();
     const text = source.text.trim();
 
@@ -64,8 +81,9 @@ export const assessClaims = (sources: WatchSource[]) => {
     ) {
       claims.add(actor);
       add("claim_request");
-      if (source.created_at !== source.updated_at)
+      if (source.created_at !== source.updated_at) {
         warnings.push("An edited claim needs manual interpretation; age does not expire it.");
+      }
     }
 
     if (
@@ -96,10 +114,11 @@ export const assessClaims = (sources: WatchSource[]) => {
         wait = true;
         add("maintainer_wait");
       }
-    } else if (grant)
+    } else if (grant) {
       warnings.push(
         "An assignment instruction came from an actor without verified maintainer authority.",
       );
+    }
   }
 
   return {
@@ -160,10 +179,16 @@ export const applyContext = (
     candidate.reasons.push(
       "A retrieved maintainer grant indicates an active claim; recheck on GitHub before proceeding.",
     );
-  } else if (claims.possible) candidate.claim_state = "possibly_claimed";
-  else if (claims.wait) candidate.claim_state = "maintainer_approval_needed";
-  else if (candidate.uncertainty.length) candidate.claim_state = "eligibility_uncertain";
-  else candidate.claim_state = "candidate_for_claim_request";
+  } else if (claims.possible) {
+    candidate.claim_state = "possibly_claimed";
+  } else if (claims.wait) {
+    candidate.claim_state = "maintainer_approval_needed";
+  } else if (candidate.uncertainty.length) {
+    candidate.claim_state = "eligibility_uncertain";
+  } else {
+    candidate.claim_state = "candidate_for_claim_request";
+  }
+
   return candidate;
 };
 

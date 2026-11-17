@@ -103,7 +103,9 @@ const ContextFold = ({
     [original, modified, oldStart, newStart, count],
   );
 
-  if (!valid) return null;
+  if (!valid) {
+    return null;
+  }
 
   const lines = Array.from({ length: Math.min(shown, count) }, (_, index) => ({
     kind: "context" as const,
@@ -154,8 +156,11 @@ export const DiffView = ({
   const original = useMemo(() => sourceLines(file.original), [file.original]);
   const modified = useMemo(() => sourceLines(file.modified), [file.modified]);
   const split = mode === "side";
-  if (file.binary) return <p className="empty-row">Binary file. Review it in your editor.</p>;
-  if (parsed.reason)
+  if (file.binary) {
+    return <p className="empty-row">Binary file. Review it in your editor.</p>;
+  }
+
+  if (parsed.reason) {
     return (
       <div className="diff-unavailable">
         <p>
@@ -170,7 +175,9 @@ export const DiffView = ({
         </details>
       </div>
     );
-  if (!parsed.hunks.length)
+  }
+
+  if (!parsed.hunks.length) {
     return (
       <p className="empty-row">
         {file.original === file.modified
@@ -178,6 +185,8 @@ export const DiffView = ({
           : "No mapped text patch is available. Open the file in your editor."}
       </p>
     );
+  }
+
   const last = parsed.hunks.at(-1)!;
   return (
     <div

@@ -1,6 +1,8 @@
 /** Converts paste/drop text to label names, accepting URLs only for the selected repository's GitHub issue search. */
 export const parseLabelInput = (text: string, repository: string) => {
-  if (text.length > 16000) throw new Error("Label input is too long.");
+  if (text.length > 16000) {
+    throw new Error("Label input is too long.");
+  }
 
   const target = repository
     .trim()
@@ -13,9 +15,13 @@ export const parseLabelInput = (text: string, repository: string) => {
 
   const add = (value: string) => {
     const label = value.trim();
-    if (!label || label.length > 100 || /[\x00-\x1f\x7f<>]/.test(label))
+    if (!label || label.length > 100 || /[\x00-\x1f\x7f<>]/.test(label)) {
       throw new Error("Use a label name of 1–100 characters.");
-    if (!labels.some((item) => item.toLowerCase() === label.toLowerCase())) labels.push(label);
+    }
+
+    if (!labels.some((item) => item.toLowerCase() === label.toLowerCase())) {
+      labels.push(label);
+    }
   };
 
   const input = text.trim().replace(/\[([^\]\n]+)\]\((https:\/\/[^\s)]+)\)/g, "$2");
@@ -43,12 +49,16 @@ export const parseLabelInput = (text: string, repository: string) => {
         url.password ||
         url.port ||
         !path
-      )
+      ) {
         throw new Error("Paste a GitHub issues-search label link or a plain label name.");
-      if (!target || `${path[1]}/${path[2]}`.toLowerCase() !== target)
+      }
+
+      if (!target || `${path[1]}/${path[2]}`.toLowerCase() !== target) {
         throw new Error(
           "This label link belongs to another repository. Choose a matching repository first.",
         );
+      }
+
       if (path[3]) {
         add(decodeURIComponent(path[3]));
         continue;
@@ -56,15 +66,25 @@ export const parseLabelInput = (text: string, repository: string) => {
 
       const query = url.searchParams.get("q") || "";
       const matches = [...query.matchAll(/(?:^|\s)label:(?:"([^"\n]+)"|([^\s"]+))/gi)];
-      if (!matches.length) throw new Error("This GitHub link does not contain a label filter.");
-      for (const match of matches) add(match[1] || match[2]);
+      if (!matches.length) {
+        throw new Error("This GitHub link does not contain a label filter.");
+      }
+
+      for (const match of matches) {
+        add(match[1] || match[2]);
+      }
     } else {
-      if (/[[\]()]|:\/\//.test(part) || /^(?:www\.|github\.com\/)/i.test(part))
+      if (/[[\]()]|:\/\//.test(part) || /^(?:www\.|github\.com\/)/i.test(part)) {
         throw new Error("Use a plain label name or a supported GitHub label link.");
+      }
+
       add(part);
     }
   }
 
-  if (labels.length > 30) throw new Error("Choose at most 30 excluded labels.");
+  if (labels.length > 30) {
+    throw new Error("Choose at most 30 excluded labels.");
+  }
+
   return labels;
 };

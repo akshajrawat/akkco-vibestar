@@ -20,12 +20,13 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
     const home = join(dir, "home");
     const blocked = join(dir, "blocked-cli");
     await Promise.all([mkdir(screenshots), mkdir(home), mkdir(blocked)]);
-    for (const name of ["gh", "agy", "codex"])
+    for (const name of ["gh", "agy", "codex"]) {
       await writeFile(
         join(blocked, name),
         "#!/bin/sh\necho 'Live CLI disabled in settings fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
 
     const engine = await createFixtureEngine(join(dir, "fixture-data"));
     const rpc = new Rpc(engine);
@@ -37,8 +38,11 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
         throw new Error("Fixture settings save failure");
       }
 
-      if (method === "pr.watch.start") return null;
-      if (method === "providers.detect")
+      if (method === "pr.watch.start") {
+        return null;
+      }
+
+      if (method === "providers.detect") {
         return ["codex", "antigravity", "github"].map((provider) => ({
           provider,
           installed: false,
@@ -48,6 +52,8 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
           efforts: [],
           capabilities: [],
         }));
+      }
+
       return rpc.call(method, input);
     };
 
@@ -559,7 +565,9 @@ it.skipIf(process.env.VIBESTAR_SETTINGS_DESKTOP_TEST !== "1")(
         }
       }
 
-      if (!process.env.VIBESTAR_KEEP_EVIDENCE) await rm(dir, { recursive: true, force: true });
+      if (!process.env.VIBESTAR_KEEP_EVIDENCE) {
+        await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   90000,

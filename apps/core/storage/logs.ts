@@ -13,8 +13,9 @@ export const readLogTail = async (
 ) => {
   try {
     const dir = await realpath(await managedPath(root, join("logs", taskId)));
-    if (!inside(join(root, "logs"), dir))
+    if (!inside(join(root, "logs"), dir)) {
       throw new AdeError("isolation", "Log directory is outside managed logs");
+    }
 
     const path = await safeFile(
       dir,
@@ -35,7 +36,10 @@ export const readLogTail = async (
         while (position < size && matches.length < 200 && matchedBytes < limit) {
           const buffer = Buffer.alloc(Math.min(limit, size - position));
           const { bytesRead } = await handle.read(buffer, 0, buffer.length, position);
-          if (!bytesRead) break;
+          if (!bytesRead) {
+            break;
+          }
+
           position += bytesRead;
           pending = Buffer.concat([pending, buffer.subarray(0, bytesRead)]);
           let newline;
@@ -55,8 +59,10 @@ export const readLogTail = async (
         }
 
         if (matches.length < 200 && matchedBytes < limit && position === size) {
-          if (pending.toString("utf8").toLowerCase().includes(query))
+          if (pending.toString("utf8").toLowerCase().includes(query)) {
             matches.push(pending.toString("utf8"));
+          }
+
           cursor = size;
         }
 
@@ -87,12 +93,22 @@ export const readLogTail = async (
       let to = Math.min(bytesRead, end - start);
       if (options?.after === undefined && start > 0) {
         const newline = buffer.indexOf(10);
-        if (newline >= 0 && newline < to - 1) from = newline + 1;
-        else while (from < to && (buffer[from] & 0xc0) === 0x80) from++;
+        if (newline >= 0 && newline < to - 1) {
+          from = newline + 1;
+        } else {
+          while (from < to && (buffer[from] & 0xc0) === 0x80) {
+            from++;
+          }
+        }
       } else if (end < size) {
         const newline = buffer.lastIndexOf(10, to - 1);
-        if (newline >= 0) to = newline + 1;
-        else while (to > 0 && (buffer[to] & 0xc0) === 0x80) to--;
+        if (newline >= 0) {
+          to = newline + 1;
+        } else {
+          while (to > 0 && (buffer[to] & 0xc0) === 0x80) {
+            to--;
+          }
+        }
       }
 
       start += from;
@@ -107,8 +123,10 @@ export const readLogTail = async (
       await handle.close();
     }
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT")
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
       return { text: "", truncated: false, start: 0, end: 0, size: 0 };
+    }
+
     throw e;
   }
 };

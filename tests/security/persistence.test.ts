@@ -279,8 +279,10 @@ it("rolls back an invalid foreign-key rebuild, preserves its backup and releases
   );
 
   old.close();
-  for (let attempt = 0; attempt < 2; attempt++)
+  for (let attempt = 0; attempt < 2; attempt++) {
     await expect(createFixtureEngine(root)).rejects.toThrow("foreign key verification");
+  }
+
   const unchanged = new Sqlite(path, { readonly: true });
   try {
     expect(unchanged.prepare("SELECT max(version) version FROM schema_migrations").get()).toEqual({

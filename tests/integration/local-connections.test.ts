@@ -314,10 +314,11 @@ it("requires the selected ID, blocks mismatches, never creates a clone, and runs
       }),
     );
 
-    for (const run of runs)
+    for (const run of runs) {
       await vi.waitFor(() => expect(engine.flowRuns.run(run.id).status).toBe("completed"), {
         timeout: 10000,
       });
+    }
 
     for (const task of [a, b]) {
       const current = engine.db.task(task.id);
@@ -409,25 +410,28 @@ it("rejects invalid/non-Git paths, unsafe Windows paths and stale verification; 
   const rpc = new Rpc(engine);
   try {
     const path = await checkout(dir);
-    for (const invalid of ["/", "/mnt/c", "relative/path", "~/missing-checkout"])
+    for (const invalid of ["/", "/mnt/c", "relative/path", "~/missing-checkout"]) {
       await expect(
         rpc.call("repository.verifyLocal", {
           environment: "wsl",
           path: invalid,
         }),
       ).rejects.toThrow();
+    }
 
     await expect(
       rpc.call("repository.verifyLocal", { environment: "wsl", path: dir }),
     ).rejects.toThrow();
 
-    for (const invalid of ["C:\\", "D:relative", "/mnt/c/projects/repo", "D:\\repo\n"])
+    for (const invalid of ["C:\\", "D:relative", "/mnt/c/projects/repo", "D:\\repo\n"]) {
       await expect(
         rpc.call("repository.verifyLocal", {
           environment: "windows",
           path: invalid,
         }),
       ).rejects.toThrow();
+    }
+
     const checked = processes.checked;
 
     const conversion = vi

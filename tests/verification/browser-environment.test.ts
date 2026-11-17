@@ -177,8 +177,9 @@ it.skipIf(process.env.VIBESTAR_BROWSER_TEST !== "1")(
     } finally {
       await rpc.close();
       await engine.close();
-      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1")
+      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1") {
         await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   60000,

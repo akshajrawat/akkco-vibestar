@@ -48,12 +48,14 @@ it.each(["tracked", "untracked", "ignored", "hidden"])(
       kind === "ignored" ? "ignored.txt" : kind === "untracked" ? "personal.txt" : "source.txt";
 
     await writeFile(join(task.worktree_path, name), "preserve these bytes\n");
-    if (kind === "hidden")
+    if (kind === "hidden") {
       await checked(
         "git",
         ["update-index", "--assume-unchanged", "source.txt"],
         task.worktree_path,
       );
+    }
+
     await expect(cleanup(task.id)).rejects.toThrow("local changes");
     expect(await readFile(join(task.worktree_path, name), "utf8")).toBe("preserve these bytes\n");
     expect(engine.db.task(task.id).worktree_path).toBe(task.worktree_path);
@@ -101,8 +103,11 @@ it.each(["registered", "unregistered"])(
   async (kind) => {
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, `missing-${kind}`);
-    if (kind === "registered") await rm(task.worktree_path, { recursive: true });
-    else await checked("git", ["worktree", "remove", "--", task.worktree_path], repo.path);
+    if (kind === "registered") {
+      await rm(task.worktree_path, { recursive: true });
+    } else {
+      await checked("git", ["worktree", "remove", "--", task.worktree_path], repo.path);
+    }
 
     engine.db.saveTask({
       ...task,
@@ -192,8 +197,10 @@ it("resumes cleanup after worktree removal without replaying creation or deletin
   const original = commands.gitExecute;
 
   const spy = vi.spyOn(commands, "gitExecute").mockImplementation(async (request) => {
-    if (request.args[0] === "update-ref")
+    if (request.args[0] === "update-ref") {
       throw new Error("fixture interruption before ref deletion");
+    }
+
     return original(request);
   });
 
@@ -247,12 +254,14 @@ it("preserves a branch changed between cleanup verification and expected-SHA del
   const original = commands.gitExecute;
 
   vi.spyOn(commands, "gitExecute").mockImplementation(async (request) => {
-    if (request.args[0] === "update-ref" && request.args[1] === "-d")
+    if (request.args[0] === "update-ref" && request.args[1] === "-d") {
       await checked(
         "git",
         ["update-ref", `refs/heads/${task.branch_name}`, alternate, task.base_commit_sha],
         repo.path,
       );
+    }
+
     return original(request);
   });
 

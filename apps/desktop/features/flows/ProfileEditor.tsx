@@ -29,10 +29,15 @@ export const ProfileEditor = ({
   const [confirmClose, setConfirmClose] = useState(false);
 
   const requestClose = () => {
-    if (busy) return;
-    if (JSON.stringify(draft) !== JSON.stringify(profile) || customColor !== appearance.color)
+    if (busy) {
+      return;
+    }
+
+    if (JSON.stringify(draft) !== JSON.stringify(profile) || customColor !== appearance.color) {
       setConfirmClose(true);
-    else close();
+    } else {
+      close();
+    }
   };
 
   return (

@@ -42,7 +42,7 @@ export const taskVerification = (db: Database, id: string) => {
   if (
     reviewChecks.length &&
     (report?.verification === undefined || Array.isArray(report?.verification))
-  )
+  ) {
     report.verification = [
       ...implementationChecks.map((original: Record<string, unknown>) => {
         const protectedReview = reviewChecks.find(
@@ -75,6 +75,7 @@ export const taskVerification = (db: Database, id: string) => {
           ),
       ),
     ];
+  }
 
   const commands = db.all<VerificationCommand>(
     `SELECT id,run_id,command,status,exit_code,stdout,stderr FROM test_runs WHERE task_id=? AND (run_id=? OR (run_id IS NULL AND started_at>=?) OR run_id IN (SELECT id FROM agent_runs WHERE task_id=? AND stage=5 AND purpose IN ('Review','Antigravity Final Review') AND started_at>=?)) ORDER BY started_at,rowid`,

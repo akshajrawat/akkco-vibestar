@@ -75,8 +75,10 @@ export const callPullRequests = async (
 
     case "scheduled.detail": {
       const p = idInput.strict().parse(input);
-      if (!services.scheduler.jobs().some((job) => job.id === p.id))
+      if (!services.scheduler.jobs().some((job) => job.id === p.id)) {
         throw new AdeError("not_found", "Tracked PR not found");
+      }
+
       return {
         analyses: services.scheduler.analysis.history(p.id),
         runs: e.db.all(
@@ -99,8 +101,10 @@ export const callPullRequests = async (
       if (
         !e.db.all("SELECT id FROM scheduled_agent_runs WHERE id=? AND job_id=?", p.run_id, p.id)
           .length
-      )
+      ) {
         throw new AdeError("isolation", "Run does not belong to this PR");
+      }
+
       return readLogTail(e.root, `pr-watch-${p.id}`, p.run_id, p.stream);
     }
 
@@ -116,18 +120,22 @@ export const callPullRequests = async (
 
     case "scheduled.remove": {
       const p = idInput.extend({ confirmed: z.literal(true) }).parse(input);
-      if (e.db.all("SELECT id FROM pr_repairs WHERE job_id=?", p.id).length)
+      if (e.db.all("SELECT id FROM pr_repairs WHERE job_id=?", p.id).length) {
         throw new AdeError(
           "repair_history",
           "Remove this PR's repair workspaces and history explicitly before removing the tracked PR.",
         );
+      }
+
       const job = services.scheduler.jobs().find((j) => j.id === p.id);
       if (
         job &&
         (["analyzing", "polling"].includes(job.status) ||
           e.cleanupBlockers().some((activity) => activity.id === `pr-watch:${p.id}`))
-      )
+      ) {
         throw new AdeError("busy", "Wait for inspection to finish");
+      }
+
       e.db.run("DELETE FROM scheduled_jobs WHERE id=?", p.id);
       e.changed();
       return null;

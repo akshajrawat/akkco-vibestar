@@ -8,6 +8,9 @@ export const selectValue = (control: HTMLElement, value: string) => {
     .getAllByRole("option")
     .find((item) => item.getAttribute("data-value") === value);
 
-  if (!option) throw new Error(`Picker option ${value} is unavailable`);
+  if (!option) {
+    throw new Error(`Picker option ${value} is unavailable`);
+  }
+
   fireEvent.click(option);
 };

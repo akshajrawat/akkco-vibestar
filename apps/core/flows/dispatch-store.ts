@@ -20,11 +20,12 @@ const DispatchRequestSchema = z
     if (
       (request.kind === "flow") !== (request.node_id === null) ||
       (request.kind === "retry") !== (request.retry_of !== null)
-    )
+    ) {
       context.addIssue({
         code: "custom",
         message: "An execution request must identify its exact scope and retry source.",
       });
+    }
   });
 
 const DispatchSchema = z
@@ -67,20 +68,28 @@ export class FlowDispatchStore {
 
   replay = (input: DispatchRequest) => {
     const request = DispatchRequestSchema.parse(input);
-    if (!this.db.all("SELECT id FROM flow_dispatches WHERE id=?", request.id).length) return null;
+    if (!this.db.all("SELECT id FROM flow_dispatches WHERE id=?", request.id).length) {
+      return null;
+    }
+
     const previous = this.get(request.id);
-    if (previous.request_digest !== requestDigest(request))
+    if (previous.request_digest !== requestDigest(request)) {
       throw new AdeError(
         "request_conflict",
         "This execution request belongs to a different action.",
       );
+    }
+
     return previous;
   };
 
   get = (id: string): FlowDispatch => {
     identity.parse(id);
     const row = this.db.all<FlowDispatch>("SELECT * FROM flow_dispatches WHERE id=?", id)[0];
-    if (!row) throw new AdeError("not_found", "Flow execution request not found.");
+    if (!row) {
+      throw new AdeError("not_found", "Flow execution request not found.");
+    }
+
     return this.db.records.decode(
       { table: "flow_dispatches", id, column: "request_digest", source: JSON.stringify(row) },
       (value) => {
@@ -94,8 +103,10 @@ export class FlowDispatchStore {
           retry_of: dispatch.retry_of,
         });
 
-        if (requestDigest(request) !== dispatch.request_digest)
+        if (requestDigest(request) !== dispatch.request_digest) {
           throw new Error("Execution request integrity failed.");
+        }
+
         return dispatch;
       },
     );
@@ -106,31 +117,42 @@ export class FlowDispatchStore {
       const request = DispatchRequestSchema.parse(input);
       const digest = requestDigest(request);
       const previousRequest = this.replay(request);
-      if (previousRequest) return previousRequest;
+      if (previousRequest) {
+        return previousRequest;
+      }
+
       const run = this.runs.run(request.run_id);
       if (
         this.db.all(
           "SELECT id FROM flow_dispatches WHERE run_id=? AND status IN ('queued','running')",
           run.id,
         ).length
-      )
+      ) {
         throw new AdeError("busy", "This flow already has an active execution request.");
+      }
+
       if (
         !["queued", "paused", "waiting", "failed", "interrupted", "cancelled"].includes(run.status)
-      )
+      ) {
         throw new AdeError("invalid_state", "This flow cannot accept another execution request.");
+      }
+
       if (
         run.status === "queued" &&
         this.db.all("SELECT id FROM flow_dispatches WHERE run_id=?", run.id).length
-      )
+      ) {
         throw new AdeError(
           "invalid_state",
           "This run already consumed its initial startup authority.",
         );
+      }
+
       if (request.node_id) {
         const node = new Set(this.runs.definition(run.id).nodes.map((entry) => entry.id));
-        if (!node.has(request.node_id))
+        if (!node.has(request.node_id)) {
           throw new AdeError("isolation", "The requested node is outside this flow revision.");
+        }
+
         const attempts = this.runs.results(run.id);
         let previous = attempts.filter((entry) => entry.node_id === request.node_id).at(-1);
         if (
@@ -141,8 +163,9 @@ export class FlowDispatchStore {
         ) {
           previous = this.runs.refreshApproval(previous.id);
           const pending = this.latest(run.id);
-          if (pending?.status === "waiting")
+          if (pending?.status === "waiting") {
             this.settle(pending.id, "interrupted", "The user requested fresh approval evidence.");
+          }
         }
 
         if (
@@ -150,13 +173,17 @@ export class FlowDispatchStore {
           (!previous ||
             previous.id !== request.retry_of ||
             !["failed", "rejected", "cancelled", "interrupted"].includes(previous.status))
-        )
+        ) {
           throw new AdeError("invalid_state", "Retry must identify the latest stopped attempt.");
-        if (request.kind === "node" && previous)
+        }
+
+        if (request.kind === "node" && previous) {
           throw new AdeError(
             "invalid_state",
             "This node has already started; use its explicit retry action.",
           );
+        }
+
         const edges = this.runs.definition(run.id).edges;
         if (
           edges.some(
@@ -165,11 +192,12 @@ export class FlowDispatchStore {
               attempts.filter((entry) => entry.node_id === edge.source).at(-1)?.status !==
                 "completed",
           )
-        )
+        ) {
           throw new AdeError(
             "dependencies",
             "The selected node is not eligible until every predecessor completes.",
           );
+        }
       }
 
       const dispatch = DispatchSchema.parse({
@@ -182,7 +210,9 @@ export class FlowDispatchStore {
         error: null,
       });
 
-      if (run.status !== "queued") this.runs.setRunStatus(run.id, run.status, "queued");
+      if (run.status !== "queued") {
+        this.runs.setRunStatus(run.id, run.status, "queued");
+      }
 
       this.db.run(
         "INSERT INTO flow_dispatches(id,run_id,kind,node_id,retry_of,request_digest,status,created_at,started_at,ended_at,error) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
@@ -209,7 +239,10 @@ export class FlowDispatchStore {
         try {
           return [this.get(row.id)];
         } catch (error) {
-          if (error instanceof AdeError && error.kind === "corrupt_record") return [];
+          if (error instanceof AdeError && error.kind === "corrupt_record") {
+            return [];
+          }
+
           throw error;
         }
       });
@@ -226,7 +259,10 @@ export class FlowDispatchStore {
   claim = (id: string) =>
     this.db.transaction(() => {
       const dispatch = this.get(id);
-      if (dispatch.status !== "queued") return null;
+      if (dispatch.status !== "queued") {
+        return null;
+      }
+
       const run = this.runs.run(dispatch.run_id);
       if (run.status !== "queued") {
         this.settle(id, "interrupted", "This run no longer has queued execution authority.");
@@ -244,7 +280,9 @@ export class FlowDispatchStore {
     error: string | null = null,
   ) => {
     const dispatch = this.get(id);
-    if (!["queued", "running", "waiting"].includes(dispatch.status)) return dispatch;
+    if (!["queued", "running", "waiting"].includes(dispatch.status)) {
+      return dispatch;
+    }
 
     this.db.run(
       "UPDATE flow_dispatches SET status=?,ended_at=?,error=? WHERE id=?",
@@ -261,8 +299,9 @@ export class FlowDispatchStore {
     for (const row of this.db.all<{ id: string }>(
       "SELECT id FROM flow_dispatches WHERE run_id=? AND status IN ('queued','running','waiting')",
       runId,
-    ))
+    )) {
       this.settle(row.id, status);
+    }
   };
 
   interruptUnfinished = () =>

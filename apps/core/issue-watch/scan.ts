@@ -61,7 +61,9 @@ export class IssueWatchScanner {
     };
 
     const warn = (message: string) => {
-      if (scan.coverage.warnings.length < 1000) scan.coverage.warnings.push(message.slice(0, 2000));
+      if (scan.coverage.warnings.length < 1000) {
+        scan.coverage.warnings.push(message.slice(0, 2000));
+      }
     };
 
     try {
@@ -72,18 +74,27 @@ export class IssueWatchScanner {
         this.store.results(watch.id, true).map((candidate) => [candidate.issue.id, candidate]),
       );
 
-      if (scan.parent_scan_id)
-        for (const candidate of this.store.candidates(watch.id, scan.parent_scan_id))
+      if (scan.parent_scan_id) {
+        for (const candidate of this.store.candidates(watch.id, scan.parent_scan_id)) {
           known.set(candidate.issue.id, candidate);
-      if (scan.candidate_ids)
-        for (const id of scan.candidate_ids) known.set(id, this.store.savedCandidate(watch.id, id));
+        }
+      }
+
+      if (scan.candidate_ids) {
+        for (const id of scan.candidate_ids) {
+          known.set(id, this.store.savedCandidate(watch.id, id));
+        }
+      }
+
       const identities = new Map<string, { id: string; number: number }>();
       scan.coverage.query = issueQuery(repository, rules);
       if (scan.candidate_ids) {
         for (const id of scan.candidate_ids) {
           const candidate = known.get(id);
-          if (!candidate)
+          if (!candidate) {
             throw new Error("Selected candidate has no saved identity in this watch.");
+          }
+
           identities.set(id, { id, number: candidate.issue.number });
         }
 
@@ -99,9 +110,14 @@ export class IssueWatchScanner {
 
         scan.coverage.search_total = discovery.total;
         scan.coverage.search_complete = discovery.complete;
-        for (const warning of discovery.warnings) warn(warning);
+        for (const warning of discovery.warnings) {
+          warn(warning);
+        }
+
         scan.coverage.discovered = discovery.identities.length;
-        for (const identity of discovery.identities) identities.set(identity.id, identity);
+        for (const identity of discovery.identities) {
+          identities.set(identity.id, identity);
+        }
       }
 
       const candidateLimit = Math.min(10, limits.max_candidates);
@@ -125,7 +141,9 @@ export class IssueWatchScanner {
         } catch (error) {
           signal.throwIfAborted();
           scan.coverage.search_complete = false;
-          if (scan.batch) scan.batch.complete = false;
+          if (scan.batch) {
+            scan.batch.complete = false;
+          }
 
           warn(
             `Issue #${identity.number} could not be verified: ${error instanceof Error ? error.message : String(error)}`,
@@ -146,11 +164,13 @@ export class IssueWatchScanner {
             : [],
         );
 
-        if (repository.full_name !== watch.repository.full_name)
+        if (repository.full_name !== watch.repository.full_name) {
           for (const key of [...exclusions]) {
-            if (key.startsWith(`${watch.repository.full_name}#`))
+            if (key.startsWith(`${watch.repository.full_name}#`)) {
               exclusions.add(key.replace(watch.repository.full_name, repository.full_name));
+            }
           }
+        }
 
         scan.coverage.exclusions_complete = true;
       } catch (error) {
@@ -163,7 +183,7 @@ export class IssueWatchScanner {
             4000,
           );
 
-        for (const candidate of candidates)
+        for (const candidate of candidates) {
           if (candidate.eligible) {
             candidate.claim_state = "eligibility_uncertain";
 
@@ -171,6 +191,7 @@ export class IssueWatchScanner {
               "Required tracker is unverified. No new candidate is fully eligible.",
             );
           }
+        }
 
         return;
       }
@@ -180,7 +201,9 @@ export class IssueWatchScanner {
         if (reasons.length) {
           candidate.eligible = false;
           candidate.reasons = reasons;
-          if (candidate.claim_state !== "assigned") candidate.claim_state = "ineligible";
+          if (candidate.claim_state !== "assigned") {
+            candidate.claim_state = "ineligible";
+          }
         }
       }
 
@@ -193,7 +216,10 @@ export class IssueWatchScanner {
         : { complete: true, warnings: [], source_keys: [] };
 
       scan.coverage.evidence_complete = policy.complete;
-      for (const warning of policy.warnings) warn(warning);
+      for (const warning of policy.warnings) {
+        warn(warning);
+      }
+
       for (const [index, candidate] of selected.entries()) {
         if (index >= limits.max_context_candidates) {
           candidate.uncertainty.push(
@@ -206,7 +232,9 @@ export class IssueWatchScanner {
 
         const context = await issueContext(reader, candidate.issue, save);
         scan.coverage.context_checked++;
-        if (!context.complete) scan.coverage.evidence_complete = false;
+        if (!context.complete) {
+          scan.coverage.evidence_complete = false;
+        }
 
         applyContext(candidate, context.sources, context.evidence, [
           ...context.warnings,
@@ -230,8 +258,9 @@ export class IssueWatchScanner {
             /(?:request|ask)[^\n.]{0,70}assign|assign[^\n.]{0,70}before (?:start|work)|wait for[^\n.]{0,70}(?:approval|maintainer)/i.test(
               source.text,
             )
-          )
+          ) {
             candidate.claim_state = "maintainer_approval_needed";
+          }
         }
 
         this.store.saveCandidate(scan, candidate);
@@ -252,7 +281,10 @@ export class IssueWatchScanner {
         (candidate) => candidate.eligible && candidate.source_keys.length && semanticNeeded,
       );
 
-      for (const candidate of semanticCandidates) candidate.semantic_state = "pending";
+      for (const candidate of semanticCandidates) {
+        candidate.semantic_state = "pending";
+      }
+
       scan.coverage.semantic_complete = semanticCandidates.length === 0;
       if (semanticCandidates.length) {
         progress("Evaluating candidates");
@@ -306,7 +338,9 @@ export class IssueWatchScanner {
         if (reasons.length) {
           candidate.eligible = false;
           candidate.reasons = reasons;
-          if (candidate.claim_state !== "assigned") candidate.claim_state = "ineligible";
+          if (candidate.claim_state !== "assigned") {
+            candidate.claim_state = "ineligible";
+          }
         }
       }
 
@@ -323,7 +357,7 @@ export class IssueWatchScanner {
         warn("Other saved candidates were not rechecked; previous evidence remains historical.");
       }
 
-      for (const old of known.values())
+      for (const old of known.values()) {
         if (!scan.batch && !checked.has(old.issue.id)) {
           candidates.push({
             ...old,
@@ -337,13 +371,15 @@ export class IssueWatchScanner {
 
           scan.coverage.search_complete = false;
         }
+      }
 
-      if (scan.batch)
+      if (scan.batch) {
         scan.batch.complete &&=
           scan.coverage.exclusions_complete &&
           scan.coverage.evidence_complete &&
           scan.coverage.semantic_complete &&
           scan.coverage.checked === scan.coverage.discovered;
+      }
 
       scan.status =
         scan.coverage.search_complete &&
@@ -353,7 +389,9 @@ export class IssueWatchScanner {
           ? "completed"
           : "partial";
     } catch (error) {
-      if (scan.batch) scan.batch.complete = false;
+      if (scan.batch) {
+        scan.batch.complete = false;
+      }
 
       scan.status = signal.aborted
         ? "cancelled"
@@ -367,9 +405,13 @@ export class IssueWatchScanner {
         ? "Cancelled. Collected evidence was retained; baseline unchanged."
         : (error instanceof Error ? error.message : String(error)).slice(0, 4000);
     } finally {
-      if (signal.aborted) scan.status = "cancelled";
-      if (scan.batch && !["completed", "partial"].includes(scan.status))
+      if (signal.aborted) {
+        scan.status = "cancelled";
+      }
+
+      if (scan.batch && !["completed", "partial"].includes(scan.status)) {
         scan.batch.complete = false;
+      }
 
       scan.phase =
         scan.status === "completed"

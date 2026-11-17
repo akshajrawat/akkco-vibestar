@@ -107,7 +107,10 @@ export const AvatarEyebrows = ({ eyebrows }: Pick<ViberAppearance, "eyebrows">) 
 };
 
 export const AvatarGlasses = ({ glasses }: Pick<ViberAppearance, "glasses">) => {
-  if (glasses === "none") return null;
+  if (glasses === "none") {
+    return null;
+  }
+
   const round = glasses === "round" || glasses === "oval";
   const width = glasses === "oversized" ? 34 : 27;
   return (
@@ -195,7 +198,9 @@ export const AvatarAccessory = ({ accessory }: Pick<ViberAppearance, "accessory"
 };
 
 export const AvatarDevice = ({ device }: Pick<ViberAppearance, "device">) => {
-  if (device === "none") return null;
+  if (device === "none") {
+    return null;
+  }
 
   const props = {
     fill: "#202d43",
@@ -204,7 +209,7 @@ export const AvatarDevice = ({ device }: Pick<ViberAppearance, "device">) => {
     strokeLinejoin: "round" as const,
   };
 
-  if (device === "phone" || device === "tablet")
+  if (device === "phone" || device === "tablet") {
     return (
       <g {...props}>
         <rect
@@ -217,6 +222,8 @@ export const AvatarDevice = ({ device }: Pick<ViberAppearance, "device">) => {
         <path d={device === "phone" ? "M121 105 H128 M122 137 H127" : "M113 137 H122"} />
       </g>
     );
+  }
+
   return (
     <g {...props}>
       <path d="M91 103 H143 Q147 103 145 108 L138 137 H81 L88 108 Q89 103 91 103Z" />

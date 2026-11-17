@@ -98,7 +98,7 @@ it.each(["dirty", "unpushed", "unknown"])(
         );
       } else {
         await writeFile(join(protectedTask.worktree_path, "source.txt"), "Work to preserve\n");
-        if (kind === "unpushed")
+        if (kind === "unpushed") {
           await checked(
             "git",
             [
@@ -112,6 +112,7 @@ it.each(["dirty", "unpushed", "unknown"])(
             ],
             protectedTask.worktree_path,
           );
+        }
       }
 
       await writeFile(join(engine.root, "cache", "unknown-data"), "Unknown owner");
@@ -128,7 +129,9 @@ it.each(["dirty", "unpushed", "unknown"])(
         "Unknown owner",
       );
 
-      if (kind === "unpushed") expect(result.preserved[0].reason).toContain("Unpushed");
+      if (kind === "unpushed") {
+        expect(result.preserved[0].reason).toContain("Unpushed");
+      }
     } finally {
       await engine.close();
       await rm(dir, { recursive: true, force: true });

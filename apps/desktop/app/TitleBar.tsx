@@ -64,29 +64,40 @@ export const TitleBar = ({
           !manualDragging ||
           event.button !== 0 ||
           (event.target as HTMLElement).closest("button")
-        )
+        ) {
           return;
+        }
+
         dragStart.current = { x: event.screenX, y: event.screenY };
         event.currentTarget.setPointerCapture(event.pointerId);
         control(() => window.electronWindow.beginDrag(dragStart.current!));
       }}
       onPointerMove={(event) => {
         const start = dragStart.current;
-        if (!start || Math.abs(start.x - event.screenX) + Math.abs(start.y - event.screenY) < 4)
+        if (!start || Math.abs(start.x - event.screenX) + Math.abs(start.y - event.screenY) < 4) {
           return;
+        }
+
         control(() => window.electronWindow.drag({ x: event.screenX, y: event.screenY }));
       }}
       onPointerUp={() => {
-        if (dragStart.current) control(window.electronWindow.endDrag);
+        if (dragStart.current) {
+          control(window.electronWindow.endDrag);
+        }
+
         dragStart.current = null;
       }}
       onLostPointerCapture={() => {
-        if (dragStart.current) control(window.electronWindow.endDrag);
+        if (dragStart.current) {
+          control(window.electronWindow.endDrag);
+        }
+
         dragStart.current = null;
       }}
       onDoubleClick={(event) => {
-        if (!(event.target as HTMLElement).closest("button"))
+        if (!(event.target as HTMLElement).closest("button")) {
           control(window.electronWindow.maximize);
+        }
       }}
     >
       {onSidebar && (

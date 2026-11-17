@@ -47,8 +47,9 @@ export const reviewedTaskFixture = async (
     "--",
   ]);
 
-  if (diffCheck.code !== 0)
+  if (diffCheck.code !== 0) {
     throw new Error(`Fixture pinned-base validation failed: ${diffCheck.stderr}`);
+  }
 
   engine.db.run(
     "INSERT INTO task_artifacts VALUES(?,?,3,'plan',?,?)",

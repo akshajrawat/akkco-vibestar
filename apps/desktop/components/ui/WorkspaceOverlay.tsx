@@ -30,7 +30,9 @@ export const WorkspaceOverlay = ({
 
       // Nested confirmations must leave the top layer before the opener can receive focus.
       queueMicrotask(() => {
-        if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+        if (previous instanceof HTMLElement && previous.isConnected) {
+          previous.focus();
+        }
       });
     };
   }, []);
@@ -44,7 +46,9 @@ export const WorkspaceOverlay = ({
       onCancel={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (!dialog.current?.querySelector('[role="dialog"]')) onClose();
+        if (!dialog.current?.querySelector('[role="dialog"]')) {
+          onClose();
+        }
       }}
       onKeyDown={(event) => {
         // Workspace shortcuts must not change the task beneath the modal.

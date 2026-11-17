@@ -7,13 +7,25 @@ import type { Engine } from "../execution/engine";
 const directorySize = async (path: string): Promise<number> => {
   try {
     const entry = await lstat(path);
-    if (entry.isSymbolicLink()) return entry.size;
-    if (!entry.isDirectory()) return entry.size;
+    if (entry.isSymbolicLink()) {
+      return entry.size;
+    }
+
+    if (!entry.isDirectory()) {
+      return entry.size;
+    }
+
     let size = 0;
-    for (const name of await readdir(path)) size += await directorySize(join(path, name));
+    for (const name of await readdir(path)) {
+      size += await directorySize(join(path, name));
+    }
+
     return size;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return 0;
+    }
+
     throw error;
   }
 };

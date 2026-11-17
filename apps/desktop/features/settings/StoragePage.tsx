@@ -37,10 +37,14 @@ export const StoragePage = ({
 
     void rpc<typeof info>("storage.info")
       .then((r) => {
-        if (alive) setInfo(r);
+        if (alive) {
+          setInfo(r);
+        }
       })
       .catch((e) => {
-        if (alive) setError(errorMessage(e));
+        if (alive) {
+          setError(errorMessage(e));
+        }
       });
 
     return () => {
@@ -49,7 +53,10 @@ export const StoragePage = ({
   }, [revision, refreshKey]);
 
   const execute = async () => {
-    if (!confirmation) return;
+    if (!confirmation) {
+      return;
+    }
+
     setBusy(true);
     setError("");
     setCleanupError(undefined);

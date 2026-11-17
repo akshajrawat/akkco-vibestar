@@ -26,8 +26,9 @@ export class FlowNodeExecutor {
     try {
       let output: string;
       if (node.type === "agent") {
-        if (!attempt.configuration.agent)
+        if (!attempt.configuration.agent) {
           throw new AdeError("invalid_state", "The captured agent settings are missing.");
+        }
 
         const result = await this.runner.runConfigured(
           task,
@@ -57,13 +58,17 @@ export class FlowNodeExecutor {
 
           return;
         }
-      } else return;
+      } else {
+        return;
+      }
 
-      if (output.length > 1048576)
+      if (output.length > 1048576) {
         throw new AdeError(
           "output_limit",
           "The node result exceeds 1 MiB. The full execution record is retained; reduce the requested output before retrying.",
         );
+      }
+
       const linked = this.host.flowRuns.attempt(attempt.id);
 
       const verification = observedVerification(this.host.db, linked);
@@ -82,7 +87,7 @@ export class FlowNodeExecutor {
       );
     } catch (error) {
       const current = this.host.flowRuns.attempt(attempt.id);
-      if (current.status === "running")
+      if (current.status === "running") {
         this.host.flowRuns.finishAttempt(
           attempt.id,
           signal.aborted ? (this.state.closed ? "interrupted" : "cancelled") : "failed",
@@ -90,7 +95,11 @@ export class FlowNodeExecutor {
           observedVerification(this.host.db, current),
           message(error),
         );
-      if (signal.aborted) throw error;
+      }
+
+      if (signal.aborted) {
+        throw error;
+      }
     } finally {
       const linked = this.host.flowRuns.attempt(attempt.id);
       const run = this.host.flowRuns.run(attempt.run_id);
@@ -120,7 +129,7 @@ export class FlowNodeExecutor {
             chat.id,
           );
 
-          if (linked.status === "completed" && linked.output)
+          if (linked.status === "completed" && linked.output) {
             this.host.db.run(
               "INSERT INTO task_messages(id,task_id,role,content,created_at,status,run_id,purpose,flow_node_id,viber_profile_id) VALUES(?,?,'assistant',?,?,'chat_completed',?,'chat',?,?)",
               randomUUID(),
@@ -131,6 +140,7 @@ export class FlowNodeExecutor {
               chat.flow_node_id,
               chat.viber_profile_id,
             );
+          }
         });
       }
 
@@ -144,9 +154,10 @@ export class FlowNodeExecutor {
           if (
             (await this.host.git.fingerprint(this.host.db.task(task.id))) !==
             attempt.workspace_fingerprint
-          )
+          ) {
             reason =
               "A Viber conversation changed the shared workspace. Apply a saved revision or start a fresh graph run before continuing.";
+          }
         } catch {
           reason =
             "Workspace evidence became unavailable after a Viber conversation. Restore ownership and apply a saved revision before continuing the graph.";
@@ -186,12 +197,13 @@ export class FlowNodeExecutor {
               ? "chat_failed"
               : null;
 
-    if (status)
+    if (status) {
       this.host.db.run(
         "UPDATE task_messages SET status=? WHERE id=? AND task_id=? AND purpose='chat' AND status='chat_pending'",
         status,
         run.request_id,
         run.task_id,
       );
+    }
   };
 }

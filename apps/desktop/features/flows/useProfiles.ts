@@ -15,12 +15,17 @@ export const useProfiles = (revision: number) => {
 
     void rpc<AgentProfile[]>("profile.list")
       .then((profiles) => {
-        if (!active) return;
+        if (!active) {
+          return;
+        }
+
         setProfiles(profiles.filter(isCustomViber));
         setError("");
       })
       .catch((reason) => {
-        if (active) setError(errorMessage(reason));
+        if (active) {
+          setError(errorMessage(reason));
+        }
       });
 
     return () => {

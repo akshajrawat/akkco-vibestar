@@ -67,11 +67,12 @@ export class Editors {
     this.engine.assertAvailable();
     const available = await discoverEditors();
     const selected = available.find((e) => e.id === editor);
-    if (!selected)
+    if (!selected) {
       throw new AdeError(
         "editor_unavailable",
         "This editor CLI is unavailable. Open the folder or copy its path instead.",
       );
+    }
 
     const path =
       kind === "repair" && this.repairPath
@@ -118,11 +119,13 @@ export class Editors {
       wslInterop: true,
     });
 
-    if (output.code !== 0)
+    if (output.code !== 0) {
       throw new AdeError(
         "editor_failed",
         `Couldn't open ${selected.label}. ${output.stderr.slice(-2000)}`,
       );
+    }
+
     return { path, editor: selected.id };
   };
 }

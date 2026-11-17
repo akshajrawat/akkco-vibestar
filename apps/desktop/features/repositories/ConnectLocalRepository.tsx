@@ -42,7 +42,9 @@ export const ConnectLocalRepository = ({
   const focus = useDialogFocus();
 
   const requestClose = () => {
-    if (busy) return;
+    if (busy) {
+      return;
+    }
 
     const dirty =
       path !== initialPath ||
@@ -52,8 +54,11 @@ export const ConnectLocalRepository = ({
           origin !== (verification.origin_remote || "") ||
           base !== (verification.base_branch || "")));
 
-    if (dirty) setConfirmClose(true);
-    else close();
+    if (dirty) {
+      setConfirmClose(true);
+    } else {
+      close();
+    }
   };
 
   const existing =
@@ -134,7 +139,9 @@ export const ConnectLocalRepository = ({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!useExisting) void verify();
+            if (!useExisting) {
+              void verify();
+            }
           }}
         >
           <fieldset className="scope-options">
@@ -201,8 +208,10 @@ export const ConnectLocalRepository = ({
                 setBusy(true);
                 setError("");
                 try {
-                  if (existing.connected === false)
+                  if (existing.connected === false) {
                     await rpc("repository.reconnectManaged", { id: existing.id });
+                  }
+
                   await connected();
                   selectRepository?.(existing.id);
                   close();
@@ -263,7 +272,10 @@ export const ConnectLocalRepository = ({
                 onChange={(name) => {
                   const remote = verification.remotes.find((r) => r.name === name);
                   setUpstream(name);
-                  if (origin === name) setOrigin("");
+                  if (origin === name) {
+                    setOrigin("");
+                  }
+
                   setBase(remote?.default_branch || "");
                 }}
                 options={[

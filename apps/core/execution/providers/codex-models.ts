@@ -27,13 +27,22 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
     let killTimer: ReturnType<typeof setTimeout> | undefined;
 
     const stop = (signal: NodeJS.Signals) => {
-      if (!child.pid) return;
-      if (process.platform === "win32") child.kill(signal);
-      else terminateGroup(child.pid, signal);
+      if (!child.pid) {
+        return;
+      }
+
+      if (process.platform === "win32") {
+        child.kill(signal);
+      } else {
+        terminateGroup(child.pid, signal);
+      }
     };
 
     const finish = (failure?: Error) => {
-      if (finishing) return;
+      if (finishing) {
+        return;
+      }
+
       finishing = true;
       error = failure;
       clearTimeout(timer);
@@ -60,7 +69,10 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
     child.stdin.on("error", () => {});
 
     child.stderr.on("data", (chunk: Buffer) => {
-      if (finishing) return;
+      if (finishing) {
+        return;
+      }
+
       try {
         budget.consume(chunk);
       } catch (failure) {
@@ -71,20 +83,34 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
     child.on("error", finish);
 
     child.on("close", () => {
-      if (!finishing)
+      if (!finishing) {
         error = models.length ? undefined : new Error("Codex model discovery stopped");
+      }
+
       clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+
       signal?.removeEventListener("abort", abort);
       // A successful response is not settled until descendants are stopped.
       stop("SIGKILL");
-      if (signal?.aborted) error = new Error("Model discovery cancelled");
-      if (error) reject(error);
-      else resolve({ models, subscriptionLimits });
+      if (signal?.aborted) {
+        error = new Error("Model discovery cancelled");
+      }
+
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ models, subscriptionLimits });
+      }
     });
 
     const line = (line: string) => {
-      if (finishing) return;
+      if (finishing) {
+        return;
+      }
+
       try {
         const response = object(JSON.parse(line));
         if (response.id === 2) {
@@ -105,22 +131,25 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
                 resetsAt: w.resetsAt as number,
               }));
 
-            if (windows.length)
+            if (windows.length) {
               subscriptionLimits = {
                 reportedAt: new Date().toISOString(),
                 ...(typeof limits.planType === "string" ? { planType: limits.planType } : {}),
                 windows,
               };
+            }
           }
 
           finish();
           return;
         }
 
-        if (response.error)
+        if (response.error) {
           return finish(
             new Error(String(object(response.error).message || "Model discovery failed")),
           );
+        }
+
         if (response.id === 0) {
           send({ method: "initialized", params: {} });
 
@@ -145,12 +174,16 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
             });
           }
 
-          if (models.length > 1000)
+          if (models.length > 1000) {
             return finish(new Error("Codex model discovery exceeded its model limit"));
+          }
+
           if (result.nextCursor) {
             const cursor = String(result.nextCursor);
-            if (cursors.has(cursor) || models.length >= 1000)
+            if (cursors.has(cursor) || models.length >= 1000) {
               return finish(new Error("Codex model discovery pagination exceeded its limit"));
+            }
+
             cursors.add(cursor);
 
             send({
@@ -162,8 +195,11 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
                 includeHidden: false,
               },
             });
-          } else if (models.length) send({ id: 2, method: "account/rateLimits/read", params: {} });
-          else finish(new Error("Codex returned no models"));
+          } else if (models.length) {
+            send({ id: 2, method: "account/rateLimits/read", params: {} });
+          } else {
+            finish(new Error("Codex returned no models"));
+          }
         }
       } catch {
         finish(new Error("Invalid Codex model discovery response"));
@@ -171,20 +207,26 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
     };
 
     child.stdout.on("data", (chunk: Buffer) => {
-      if (finishing) return;
+      if (finishing) {
+        return;
+      }
+
       try {
         budget.consume(chunk);
         buffered += decoder.write(chunk);
         let index;
         while ((index = buffered.indexOf("\n")) >= 0) {
-          if (index > 256 * 1024)
+          if (index > 256 * 1024) {
             throw new Error("Codex discovery response exceeded its line limit");
+          }
+
           line(buffered.slice(0, index));
           buffered = buffered.slice(index + 1);
         }
 
-        if (buffered.length > 256 * 1024)
+        if (buffered.length > 256 * 1024) {
           throw new Error("Codex discovery response exceeded its line limit");
+        }
       } catch (failure) {
         finish(failure as Error);
       }
@@ -198,5 +240,7 @@ export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
       },
     });
 
-    if (signal?.aborted) abort();
+    if (signal?.aborted) {
+      abort();
+    }
   });

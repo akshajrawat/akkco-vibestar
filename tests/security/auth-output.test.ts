@@ -43,9 +43,13 @@ it("redacts split credentials through the real auth PTY and emits a live prompt 
 
   const auth = new AuthSessions(tmpdir(), (event) => {
     events.push(event);
-    if (event.event === "auth.output" && event.text === "Login: ")
+    if (event.event === "auth.output" && event.text === "Login: ") {
       auth.input(event.session_id!, "go");
-    if (event.event === "auth.closed") resolve();
+    }
+
+    if (event.event === "auth.closed") {
+      resolve();
+    }
   });
 
   const session = auth.connect("codex");
@@ -73,9 +77,13 @@ it("flushes an ambiguous tail safely before auth.closed", async () => {
 
   const auth = new AuthSessions(tmpdir(), (event) => {
     events.push(event);
-    if (event.event === "auth.output" && event.text?.includes("ready "))
+    if (event.event === "auth.output" && event.text?.includes("ready ")) {
       auth.close(event.session_id!);
-    if (event.event === "auth.closed") resolve();
+    }
+
+    if (event.event === "auth.closed") {
+      resolve();
+    }
   });
 
   auth.connect("codex");
@@ -106,15 +114,23 @@ it("holds login slots until a SIGHUP-resistant process is killed and settled", a
     if (event.event === "auth.output" && event.text?.includes("Ready: ")) {
       ready++;
       if (ready === 4) {
-        for (const id of ids) auth.close(id);
+        for (const id of ids) {
+          auth.close(id);
+        }
+
         expect(() => auth.connect("codex")).toThrow("maximum 4");
       }
     }
 
-    if (event.event === "auth.closed" && ++ended === 4) resolve();
+    if (event.event === "auth.closed" && ++ended === 4) {
+      resolve();
+    }
   });
 
-  for (let i = 0; i < 4; i++) ids.push(auth.connect("codex").session_id);
+  for (let i = 0; i < 4; i++) {
+    ids.push(auth.connect("codex").session_id);
+  }
+
   try {
     await closed;
     expect(ended).toBe(4);
@@ -137,7 +153,9 @@ it("kills a login that ignores SIGHUP after exceeding its raw output budget", as
 
   const auth = new AuthSessions(tmpdir(), (event) => {
     events.push(event);
-    if (event.event === "auth.closed") resolve();
+    if (event.event === "auth.closed") {
+      resolve();
+    }
   });
 
   auth.connect("codex");

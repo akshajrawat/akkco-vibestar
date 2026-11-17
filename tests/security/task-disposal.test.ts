@@ -77,7 +77,10 @@ it.each(["modified", "staged", "untracked", "ignored"])(
       kind === "untracked" ? "new.txt" : kind === "ignored" ? "ignored.txt" : "source.txt";
 
     await writeFile(join(task.worktree_path, path), "discard fixture bytes\n");
-    if (kind === "staged") await checked("git", ["add", "source.txt"], task.worktree_path);
+    if (kind === "staged") {
+      await checked("git", ["add", "source.txt"], task.worktree_path);
+    }
+
     const preview = await storage.previewTaskDisposal(task.id);
     expect([...preview.modified, ...preview.untracked, ...preview.ignored]).toContain(path);
     expect(await exists(task.worktree_path)).toBe(true);
@@ -153,11 +156,18 @@ it.each(["hidden-index", "merge", "wrong-owner", "symlink"])(
   async (kind) => {
     const { task, storage } = await fixture();
     const gitdir = await checked("git", ["rev-parse", "--absolute-git-dir"], task.worktree_path);
-    if (kind === "hidden-index")
+    if (kind === "hidden-index") {
       await checked("git", ["update-index", "--skip-worktree", "source.txt"], task.worktree_path);
-    if (kind === "merge") await writeFile(join(gitdir, "MERGE_HEAD"), task.base_commit_sha + "\n");
-    if (kind === "wrong-owner")
+    }
+
+    if (kind === "merge") {
+      await writeFile(join(gitdir, "MERGE_HEAD"), task.base_commit_sha + "\n");
+    }
+
+    if (kind === "wrong-owner") {
       await writeFile(join(gitdir, "vibestar-task-owner"), "another-task");
+    }
+
     if (kind === "symlink") {
       const moved = task.worktree_path + "-preserved";
       const { rename } = await import("node:fs/promises");
@@ -240,8 +250,10 @@ it("resumes a journaled discard after worktree removal without adopting recreate
   const execute = gitCommands.gitExecute;
 
   const failure = vi.spyOn(gitCommands, "gitExecute").mockImplementation(async (options) => {
-    if (options.args[0] === "update-ref")
+    if (options.args[0] === "update-ref") {
       throw new Error("Fixture interruption after scoped worktree removal");
+    }
+
     return execute(options);
   });
 

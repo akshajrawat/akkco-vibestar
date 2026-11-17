@@ -57,11 +57,12 @@ export class PRIdentityReader {
         `${reference.owner}/${reference.repo}`.toLowerCase() ||
       source.node_id !== metadata.head.repo.node_id ||
       source.full_name.toLowerCase() !== metadata.head.repo.full_name.toLowerCase()
-    )
+    ) {
       throw new AdeError(
         "pr_identity",
         "GitHub PR repository identity changed or is inconsistent.",
       );
+    }
 
     const repo = (value: z.infer<typeof repository>) => ({
       name: value.full_name,
@@ -90,17 +91,23 @@ export class PRIdentityReader {
     });
 
     // Git commands validate refs too; reject ambiguous or option-like values here.
-    for (const ref of [identity.head.branch, identity.base.branch])
+    for (const ref of [identity.head.branch, identity.base.branch]) {
       if (
         ref.startsWith("-") ||
         /[\x00-\x20~^:?*[\\]/.test(ref) ||
         ref.includes("..") ||
         ref.includes("@{")
-      )
+      ) {
         throw new AdeError("pr_identity", "GitHub returned an invalid branch ref.");
-    for (const remote of [identity.upstream, identity.head])
-      if (remote.url !== `https://github.com/${remote.name}.git`)
+      }
+    }
+
+    for (const remote of [identity.upstream, identity.head]) {
+      if (remote.url !== `https://github.com/${remote.name}.git`) {
         throw new AdeError("pr_identity", "GitHub returned an unexpected repository transport.");
+      }
+    }
+
     return identity;
   };
 }

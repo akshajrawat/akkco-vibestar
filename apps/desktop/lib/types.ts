@@ -59,6 +59,7 @@ export interface Snapshot {
     agent_flows?: number;
     flow_continuations?: number;
     viber_conversations?: number;
+    viber_sessions?: number;
     pr_quick_watch?: boolean;
     manual_issue_watch: boolean;
     issue_watch_contract: number | null;

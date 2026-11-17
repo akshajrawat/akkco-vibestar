@@ -20,6 +20,7 @@ import { execute, redact } from "../runtime/process";
 import { BoundedWriter } from "../output/bounded-output";
 import { AgentExecutionSchema, type AgentExecution } from "../contracts";
 import { executionSchema } from "./execution-output";
+import { ViberSessionStore } from "../../vibers/store";
 import { FlowRunStore } from "../../flows/run-store";
 import {
   object,
@@ -45,6 +46,7 @@ interface AgentRunOptions {
   contextPaths?: string[];
   conversation?: { threadId?: string };
   nodeAttemptId?: string;
+  viberSession?: { sessionId: string; messageId: string };
 }
 
 export class AgentRunner {
@@ -66,7 +68,10 @@ export class AgentRunner {
   private detect = async (provider: AgentProvider, signal: AbortSignal) => {
     signal.throwIfAborted();
     const cached = this.detections.get(provider.name);
-    if (cached && Date.now() - cached.at < 30000) return cached.value;
+    if (cached && Date.now() - cached.at < 30000) {
+      return cached.value;
+    }
+
     const value = await provider.detect(this.root, signal);
     signal.throwIfAborted();
     // Cache successful official discovery briefly, never authentication failures or fixture capabilities.
@@ -75,8 +80,10 @@ export class AgentRunner {
       value.installed &&
       value.connected &&
       value.capabilities.length
-    )
+    ) {
       this.detections.set(provider.name, { at: Date.now(), value });
+    }
+
     return value;
   };
 
@@ -98,15 +105,20 @@ export class AgentRunner {
     const resultSchema = executionSchema(execution, options.schema);
     const schema = z.toJSONSchema(resultSchema);
     const conversation = execution.output === "conversation";
-    if (options.conversation && !conversation)
+    if (options.conversation && !conversation) {
       throw new AdeError("invalid_state", "Provider threads require conversation output.");
-    if (options.repairStage !== undefined && !options.repair)
+    }
+
+    if (options.repairStage !== undefined && !options.repair) {
       throw new AdeError("isolation", "Recorded repair stages require a repair assignment.");
+    }
+
     const stage = options.repairStage ?? 0;
     const task = "repo_id" in t ? t : null;
     if (options.nodeAttemptId) {
-      if (!task || options.repair || options.conversation?.threadId)
+      if (!task || options.repair || options.conversation?.threadId) {
         throw new AdeError("isolation", "Flow nodes require their own task execution snapshot.");
+      }
 
       new FlowRunStore(this.db).assertAgentExecution(
         options.nodeAttemptId,
@@ -116,12 +128,40 @@ export class AgentRunner {
       );
     }
 
+    if (options.viberSession) {
+      if (
+        task ||
+        options.repair ||
+        options.jobId ||
+        options.scanId ||
+        options.watchId ||
+        options.nodeAttemptId ||
+        options.conversation?.threadId ||
+        !conversation ||
+        t.id !== options.viberSession.sessionId ||
+        options.workspace !== join(this.root, "workspaces", "vibers", t.id)
+      ) {
+        throw new AdeError(
+          "isolation",
+          "Standalone Viber turns require their own captured session workspace.",
+        );
+      }
+
+      new ViberSessionStore(this.db).assertExecution(
+        options.viberSession.sessionId,
+        options.viberSession.messageId,
+        execution,
+        options.prompt,
+      );
+    }
+
     const repair = options?.repair;
     const owner = task || repair || null;
     const assignment = owner;
     const fingerprint = repair ? this.git.repairFingerprint : this.git.fingerprint;
-    if (!assignment && !options?.workspace)
+    if (!assignment && !options?.workspace) {
       throw new AdeError("invalid_state", "Detached analysis requires a managed PR workspace");
+    }
 
     const table = owner
       ? "agent_runs"
@@ -143,11 +183,12 @@ export class AgentRunner {
           options.scanId,
           options.watchId,
         ).length
-      )
+      ) {
         throw new AdeError(
           "isolation",
           "Issue Watch utility execution needs its one reserved, unconsumed scan invocation slot.",
         );
+      }
     }
 
     const started = Date.now();
@@ -172,7 +213,9 @@ export class AgentRunner {
       effort: config.effort,
     });
 
-    if (repair) this.db.run("UPDATE ai_usage SET repair_id=? WHERE id=?", repair.id, id);
+    if (repair) {
+      this.db.run("UPDATE ai_usage SET repair_id=? WHERE id=?", repair.id, id);
+    }
 
     this.emit({
       event: "usage.changed",
@@ -207,7 +250,30 @@ export class AgentRunner {
       id,
     );
 
-    if (options?.scanId)
+    if (options.viberSession) {
+      this.db.transaction(() => {
+        this.db.run(
+          "UPDATE utility_runs SET viber_session_id=?,viber_message_id=? WHERE id=?",
+          options.viberSession!.sessionId,
+          options.viberSession!.messageId,
+          id,
+        );
+
+        this.db.run(
+          "UPDATE viber_messages SET run_id=? WHERE id=?",
+          id,
+          options.viberSession!.messageId,
+        );
+
+        this.db.run(
+          "UPDATE ai_usage SET viber_session_id=? WHERE id=?",
+          options.viberSession!.sessionId,
+          id,
+        );
+      });
+    }
+
+    if (options?.scanId) {
       this.db.transaction(() => {
         this.db.run(
           "UPDATE utility_runs SET watch_id=?,scan_id=? WHERE id=?",
@@ -231,9 +297,12 @@ export class AgentRunner {
           options.watchId!,
         );
       });
+    }
 
     const utilityEvent = (event: NormalizedEvent, raw = "", stream = "stdout") => {
-      if (!options?.scanId) return;
+      if (!options?.scanId && !options.viberSession) {
+        return;
+      }
 
       this.db.run(
         "INSERT INTO utility_events(run_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,?,?,?)",
@@ -247,6 +316,7 @@ export class AgentRunner {
 
       this.emit({
         event: "utility.event",
+        session_id: options.viberSession?.sessionId,
         watch_id: options.watchId,
         scan_id: options.scanId,
         run_id: id,
@@ -285,9 +355,11 @@ export class AgentRunner {
       "logs",
       task || repair
         ? t.id
-        : options?.scanId
-          ? `issue-watch-${options.scanId}`
-          : `pr-watch-${t.id}`,
+        : options.viberSession
+          ? `viber-${options.viberSession.sessionId}`
+          : options?.scanId
+            ? `issue-watch-${options.scanId}`
+            : `pr-watch-${t.id}`,
     );
 
     let cwd = "";
@@ -311,25 +383,36 @@ export class AgentRunner {
     let officialCodex = false;
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
-      if (options.nodeAttemptId)
+      if (options.nodeAttemptId) {
         new FlowRunStore(this.db).attachExecution(options.nodeAttemptId, id, "agent");
+      }
+
       cwd = assignment ? await this.git.assertTask(assignment) : options!.workspace!;
       const detection = await this.detect(provider, signal);
-      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
+      if (signal.aborted) {
+        throw new AdeError("cancelled", "Run cancelled");
+      }
+
       officialCodex = detection.provider === "codex";
       usage.recordLimits(id, detection.subscriptionLimits);
-      if (!detection.installed || !detection.capabilities.length)
+      if (!detection.installed || !detection.capabilities.length) {
         throw new AdeError(
           "provider_unavailable",
           detection.error || `${provider.name} CLI is unavailable`,
         );
-      if (!detection.connected)
+      }
+
+      if (!detection.connected) {
         throw new AdeError(
           "authentication",
           `Connect ${provider.name} on the Providers page using the official CLI.`,
         );
+      }
+
       const invalid = configurationError(detection, config);
-      if (invalid) throw new AdeError("model", invalid);
+      if (invalid) {
+        throw new AdeError("model", invalid);
+      }
 
       const selectedConfig = {
         ...config,
@@ -354,10 +437,11 @@ export class AgentRunner {
 
       const outputSchema = provider.outputSchema?.(schema) || schema;
 
-      if (!conversation)
+      if (!conversation) {
         await writeFile(schemaPath, JSON.stringify(outputSchema), {
           mode: 0o600,
         });
+      }
 
       const contextPaths = options.contextPaths || [];
 
@@ -387,6 +471,7 @@ export class AgentRunner {
           : undefined,
         options?.workspace,
         contextPaths,
+        options.viberSession?.sessionId,
       );
 
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
@@ -395,11 +480,13 @@ export class AgentRunner {
       if (
         options.nodeAttemptId &&
         before !== new FlowRunStore(this.db).attempt(options.nodeAttemptId).workspace_fingerprint
-      )
+      ) {
         throw new AdeError(
           "stale_context",
           "The workspace changed after node inputs were captured. Retry explicitly with fresh context.",
         );
+      }
+
       this.emit({ event: "changed", task_id: task?.id, repair_id: repair?.id });
       invoked = true;
 
@@ -460,7 +547,9 @@ export class AgentRunner {
 
           const result = stream === "stdout" ? provider.result(raw, conversation) : undefined;
 
-          if (result !== undefined) final = result;
+          if (result !== undefined) {
+            final = result;
+          }
 
           for (const event of stream === "stderr"
             ? [{ kind: "command.output" as const, data: { stderr: line } }]
@@ -477,7 +566,10 @@ export class AgentRunner {
               conversationMessages.set(key, text);
             }
 
-            if (event.kind === "run.failed") failure = event.data;
+            if (event.kind === "run.failed") {
+              failure = event.data;
+            }
+
             if (!task && !repair) {
               utilityEvent(event, line, stream);
               continue;
@@ -509,20 +601,26 @@ export class AgentRunner {
       });
 
       await writes.drain();
-      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
+      if (signal.aborted) {
+        throw new AdeError("cancelled", "Run cancelled");
+      }
+
       code = output.code;
-      if (code !== 0 || failure)
+      if (code !== 0 || failure) {
         throw new AdeError(
           "provider_failed",
           `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
           { provider: provider.name, stage, code },
         );
+      }
 
       // Workflow stages require schemas; conversation turns use the provider's ordinary prose.
       if (conversation && !resultSchema.safeParse(final).success) {
         const summary = [...conversationMessages.values()].reverse().find((text) => text.trim());
 
-        if (summary) final = { summary };
+        if (summary) {
+          final = { summary };
+        }
       }
 
       const value =
@@ -536,12 +634,17 @@ export class AgentRunner {
         assignment &&
         execution.access === "read-only" &&
         before !== (await fingerprint(assignment))
-      )
+      ) {
         throw new AdeError(
           "planning_violation",
           "A read-only planning or review run modified the worktree. Pipeline stopped. Review the changes before retrying.",
         );
-      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
+      }
+
+      if (signal.aborted) {
+        throw new AdeError("cancelled", "Run cancelled");
+      }
+
       if (task && execution.output === "implementation") {
         const implementation = object(result);
         for (const [field, status] of [
@@ -574,7 +677,9 @@ export class AgentRunner {
       }
 
       await writes.drain();
-      if (signal.aborted) throw new AdeError("cancelled", "Run cancelled");
+      if (signal.aborted) {
+        throw new AdeError("cancelled", "Run cancelled");
+      }
 
       this.db.run(
         `UPDATE ${table} SET status='completed',ended_at=?,exit_code=?,output=? WHERE id=?`,
@@ -625,7 +730,10 @@ export class AgentRunner {
       } finally {
         await stdout?.close();
         await stderr?.close();
-        if (!conversation) await unlink(schemaPath).catch(() => {});
+        if (!conversation) {
+          await unlink(schemaPath).catch(() => {});
+        }
+
         // Discovery reads official allowance only; it never starts a model turn.
         if (invoked && officialCodex && !signal.aborted && !conversation) {
           const after = await discoverCodexModels(

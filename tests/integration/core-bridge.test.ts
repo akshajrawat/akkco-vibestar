@@ -42,8 +42,10 @@ it.skipIf(process.platform === "win32")(
         "task.createGeneral",
         "task.createIssue",
         "task.lifecycle",
-      ])
+      ]) {
         await expect(bridge.request(method, {})).rejects.toThrow("Viber profiles and flows");
+      }
+
       await bridge.stop();
 
       await writeFile(
@@ -56,6 +58,10 @@ it.skipIf(process.platform === "win32")(
       await expect(bridge.request("flow.start", {})).resolves.toEqual({ accepted: "flow.start" });
       await expect(bridge.request("viber.chat", {})).rejects.toThrow("individual Vibers");
       await expect(bridge.request("viber.instances", {})).rejects.toThrow("individual Vibers");
+
+      await expect(bridge.request("viber.session.create", {})).rejects.toThrow(
+        "standalone Viber sessions",
+      );
 
       await expect(bridge.request("flow.continuation.apply", {})).rejects.toThrow(
         "verified result reuse",
@@ -71,7 +77,7 @@ it.skipIf(process.platform === "win32")(
         join(dir, "core.cjs"),
         helper().replace(
           "pipeline_approvals:true,",
-          "pipeline_approvals:true,flow_continuations:1,viber_conversations:1,",
+          "pipeline_approvals:true,flow_continuations:1,viber_conversations:1,viber_sessions:1,",
         ),
       );
 
@@ -83,6 +89,10 @@ it.skipIf(process.platform === "win32")(
       });
 
       await expect(bridge.request("viber.chat", {})).resolves.toEqual({ accepted: "viber.chat" });
+
+      await expect(bridge.request("viber.session.send", {})).resolves.toEqual({
+        accepted: "viber.session.send",
+      });
 
       await expect(bridge.request("snapshot")).resolves.toMatchObject({
         capabilities: { viber_conversations: 1 },
@@ -176,8 +186,9 @@ it.skipIf(process.platform === "win32")(
     const bridge = new CoreBridge(dir, { distro: "", data_home: dir, helper_path: "" });
     try {
       bridge.start();
-      for (const method of ["scheduled.analyze", "scheduled.batch.start"])
+      for (const method of ["scheduled.analyze", "scheduled.batch.start"]) {
         await expect(bridge.request(method, {})).rejects.toThrow("selected review model");
+      }
 
       await expect(bridge.request("scheduled.detail", {})).resolves.toEqual({
         accepted: "scheduled.detail",
@@ -239,8 +250,9 @@ it.skipIf(process.platform === "win32")(
         "built-in terminal",
       );
 
-      for (const method of ["terminal.open", "repair.terminal.open"])
+      for (const method of ["terminal.open", "repair.terminal.open"]) {
         await expect(bridge.request(method, {})).rejects.toThrow("manual user terminal");
+      }
 
       const settings = {
         antigravity_review: {
@@ -410,8 +422,9 @@ it.skipIf(process.platform === "win32")(
         "batches of 10",
       );
 
-      for (const method of ["issueWatch.retry", "issueWatch.continue"])
+      for (const method of ["issueWatch.retry", "issueWatch.continue"]) {
         await expect(bridge.request(method, {})).rejects.toThrow("batches of 10");
+      }
     } finally {
       await bridge.stop();
       await rm(dir, { recursive: true, force: true });
@@ -477,8 +490,10 @@ it.skipIf(process.platform === "win32")(
         "task.verification.fix",
         "task.verification.reviewPreview",
         "task.verification.continueReview",
-      ])
+      ]) {
         await expect(bridge.request(method, {})).rejects.toThrow("retired");
+      }
+
       await expect(bridge.request("task.cancel", {})).resolves.toEqual({ accepted: "task.cancel" });
     } finally {
       await bridge.stop();

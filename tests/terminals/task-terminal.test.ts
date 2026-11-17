@@ -141,7 +141,9 @@ it("saves and replays only sanitized split-token output with continuous emitted 
 
     const done = new Promise<void>((resolve) => {
       engine.on("event", (event) => {
-        if (event.event !== "terminal.output" || event.task_id !== task.id) return;
+        if (event.event !== "terminal.output" || event.task_id !== task.id) {
+          return;
+        }
 
         chunks.push({
           text: event.text!,
@@ -153,8 +155,9 @@ it("saves and replays only sanitized split-token output with continuous emitted 
             .map((chunk) => chunk.text)
             .join("")
             .includes("TERM_SECRET_CHECK")
-        )
+        ) {
           resolve();
+        }
       });
     });
 
@@ -167,8 +170,10 @@ it("saves and replays only sanitized split-token output with continuous emitted 
     expect(snapshot.output).toContain("[REDACTED]");
     expect(snapshot.output).not.toContain(secret);
     expect(snapshot.output).not.toContain("hijklmnopqrstuvwxyz123456");
-    for (let index = 1; index < chunks.length; index++)
+    for (let index = 1; index < chunks.length; index++) {
       expect(chunks[index].sequence).toBe(chunks[index - 1].sequence + 1);
+    }
+
     await terminals.close(task.id);
 
     const log = await readFile(
@@ -221,7 +226,10 @@ it("commits with user Git configuration and pushes to a local remote from the ma
       }, 10000);
 
       const read = (event: { event: string; task_id?: string; text?: string }) => {
-        if (event.event !== "terminal.output" || event.task_id !== task.id) return;
+        if (event.event !== "terminal.output" || event.task_id !== task.id) {
+          return;
+        }
+
         output += event.text || "";
         if (output.includes("MANUAL_GIT_COMPLETE")) {
           clearTimeout(timer);

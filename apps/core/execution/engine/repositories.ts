@@ -43,7 +43,10 @@ export class RepositoryOperations {
   ) => {
     this.host.assertAvailable();
     const { owner, name } = remoteIdentity(upstream);
-    if (origin) remoteIdentity(origin);
+    if (origin) {
+      remoteIdentity(origin);
+    }
+
     if (
       discover &&
       this.host.db
@@ -53,10 +56,14 @@ export class RepositoryOperations {
             r.owner.toLowerCase() === owner.toLowerCase() &&
             r.name.toLowerCase() === name.toLowerCase(),
         )
-    )
+    ) {
       throw new AdeError("repository_exists", "Repository is already registered");
+    }
+
     await gitChecked(["check-ref-format", "--branch", base], this.host.root);
-    if (discover && !localPath) await this.host.repositoryIndex.scan();
+    if (discover && !localPath) {
+      await this.host.repositoryIndex.scan();
+    }
 
     const candidate = localPath
       ? await this.host.repositoryIndex.inspect(localPath)
@@ -64,11 +71,13 @@ export class RepositoryOperations {
         ? this.host.repositoryIndex.matches(`${owner}/${name}`)[0]
         : undefined;
 
-    if (candidate && !candidate.identities.includes(`${owner}/${name}`.toLowerCase()))
+    if (candidate && !candidate.identities.includes(`${owner}/${name}`.toLowerCase())) {
       throw new AdeError(
         "repository_mismatch",
         "Selected checkout does not have a matching GitHub remote.",
       );
+    }
+
     const id = randomUUID();
 
     const r: Repository = {
@@ -111,11 +120,13 @@ export class RepositoryOperations {
       this.host.git.withLock(r.id, async () => {
         if (r.source === "imported") {
           const candidate = await this.host.repositoryIndex.inspect(r.path);
-          if (!candidate.identities.includes(`${r.owner}/${r.name}`.toLowerCase()))
+          if (!candidate.identities.includes(`${r.owner}/${r.name}`.toLowerCase())) {
             throw new AdeError(
               "repository_mismatch",
               "Imported checkout remotes no longer match this repository.",
             );
+          }
+
           return;
         }
 
@@ -124,23 +135,32 @@ export class RepositoryOperations {
         // marker before deciding whether an incomplete destination is removable.
         if (r.clone_status === "cloning") {
           const current = this.host.db.repository(r.id);
-          if (current.clone_status === "ready") Object.assign(r, current);
+          if (current.clone_status === "ready") {
+            Object.assign(r, current);
+          }
         }
 
         if (r.clone_status === "cloning" && (await exists(r.path))) {
           if (
             !inside(join(this.host.root, "repos"), r.path) ||
             this.host.db.tasks().some((t) => t.repo_id === r.id)
-          )
+          ) {
             throw new AdeError(
               "isolation",
               "Cannot remove an incomplete clone with task history or external ownership.",
             );
+          }
+
           await rm(r.path, { recursive: true, force: true });
         }
 
-        if (await exists(join(r.path, ".git"))) return;
-        if (r.selection !== "explicit") await this.host.repositoryIndex.scan();
+        if (await exists(join(r.path, ".git"))) {
+          return;
+        }
+
+        if (r.selection !== "explicit") {
+          await this.host.repositoryIndex.scan();
+        }
 
         const existing = localPath
           ? await this.host.repositoryIndex.inspect(localPath)
@@ -149,16 +169,20 @@ export class RepositoryOperations {
             : undefined;
 
         if (existing) {
-          if (!existing.identities.includes(`${r.owner}/${r.name}`.toLowerCase()))
+          if (!existing.identities.includes(`${r.owner}/${r.name}`.toLowerCase())) {
             throw new AdeError(
               "repository_mismatch",
               "Selected checkout does not have a matching GitHub remote.",
             );
-          if (this.host.db.tasks().some((t) => t.repo_id === r.id && t.worktree_path))
+          }
+
+          if (this.host.db.tasks().some((t) => t.repo_id === r.id && t.worktree_path)) {
             throw new AdeError(
               "isolation",
               "This repository has existing task worktrees. Restore its original managed clone before continuing.",
             );
+          }
+
           r.path = existing.path;
           r.source = "imported";
           this.host.db.saveRepository(r);
@@ -168,8 +192,10 @@ export class RepositoryOperations {
         try {
           await this.host.git.clone(r.upstream_url, r.path, signal, onProgress);
           onProgress?.("Configuring remotes…");
-          if (r.origin_url)
+          if (r.origin_url) {
             await gitChecked(["remote", "add", "origin", r.origin_url], r.path, signal);
+          }
+
           await this.host.git.fetch(r, signal);
 
           await gitChecked(
@@ -204,11 +230,15 @@ export class RepositoryOperations {
     this.operation(async () => {
       const result = await this.host.repositoryIndex.verifyLocal(input);
       for (const [id, verification] of this.localVerifications) {
-        if (verification.expires < Date.now()) this.localVerifications.delete(id);
+        if (verification.expires < Date.now()) {
+          this.localVerifications.delete(id);
+        }
       }
 
-      if (this.localVerifications.size >= 100)
+      if (this.localVerifications.size >= 100) {
         this.localVerifications.delete(this.localVerifications.keys().next().value!);
+      }
+
       const verification_id = randomUUID();
 
       this.localVerifications.set(verification_id, {
@@ -224,39 +254,49 @@ export class RepositoryOperations {
     this.operation(async () => {
       const p = ConnectLocalInput.parse(input);
       const verification = this.localVerifications.get(p.verification_id);
-      if (!verification || verification.expires < Date.now())
+      if (!verification || verification.expires < Date.now()) {
         throw new AdeError(
           "invalid_input",
           "Verification expired. Verify the repository again before connecting.",
         );
+      }
+
       const current = await this.host.repositoryIndex.verifyLocal(verification.input);
       if (
         current.path !== verification.result.path ||
         JSON.stringify(current.remotes) !== JSON.stringify(verification.result.remotes)
-      )
+      ) {
         throw new AdeError(
           "repository_changed",
           "Repository location or remotes changed. Verify again before connecting.",
         );
+      }
+
       const upstream = current.remotes.find((r) => r.name === p.upstream_remote && r.identity);
 
       const origin = p.origin_remote
         ? current.remotes.find((r) => r.name === p.origin_remote && r.identity)
         : null;
 
-      if (!upstream || (p.origin_remote && !origin))
+      if (!upstream || (p.origin_remote && !origin)) {
         throw new AdeError(
           "invalid_input",
           "Choose verified GitHub remotes for upstream and origin.",
         );
-      if (origin?.name === upstream.name)
+      }
+
+      if (origin?.name === upstream.name) {
         throw new AdeError(
           "invalid_input",
           "Upstream and fork must use different remotes. Choose None if there is no fork.",
         );
+      }
+
       await gitChecked(["check-ref-format", "--branch", p.base_branch], current.path);
-      if (!current.branches.includes(p.base_branch))
+      if (!current.branches.includes(p.base_branch)) {
         throw new AdeError("invalid_input", "Choose a base branch found in this repository.");
+      }
+
       const { owner, name } = remoteIdentity(upstream.url);
 
       const existing = this.host.db
@@ -276,8 +316,9 @@ export class RepositoryOperations {
               t.repo_id === existing.id &&
               (this.host.isActive(t.id) || (t.status === "queued" && !t.archived)),
           )
-      )
+      ) {
         throw new AdeError("busy", "Stop this repository's tasks before reconnecting.");
+      }
 
       const repo: Repository = {
         id: existing?.id || randomUUID(),
@@ -318,12 +359,14 @@ export class RepositoryOperations {
         .cleanupBlockers()
         .filter((blocker) => blocker.task_id && taskIds.includes(blocker.task_id));
 
-      if (blockers.length)
+      if (blockers.length) {
         throw new AdeError(
           "busy",
           "Stop this repository's active tasks and terminals before disconnecting.",
           { blockers },
         );
+      }
+
       this.host.db.saveRepository({ ...repo, connected: false });
       this.host.changed();
       return null;
@@ -332,8 +375,10 @@ export class RepositoryOperations {
   reconnectRepository = (id: string) =>
     this.operation(async () => {
       const repo = this.host.db.repository(id);
-      if (repo.source === "imported")
+      if (repo.source === "imported") {
         throw new AdeError("invalid_input", "Verify the local checkout before reconnecting it.");
+      }
+
       repo.selection = "explicit";
       await this.prepareClone(repo);
       repo.connected = true;
@@ -383,9 +428,15 @@ export class RepositoryOperations {
   ) => {
     const r = this.host.db.repository(id);
     const identity = remoteIdentity(configuration.upstream_url);
-    if (`${identity.owner}/${identity.name}`.toLowerCase() !== `${r.owner}/${r.name}`.toLowerCase())
+    if (
+      `${identity.owner}/${identity.name}`.toLowerCase() !== `${r.owner}/${r.name}`.toLowerCase()
+    ) {
       throw new AdeError("invalid_input", "Upstream must match the managed repository");
-    if (configuration.origin_url) remoteIdentity(configuration.origin_url);
+    }
+
+    if (configuration.origin_url) {
+      remoteIdentity(configuration.origin_url);
+    }
 
     await gitChecked(
       ["check-ref-format", "--branch", configuration.base_branch],
@@ -401,11 +452,12 @@ export class RepositoryOperations {
             t.repo_id === id &&
             (this.host.isActive(t.id) || (t.status === "queued" && !t.archived)),
         )
-    )
+    ) {
       throw new AdeError(
         "busy",
         "Wait for this repository's active tasks before changing its remotes",
       );
+    }
 
     const updated = {
       ...r,
@@ -417,10 +469,11 @@ export class RepositoryOperations {
 
     const releases: (() => void)[] = [];
     try {
-      for (const task of this.host.db.tasks().filter((task) => task.repo_id === id))
+      for (const task of this.host.db.tasks().filter((task) => task.repo_id === id)) {
         releases.push(
           this.host.acquireTaskWorkspace(task.id, "Repository destination configuration"),
         );
+      }
 
       await this.host.git.withLock(id, async () => {
         if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
@@ -431,7 +484,7 @@ export class RepositoryOperations {
           );
 
           const remotes = (await gitChecked(["remote"], r.path, this.signal)).split("\n");
-          if (updated.origin_url)
+          if (updated.origin_url) {
             await gitChecked(
               [
                 "remote",
@@ -442,15 +495,18 @@ export class RepositoryOperations {
               r.path,
               this.signal,
             );
-          else if (remotes.includes("origin"))
+          } else if (remotes.includes("origin")) {
             await gitChecked(["remote", "remove", "origin"], r.path, this.signal);
+          }
         }
 
         this.signal.throwIfAborted();
         this.host.db.saveRepository(updated);
       });
     } finally {
-      for (const release of releases.reverse()) release();
+      for (const release of releases.reverse()) {
+        release();
+      }
     }
 
     this.host.changed();

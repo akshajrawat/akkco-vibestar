@@ -9,14 +9,19 @@ export const initializeProfiles = (db: Database) => {
     Object.values(builtInProfiles).every(
       (id) => db.all("SELECT id FROM agent_profiles WHERE id=?", id).length,
     )
-  )
+  ) {
     return;
+  }
+
   let settings;
   try {
     settings = db.settings();
   } catch (error) {
     // Retain access to healthy history. A corrupt settings record supplies no profile defaults.
-    if (error instanceof AdeError && error.kind === "corrupt_record") return;
+    if (error instanceof AdeError && error.kind === "corrupt_record") {
+      return;
+    }
+
     throw error;
   }
 
@@ -64,7 +69,9 @@ export const initializeProfiles = (db: Database) => {
   db.transaction(() => {
     for (const [role, name, config, fallback, access, output, instructions] of definitions) {
       const id = builtInProfiles[role];
-      if (db.all("SELECT id FROM agent_profiles WHERE id=?", id).length) continue;
+      if (db.all("SELECT id FROM agent_profiles WHERE id=?", id).length) {
+        continue;
+      }
 
       const profile: AgentProfile = {
         id,

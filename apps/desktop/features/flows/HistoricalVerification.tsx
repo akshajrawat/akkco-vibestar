@@ -3,7 +3,10 @@ import { verificationSummary } from "../../../core/execution/verification/verifi
 import { Button } from "../../components/ui/button";
 
 const savedVerification = (detail: Detail) => {
-  if (detail.validation) return detail.validation;
+  if (detail.validation) {
+    return detail.validation;
+  }
+
   const implementation = [...detail.runs].reverse().find((run) => run.stage === 3);
 
   const artifact = [...detail.artifacts]
@@ -42,7 +45,7 @@ export const HistoricalVerification = ({
   const verification = savedVerification(detail);
   const roots = verification.blockers;
 
-  if (!verification.checks.length)
+  if (!verification.checks.length) {
     return (
       <section className="workspace-empty" aria-label="Agent check results">
         <h2>No recorded verification</h2>
@@ -52,6 +55,7 @@ export const HistoricalVerification = ({
         </p>
       </section>
     );
+  }
 
   const observed = verification.checks.filter(
     (check) =>

@@ -279,18 +279,22 @@ it.skipIf(process.env.VIBESTAR_GITHUB_WATCH_TEST !== "1")(
       await service.close();
       const usage = engine.db.all("SELECT * FROM ai_usage");
       await engine.close();
-      for (const issue of created)
+      for (const issue of created) {
         await record(`close #${issue.number}`, () =>
           api(`repos/${repository}/issues/${issue.number}`, "PATCH", {
             state: "closed",
             state_reason: "completed",
           }),
         );
-      if (labelCreated)
+      }
+
+      if (labelCreated) {
         await record("remove fixture label", () =>
           api(`repos/${repository}/labels/${encodeURIComponent(label)}`, "DELETE"),
         );
-      if (policyCreated)
+      }
+
+      if (policyCreated) {
         await record("remove fixture policy", async () => {
           const file = await api(`repos/${repository}/contents/CONTRIBUTING.md`);
           expect(file.sha).toBe(policySha);
@@ -300,6 +304,8 @@ it.skipIf(process.env.VIBESTAR_GITHUB_WATCH_TEST !== "1")(
             sha: file.sha,
           });
         });
+      }
+
       if (process.env.VIBESTAR_KEEP_EVIDENCE === "1") {
         await writeFile(
           join(dir, "results.json"),
@@ -319,7 +325,10 @@ it.skipIf(process.env.VIBESTAR_GITHUB_WATCH_TEST !== "1")(
         );
 
         console.info(`Real GitHub Issue Watch evidence: ${dir}`);
-      } else await rm(dir, { recursive: true, force: true });
+      } else {
+        await rm(dir, { recursive: true, force: true });
+      }
+
       expect(cleanupErrors).toEqual([]);
     }
   },

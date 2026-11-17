@@ -202,8 +202,9 @@ it.skipIf(process.env.VIBESTAR_REPOSITORIES_TEST !== "1")(
 
       expect(await checked("git", ["diff", "--binary", "HEAD"], source)).toBe(before.diff);
       expect(await readFile(join(source, ".git", "config"), "utf8")).toBe(before.config);
-      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1")
+      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1") {
         await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   180000,

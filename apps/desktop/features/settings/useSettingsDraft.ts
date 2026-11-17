@@ -33,7 +33,9 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
     { distro: "", data_home: "", helper_path: "" },
     async (config) => {
       const saved = await window.vibestar.saveDesktopSettings(config);
-      if (saved === false) throw { kind: "cancelled", message: "Environment change cancelled" };
+      if (saved === false) {
+        throw { kind: "cancelled", message: "Environment change cancelled" };
+      }
 
       void refresh().catch((error) =>
         notifications.error(errorMessage(error), { id: "settings:refresh" }),
@@ -45,7 +47,9 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
   const receiveSettings = core.receive;
 
   useEffect(() => {
-    if (settings) receiveSettings(settings);
+    if (settings) {
+      receiveSettings(settings);
+    }
     // Incoming snapshots are reconciled only when their values actually change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
@@ -57,22 +61,31 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
       void window.vibestar
         .desktopSettings()
         .then((info) => {
-          if (!alive) return;
+          if (!alive) {
+            return;
+          }
+
           setDesktop(info);
           environment.receive(info.config);
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
     };
 
     const loadEditors = () => {
       void rpc<{ editors: typeof editors }>("editors.list")
         .then((result) => {
-          if (alive) setEditors(result.editors);
+          if (alive) {
+            setEditors(result.editors);
+          }
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
     };
 
@@ -80,7 +93,10 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
     loadEditors();
 
     const subscription = subscribe((event) => {
-      if (event.event === "install.output") setLog((log) => (log + event.text).slice(-16000));
+      if (event.event === "install.output") {
+        setLog((log) => (log + event.text).slice(-16000));
+      }
+
       if (
         event.event === "runtime.status" &&
         (event.data as { phase?: string })?.phase === "ready"
@@ -100,7 +116,10 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
   }, []);
 
   const flushDesktop = () => {
-    if (desktopTimer.current) clearTimeout(desktopTimer.current);
+    if (desktopTimer.current) {
+      clearTimeout(desktopTimer.current);
+    }
+
     desktopTimer.current = null;
     return environment.flush();
   };
@@ -133,7 +152,9 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
     desktop: desktop ? { ...desktop, config: environment.value } : null,
     setDesktop: (next: DesktopInfo) => {
       environment.update(next.config);
-      if (desktopTimer.current) clearTimeout(desktopTimer.current);
+      if (desktopTimer.current) {
+        clearTimeout(desktopTimer.current);
+      }
 
       desktopTimer.current = setTimeout(() => {
         void flushDesktop();
@@ -145,7 +166,10 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
     installLog,
     editors,
     install: async () => {
-      if (installing) return;
+      if (installing) {
+        return;
+      }
+
       setInstalling(true);
       try {
         await window.vibestar.installHelper();

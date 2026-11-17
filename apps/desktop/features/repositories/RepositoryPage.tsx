@@ -34,12 +34,27 @@ export const RepositoryPage = ({
   const visible = (text: string) => text.toLowerCase().includes(query.toLowerCase());
 
   const formatCheckedAge = (timestamp?: string | null) => {
-    if (!timestamp) return null;
+    if (!timestamp) {
+      return null;
+    }
+
     const seconds = Math.floor((Date.now() - Date.parse(timestamp)) / 1000);
-    if (!Number.isFinite(seconds) || seconds < 0) return null;
-    if (seconds < 60) return "just now";
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return null;
+    }
+
+    if (seconds < 60) {
+      return "just now";
+    }
+
+    if (seconds < 3600) {
+      return `${Math.floor(seconds / 60)}m ago`;
+    }
+
+    if (seconds < 86400) {
+      return `${Math.floor(seconds / 3600)}h ago`;
+    }
+
     return `${Math.floor(seconds / 86400)}d ago`;
   };
 
@@ -107,7 +122,10 @@ export const RepositoryPage = ({
   };
 
   const originLabel = (url: string | null) => {
-    if (!url) return "None";
+    if (!url) {
+      return "None";
+    }
+
     try {
       const identity = remoteIdentity(url);
       return `${identity.owner}/${identity.name}`;
@@ -294,8 +312,9 @@ export const RepositoryPage = ({
                               r.name +
                               "? It will leave the active list. Source files, branches, task history and existing worktrees will be kept. Reconnect this checkout to create new tasks.",
                           )
-                        )
+                        ) {
                           void action("repository.disconnect", { id: r.id, confirmed: true }, r.id);
+                        }
                       }}
                     >
                       Disconnect
@@ -496,8 +515,10 @@ export const RepositoryPage = ({
                         snapshot.root +
                         "/repos? This downloads a separate checkout.",
                     )
-                  )
+                  ) {
                     return;
+                  }
+
                   await action("github.clone", { repository: candidates.repository }, "clone");
                   setCandidates(undefined);
                 }}

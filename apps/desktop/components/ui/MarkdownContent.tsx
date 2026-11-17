@@ -28,7 +28,10 @@ const CodeBlock = ({ children }: ComponentProps<"pre">) => {
   const [feedback, setFeedback] = useState("");
 
   useEffect(() => {
-    if (feedback !== "Copied") return;
+    if (feedback !== "Copied") {
+      return;
+    }
+
     const timer = setTimeout(() => setFeedback(""), 1600);
     return () => clearTimeout(timer);
   }, [feedback]);

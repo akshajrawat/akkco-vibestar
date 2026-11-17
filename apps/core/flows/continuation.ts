@@ -58,19 +58,25 @@ export const continuationPlan = (
 ): ContinuationPlan => {
   const target = ContinuationTargetSchema.parse(raw);
   const parent = runs.run(target.run_id);
-  if (parent.kind !== "flow")
+  if (parent.kind !== "flow") {
     throw new AdeError(
       "invalid_state",
       "Send another Viber message to use updated chat settings. Saved graph continuations cannot reuse conversation completions.",
     );
-  if (!["paused", "failed", "interrupted", "cancelled", "completed"].includes(parent.status))
+  }
+
+  if (!["paused", "failed", "interrupted", "cancelled", "completed"].includes(parent.status)) {
     throw new AdeError("invalid_state", "Pause or stop this run before applying a saved revision.");
+  }
+
   const task = db.task(parent.task_id);
-  if (task.flow_id !== parent.flow_id || !task.goal)
+  if (task.flow_id !== parent.flow_id || !task.goal) {
     throw new AdeError(
       "isolation",
       "This continuation must use the task's owned flow and current goal.",
     );
+  }
+
   const store = new FlowStore(db);
   const graph = store.definition(parent.flow_id, target.revision).definition;
 
@@ -98,8 +104,10 @@ export const continuationPlan = (
           .every((edge) => visited.has(edge.source)),
     );
 
-    if (!ready)
+    if (!ready) {
       throw new AdeError("invalid_state", "The saved graph contains an invalid dependency cycle.");
+    }
+
     visited.add(ready.id);
     const previous = source.filter((attempt) => attempt.node_id === ready.id).at(-1);
 
@@ -113,40 +121,43 @@ export const continuationPlan = (
 
     let reason: string | null = null;
 
-    if (!previous || previous.status !== "completed")
+    if (!previous || previous.status !== "completed") {
       reason = previous
         ? "The previous attempt did not complete."
         : "This node has not completed yet.";
-    else if (invalidated.has(ready.id))
+    } else if (invalidated.has(ready.id)) {
       reason = "This reused result was invalidated; recompute it explicitly.";
-    else if (
+    } else if (
       previous.configuration_hash !==
       digest({ node: ready, agent: ready.type === "agent" ? snapshot.agents[ready.id] : null })
-    )
+    ) {
       reason = "The captured node or profile configuration changed.";
-    else if (
+    } else if (
       JSON.stringify(nodeDependencies(runs.definition(previous.run_id), ready.id)) !==
       JSON.stringify(nodeDependencies(graph, ready.id))
-    )
+    ) {
       reason = "The node's dependencies changed.";
-    else if (!previous.completed_fingerprint || previous.completed_fingerprint !== fingerprint)
+    } else if (!previous.completed_fingerprint || previous.completed_fingerprint !== fingerprint) {
       reason = "The workspace differs from this result's observed completion evidence.";
-    else if (
+    } else if (
       graph.edges.some(
         (edge) =>
           edge.target === ready.id && !available.some((result) => result.node_id === edge.source),
       )
-    )
+    ) {
       reason = "A required predecessor needs recomputation.";
-    else {
+    } else {
       try {
         if (
           digest(resolveBoundInputs(db, task.id, task.goal, ready, available)) !==
           previous.inputs_hash
-        )
+        ) {
           reason = "The selected inputs changed.";
+        }
       } catch (error) {
-        if (!(error instanceof AdeError)) throw error;
+        if (!(error instanceof AdeError)) {
+          throw error;
+        }
 
         reason =
           error.kind === "corrupt_record"
@@ -155,7 +166,9 @@ export const continuationPlan = (
       }
     }
 
-    if (!reason && previous) available.push(previous);
+    if (!reason && previous) {
+      available.push(previous);
+    }
 
     nodes.push({
       node_id: ready.id,

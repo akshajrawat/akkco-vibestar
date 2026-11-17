@@ -119,7 +119,10 @@ export const TaskRecordSchema = z
   })
   .loose()
   .superRefine((record, context) => {
-    if (record.kind !== "general") return;
+    if (record.kind !== "general") {
+      return;
+    }
+
     if (
       !record.goal?.trim() ||
       record.repo_id === undefined ||
@@ -127,12 +130,13 @@ export const TaskRecordSchema = z
       record.issue_url !== null ||
       (!record.repo_id && record.workspace_kind !== "managed") ||
       (record.repo_id && record.workspace_kind === "managed")
-    )
+    ) {
       context.addIssue({
         code: "custom",
         message:
           "General tasks require a goal, explicit optional repository context and a consistent workspace kind.",
       });
+    }
   })
   .transform((value) => value as Task);
 

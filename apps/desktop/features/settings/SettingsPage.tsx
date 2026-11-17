@@ -46,7 +46,9 @@ export const SettingsPage = ({
     setVisited((current) => (current.includes(category) ? current : [...current, category]));
   };
 
-  if (!open) return null;
+  if (!open) {
+    return null;
+  }
 
   return (
     <WorkspaceOverlay label="Settings" className="settings-workspace" onClose={requestClose}>

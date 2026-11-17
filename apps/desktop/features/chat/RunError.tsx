@@ -52,7 +52,10 @@ export const RunError = ({
                   ? "preparation"
                   : "validation";
 
-  if (dismissed === identity) return null;
+  if (dismissed === identity) {
+    return null;
+  }
+
   return (
     <section
       className={`run-error ${cancelled || blocked ? "run-error-cancelled" : "run-error-failed"}`}

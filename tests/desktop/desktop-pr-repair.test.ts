@@ -42,8 +42,10 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
     });
 
     const fixture = await repairFixture(engine, dir);
-    for (const table of ["pr_repairs", "pr_analyses", "scheduled_jobs"])
+    for (const table of ["pr_repairs", "pr_analyses", "scheduled_jobs"]) {
       engine.db.run(`DELETE FROM ${table}`);
+    }
+
     const beforeIndex = await readFile(join(fixture.source, ".git", "index"));
     const beforeStatus = await checked("git", ["status", "--porcelain"], fixture.source);
     const monitor = new GitHubMonitor(dir);
@@ -82,13 +84,17 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       blockedCli = join(dir, "blocked-cli"),
       screenshots = join(dir, "screenshots");
 
-    for (const path of [isolatedHome, blockedCli, screenshots]) await mkdir(path);
-    for (const name of ["codex", "agy", "gh"])
+    for (const path of [isolatedHome, blockedCli, screenshots]) {
+      await mkdir(path);
+    }
+
+    for (const name of ["codex", "agy", "gh"]) {
       await writeFile(
         join(blockedCli, name),
         "#!/bin/sh\necho 'Real CLI disabled in fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
 
     const app = await _electron.launch({
       executablePath: require("electron") as string,
@@ -112,17 +118,24 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
 
       await page.exposeFunction("fixtureRpc", async (method: string, params: unknown) => {
-        if (method === "pr.watch.start") return null;
-        if (method === "providers.detect")
+        if (method === "pr.watch.start") {
+          return null;
+        }
+
+        if (method === "providers.detect") {
           return [
             await new RepairFixtureProvider("codex").detect(),
             await new RepairFixtureProvider("antigravity").detect(),
           ];
-        if (method === "editors.list")
+        }
+
+        if (method === "editors.list") {
           return {
             editors: [{ id: "code", label: "VS Code" }],
             default: "code",
           };
+        }
+
         if (method === "editors.open") {
           const request = params as { id: string; kind: string };
           expect(request.kind).toBe("repair");
@@ -355,14 +368,18 @@ it.skipIf(process.env.VIBESTAR_REPAIR_DESKTOP_TEST !== "1")(
 
       process.stdout.write(`Repair Electron evidence: ${screenshots}\n`);
     } finally {
-      if (forward) engine.off("event", forward);
+      if (forward) {
+        engine.off("event", forward);
+      }
+
       await app.close();
       await rpc.close();
       await engine.close();
       vi.restoreAllMocks();
       vi.unstubAllEnvs();
-      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1")
+      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1") {
         await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   120000,

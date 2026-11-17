@@ -8,8 +8,10 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 const host = await resolveDevHost();
-if (!host.executable.endsWith(".exe"))
+if (!host.executable.endsWith(".exe")) {
   throw new Error("This check requires native Windows Electron launched from WSL.");
+}
+
 const cache = resolve(dirname(host.executable), "..", "window-check");
 
 await cp("node_modules/playwright-core", join(cache, "node_modules/playwright-core"), {

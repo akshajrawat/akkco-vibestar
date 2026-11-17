@@ -43,18 +43,21 @@ export const callTasks = async (
 
       e.assertAvailable();
       const task = e.db.task(p.id);
-      if (e.isActive(p.id) || task.status === "queued")
+      if (e.isActive(p.id) || task.status === "queued") {
         throw new AdeError(
           "busy",
           "Wait for this task's run and terminal to stop before changing verification environments.",
         );
+      }
+
       await e.git.assertTask(task);
       const latest = e.db.task(p.id);
-      if (e.isActive(p.id) || latest.status === "queued")
+      if (e.isActive(p.id) || latest.status === "queued") {
         throw new AdeError(
           "busy",
           "This task became active while its verification environment was being checked.",
         );
+      }
 
       e.db.saveTask({
         ...latest,
@@ -83,18 +86,21 @@ export const callTasks = async (
         true,
       );
 
-      if (result.code !== 0)
+      if (result.code !== 0) {
         throw new AdeError(
           "browser_environment",
           result.stderr || "Browser environment probe failed. Inspect the saved command evidence.",
         );
+      }
+
       const report = BrowserEnvironmentReportSchema.parse(JSON.parse(result.stdout));
       const latest = e.db.task(p.id);
-      if ((latest.verification_environment || "isolated") !== report.environment)
+      if ((latest.verification_environment || "isolated") !== report.environment) {
         throw new AdeError(
           "stale_environment",
           "The verification environment changed. Inspect it again explicitly.",
         );
+      }
 
       e.db.saveTask({
         ...latest,
@@ -166,8 +172,10 @@ export const callTasks = async (
         .extend({ path: z.string().optional(), confirmed: z.literal(true) })
         .parse(input);
 
-      if (e.isActive(p.id))
+      if (e.isActive(p.id)) {
         throw new AdeError("invalid_state", "Stop the task before discarding changes");
+      }
+
       await e.git.discard(e.db.task(p.id), p.path);
       e.changed(p.id);
       return null;

@@ -16,6 +16,7 @@ import { callReview, reviewMethods } from "./rpc/review";
 import { callStorage, storageMethods } from "./rpc/storage";
 import { callSystem, systemMethods } from "./rpc/system";
 import { callTasks, tasksMethods } from "./rpc/tasks";
+import { callViberSessions, viberSessionMethods } from "./rpc/viber-sessions";
 import { callFlows, flowMethods } from "./rpc/flows";
 import { callTerminals, terminalsMethods } from "./rpc/terminals";
 import { GitHubMonitor } from "./scheduled/github";
@@ -97,23 +98,30 @@ export class Rpc {
       [storageMethods, callStorage],
       [tasksMethods, callTasks],
       [flowMethods, callFlows],
+      [viberSessionMethods, callViberSessions],
       [terminalsMethods, callTerminals],
       [repairsMethods, callRepairs],
       [outputMethods, callOutput],
       [reviewMethods, callReview],
       [pullRequestsMethods, callPullRequests],
     ] as const) {
-      for (const method of methods)
+      for (const method of methods) {
         this.handlers.set(method, (method, input) => handler(services, method, input));
+      }
     }
   }
 
   /** Keeps transport dispatch narrow; domain handlers retain validation and ownership checks. */
   call = async (method: string, input: unknown) => {
-    if (method.startsWith("issueWatch."))
+    if (method.startsWith("issueWatch.")) {
       return this.issueWatch.call(method.slice("issueWatch.".length), input);
+    }
+
     const handler = this.handlers.get(method);
-    if (!handler) throw new AdeError("invalid_method", `Unknown method: ${method}`);
+    if (!handler) {
+      throw new AdeError("invalid_method", `Unknown method: ${method}`);
+    }
+
     return handler(method, input);
   };
 

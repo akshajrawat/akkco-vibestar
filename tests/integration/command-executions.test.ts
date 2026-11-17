@@ -34,8 +34,9 @@ it("records actual cumulative output, isolates repeated calls across runs and pr
           aggregated_output: output,
           exit_code: exit,
         },
-      }))
+      })) {
         commands.observe("task", run, event);
+      }
     };
 
     observe("implement", "item.started");
@@ -105,8 +106,9 @@ it("records actual cumulative output, isolates repeated calls across runs and pr
           error: { message: "connection dropped" },
         },
       },
-    }))
+    })) {
       commands.observe("task", "agy", event);
+    }
 
     expect(db.detail("task").tests.at(-1)).toMatchObject({
       status: "failed",

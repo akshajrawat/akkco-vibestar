@@ -13,7 +13,10 @@ export const predecessors = (graph: FlowDefinition, nodeId: string) => {
   while (pending.length) {
     const id = pending.pop()!;
     for (const edge of graph.edges.filter((edge) => edge.target === id)) {
-      if (seen.has(edge.source)) continue;
+      if (seen.has(edge.source)) {
+        continue;
+      }
+
       seen.add(edge.source);
       pending.push(edge.source);
     }
@@ -49,7 +52,9 @@ export const staleNodes = (
   const changed = new Set<string>();
   for (const node of graph.nodes) {
     const previous = results.filter((attempt) => attempt.node_id === node.id).at(-1);
-    if (!previous) continue;
+    if (!previous) {
+      continue;
+    }
 
     const profile =
       node.type === "agent"
@@ -65,14 +70,19 @@ export const staleNodes = (
       (captured &&
         JSON.stringify(nodeDependencies(captured, node.id)) !==
           JSON.stringify(nodeDependencies(graph, node.id)))
-    )
+    ) {
       changed.add(node.id);
+    }
   }
 
   let count = -1;
   while (count !== changed.size) {
     count = changed.size;
-    for (const edge of graph.edges) if (changed.has(edge.source)) changed.add(edge.target);
+    for (const edge of graph.edges) {
+      if (changed.has(edge.source)) {
+        changed.add(edge.target);
+      }
+    }
   }
 
   return changed;

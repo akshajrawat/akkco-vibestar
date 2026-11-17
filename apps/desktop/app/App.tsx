@@ -62,7 +62,9 @@ export const App = () => {
   const [profileEditor, setProfileEditor] = useState<AgentProfile>();
 
   const createViber = () => {
-    if (!snapshot) return;
+    if (!snapshot) {
+      return;
+    }
 
     setProfileEditor({
       id: crypto.randomUUID(),
@@ -121,13 +123,19 @@ export const App = () => {
   const onError = useCallback((s: string) => setError(s), [setError]);
 
   useEffect(() => {
-    if (runtimePhase && runtimePhase !== "ready") notify.dismiss("workspace-error");
-    else if (error) notify.error(error, { id: "workspace-error" });
+    if (runtimePhase && runtimePhase !== "ready") {
+      notify.dismiss("workspace-error");
+    } else if (error) {
+      notify.error(error, { id: "workspace-error" });
+    }
   }, [error, runtimePhase]);
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.isComposing) return;
+      if (e.isComposing) {
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         setPalette((v) => !v);
@@ -167,7 +175,10 @@ export const App = () => {
     }
 
     setPage(p);
-    if (p === "Vibers") setSelectedViber(undefined);
+    if (p === "Vibers") {
+      setSelectedViber(undefined);
+    }
+
     setWatchId(null);
     setTaskId(null);
     setRepairId(null);
@@ -175,7 +186,10 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
-    if (page === "Issue Watch") return;
+    if (page === "Issue Watch") {
+      return;
+    }
+
     for (const notice of notifications.notices) {
       notify.information(notice.text, {
         id: `scan:${notice.id}`,
@@ -256,9 +270,15 @@ export const App = () => {
       <UsageView
         openRun={(row) => {
           const id = row.task_id || row.repair_id;
-          if (!id) return;
-          if (row.task_id) open(id);
-          else openRepair(id);
+          if (!id) {
+            return;
+          }
+
+          if (row.task_id) {
+            open(id);
+          } else {
+            openRepair(id);
+          }
 
           updateTaskView(id, {
             ...(row.task_id ? { flowSection: "logs" } : {}),

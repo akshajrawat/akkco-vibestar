@@ -316,14 +316,23 @@ it.each(["quote", "reply", "commit", "coverage"])(
   async (invalid) => {
     const { scheduler, infer, job, engine } = await setup();
     const output = analysisResult();
-    if (invalid === "quote") output.observations[1].originalText = "Invented request";
+    if (invalid === "quote") {
+      output.observations[1].originalText = "Invented request";
+    }
+
     if (invalid === "reply") {
       output.observations[1].authorReplyIds = ["review-1"];
       output.observations[1].responseState = "answered";
     }
 
-    if (invalid === "commit") output.observations[1].commitShas = ["invented"];
-    if (invalid === "coverage") output.coverage[0].segmentIds = ["unknown"];
+    if (invalid === "commit") {
+      output.observations[1].commitShas = ["invented"];
+    }
+
+    if (invalid === "coverage") {
+      output.coverage[0].segmentIds = ["unknown"];
+    }
+
     infer!.mockResolvedValue(output);
     scheduler.analyze(job.id);
     const session = await finished(scheduler, job.id);
@@ -561,8 +570,10 @@ it("validates PR URLs and retains legacy change detection", () => {
     "https://github.com/oppia/oppia/issues/42",
     "https://github.com/oppia/oppia/pull/42?x=1",
     "https://github.com:8080/oppia/oppia/pull/42",
-  ])
+  ]) {
     expect(() => parsePullRequest(url)).toThrow();
+  }
+
   expect(changedPullRequest(prSnapshot, structuredClone(prSnapshot)).actionable).toBe(false);
 
   expect(changedPullRequest(prSnapshot, { ...prSnapshot, state: "MERGED" })).toMatchObject({

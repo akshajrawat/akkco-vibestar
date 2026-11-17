@@ -40,7 +40,10 @@ it("preserves safe live prompts, ANSI ordering and Unicode through single-charac
   const redactor = new StreamRedactor();
   const prompt = "\x1b[38;5;110mLogin 😀\x1b[0m: ";
   let output = "";
-  for (const chunk of prompt.split("")) output += redactor.push(chunk);
+  for (const chunk of prompt.split("")) {
+    output += redactor.push(chunk);
+  }
+
   expect(output).toBe(prompt);
   expect(redactor.finish()).toBe("");
   const colored = new StreamRedactor();
@@ -50,7 +53,10 @@ it("preserves safe live prompts, ANSI ordering and Unicode through single-charac
 it("bounds retained state across unbounded credentials and long lines and never flushes a raw ambiguous prefix", () => {
   const redactor = new StreamRedactor();
   expect(redactor.push("Authorization: Bearer ")).toBe("Authorization: [REDACTED]");
-  for (let i = 0; i < 100; i++) expect(redactor.push("z".repeat(65536))).toBe("");
+  for (let i = 0; i < 100; i++) {
+    expect(redactor.push("z".repeat(65536))).toBe("");
+  }
+
   expect(redactor.push("\nPrompt: ")).toBe("\nPrompt: ");
   expect(redactor.finish()).toBe("");
   const prefix = new StreamRedactor();

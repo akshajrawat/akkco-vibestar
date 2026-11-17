@@ -61,7 +61,7 @@ export const ChangesView = ({
 
   useEffect(() => {
     let alive = true;
-    if (owner === "task")
+    if (owner === "task") {
       void rpc<typeof reviews>("review.files", { id: task.id })
         .then((rows) => {
           if (alive) {
@@ -75,13 +75,18 @@ export const ChangesView = ({
             setReviewError(errorMessage(reason));
           }
         });
+    }
+
     return () => {
       alive = false;
     };
   }, [owner, task.id, revision]);
 
   const markReviewed = async (checked: boolean) => {
-    if (!file || !review || marking) return;
+    if (!file || !review || marking) {
+      return;
+    }
+
     if (owner === "repair") {
       reviewed?.(file.path, file.old_path, review.hash, checked);
       return;
@@ -110,7 +115,7 @@ export const ChangesView = ({
   useEffect(() => {
     let alive = true;
     setError("");
-    if (path && !compact)
+    if (path && !compact) {
       void rpc<FileDiff>(`${owner}.file`, {
         id: task.id,
         path,
@@ -118,17 +123,23 @@ export const ChangesView = ({
         ...(layer ? { layer } : {}),
       })
         .then((value) => {
-          if (alive) setLoaded({ key: fileKey, value, revision });
+          if (alive) {
+            setLoaded({ key: fileKey, value, revision });
+          }
         })
         .catch((error) => {
-          if (alive) setError(errorMessage(error));
+          if (alive) {
+            setError(errorMessage(error));
+          }
         });
+    }
+
     return () => {
       alive = false;
     };
   }, [task.id, path, oldPath, revision, owner, layer, compact, fileKey]);
 
-  if (compact)
+  if (compact) {
     return (
       <section className="changes-summary" aria-label="Changed files">
         {baseline && <small className="diff-baseline">{baseline}</small>}
@@ -152,6 +163,8 @@ export const ChangesView = ({
         />
       </section>
     );
+  }
+
   return (
     <section className="changes-panel" aria-label="Task changes">
       <DiffFileTree

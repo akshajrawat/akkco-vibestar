@@ -19,8 +19,9 @@ export class FlowStore {
 
   saveProfile = (input: AgentProfile, expectedRevision: number | null) => {
     const profile = AgentProfileSchema.parse(input);
-    if (profile.revision !== (expectedRevision || 0) + 1)
+    if (profile.revision !== (expectedRevision || 0) + 1) {
       throw new AdeError("invalid_input", "Profile revisions must advance by one.");
+    }
 
     return this.db.transaction(() => {
       this.assertRevision("agent_profiles", profile.id, expectedRevision);
@@ -55,7 +56,9 @@ export class FlowStore {
       revision ?? null,
     )[0];
 
-    if (!row) throw new AdeError("not_found", "Agent profile revision not found.");
+    if (!row) {
+      throw new AdeError("not_found", "Agent profile revision not found.");
+    }
 
     return this.db.records.decode(
       {
@@ -66,8 +69,10 @@ export class FlowStore {
       },
       (value) => {
         const profile = AgentProfileSchema.parse(value);
-        if (profile.id !== id || profile.revision !== row.revision)
+        if (profile.id !== id || profile.revision !== row.revision) {
           throw new Error("Profile identity mismatch.");
+        }
+
         return profile;
       },
     );
@@ -84,8 +89,10 @@ export class FlowStore {
 
     return this.db.transaction(() => {
       const existing = this.assertRevision("flow_definitions", id, expectedRevision);
-      if (existing && taskId !== undefined && taskId !== existing.task_id)
+      if (existing && taskId !== undefined && taskId !== existing.task_id) {
         throw new AdeError("isolation", "A saved flow cannot move to another task.");
+      }
+
       const revision = (expectedRevision || 0) + 1;
       const timestamp = now();
 
@@ -126,14 +133,18 @@ export class FlowStore {
       revision ?? null,
     )[0];
 
-    if (!row) throw new AdeError("not_found", "Flow revision not found.");
+    if (!row) {
+      throw new AdeError("not_found", "Flow revision not found.");
+    }
 
     return this.db.records.decode(
       { table: "flow_revisions", id: `${id}:${row.revision}`, column: "data", source: row.data },
       (value) => {
         const record = FlowRevisionSchema.parse(value);
-        if (record.flow_id !== id || record.revision !== row.revision)
+        if (record.flow_id !== id || record.revision !== row.revision) {
           throw new Error("Flow identity mismatch.");
+        }
+
         return record;
       },
     );
@@ -144,8 +155,9 @@ export class FlowStore {
     const layout = CanvasLayoutSchema.parse(input);
     const definition = this.definition(id).definition;
     const nodes = new Set(definition.nodes.map((node) => node.id));
-    if (Object.keys(layout.positions).some((nodeId) => !nodes.has(nodeId)))
+    if (Object.keys(layout.positions).some((nodeId) => !nodes.has(nodeId))) {
       throw new AdeError("invalid_input", "Canvas positions must belong to nodes in this flow.");
+    }
 
     this.db.run(
       "INSERT INTO flow_canvas_layouts VALUES(?,?,?) ON CONFLICT(flow_id) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",
@@ -165,7 +177,10 @@ export class FlowStore {
       id,
     )[0];
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
+
     return this.db.records.decode(
       { table: "flow_canvas_layouts", id, column: "data", source: row.data },
       CanvasLayoutSchema.parse,
@@ -177,18 +192,22 @@ export class FlowStore {
     id: string,
     expected: number | null,
   ) => {
-    if (expected !== null) z.number().int().positive().parse(expected);
+    if (expected !== null) {
+      z.number().int().positive().parse(expected);
+    }
 
     const row = this.db.all<{ current_revision: number; task_id?: string | null }>(
       `SELECT * FROM ${table} WHERE id=?`,
       id,
     )[0];
 
-    if ((row?.current_revision ?? null) !== expected)
+    if ((row?.current_revision ?? null) !== expected) {
       throw new AdeError(
         "stale_configuration",
         "The saved configuration changed. Reload it before applying your edits.",
       );
+    }
+
     return row;
   };
 }

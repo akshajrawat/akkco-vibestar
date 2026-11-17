@@ -26,6 +26,7 @@
   dependencies and broad module imports when specific imports suffice.
 - Prefer asynchronous, non-blocking filesystem APIs over synchronous
   equivalents, especially in servers and UI-sensitive processes.
+- Always use curly braces `{}` for control-flow statements (`if`, `else`, `for`, `while`, etc.), including single-statement bodies. Never omit braces.
 
 ## Process Boundaries in case of electron
 

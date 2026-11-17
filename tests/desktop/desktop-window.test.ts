@@ -18,8 +18,10 @@ it.skipIf(process.env.VIBESTAR_WINDOW_DESKTOP_TEST !== "1")(
     const home = join(dir, "home");
     const blocked = join(dir, "blocked-cli");
     await Promise.all([mkdir(home), mkdir(blocked)]);
-    for (const program of ["gh", "agy", "codex"])
+    for (const program of ["gh", "agy", "codex"]) {
       await writeFile(join(blocked, program), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    }
+
     const core = await createFixtureEngine(join(dir, "data"));
     await core.close();
 

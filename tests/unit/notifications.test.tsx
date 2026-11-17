@@ -50,8 +50,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   act(() => toast.remove());
-  for (const id of ["optional", "error", "approval", "warning", "runtime", "duplicate", "modal"])
+  for (const id of ["optional", "error", "approval", "warning", "runtime", "duplicate", "modal"]) {
     notifications.dismiss(id);
+  }
+
   notifications.setPreference("necessary");
   vi.unstubAllGlobals();
   vi.clearAllMocks();

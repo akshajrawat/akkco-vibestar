@@ -94,11 +94,14 @@ export class PRWatchReader {
       ),
     );
 
-    if (result.errors?.length || !result.data.repository?.pullRequest)
+    if (result.errors?.length || !result.data.repository?.pullRequest) {
       throw new AdeError("github", "PR discussion is unavailable; review it on GitHub.");
+    }
+
     const pr = result.data.repository.pullRequest;
-    if (parsePullRequest(pr.url).url.toLowerCase() !== ref.url.toLowerCase())
+    if (parsePullRequest(pr.url).url.toLowerCase() !== ref.url.toLowerCase()) {
       throw new AdeError("github", "PR identity changed during the quick check.");
+    }
 
     const sources = [
       ...pr.comments.nodes.map((entry) => ({ ...entry, kind: "comment" })),

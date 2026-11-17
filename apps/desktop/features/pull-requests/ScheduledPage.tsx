@@ -241,7 +241,10 @@ export const ScheduledPage = ({
   const [clock, setClock] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!runningChecks) return;
+    if (!runningChecks) {
+      return;
+    }
+
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [runningChecks]);
@@ -309,7 +312,10 @@ export const ScheduledPage = ({
   };
 
   const checkOpen = async () => {
-    if (checking.current || activeBatch) return;
+    if (checking.current || activeBatch) {
+      return;
+    }
+
     checking.current = true;
     setBusy("check-open");
     setError("");

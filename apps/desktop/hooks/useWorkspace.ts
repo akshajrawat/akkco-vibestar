@@ -13,11 +13,17 @@ export const useWorkspace = () => {
     const request = ++requested.current;
     try {
       const next = await rpc<Snapshot>("snapshot");
-      if (request !== requested.current) return;
+      if (request !== requested.current) {
+        return;
+      }
+
       setSnapshot(next);
       setError("");
     } catch (e) {
-      if (request !== requested.current) return;
+      if (request !== requested.current) {
+        return;
+      }
+
       setError(errorMessage(e));
     }
   }, []);
@@ -32,14 +38,16 @@ export const useWorkspace = () => {
         setError(e.text || "Execution core stopped. Restart the app to recover tasks.");
       } else if (
         ["changed", "agent.event", "usage.changed", "command.output"].includes(e.event) ||
+        (e.event === "utility.event" && !!e.session_id) ||
         (e.event === "runtime.status" && (e.data as { phase?: string })?.phase === "ready")
       ) {
-        if (!timer)
+        if (!timer) {
           timer = setTimeout(() => {
             timer = undefined;
             void refresh();
             setRevision((v) => v + 1);
           }, 350);
+        }
       }
     });
 
@@ -47,13 +55,18 @@ export const useWorkspace = () => {
     window.addEventListener("focus", focus);
 
     void subscription.then((unlisten) => {
-      if (disposed) unlisten();
+      if (disposed) {
+        unlisten();
+      }
     });
 
     return () => {
       disposed = true;
       void subscription.then((fn) => fn());
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
+
       window.removeEventListener("focus", focus);
     };
   }, [refresh]);
@@ -72,14 +85,20 @@ export const useDetail = (id: string | null, revision: number) => {
 
   useEffect(() => {
     let alive = true;
-    if (id)
+    if (id) {
       void rpc<Detail>("task.detail", { id })
         .then((d) => {
-          if (alive) setDetail(d);
+          if (alive) {
+            setDetail(d);
+          }
         })
         .catch((e) => {
-          if (alive) setError(errorMessage(e));
+          if (alive) {
+            setError(errorMessage(e));
+          }
         });
+    }
+
     return () => {
       alive = false;
     };
@@ -100,8 +119,9 @@ export const useProviders = () => {
   const refresh = useCallback(async (force = true) => {
     setLoading(true);
     try {
-      if (!force && Date.now() - detectedAt < 60000) setProviders(detectedProviders);
-      else {
+      if (!force && Date.now() - detectedAt < 60000) {
+        setProviders(detectedProviders);
+      } else {
         detecting ||= rpc<Detection[]>("providers.detect")
           .then((result) => {
             detectedProviders = result;

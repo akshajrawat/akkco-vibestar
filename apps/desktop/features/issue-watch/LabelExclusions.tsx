@@ -29,9 +29,16 @@ export const LabelExclusions = ({
     try {
       const parsed = parseLabelInput(value, repository);
       const next = [...labels];
-      for (const label of parsed)
-        if (!next.some((item) => item.toLowerCase() === label.toLowerCase())) next.push(label);
-      if (next.length > 30) throw new Error("Choose at most 30 excluded labels.");
+      for (const label of parsed) {
+        if (!next.some((item) => item.toLowerCase() === label.toLowerCase())) {
+          next.push(label);
+        }
+      }
+
+      if (next.length > 30) {
+        throw new Error("Choose at most 30 excluded labels.");
+      }
+
       change(next);
       setInput("");
       setError("");
@@ -94,7 +101,9 @@ export const LabelExclusions = ({
 
             if (event.key === "Enter" || event.key === ",") {
               event.preventDefault();
-              if (input.trim()) add(input);
+              if (input.trim()) {
+                add(input);
+              }
             }
           }}
         />
@@ -115,7 +124,9 @@ export const LabelExclusions = ({
               .map((label) => ({ value: label, label })),
           ]}
           onChange={(label) => {
-            if (label) add(label);
+            if (label) {
+              add(label);
+            }
           }}
         />
       )}

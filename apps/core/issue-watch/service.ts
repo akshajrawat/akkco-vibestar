@@ -96,7 +96,9 @@ export class IssueWatchService {
 
   private assertAvailable = () => {
     this.engine.assertAvailable();
-    if (this.stopped) throw new AdeError("closed", "Issue Watch is shutting down.");
+    if (this.stopped) {
+      throw new AdeError("closed", "Issue Watch is shutting down.");
+    }
   };
 
   save = (input: unknown, update = false) => {
@@ -107,15 +109,19 @@ export class IssueWatchService {
     const preview = confirmConfiguration(repository, p.configuration);
     const requestDigest = digest({ ...p, repository, request_id: undefined });
     const existing = this.store.existingRequest(p.request_id, requestDigest, "revision");
-    if (existing)
+    if (existing) {
       return Promise.resolve({
         watch: this.store.get(existing.watch_id),
         revision: this.store.revision(existing.watch_id, existing.revision),
       });
+    }
+
     const pending = this.saving.get(p.request_id);
     if (pending) {
-      if (pending.digest !== requestDigest)
+      if (pending.digest !== requestDigest) {
         throw new AdeError("idempotency", "Pending request identity has different content.");
+      }
+
       return pending.promise;
     }
 
@@ -195,7 +201,10 @@ export class IssueWatchService {
     });
 
     const existing = this.store.existingRequest(p.request_id, requestDigest, "scan");
-    if (existing) return { operation_id: existing.scan_id!, scan_id: existing.scan_id! };
+    if (existing) {
+      return { operation_id: existing.scan_id!, scan_id: existing.scan_id! };
+    }
+
     const watch = this.store.get(p.watch_id);
     const revision = this.store.revision(watch.id, p.expected_revision);
     let batch: WatchScan["batch"];
@@ -207,8 +216,9 @@ export class IssueWatchService {
         (previous.revision !== revision.revision ||
           !previous.batch?.next_page ||
           (p.order && previous.batch.order !== p.order))
-      )
+      ) {
         throw new AdeError("invalid_input", "This attempt has no next batch for these criteria.");
+      }
 
       batch = {
         order: previous?.batch?.order || retry?.batch?.order || p.order || "newest",
@@ -233,48 +243,61 @@ export class IssueWatchService {
         preview.rules.excluded_issues.length ||
         preview.rules.excluded_labels.length ||
         preview.rules.unassigned_only
-      )
+      ) {
         throw new AdeError(
           "ambiguous_rules",
           "This override changes or ambiguously describes hard rules. Preview and save a new watch revision before scanning.",
         );
+      }
     }
 
     if (parentId) {
       const parent = this.store.scan(watch.id, parentId);
-      if (parent.revision !== p.expected_revision)
+      if (parent.revision !== p.expected_revision) {
         throw new AdeError(
           "stale_revision",
           "Retry the saved revision or explicitly start a scan of the current revision.",
         );
+      }
+
       if (
         intent === "retry" &&
         !["failed", "blocked", "cancelled", "interrupted"].includes(parent.status)
-      )
+      ) {
         throw new AdeError(
           "invalid_state",
           "Retry requires a failed, blocked, cancelled or interrupted attempt.",
         );
-      if (intent === "continue" && parent.status !== "partial")
+      }
+
+      if (intent === "continue" && parent.status !== "partial") {
         throw new AdeError("invalid_state", "Continue requires a partial attempt.");
+      }
     }
 
     if (p.candidate_ids) {
-      if (new Set(p.candidate_ids).size !== p.candidate_ids.length)
+      if (new Set(p.candidate_ids).size !== p.candidate_ids.length) {
         throw new AdeError(
           "not_found",
           "Selected candidates must belong to this watch and saved attempt.",
         );
-      for (const id of p.candidate_ids) this.store.savedCandidate(watch.id, id);
+      }
+
+      for (const id of p.candidate_ids) {
+        this.store.savedCandidate(watch.id, id);
+      }
     }
 
-    if (this.store.active(watch.id))
+    if (this.store.active(watch.id)) {
       throw new AdeError("busy", "This watch already has an active scan.");
-    if (this.active.size >= 4)
+    }
+
+    if (this.active.size >= 4) {
       throw new AdeError(
         "busy",
         "Four Issue Watch scans are already active; retry explicitly when capacity is available.",
       );
+    }
 
     const scan: WatchScan = {
       id: randomUUID(),
@@ -313,11 +336,13 @@ export class IssueWatchService {
     };
 
     const reservation = this.store.reserve(scan, p.request_id, requestDigest);
-    if (!reservation.created)
+    if (!reservation.created) {
       return {
         operation_id: reservation.scan.id,
         scan_id: reservation.scan.id,
       };
+    }
+
     if (!watchProviderSupport[revision.configuration.model.provider].supported) {
       scan.status = "blocked";
       scan.phase = "Unsupported provider";
@@ -344,7 +369,7 @@ export class IssueWatchService {
       .then(() => this.scanner.run(scan, controller.signal))
       .catch((error: unknown) => {
         const saved = this.store.scan(scan.watch_id, scan.id);
-        if (["running", "cancelling"].includes(saved.status))
+        if (["running", "cancelling"].includes(saved.status)) {
           this.store.saveScan({
             ...saved,
             status: controller.signal.aborted ? "cancelled" : "failed",
@@ -352,6 +377,8 @@ export class IssueWatchService {
             phase: "Stopped",
             error: String(error).slice(0, 4000),
           });
+        }
+
         this.changed(this.store.scan(scan.watch_id, scan.id));
       })
       .finally(() => {
@@ -367,7 +394,10 @@ export class IssueWatchService {
   cancel = async (watchId: string, scanId: string) => {
     const scan = this.store.scan(watchId, scanId);
     const active = this.active.get(scanId);
-    if (!active || !["running", "cancelling"].includes(scan.status)) return scan;
+    if (!active || !["running", "cancelling"].includes(scan.status)) {
+      return scan;
+    }
+
     active.scan.status = "cancelling";
     active.scan.phase = "Cancelling";
     this.store.saveScan(active.scan);
@@ -428,7 +458,10 @@ export class IssueWatchService {
               error: null,
             };
           } catch (error) {
-            if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
+            if (!(error instanceof AdeError && error.kind === "corrupt_record")) {
+              throw error;
+            }
+
             return {
               ...watch,
               revision: null,
@@ -484,11 +517,13 @@ export class IssueWatchService {
           .parse(input);
 
         const parent = this.store.scan(p.watch_id, p.scan_id);
-        if (method === "continue" && !p.candidate_ids)
+        if (method === "continue" && !p.candidate_ids) {
           throw new AdeError(
             "invalid_input",
             "Confirm the candidate selection for this new Continue Analysis attempt.",
           );
+        }
+
         return this.launch(
           {
             watch_id: p.watch_id,
@@ -564,14 +599,17 @@ export class IssueWatchService {
             p.scan_id,
             p.watch_id,
           ).length
-        )
+        ) {
           throw new AdeError("isolation", "Utility run does not belong to this watch and scan.");
-        if (method === "logs")
+        }
+
+        if (method === "logs") {
           return readLogTail(this.engine.root, `issue-watch-${p.scan_id}`, p.run_id, p.stream, {
             before: p.before,
             after: p.after,
             search: p.search,
           });
+        }
 
         const rows = this.engine.db.all<{
           id: number;
@@ -591,7 +629,10 @@ export class IssueWatchService {
         );
 
         const events = rows.slice(0, 500);
-        if (p.after === undefined) events.reverse();
+        if (p.after === undefined) {
+          events.reverse();
+        }
+
         return {
           events: events.map((event) => ({ ...event, task_id: null })),
           context: [],
@@ -623,7 +664,10 @@ export class IssueWatchService {
           .sources(p.watch_id, p.scan_id)
           .find((item) => item.key === p.source_key);
 
-        if (!source) throw new AdeError("not_found", "Source does not belong to this scan.");
+        if (!source) {
+          throw new AdeError("not_found", "Source does not belong to this scan.");
+        }
+
         return source;
       }
 
@@ -649,8 +693,13 @@ export class IssueWatchService {
 
   close = async () => {
     this.stopped = true;
-    for (const active of this.active.values()) active.controller.abort();
-    for (const saving of this.saving.values()) saving.controller.abort();
+    for (const active of this.active.values()) {
+      active.controller.abort();
+    }
+
+    for (const saving of this.saving.values()) {
+      saving.controller.abort();
+    }
 
     await Promise.allSettled(
       [...this.active.values()]

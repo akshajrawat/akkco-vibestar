@@ -78,7 +78,7 @@ export class Usage {
           resetsAt: window.resetsAt as number,
         }));
 
-      if (windows.length)
+      if (windows.length) {
         this.recordLimits(
           id,
           {
@@ -88,6 +88,7 @@ export class Usage {
           },
           true,
         );
+      }
     }
 
     const result = object(raw.result);
@@ -114,8 +115,9 @@ export class Usage {
             ? count - previous
             : last[field];
 
-        if (typeof delta === "number" && Number.isSafeInteger(delta) && delta >= 0)
+        if (typeof delta === "number" && Number.isSafeInteger(delta) && delta >= 0) {
           state.totals[key] = (state.totals[key] || 0) + delta;
+        }
       }
 
       state.previous = current;
@@ -131,14 +133,23 @@ export class Usage {
       Object.keys(stepUsage).length
     ) {
       const steps = this.steps.get(id) || new Map<number, Record<string, unknown>>();
-      if (steps.size < 10000 || steps.has(step.step_index)) steps.set(step.step_index, stepUsage);
+      if (steps.size < 10000 || steps.has(step.step_index)) {
+        steps.set(step.step_index, stepUsage);
+      }
+
       this.steps.set(id, steps);
       usage = {};
-      for (const value of steps.values())
-        for (const [field, count] of Object.entries(value))
-          if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0)
+      for (const value of steps.values()) {
+        for (const [field, count] of Object.entries(value)) {
+          if (typeof count === "number" && Number.isSafeInteger(count) && count >= 0) {
             usage[field] = Number(usage[field] || 0) + count;
-    } else if (Object.keys(usage).length) this.steps.delete(id);
+          }
+        }
+      }
+    } else if (Object.keys(usage).length) {
+      this.steps.delete(id);
+    }
+
     const details = object(usage.output_tokens_details);
     const input = object(usage.input_tokens_details);
 
@@ -155,21 +166,26 @@ export class Usage {
       total_tokens: usage.total_tokens,
     };
 
-    for (const [key, value] of Object.entries(values))
-      if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0)
+    for (const [key, value] of Object.entries(values)) {
+      if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
         this.db.run(`UPDATE ai_usage SET ${key}=? WHERE id=?`, value, id);
+      }
+    }
+
     const model = object(raw.init).model || raw.model;
-    if (typeof model === "string" && model)
+    if (typeof model === "string" && model) {
       this.db.run("UPDATE ai_usage SET model=? WHERE id=? AND model=''", model, id);
+    }
   };
 
   recordLimits = (id: string, limits: ProviderDetection["subscriptionLimits"], after = false) => {
-    if (limits)
+    if (limits) {
       this.db.run(
         `UPDATE ai_usage SET ${after ? "subscription_limits_after" : "subscription_limits"}=? WHERE id=?`,
         JSON.stringify(limits),
         id,
       );
+    }
   };
 
   finish = (id: string, start: number, status: string, error: string | null = null) => {

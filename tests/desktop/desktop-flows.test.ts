@@ -75,12 +75,14 @@ it.skipIf(process.env.VIBESTAR_FLOW_DESKTOP_TEST !== "1")(
     const home = join(dir, "home");
     const blocked = join(dir, "blocked-cli");
     await Promise.all([mkdir(screenshots), mkdir(home), mkdir(blocked)]);
-    for (const program of ["gh", "agy", "codex"])
+    for (const program of ["gh", "agy", "codex"]) {
       await writeFile(
         join(blocked, program),
         "#!/bin/sh\necho 'Live services disabled in canvas fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
+
     const provider = new CanvasFixture();
     const engine = await createFixtureEngine(join(dir, "fixture-data"), () => provider);
     for (const id of Object.values(builtInProfiles)) {
@@ -539,7 +541,10 @@ it.skipIf(process.env.VIBESTAR_FLOW_DESKTOP_TEST !== "1")(
       console.log(`Viber canvas failure screenshot: ${screenshots}`);
       throw error;
     } finally {
-      if (forward) engine.off("event", forward);
+      if (forward) {
+        engine.off("event", forward);
+      }
+
       await app.close();
       await terminals.dispose();
       await rpc.close();

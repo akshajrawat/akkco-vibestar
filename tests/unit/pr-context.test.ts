@@ -75,7 +75,7 @@ const responses = (
   const client = new GitHubClient("/tmp");
 
   const gh = vi.spyOn(client, "gh").mockImplementation(async (args) => {
-    if (args[0] === "pr")
+    if (args[0] === "pr") {
       return JSON.stringify({
         title: "PR",
         body: "Original requirements",
@@ -86,9 +86,11 @@ const responses = (
         author: { login: "author" },
         statusCheckRollup: [],
       });
+    }
+
     if (args.includes("graphql")) {
       const query = args.find((arg) => arg.startsWith("query=")) || "";
-      if (query.includes("node(id:$id)"))
+      if (query.includes("node(id:$id)")) {
         return JSON.stringify({
           data: {
             node: {
@@ -111,6 +113,8 @@ const responses = (
             },
           },
         });
+      }
+
       return JSON.stringify({
         data: {
           repository: {
@@ -158,7 +162,10 @@ const responses = (
       new URL(`https://api.github.com/${endpoint}`).searchParams.get("page") || 1,
     );
 
-    if (endpoint === "user") return JSON.stringify({ login: "author" });
+    if (endpoint === "user") {
+      return JSON.stringify({ login: "author" });
+    }
+
     if (endpoint === "repos/upstream/project/pulls/1") {
       identityReads++;
       return JSON.stringify({
@@ -170,7 +177,7 @@ const responses = (
       });
     }
 
-    if (endpoint.includes("/issues/1/comments"))
+    if (endpoint.includes("/issues/1/comments")) {
       return JSON.stringify(
         page === 1
           ? Array.from({ length: 100 }, (_, index) => ({
@@ -183,7 +190,9 @@ const responses = (
             }))
           : [],
       );
-    if (endpoint.includes("/pulls/1/reviews"))
+    }
+
+    if (endpoint.includes("/pulls/1/reviews")) {
       return JSON.stringify([
         {
           id: 5,
@@ -195,7 +204,9 @@ const responses = (
           html_url: "https://github.com/upstream/project/pull/1#pullrequestreview-5",
         },
       ]);
-    if (endpoint.includes("/pulls/1/comments"))
+    }
+
+    if (endpoint.includes("/pulls/1/comments")) {
       return JSON.stringify(
         page === 1
           ? [...Array.from({ length: 100 }, (_, index) => inline(index))]
@@ -203,7 +214,9 @@ const responses = (
             ? []
             : [inline(100), inline(100)],
       );
-    if (endpoint.includes("/pulls/1/files"))
+    }
+
+    if (endpoint.includes("/pulls/1/files")) {
       return JSON.stringify([
         {
           filename: "spec.ts",
@@ -211,7 +224,9 @@ const responses = (
           patch: "@@ -1 +1 @@\n-old\n+new",
         },
       ]);
-    if (endpoint.includes("/pulls/1/commits"))
+    }
+
+    if (endpoint.includes("/pulls/1/commits")) {
       return JSON.stringify([
         {
           sha,
@@ -223,8 +238,13 @@ const responses = (
           html_url: `https://github.com/author/project/commit/${sha}`,
         },
       ]);
+    }
+
     if (endpoint.includes("/check-runs")) {
-      if (options.missingChecks) throw new Error("Check pagination unavailable");
+      if (options.missingChecks) {
+        throw new Error("Check pagination unavailable");
+      }
+
       return JSON.stringify({
         check_runs: [
           {
@@ -245,7 +265,7 @@ const responses = (
       });
     }
 
-    if (endpoint.includes("/statuses"))
+    if (endpoint.includes("/statuses")) {
       return JSON.stringify([
         {
           id: 3,
@@ -254,14 +274,20 @@ const responses = (
           created_at: "2026-10-01T10:00:00Z",
         },
       ]);
-    if (endpoint === "repos/upstream/project/issues/7")
+    }
+
+    if (endpoint === "repos/upstream/project/issues/7") {
       return JSON.stringify({
         number: 7,
         title: "Original issue",
         body: "Full original issue requirements",
       });
-    if (endpoint.includes("/issues/7/comments"))
+    }
+
+    if (endpoint.includes("/issues/7/comments")) {
       return JSON.stringify([{ id: 1, body: "Complete issue comment" }]);
+    }
+
     throw new Error(`Unexpected endpoint ${endpoint}`);
   });
 
@@ -351,10 +377,11 @@ it.each([
   expect(snapshot.coverage?.complete).toBe(false);
   expect(snapshot.coverage?.warnings.length).toBeGreaterThan(0);
   expect(snapshot.reviews[0].body).toBe(reviewBody);
-  if (options.missingThreadComment)
+  if (options.missingThreadComment) {
     expect(snapshot.discussion?.find((source) => source.id === "C_100")?.body).toBe(
       "Full inline comment 100",
     );
+  }
 });
 
 it("rejects non-advancing review pagination instead of claiming every request was retrieved", async () => {

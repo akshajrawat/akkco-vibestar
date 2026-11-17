@@ -15,8 +15,10 @@ import type {
 } from "../../apps/core/execution/providers/contracts";
 
 const fixtureTransport = (url: string) => {
-  if (!isAbsolute(url))
+  if (!isAbsolute(url)) {
     throw new Error("Fixture Git network is disabled; supply a local constructor transport.");
+  }
+
   return url;
 };
 
@@ -183,9 +185,11 @@ export class FixtureProvider extends CodexProvider {
               : { summary: "Fixture response" };
 
     let action = "";
-    if (r.access === "workspace-write")
+    if (r.access === "workspace-write") {
       action = `await require('node:fs/promises').writeFile('source.txt',${JSON.stringify(r.prompt.includes("Task A") ? "A\n" : "B\n")});`;
-    if (r.access === "workspace-write" || fields?.approval)
+    }
+
+    if (r.access === "workspace-write" || fields?.approval) {
       action += `
         const fs = require('node:fs/promises');
         const path = require('node:path');
@@ -195,6 +199,7 @@ export class FixtureProvider extends CodexProvider {
         const output = require('node:child_process').execFileSync(process.execPath, ['--test', test], {encoding: 'utf8'});
         console.log(JSON.stringify({type:'item.completed',item:{type:'command_execution',id:'fixture-check',command:JSON.stringify(['node','--test',test]),exit_code:0,aggregated_output:output}}));
       `;
+    }
 
     return {
       program: process.execPath,
@@ -241,7 +246,10 @@ export const fixtureFlowTask = (
 };
 
 export const startFixtureFlow = (engine: Engine, task: Task) => {
-  if (!task.flow_id || !task.goal) throw new Error("Fixture requires a current task and flow.");
+  if (!task.flow_id || !task.goal) {
+    throw new Error("Fixture requires a current task and flow.");
+  }
+
   return engine.startFlow({
     task_id: task.id,
     flow_id: task.flow_id,

@@ -19,7 +19,9 @@ export const GlobalNotifications = ({
   useLayoutEffect(() => {
     const place = () => {
       const target = Array.from(document.querySelectorAll("dialog[open]")).at(-1) || document.body;
-      if (host.parentElement !== target) target.append(host);
+      if (host.parentElement !== target) {
+        target.append(host);
+      }
     };
 
     place();
@@ -39,7 +41,9 @@ export const GlobalNotifications = ({
   }, [host]);
 
   useEffect(() => {
-    if (preference) notifications.setPreference(preference);
+    if (preference) {
+      notifications.setPreference(preference);
+    }
   }, [preference]);
 
   useEffect(() => {
@@ -47,19 +51,25 @@ export const GlobalNotifications = ({
     let disposed = false;
 
     const handle = (event: import("../lib/types").CoreEvent) => {
-      if (disposed) return;
+      if (disposed) {
+        return;
+      }
+
       if (event.event === "runtime.status") {
         observedRuntime = true;
         const state = event.data as { phase: string; essential?: boolean };
         onRuntimeStatus?.(state.phase);
         const options = { id: "runtime", essential: state.essential };
-        if (state.phase === "failed")
+        if (state.phase === "failed") {
           notifications.error(event.text || "Runtime unavailable", {
             ...options,
             action: { label: "Retry", run: () => window.vibestar.retryRuntime() },
           });
-        else if (state.phase === "ready") notifications.success("Runtime ready", { id: "runtime" });
-        else notifications.progress(event.text || "Preparing Vibestar runtime...", options);
+        } else if (state.phase === "ready") {
+          notifications.success("Runtime ready", { id: "runtime" });
+        } else {
+          notifications.progress(event.text || "Preparing Vibestar runtime...", options);
+        }
       }
     };
 
@@ -68,7 +78,9 @@ export const GlobalNotifications = ({
     void window.vibestar
       .desktopSettings()
       .then((info) => {
-        if (!observedRuntime && info.runtime_status) handle(info.runtime_status);
+        if (!observedRuntime && info.runtime_status) {
+          handle(info.runtime_status);
+        }
       })
       .catch(() => {
         /* Settings owns diagnostics for unavailable desktop metadata. */

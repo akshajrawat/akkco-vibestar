@@ -167,10 +167,11 @@ it("creates editable issue templates with the selected issue and scoped brief on
   expect(task.goal).toBe("Fix the actual issue");
   const graph = engine.flows.definition(task.flow_id!).definition;
   expect(graph.nodes).toHaveLength(8);
-  for (const node of graph.nodes.filter((node) => node.type === "agent"))
+  for (const node of graph.nodes.filter((node) => node.type === "agent")) {
     expect(node.inputs).toEqual(
       expect.arrayContaining([{ kind: "issue" }, { kind: "task-brief" }, { kind: "repository" }]),
     );
+  }
 
   await expect(
     rpc.call("task.createIssue", { ...request, template: "build-review" }),

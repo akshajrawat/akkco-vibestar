@@ -36,8 +36,14 @@ beforeEach(async () => {
       },
     }),
     (url) => {
-      if (url === "https://github.com/fixture/fixture.git") return join(directory, "upstream");
-      if (isAbsolute(url)) return url;
+      if (url === "https://github.com/fixture/fixture.git") {
+        return join(directory, "upstream");
+      }
+
+      if (isAbsolute(url)) {
+        return url;
+      }
+
       throw new Error("Live Git transport is disabled in this fixture.");
     },
   );

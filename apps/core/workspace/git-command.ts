@@ -106,7 +106,9 @@ const inspectConfiguration = async (request: GitRequest) => {
   let worktreeConfig = false;
   let partialClone = false;
   for (const scope of ["--local", "--worktree"]) {
-    if (scope === "--worktree" && !worktreeConfig) break;
+    if (scope === "--worktree" && !worktreeConfig) {
+      break;
+    }
 
     const result = await execute({
       program: "git",
@@ -118,21 +120,31 @@ const inspectConfiguration = async (request: GitRequest) => {
     });
 
     if (result.code !== 0) {
-      if (result.code === 128 && /only be used inside a git repository/.test(result.stderr)) return;
+      if (result.code === 128 && /only be used inside a git repository/.test(result.stderr)) {
+        return;
+      }
+
       throw new AdeError("git_policy", "Cannot safely inspect local Git configuration.");
     }
 
     for (const entry of result.stdout.split("\0").filter(Boolean)) {
       const key = entry.split("\n", 1)[0].toLowerCase();
-      if (!safeKey(key)) throw refusal(key);
+      if (!safeKey(key)) {
+        throw refusal(key);
+      }
 
       // VS Code stores a branch reference here. This is inert editor metadata,
       // not permission to accept other branch options or executable Git settings.
       if (/^branch\..+\.vscode-merge-base$/.test(key)) {
         const separator = entry.indexOf("\n");
-        if (separator < 0) throw refusal(key);
+        if (separator < 0) {
+          throw refusal(key);
+        }
+
         const value = entry.slice(separator + 1);
-        if (value.length > 1024 || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(value)) throw refusal(key);
+        if (value.length > 1024 || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(value)) {
+          throw refusal(key);
+        }
 
         const reference = await execute({
           program: "git",
@@ -142,7 +154,9 @@ const inspectConfiguration = async (request: GitRequest) => {
           gitEnvironment: true,
         });
 
-        if (reference.code !== 0) throw refusal(key);
+        if (reference.code !== 0) {
+          throw refusal(key);
+        }
       }
 
       partialClone ||=
@@ -167,7 +181,10 @@ const inspectConfiguration = async (request: GitRequest) => {
           gitEnvironment: true,
         });
 
-        if (enabled.code !== 0) throw refusal(key);
+        if (enabled.code !== 0) {
+          throw refusal(key);
+        }
+
         worktreeConfig = enabled.stdout.trim() === "true";
       }
     }
@@ -188,16 +205,20 @@ const inspectConfiguration = async (request: GitRequest) => {
       !parsed ||
       Number(parsed[1]) < 2 ||
       (Number(parsed[1]) === 2 && Number(parsed[2]) < 45)
-    )
+    ) {
       throw new AdeError(
         "git_policy",
         "Partial clones require Git 2.45 or newer to disable implicit network fetches. Upgrade Git or use a clean full managed clone; the source checkout was preserved.",
       );
+    }
   }
 };
 
 export const gitExecute = async (request: GitRequest, executor = execute) => {
-  if (request.program !== "git") throw new AdeError("git_policy", "Expected Git executable");
+  if (request.program !== "git") {
+    throw new AdeError("git_policy", "Expected Git executable");
+  }
+
   const args = [...request.args];
   let index = 0;
   while (index < args.length && args[index].startsWith("-")) {
@@ -206,8 +227,10 @@ export const gitExecute = async (request: GitRequest, executor = execute) => {
       continue;
     }
 
-    if (args[index] !== "-c" || !args[index + 1])
+    if (args[index] !== "-c" || !args[index + 1]) {
       throw new AdeError("git_policy", "Unsupported Git global option");
+    }
+
     const setting = args[index + 1];
     const separator = setting.indexOf("=");
     const key = setting.slice(0, separator).toLowerCase();
@@ -218,35 +241,50 @@ export const gitExecute = async (request: GitRequest, executor = execute) => {
         ["user.name", "user.email"].includes(key) ||
         (allowed && setting.slice(separator + 1) === allowed[1])
       )
-    )
+    ) {
       throw refusal(key);
+    }
+
     index += 2;
   }
 
   const command = args[index];
-  if (!commands.has(command)) throw new AdeError("git_policy", "Unsupported host Git command");
+  if (!commands.has(command)) {
+    throw new AdeError("git_policy", "Unsupported host Git command");
+  }
+
   await inspectConfiguration(request);
   if (["clone", "fetch", "ls-remote", "push"].includes(command)) {
     // Host transports are always explicit, never mutable remote aliases.
     const separator = args.indexOf("--", index + 1);
-    if (separator < 0 || !args[separator + 1])
+    if (separator < 0 || !args[separator + 1]) {
       throw new AdeError("git_policy", "Git transport must be explicit");
+    }
+
     const destination = args[separator + 1];
-    if (!(request.allowLocalTransport && isAbsolute(destination)))
+    if (!(request.allowLocalTransport && isAbsolute(destination))) {
       args[separator + 1] = githubTransport(destination);
+    }
+
     if (
       args
         .slice(index + 1, separator)
         .some((arg) => /^(?:--(?:upload-pack|receive-pack|exec|config)(?:=|$)|-c$)/.test(arg))
-    )
+    ) {
       throw new AdeError("git_policy", "Unsupported Git transport option");
+    }
   }
 
   const policy = Object.entries(overrides).flatMap(([key, value]) => ["-c", `${key}=${value}`]);
-  if (request.allowLocalTransport) policy.push("-c", "protocol.file.allow=always");
+  if (request.allowLocalTransport) {
+    policy.push("-c", "protocol.file.allow=always");
+  }
+
   if (request.hooksPath) {
-    if (command !== "push" || !isAbsolute(request.hooksPath))
+    if (command !== "push" || !isAbsolute(request.hooksPath)) {
       throw new AdeError("git_policy", "Invalid publication hook capability");
+    }
+
     policy.push("-c", `core.hooksPath=${request.hooksPath}`);
   }
 
@@ -271,11 +309,13 @@ export const gitChecked = async (args: string[], cwd: string, signal?: AbortSign
     rawStdoutForIntegrity: true,
   });
 
-  if (output.code !== 0)
+  if (output.code !== 0) {
     throw new AdeError(
       "command_failed",
       `git exited ${output.code}: ${output.stderr.slice(-6000)}`,
       { program: "git", code: output.code },
     );
+  }
+
   return output.stdout.trim();
 };

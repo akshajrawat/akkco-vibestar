@@ -29,11 +29,14 @@ export const markdownIssueReferences = (
       !/\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+$/i.test(
         markdown.slice(Math.max(0, offset - 100), offset),
       )
-    )
+    ) {
       return;
+    }
+
     references.set(issueKey(reference), reference);
-    if (references.size > 2000)
+    if (references.size > 2000) {
       throw new CollectionLimit("Tracker exceeded 2,000 unique issue references.");
+    }
   };
 
   const url = (value: string, offset: number) => {
@@ -48,14 +51,20 @@ export const markdownIssueReferences = (
         offset,
       );
     } catch (error) {
-      if (error instanceof CollectionLimit) throw error;
+      if (error instanceof CollectionLimit) {
+        throw error;
+      }
       // Non-issue links, including /pull/, are outside the reference scope.
     }
   };
 
   const walk = (node: Nodes) => {
-    if (["code", "inlineCode", "html", "image", "imageReference", "definition"].includes(node.type))
+    if (
+      ["code", "inlineCode", "html", "image", "imageReference", "definition"].includes(node.type)
+    ) {
       return;
+    }
+
     if (node.type === "link") {
       url(node.url, node.position?.start.offset || 0);
       return;
@@ -63,7 +72,10 @@ export const markdownIssueReferences = (
 
     if (node.type === "linkReference") {
       const target = definitions.get(node.identifier.toLowerCase());
-      if (target) url(target, node.position?.start.offset || 0);
+      if (target) {
+        url(target, node.position?.start.offset || 0);
+      }
+
       return;
     }
 
@@ -75,13 +87,20 @@ export const markdownIssueReferences = (
         const offset = (node.position?.start.offset || 0) + match.index;
         if (match[2]) {
           const number = Number(match[2]);
-          if (Number.isSafeInteger(number))
+          if (Number.isSafeInteger(number)) {
             add({ repository: repositoryName(match[1] || repository), number }, offset);
-        } else url(match[0].replace(/[.,;)]+$/, ""), offset);
+          }
+        } else {
+          url(match[0].replace(/[.,;)]+$/, ""), offset);
+        }
       }
     }
 
-    if ("children" in node) for (const child of node.children) walk(child);
+    if ("children" in node) {
+      for (const child of node.children) {
+        walk(child);
+      }
+    }
   };
 
   walk(tree);
@@ -89,8 +108,10 @@ export const markdownIssueReferences = (
 };
 
 export const retainedSource = (input: Omit<WatchSource, "hash" | "fetched_at">) => {
-  if (Buffer.byteLength(input.text) > 1048576)
+  if (Buffer.byteLength(input.text) > 1048576) {
     throw new CollectionLimit("Individual source exceeded 1 MiB.");
+  }
+
   return { ...input, hash: digest(input.text), fetched_at: now() };
 };
 
@@ -113,9 +134,14 @@ export const trackerExclusions = async (
 
     const repository = await reader.repository(`${ref.owner}/${ref.repo}`, prior?.repository_id);
     const issue = await reader.issue(repository, ref.number);
-    if (prior?.issue_id) verifyIssueIdentity(issue, { id: prior.issue_id, number: ref.number });
-    if (issue.pull_request)
+    if (prior?.issue_id) {
+      verifyIssueIdentity(issue, { id: prior.issue_id, number: ref.number });
+    }
+
+    if (issue.pull_request) {
       throw new CollectionLimit("A required tracker identifies a pull request.");
+    }
+
     const references = markdownIssueReferences(issue.body, repository.full_name);
     references.push({ repository: repository.full_name, number: issue.number });
 
@@ -125,7 +151,9 @@ export const trackerExclusions = async (
       number: issue.number,
     });
 
-    for (const reference of references) excluded.add(issueKey(reference));
+    for (const reference of references) {
+      excluded.add(issueKey(reference));
+    }
 
     const source = retainedSource({
       key: `tracker:${issue.id}`,
@@ -150,8 +178,10 @@ export const trackerExclusions = async (
         `repos/${repository.full_name}/issues/${issue.number}/comments`,
       );
 
-      if (comments.length !== issue.comment_count)
+      if (comments.length !== issue.comment_count) {
         throw new CollectionLimit("Tracker comment count changed during collection.");
+      }
+
       for (const raw of comments) {
         const comment = z
           .object({
@@ -166,7 +196,9 @@ export const trackerExclusions = async (
           .parse(raw);
 
         const refs = markdownIssueReferences(comment.body, repository.full_name);
-        for (const reference of refs) excluded.add(issueKey(reference));
+        for (const reference of refs) {
+          excluded.add(issueKey(reference));
+        }
 
         save(
           retainedSource({
@@ -193,13 +225,16 @@ export const trackerExclusions = async (
         current.updated_at !== issue.updated_at ||
         current.comment_count !== comments.length ||
         current.body !== issue.body
-      )
+      ) {
         throw new CollectionLimit("Tracker changed while its comments were being verified.");
+      }
+
       save({ ...source, complete: true });
     }
 
-    if (excluded.size > 10000)
+    if (excluded.size > 10000) {
       throw new CollectionLimit("Combined tracker reference budget exceeded.");
+    }
   }
 
   return excluded;

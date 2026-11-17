@@ -54,7 +54,9 @@ export class RepairWorkspaces {
         signal,
         onSpawn: checkpoint
           ? (pid, identity) => {
-              if (finished || !identity) return;
+              if (finished || !identity) {
+                return;
+              }
 
               checkpoint.session.workspace.operation = {
                 kind:
@@ -85,8 +87,10 @@ export class RepairWorkspaces {
     checkpoint?: GitCheckpoint,
   ) => {
     const result = await this.command(cwd, args, signal, checkpoint);
-    if (result.code !== 0)
+    if (result.code !== 0) {
       throw new AdeError("git_repair", `git ${args[0]} exited ${result.code}: ${result.stderr}`);
+    }
+
     return result.stdout.trim();
   };
 
@@ -108,18 +112,22 @@ export class RepairWorkspaces {
       !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/.test(sha) ||
       ref !== `refs/heads/${identity.head.branch}` ||
       extra
-    )
+    ) {
       throw new AdeError(
         "pr_identity",
         "The exact PR branch is missing or ambiguous on its source repository.",
       );
+    }
+
     return sha;
   };
 
   validateRepository = async (repo: Repository, identity: PRIdentity) => {
     if (repo.source !== "imported") {
-      if (!inside(join(this.root, "repos"), repo.path))
+      if (!inside(join(this.root, "repos"), repo.path)) {
         throw new AdeError("isolation", "Managed repository is outside its authorized root.");
+      }
+
       await managedPath(this.root, repo.path);
     }
 
@@ -127,11 +135,13 @@ export class RepairWorkspaces {
       repo.connected === false ||
       repo.clone_status === "cloning" ||
       `${repo.owner}/${repo.name}`.toLowerCase() !== identity.upstream.name.toLowerCase()
-    )
+    ) {
       throw new AdeError(
         "repository_mismatch",
         "Select a connected checkout of the PR's upstream repository.",
       );
+    }
+
     const remotes = await gitChecked(["remote", "-v"], repo.path);
 
     const matches = remotes.split("\n").some((line) => {
@@ -145,11 +155,13 @@ export class RepairWorkspaces {
       }
     });
 
-    if (!matches)
+    if (!matches) {
       throw new AdeError(
         "repository_mismatch",
         "The selected checkout no longer has the verified upstream GitHub identity.",
       );
+    }
+
     return this.git.commonDirectory(repo.path);
   };
 
@@ -160,11 +172,15 @@ export class RepairWorkspaces {
     if (
       common !== workspace.git_common_dir ||
       common !== (await this.git.commonDirectory(repo.path))
-    )
+    ) {
       throw new AdeError("isolation", "Repair Git common directory changed.");
+    }
+
     const gitdir = await realpath(await this.checked(cwd, ["rev-parse", "--absolute-git-dir"]));
-    if (!inside(join(common, "worktrees"), gitdir))
+    if (!inside(join(common, "worktrees"), gitdir)) {
       throw new AdeError("isolation", "Repair metadata is not an isolated worktree.");
+    }
+
     const marker = await readWorktreeOwner(gitdir, "vibestar-repair-owner");
 
     const branchOwner = await this.command(cwd, [
@@ -178,16 +194,20 @@ export class RepairWorkspaces {
       !workspace.branch_owned ||
       marker !== session.id ||
       branchOwner.stdout.trim() !== session.id
-    )
+    ) {
       throw new AdeError("ownership", "Repair worktree or branch ownership could not be verified.");
+    }
+
     if (
       (await this.command(cwd, ["merge-base", "--is-ancestor", workspace.original_head, "HEAD"]))
         .code !== 0
-    )
+    ) {
       throw new AdeError(
         "ancestry",
         "The repair branch no longer descends from the verified PR head.",
       );
+    }
+
     return cwd;
   };
 
@@ -243,8 +263,10 @@ export class RepairWorkspaces {
       const workspace = session.workspace;
       await managedPath(this.root, workspace.worktree_path);
       const common = await this.validateRepository(repo, session.identity);
-      if (workspace.git_common_dir && workspace.git_common_dir !== common)
+      if (workspace.git_common_dir && workspace.git_common_dir !== common) {
         throw new AdeError("isolation", "Registered repository Git directory changed.");
+      }
+
       workspace.git_common_dir = common;
 
       workspace.source_worktrees = await this.checked(
@@ -257,36 +279,45 @@ export class RepairWorkspaces {
       workspace.remote_head = remote;
       workspace.remote_checked_at = now();
       checkpoint();
-      if (remote !== workspace.original_head)
+      if (remote !== workspace.original_head) {
         throw new AdeError(
           "stale_remote_head",
           "The remote PR head changed. Analyze again and create a new repair session.",
         );
-      if (identityClosed(session.identity))
+      }
+
+      if (identityClosed(session.identity)) {
         throw new AdeError("pr_closed", "The PR is no longer open.");
+      }
+
       for (const branch of [
         session.identity.head.branch,
         session.identity.base.branch,
         workspace.branch_name,
-      ])
+      ]) {
         await this.checked(repo.path, ["check-ref-format", "--branch", branch], signal);
+      }
+
       if (!workspace.branch_owned) {
         if (await exists(workspace.worktree_path)) {
           // A crash between worktree creation and writing its marker is reconciled
           // only against the checkpointed path, exact SHA and creation reflog.
-          if (workspace.preparation !== "creating")
+          if (workspace.preparation !== "creating") {
             throw new AdeError("ownership", "Unowned worktree path already exists.");
+          }
+
           const assignment = repairAssignment(session);
           const cwd = await this.git.assertTask(assignment);
           if (
             (await this.git.commonDirectory(cwd)) !== common ||
             (await this.checked(cwd, ["rev-parse", "HEAD"])) !== workspace.original_head ||
             (await this.checked(cwd, ["status", "--porcelain"]))
-          )
+          ) {
             throw new AdeError(
               "ownership",
               "Interrupted worktree creation no longer matches its checkpoint.",
             );
+          }
 
           const creation = await this.checked(cwd, [
             "reflog",
@@ -295,11 +326,12 @@ export class RepairWorkspaces {
             `refs/heads/${workspace.branch_name}`,
           ]);
 
-          if (creation !== `branch: Created from ${workspace.original_head}`)
+          if (creation !== `branch: Created from ${workspace.original_head}`) {
             throw new AdeError(
               "ownership",
               "Branch creation evidence does not match this repair session.",
             );
+          }
         } else {
           if (
             (
@@ -310,11 +342,12 @@ export class RepairWorkspaces {
                 `refs/heads/${workspace.branch_name}`,
               ])
             ).code === 0
-          )
+          ) {
             throw new AdeError(
               "ownership",
               "Repair branch already exists outside the assigned worktree.",
             );
+          }
 
           await this.checked(
             repo.path,
@@ -337,13 +370,17 @@ export class RepairWorkspaces {
             signal,
           );
 
-          if (fetched !== workspace.original_head)
+          if (fetched !== workspace.original_head) {
             throw new AdeError(
               "stale_remote_head",
               "The PR branch changed while fetching. No worktree was created.",
             );
-          if (!inside(join(this.root, "worktrees", repo.id), workspace.worktree_path))
+          }
+
+          if (!inside(join(this.root, "worktrees", repo.id), workspace.worktree_path)) {
             throw new AdeError("isolation", "Repair worktree must stay inside the managed root.");
+          }
+
           await mkdir(dirname(workspace.worktree_path), { recursive: true });
           await managedPath(this.root, workspace.worktree_path);
           workspace.preparation = "creating";
@@ -368,8 +405,10 @@ export class RepairWorkspaces {
           await this.checked(workspace.worktree_path, ["rev-parse", "--absolute-git-dir"]),
         );
 
-        if (!inside(join(common, "worktrees"), gitdir))
+        if (!inside(join(common, "worktrees"), gitdir)) {
           throw new AdeError("isolation", "Unexpected repair metadata location.");
+        }
+
         await writeWorktreeOwner(gitdir, "vibestar-repair-owner", session.id);
 
         await this.checked(repo.path, [
@@ -387,12 +426,16 @@ export class RepairWorkspaces {
       if (workspace.merge_state !== "not_started") {
         const actual = await this.mergeState(session, cwd);
         checkpoint();
-        if (actual !== "pending") return actual;
-        if (await this.checked(cwd, ["status", "--porcelain"]))
+        if (actual !== "pending") {
+          return actual;
+        }
+
+        if (await this.checked(cwd, ["status", "--porcelain"])) {
           throw new AdeError(
             "recovery",
             "Interrupted merge has local changes; inspect them before recovery.",
           );
+        }
       }
 
       if (!workspace.fetched_base) {
@@ -426,11 +469,12 @@ export class RepairWorkspaces {
         checkpoint();
       }
 
-      if (await this.checked(cwd, ["status", "--porcelain"]))
+      if (await this.checked(cwd, ["status", "--porcelain"])) {
         throw new AdeError(
           "git_dirty",
           "Repair preparation has local modifications; preserve and inspect them before merging.",
         );
+      }
 
       const incoming = await this.checked(cwd, [
         "diff",
@@ -446,11 +490,12 @@ export class RepairWorkspaces {
       ]);
 
       for (const path of incoming.split("\0").filter(Boolean)) {
-        if (await exists(await safeFile(cwd, path)))
+        if (await exists(await safeFile(cwd, path))) {
           throw new AdeError(
             "git_dirty",
             `Upstream integration would overwrite local file ${path}. Preserve it before continuing.`,
           );
+        }
       }
 
       workspace.merge_state = "intent";
@@ -478,16 +523,20 @@ export class RepairWorkspaces {
 
       const state = await this.mergeState(session, cwd);
       checkpoint();
-      if (merged.code !== 0 && state !== "conflict")
+      if (merged.code !== 0 && state !== "conflict") {
         throw new AdeError(
           "git_merge",
           `Upstream integration stopped: ${merged.stderr || merged.stdout}`,
         );
-      if (state === "pending")
+      }
+
+      if (state === "pending") {
         throw new AdeError(
           "git_merge",
           "Upstream integration did not reach a verified checkpoint.",
         );
+      }
+
       return state;
     });
 
@@ -501,15 +550,21 @@ export class RepairWorkspaces {
       const cwd = await this.assert(session, repo);
       const state = await this.mergeState(session, cwd);
       checkpoint();
-      if (session.workspace.conflict_paths.length)
+      if (session.workspace.conflict_paths.length) {
         throw new AdeError(
           "merge_conflict",
           "Stage resolved files in the repair worktree before recovering the merge.",
         );
-      if (state === "ready") return state;
+      }
+
+      if (state === "ready") {
+        return state;
+      }
+
       const pending = await this.command(cwd, ["rev-parse", "--verify", "MERGE_HEAD"]);
-      if (pending.code !== 0 || pending.stdout.trim() !== session.workspace.fetched_base)
+      if (pending.code !== 0 || pending.stdout.trim() !== session.workspace.fetched_base) {
         throw new AdeError("recovery", "The pending merge no longer matches the fetched base.");
+      }
 
       await this.checked(
         cwd,
@@ -529,8 +584,10 @@ export class RepairWorkspaces {
 
       const actual = await this.mergeState(session, cwd);
       checkpoint();
-      if (actual !== "ready")
+      if (actual !== "ready") {
         throw new AdeError("recovery", "Resolved merge ancestry was not verified.");
+      }
+
       return actual;
     });
 
@@ -541,7 +598,10 @@ export class RepairWorkspaces {
 
   cleanup = async (session: RepairSession, repo: Repository, checkpoint: () => void) =>
     this.git.withLock(repo.id, async () => {
-      if (session.workspace.preparation === "removed") return;
+      if (session.workspace.preparation === "removed") {
+        return;
+      }
+
       const workspace = session.workspace;
       const present = await exists(workspace.worktree_path);
       const branch = `refs/heads/${workspace.branch_name}`;
@@ -561,8 +621,10 @@ export class RepairWorkspaces {
         ["pending", "creating"].includes(workspace.preparation)
       ) {
         const registrations = await this.checked(repo.path, ["worktree", "list", "--porcelain"]);
-        if (registrations.split("\n").includes(`worktree ${workspace.worktree_path}`))
+        if (registrations.split("\n").includes(`worktree ${workspace.worktree_path}`)) {
           throw new AdeError("ownership", "Unverified worktree registration was preserved.");
+        }
+
         workspace.preparation = "removed";
         checkpoint();
         return;
@@ -571,72 +633,91 @@ export class RepairWorkspaces {
       if (
         workspace.git_common_dir !== (await this.git.commonDirectory(repo.path)) ||
         (ref.code === 0 && owner.stdout.trim() !== session.id)
-      )
+      ) {
         throw new AdeError(
           "ownership",
           "Repair branch/common-directory ownership changed; cleanup was stopped.",
         );
-      if (!present && workspace.preparation !== "removing")
+      }
+
+      if (!present && workspace.preparation !== "removing") {
         throw new AdeError(
           "ownership",
           "Missing worktree has no saved removal checkpoint. Preserve its Git metadata for inspection.",
         );
+      }
+
       const cwd = present ? await this.assert(session, repo) : workspace.worktree_path;
       if (
         present &&
         ((await this.checked(cwd, ["status", "--porcelain", "--untracked-files=all"])) ||
           (await this.command(cwd, ["rev-parse", "--verify", "MERGE_HEAD"])).code === 0)
-      )
+      ) {
         throw new AdeError(
           "git_dirty",
           "The repair has local changes or a pending merge. Preserve them before removing this workspace.",
         );
+      }
 
       const head = present
         ? await this.checked(cwd, ["rev-parse", "HEAD"])
         : workspace.cleanup_head;
 
-      if (!head) throw new AdeError("ownership", "Removal checkpoint has no verified branch head.");
+      if (!head) {
+        throw new AdeError("ownership", "Removal checkpoint has no verified branch head.");
+      }
+
       workspace.cleanup_head = head;
       workspace.preparation = "removing";
       checkpoint();
       const registered = await this.checked(repo.path, ["worktree", "list", "--porcelain"]);
-      if (present || registered.split("\n").includes(`worktree ${cwd}`))
+      if (present || registered.split("\n").includes(`worktree ${cwd}`)) {
         await this.checked(repo.path, ["worktree", "remove", "--", cwd], undefined, {
           session,
           save: checkpoint,
         });
+      }
+
       const checkouts = await this.checked(repo.path, ["worktree", "list", "--porcelain"]);
-      if (checkouts.split("\n").includes(`branch refs/heads/${session.workspace.branch_name}`))
+      if (checkouts.split("\n").includes(`branch refs/heads/${session.workspace.branch_name}`)) {
         throw new AdeError(
           "ownership",
           "The repair branch is checked out elsewhere; it was preserved.",
         );
-      if (ref.code === 0)
+      }
+
+      if (ref.code === 0) {
         await this.checked(repo.path, [
           "update-ref",
           "-d",
           `refs/heads/${session.workspace.branch_name}`,
           head,
         ]);
+      }
+
       for (const [name, sha] of [
         ["head", session.workspace.original_head],
         ["base", session.workspace.fetched_base],
-      ])
-        if (sha)
+      ]) {
+        if (sha) {
           await this.checked(repo.path, [
             "update-ref",
             "-d",
             `refs/vibestar/repairs/${session.id}/${name}`,
             sha,
           ]);
-      if (owner.stdout.trim() === session.id)
+        }
+      }
+
+      if (owner.stdout.trim() === session.id) {
         await this.checked(repo.path, [
           "config",
           "--local",
           "--unset",
           `branch.${session.workspace.branch_name}.vibestarRepair`,
         ]);
+      }
+
       session.workspace.branch_owned = false;
       session.workspace.preparation = "removed";
       checkpoint();

@@ -15,6 +15,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   {
+    rules: {
+      curly: ["error", "all"],
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     rules: {
       "no-control-regex": "off",

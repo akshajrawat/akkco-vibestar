@@ -34,17 +34,20 @@ export const validateSemanticReport = (
   const seen = new Set<string>();
   for (const result of report.results) {
     const candidate = allowed.get(result.issue_id);
-    if (!candidate || seen.has(result.issue_id))
+    if (!candidate || seen.has(result.issue_id)) {
       throw new AdeError(
         "invalid_semantic",
         "Model returned an unknown or duplicate candidate identity.",
       );
+    }
+
     seen.add(result.issue_id);
-    if (!candidate.eligible)
+    if (!candidate.eligible) {
       throw new AdeError(
         "invalid_semantic",
         "Model attempted to reintroduce a hard-excluded candidate.",
       );
+    }
 
     const scope = candidate.source_keys
       .map((key) => sourceMap.get(key))
@@ -52,18 +55,20 @@ export const validateSemanticReport = (
 
     for (const citation of result.evidence) {
       const source = scope.find((item) => item.key === citation.source_key);
-      if (!source || !source.text.includes(citation.excerpt))
+      if (!source || !source.text.includes(citation.excerpt)) {
         throw new AdeError(
           "invalid_semantic",
           "Model citation is outside this candidate's saved source set or its quotation does not match.",
         );
+      }
     }
 
-    if (result.relevance === "match" && !result.evidence.length)
+    if (result.relevance === "match" && !result.evidence.length) {
       throw new AdeError(
         "invalid_semantic",
         "A matching interpretation needs saved source evidence.",
       );
+    }
 
     const prose = [
       result.description,
@@ -78,23 +83,30 @@ export const validateSemanticReport = (
       ),
     );
 
-    for (const match of prose.matchAll(/@([\w-]+)\b/g))
-      if (!actors.has(match[1].toLowerCase()))
+    for (const match of prose.matchAll(/@([\w-]+)\b/g)) {
+      if (!actors.has(match[1].toLowerCase())) {
         throw new AdeError(
           "invalid_semantic",
           "Model named an actor absent from retrieved evidence.",
         );
-    for (const match of prose.matchAll(/https?:\/\/[^\s<>\])]+/g))
-      if (match[0] !== candidate.issue.url && !scope.some((source) => source.url === match[0]))
+      }
+    }
+
+    for (const match of prose.matchAll(/https?:\/\/[^\s<>\])]+/g)) {
+      if (match[0] !== candidate.issue.url && !scope.some((source) => source.url === match[0])) {
         throw new AdeError("invalid_semantic", "Model named a URL absent from retrieved evidence.");
+      }
+    }
+
     if (
       ["assigned", "competing_pr_detected", "ineligible"].includes(result.claim_assessment) &&
       result.claim_assessment !== candidate.claim_state
-    )
+    ) {
       throw new AdeError(
         "invalid_semantic",
         "Model invented a factual assignment or competing-work blocker.",
       );
+    }
   }
 
   return report;
@@ -170,7 +182,10 @@ export class IssueWatchSemantic {
           "Semantic candidate or 128 KiB context budget omitted this issue; Continue Analysis is an explicit additional attempt.",
         );
 
-        if (packet.omissions.length < 40) packet.omissions.push(candidate.issue.id);
+        if (packet.omissions.length < 40) {
+          packet.omissions.push(candidate.issue.id);
+        }
+
         continue;
       }
 
@@ -193,8 +208,9 @@ export class IssueWatchSemantic {
       const context = redact(JSON.stringify(packet));
       JSON.parse(context);
       const prompt = instructions + context;
-      if (Buffer.byteLength(prompt) > 128 * 1024)
+      if (Buffer.byteLength(prompt) > 128 * 1024) {
         throw new AdeError("context_budget", "Semantic input exceeded 128 KiB.");
+      }
 
       const directory = await managedPath(
         this.engine.root,
@@ -254,13 +270,15 @@ export class IssueWatchSemantic {
           result.uncertainty.length ||
           result.blockers.length
         ) {
-          if (candidate.claim_state === "candidate_for_claim_request")
+          if (candidate.claim_state === "candidate_for_claim_request") {
             candidate.claim_state = "eligibility_uncertain";
+          }
+
           candidate.uncertainty.push(...result.uncertainty);
         }
       }
 
-      for (const candidate of selected)
+      for (const candidate of selected) {
         if (candidate.semantic_state === "pending") {
           candidate.semantic_state = "unavailable";
 
@@ -268,6 +286,7 @@ export class IssueWatchSemantic {
             "Model omitted this candidate; semantic coverage is incomplete.",
           );
         }
+      }
 
       scan.coverage.semantic_checked = report.results.length;
 
@@ -275,7 +294,9 @@ export class IssueWatchSemantic {
         (candidate) => candidate.semantic_state === "completed",
       );
     } catch (error) {
-      if (signal.aborted) throw error;
+      if (signal.aborted) {
+        throw error;
+      }
 
       const invalid =
         error instanceof z.ZodError ||

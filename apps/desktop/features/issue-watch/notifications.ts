@@ -6,7 +6,10 @@ export const useWatchNotifications = (enabled: boolean) => {
   const [notices, setNotices] = useState<{ id: string; watchId: string; text: string }[]>([]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
+
     let disposed = false;
     let saved: string[] = [];
     try {
@@ -14,7 +17,9 @@ export const useWatchNotifications = (enabled: boolean) => {
         localStorage.getItem("vibestar.issueWatch.notified") || "[]",
       );
 
-      if (Array.isArray(value)) saved = value.filter((id) => typeof id === "string").slice(-500);
+      if (Array.isArray(value)) {
+        saved = value.filter((id) => typeof id === "string").slice(-500);
+      }
     } catch {
       /* Invalid local display preferences have no execution authority. */
     }
@@ -28,10 +33,15 @@ export const useWatchNotifications = (enabled: boolean) => {
         !event.scan_id ||
         !event.watch_id ||
         seen.has(event.scan_id)
-      )
+      ) {
         return;
+      }
+
       const data = event.data as { status?: string; summary?: Record<string, number> } | undefined;
-      if (!data || !["completed", "partial"].includes(data.status || "")) return;
+      if (!data || !["completed", "partial"].includes(data.status || "")) {
+        return;
+      }
+
       seen.add(event.scan_id);
       localStorage.setItem("vibestar.issueWatch.notified", JSON.stringify([...seen].slice(-500)));
       const counts = data.summary || {};

@@ -35,13 +35,14 @@ export const ResizeHandle = ({
         e.currentTarget.setPointerCapture(e.pointerId);
       }}
       onPointerMove={(e) => {
-        if (drag.current)
+        if (drag.current) {
           onChange(
             clamp(
               drag.current.value +
                 ((vertical ? e.clientY : e.clientX) - drag.current.origin) * (reverse ? -1 : 1),
             ),
           );
+        }
       }}
       onPointerUp={(e) => {
         drag.current = null;

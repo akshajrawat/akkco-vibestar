@@ -20,10 +20,14 @@ export const WatchActions = ({
   const menu = useDialogFocus(open);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
 
     const dismiss = (event: PointerEvent) => {
-      if (!container.current?.contains(event.target as Node)) setOpen(false);
+      if (!container.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
     };
 
     document.addEventListener("pointerdown", dismiss);

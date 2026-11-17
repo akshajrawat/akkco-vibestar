@@ -167,7 +167,9 @@ it.each(["streamed", "result-only"])(
       });
 
       const node = engine.flows.definition(task.flow_id!).definition.nodes[0];
-      if (node.type !== "agent") throw new Error("Missing Viber");
+      if (node.type !== "agent") {
+        throw new Error("Missing Viber");
+      }
 
       const run = engine.chatViber({
         task_id: task.id,

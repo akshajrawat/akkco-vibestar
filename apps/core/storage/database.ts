@@ -76,7 +76,10 @@ export class Database {
             .get(migration.version)
         ) {
           const rebuild = "foreign_keys_off" in migration && migration.foreign_keys_off;
-          if (rebuild) this.connection.pragma("foreign_keys = OFF");
+          if (rebuild) {
+            this.connection.pragma("foreign_keys = OFF");
+          }
+
           try {
             this.connection.transaction(() => {
               this.connection.exec(migration.sql);
@@ -109,7 +112,9 @@ export class Database {
                     CommandEvidenceSchema.parse,
                   );
 
-                  if (!data) continue;
+                  if (!data) {
+                    continue;
+                  }
 
                   commands.observe(
                     event.task_id,
@@ -124,15 +129,19 @@ export class Database {
 
                 for (const run of this.all<{ id: string; ended_at: string }>(
                   "SELECT id,ended_at FROM agent_runs WHERE status!='running'",
-                ))
+                )) {
                   commands.finish(run.id, run.ended_at || now());
+                }
               }
 
-              if (this.all("PRAGMA foreign_key_check").length)
+              if (this.all("PRAGMA foreign_key_check").length) {
                 throw new Error("Repository migration failed foreign key verification");
+              }
             })();
           } finally {
-            if (rebuild) this.connection.pragma("foreign_keys = ON");
+            if (rebuild) {
+              this.connection.pragma("foreign_keys = ON");
+            }
           }
         }
       }
@@ -164,10 +173,15 @@ export class Database {
     );
 
   repository = (id: string | null) => {
-    if (!id)
+    if (!id) {
       throw new AdeError("repository_required", "This operation requires an attached repository.");
+    }
+
     const row = this.all<{ data: string }>("SELECT data FROM repositories WHERE id=?", id)[0];
-    if (!row) throw new Error("Repository is not registered");
+    if (!row) {
+      throw new Error("Repository is not registered");
+    }
+
     return this.records.decode<Repository>(
       {
         table: "repositories",
@@ -199,7 +213,10 @@ export class Database {
 
   task = (id: string) => {
     const row = this.all<{ data: string }>("SELECT data FROM tasks WHERE id=?", id)[0];
-    if (!row) throw new Error("Task not found");
+    if (!row) {
+      throw new Error("Task not found");
+    }
+
     return this.records.decode<Task>(
       {
         table: "tasks",
@@ -216,11 +233,12 @@ export class Database {
     if (
       this.tasks().length !== this.all("SELECT id FROM tasks").length ||
       this.repositories().length !== this.all("SELECT id FROM repositories").length
-    )
+    ) {
       throw new AdeError(
         "corrupt_record",
         "Saved workspace ownership records are corrupt. Preserve the data root and inspect persistence diagnostics before cleanup or migration.",
       );
+    }
   };
 
   saveTask = (t: Task) =>
@@ -254,8 +272,10 @@ export class Database {
     try {
       return this.settings();
     } catch (error) {
-      if (error instanceof AdeError && error.kind === "corrupt_record")
+      if (error instanceof AdeError && error.kind === "corrupt_record") {
         return structuredClone(defaultSettings);
+      }
+
       throw error;
     }
   };
@@ -273,7 +293,10 @@ export class Database {
       stage,
     )[0];
 
-    if (!row) throw new Error(`No successful saved result for stage ${stage}`);
+    if (!row) {
+      throw new Error(`No successful saved result for stage ${stage}`);
+    }
+
     return this.records.decode({
       table: "task_artifacts",
       id: row.id,
@@ -302,6 +325,10 @@ export class Database {
       this.run(
         "UPDATE utility_runs SET status='interrupted',ended_at=? WHERE status='running'",
         now(),
+      );
+
+      this.run(
+        "UPDATE viber_messages SET status='interrupted',error='Execution core stopped; send a new message to retry' WHERE status='pending'",
       );
 
       this.run(
@@ -366,6 +393,8 @@ export class Database {
   });
 
   close = () => {
-    if (this.connection.open) this.connection.close();
+    if (this.connection.open) {
+      this.connection.close();
+    }
   };
 }

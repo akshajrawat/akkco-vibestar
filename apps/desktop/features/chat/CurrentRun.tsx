@@ -42,7 +42,10 @@ export const CurrentRun = ({
   const activity = useMemo(() => runActivity(detail.events, run), [detail.events, run]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      return;
+    }
+
     const timer = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(timer);
   }, [active]);
@@ -51,8 +54,9 @@ export const CurrentRun = ({
     !active ||
     runningRun?.purpose === "Read-only conversation" ||
     runningRun?.purpose === "Workspace conversation"
-  )
+  ) {
     return null;
+  }
 
   const labels: Record<string, string> = {
     queued: "Queued",

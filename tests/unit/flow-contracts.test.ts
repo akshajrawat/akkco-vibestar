@@ -66,10 +66,12 @@ it("accepts branches and joins with explicitly selected ancestor context", () =>
 it("rejects cycles, invalid or duplicate connections and duplicate node IDs", () => {
   const [a, b, c] = [agent(), agent(), agent()];
   const flow = { name: "Validation", nodes: [a, b, c], edges: [edge(a, b), edge(b, c)] };
-  for (const addition of [edge(c, a), edge(a, a), edge(agent(), b), edge(a, b), flow.edges[0]])
+  for (const addition of [edge(c, a), edge(a, a), edge(agent(), b), edge(a, b), flow.edges[0]]) {
     expect(
       FlowDefinitionSchema.safeParse({ ...flow, edges: [...flow.edges, addition] }).success,
     ).toBe(false);
+  }
+
   expect(FlowDefinitionSchema.safeParse({ ...flow, nodes: [a, a, c] }).success).toBe(false);
 });
 
@@ -189,8 +191,9 @@ it("accepts command and approval nodes while rejecting shell-shaped command conf
     { ...command, argv: ["npm", "test\0bad"] },
     { ...command, argv: ["npm", ...Array<string>(5).fill("x".repeat(16000))] },
     { ...command, shell: "npm test" },
-  ])
+  ]) {
     expect(FlowDefinitionSchema.safeParse({ ...flow, nodes: [invalid, approval] }).success).toBe(
       false,
     );
+  }
 });

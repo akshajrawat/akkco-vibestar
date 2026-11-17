@@ -49,7 +49,10 @@ it("retains strict request, pagination and data budgets without fallback or auto
 
   await expect(reader.read("https://evil.test/repos/a/b")).rejects.toThrow("only reads");
   expect(api).not.toHaveBeenCalled();
-  for (let index = 0; index < 5; index++) await reader.read("repos/a/b/issues/1");
+  for (let index = 0; index < 5; index++) {
+    await reader.read("repos/a/b/issues/1");
+  }
+
   await expect(reader.read("repos/a/b/issues/1")).rejects.toThrow("budget exhausted");
   expect(api).toHaveBeenCalledTimes(5);
   api.mockResolvedValue(Array.from({ length: 100 }, (_, id) => ({ id })));
@@ -73,7 +76,9 @@ it.each(["duplicate", "short-page", "incomplete", "pull-request"])(
   async (mode) => {
     const client = new GitHubClient("/tmp");
     const items = Array.from({ length: 10 }, (_, index) => githubIssue(index + 1));
-    if (mode === "duplicate") items[9] = items[0];
+    if (mode === "duplicate") {
+      items[9] = items[0];
+    }
 
     const api = vi.spyOn(client, "api").mockResolvedValue({
       total_count: 200,

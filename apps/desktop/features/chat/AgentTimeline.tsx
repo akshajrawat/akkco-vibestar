@@ -94,7 +94,7 @@ export const AgentTimeline = ({
   const renderTool = (row: (typeof entries)[number], finalText?: string) => {
     const { event, data } = row;
     const run = runById.get(event.run_id);
-    if (event.kind === "message")
+    if (event.kind === "message") {
       return (
         <article className="message-event" key={row.key}>
           <AgentResponse
@@ -105,23 +105,32 @@ export const AgentTimeline = ({
           />
         </article>
       );
-    if (event.stream === "stderr")
+    }
+
+    if (event.stream === "stderr") {
       return (
         <article className="provider-diagnostic" key={row.key}>
           <strong>Provider stderr</strong>
           <pre>{String(data.stderr || data.text || "")}</pre>
         </article>
       );
-    if (typeof data.unparsed === "string")
+    }
+
+    if (typeof data.unparsed === "string") {
       return (
         <article className="provider-diagnostic" key={row.key}>
           <strong>Provider stdout</strong>
           <pre>{data.unparsed}</pre>
         </article>
       );
+    }
+
     if (compact && ["reasoning", "analysis"].includes(String(data.tool))) {
       const text = String(data.text || "").trim();
-      if (!text) return null;
+      if (!text) {
+        return null;
+      }
+
       return (
         <details className="reasoning-event" key={row.key}>
           <summary>
@@ -247,7 +256,7 @@ export const AgentTimeline = ({
       "connecting to sandbox server",
     );
 
-    if (compact)
+    if (compact) {
       return (
         <article
           className={`tool-event ${failed ? "tool-failed" : ""}`}
@@ -288,6 +297,7 @@ export const AgentTimeline = ({
           </details>
         </article>
       );
+    }
 
     return (
       <article
@@ -486,7 +496,7 @@ export const AgentTimeline = ({
   const blocks: { time: string; key: string; content: React.ReactNode }[] = [];
   for (const message of messages.filter(
     (message) => message.role !== "assistant" || !answeredRuns.has(message.run_id || ""),
-  ))
+  )) {
     blocks.push({
       time: message.created_at,
       key: message.id,
@@ -550,6 +560,7 @@ export const AgentTimeline = ({
         </article>
       ),
     });
+  }
 
   const groupedRuns = runs.length
     ? runs
@@ -584,13 +595,18 @@ export const AgentTimeline = ({
                   : e.event.kind === "test.result")),
     );
 
-    if (!run.id && !local.length) continue;
+    if (!run.id && !local.length) {
+      continue;
+    }
 
     const finalSummary = run.output ? responseSummary(run.output).trim() : undefined;
 
     const finalMessage = run.output
       ? [...local].reverse().find((row) => {
-          if (row.event.kind !== "message" || row.data.phase === "commentary") return false;
+          if (row.event.kind !== "message" || row.data.phase === "commentary") {
+            return false;
+          }
+
           const text = String(row.data.text || "");
           return (
             responseSummary(text).trim() === finalSummary ||
@@ -604,9 +620,14 @@ export const AgentTimeline = ({
         : undefined;
 
     const visible = local.filter((row) => {
-      if (row.event.kind === "run.failed" && run.error) return false;
-      if (finalMessage && row !== finalMessage && row.event.kind === "message")
+      if (row.event.kind === "run.failed" && run.error) {
+        return false;
+      }
+
+      if (finalMessage && row !== finalMessage && row.event.kind === "message") {
         return responseSummary(String(row.data.text || "")).trim() !== finalSummary;
+      }
+
       return true;
     });
 

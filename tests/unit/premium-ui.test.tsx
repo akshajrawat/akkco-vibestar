@@ -226,8 +226,10 @@ it("keeps missing totals unavailable and pages every saved run while charts repo
   ).toBeTruthy();
 
   expect(screen.getByRole("img", { name: /Cached: Unavailable tokens · 0\/201/ })).toBeTruthy();
-  for (let page = 0; page < 4; page++)
+  for (let page = 0; page < 4; page++) {
     fireEvent.click(screen.getByRole("button", { name: "Next runs" }));
+  }
+
   expect(screen.getByRole("cell", { name: "Fixture 201" })).toBeTruthy();
 
   expect((screen.getByRole("button", { name: "Next runs" }) as HTMLButtonElement).disabled).toBe(

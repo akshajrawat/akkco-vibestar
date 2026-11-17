@@ -21,10 +21,14 @@ export const HistoricalTask = ({ detail, back }: { detail: Detail; back: () => v
 
     void rpc<HistoricalWorkspace>("flow.history", { task_id: detail.task.id })
       .then((value) => {
-        if (alive) setHistory(value);
+        if (alive) {
+          setHistory(value);
+        }
       })
       .catch((reason) => {
-        if (alive) setError(errorMessage(reason));
+        if (alive) {
+          setError(errorMessage(reason));
+        }
       });
 
     return () => {

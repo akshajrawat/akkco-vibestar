@@ -54,7 +54,10 @@ export const useAgentOutput = ({
   const file = (raw && stream !== "events") || preparation;
 
   useEffect(() => {
-    if (!runId && !preparation) return;
+    if (!runId && !preparation) {
+      return;
+    }
+
     setRows(null);
     setLog({ text: "", truncated: false, start: 0, end: 0, size: 0 });
     setMore(false);
@@ -75,7 +78,10 @@ export const useAgentOutput = ({
     let previousStatus = status.current;
 
     const fetch = async (older = false) => {
-      if (fetching) return;
+      if (fetching) {
+        return;
+      }
+
       fetching = true;
       setLoading(true);
       let catchup = false;
@@ -138,18 +144,29 @@ export const useAgentOutput = ({
 
             savedRows = [...byId.values()].sort((a, b) => a.id - b.id);
             setRows(savedRows);
-            if (!initialized || older) setMore(page.more);
+            if (!initialized || older) {
+              setMore(page.more);
+            }
           }
         }
 
         initialized = true;
-        if (alive) setError("");
+        if (alive) {
+          setError("");
+        }
       } catch (e) {
-        if (alive) setError(errorMessage(e));
+        if (alive) {
+          setError(errorMessage(e));
+        }
       } finally {
         fetching = false;
-        if (alive) setLoading(false);
-        if (alive && catchup) void fetch();
+        if (alive) {
+          setLoading(false);
+        }
+
+        if (alive && catchup) {
+          void fetch();
+        }
       }
     };
 
@@ -157,7 +174,10 @@ export const useAgentOutput = ({
     const initial = setTimeout(() => void fetch(), search ? 250 : 0);
 
     const timer = setInterval(() => {
-      if (status.current === "running" || previousStatus !== status.current) void fetch();
+      if (status.current === "running" || previousStatus !== status.current) {
+        void fetch();
+      }
+
       previousStatus = status.current;
     }, 1000);
 

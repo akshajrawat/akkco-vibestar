@@ -99,8 +99,9 @@ const Canvas = ({
       results,
     );
 
-    for (const result of (currentRun && workspace.stale_results?.[currentRun.id]) || [])
+    for (const result of (currentRun && workspace.stale_results?.[currentRun.id]) || []) {
       stale.add(result.node_id);
+    }
 
     setNodes((current) =>
       draft.nodes.map((node, index) => {
@@ -170,8 +171,11 @@ const Canvas = ({
     };
 
     const issue = graphError(pruneBindings(next));
-    if (issue) setError(issue);
-    else replace(next);
+    if (issue) {
+      setError(issue);
+    } else {
+      replace(next);
+    }
   };
 
   const add = (
@@ -279,8 +283,9 @@ const Canvas = ({
           disabled={!profiles.some(isCustomViber)}
           onClick={() => {
             const profile = profiles.find(isCustomViber);
-            if (profile)
+            if (profile) {
               editProfile({ ...profile, id: crypto.randomUUID(), revision: 0, name: "New Viber" });
+            }
           }}
         >
           <Plus size={12} />
@@ -322,12 +327,13 @@ const Canvas = ({
             (item) => item.id === event.dataTransfer.getData("application/vibestar-profile"),
           );
 
-          if (profile)
+          if (profile) {
             add(
               "agent",
               profile,
               flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
             );
+          }
         }}
       >
         <ReactFlow<ViberCanvasNode>
@@ -347,17 +353,27 @@ const Canvas = ({
 
             const next = applyNodeChanges(changes, nodes);
             setNodes(next);
-            if (changes.some((change) => change.type === "position" && change.dragging !== true))
+            if (changes.some((change) => change.type === "position" && change.dragging !== true)) {
               saveLayout(next);
-            if (deleted.length) remove(deleted);
+            }
+
+            if (deleted.length) {
+              remove(deleted);
+            }
           }}
           onEdgesChange={(changes) => {
             setSelectedEdges((current) => {
               const next = new Set(current);
               for (const change of changes) {
-                if (change.type !== "select") continue;
-                if (change.selected) next.add(change.id);
-                else next.delete(change.id);
+                if (change.type !== "select") {
+                  continue;
+                }
+
+                if (change.selected) {
+                  next.add(change.id);
+                } else {
+                  next.delete(change.id);
+                }
               }
 
               return next;
@@ -367,17 +383,21 @@ const Canvas = ({
               .filter((change) => change.type === "remove")
               .map((change) => change.id);
 
-            if (removed.length)
+            if (removed.length) {
               replace({
                 ...draft,
                 edges: draft.edges.filter((edge) => !removed.includes(edge.id)),
               });
+            }
           }}
           onNodeClick={(_, node) => select(node.id)}
           onNodeDoubleClick={(_, node) => {
             select(node.id);
-            if (node.data.node.type === "agent") chat?.();
-            else activity();
+            if (node.data.node.type === "agent") {
+              chat?.();
+            } else {
+              activity();
+            }
           }}
           onNodeDragStop={(_, node, dragged) =>
             saveLayout(
@@ -471,7 +491,7 @@ const Canvas = ({
           run={() => request("flow.node.run")}
           retry={() => request("flow.node.retry", { attempt_id: attempt?.id })}
           approve={(decision) => {
-            if (attempt)
+            if (attempt) {
               action("flow.node.approve", {
                 attempt_id: attempt.id,
                 request_id: crypto.randomUUID(),
@@ -480,6 +500,7 @@ const Canvas = ({
                 inputs_hash: attempt.inputs_hash,
                 workspace_fingerprint: attempt.workspace_fingerprint,
               });
+            }
           }}
           activity={activity}
           chat={chat}

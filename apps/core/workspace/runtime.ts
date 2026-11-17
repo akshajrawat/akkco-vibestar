@@ -22,13 +22,19 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
     rawStdoutForIntegrity: true,
   });
 
-  if (ignoredDirectories.code !== 0)
+  if (ignoredDirectories.code !== 0) {
     throw new AdeError("runtime", "Cannot inspect existing repository dependencies.");
+  }
 
   for (const path of ignoredDirectories.stdout.split("\0")) {
-    if (!path.endsWith("/")) continue;
+    if (!path.endsWith("/")) {
+      continue;
+    }
+
     const name = path.slice(0, -1);
-    if (dependencyNames.includes(basename(name))) candidates.add(name);
+    if (dependencyNames.includes(basename(name))) {
+      candidates.add(name);
+    }
   }
 
   for (const name of candidates) {
@@ -41,8 +47,10 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
       !inside(worktree, target) ||
       !(await lstat(installed)).isDirectory() ||
       (await realpath(dirname(target)).catch(() => null)) !== dirname(target)
-    )
+    ) {
       continue;
+    }
+
     const tracked = await gitCapture(["ls-files", "--", name], worktree);
     const sourceTracked = await gitCapture(["ls-files", "--", name], source);
 
@@ -57,8 +65,10 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
       tracked.stdout.trim() ||
       sourceTracked.stdout.trim() ||
       ignored.code !== 0
-    )
+    ) {
       continue;
+    }
+
     if (source === worktree) {
       mounts.push({ source: installed, target });
       dependencies.push(name);
@@ -66,7 +76,10 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
     }
 
     const entry = await lstat(target).catch(() => null);
-    if (!entry && connect) await mkdir(target);
+    if (!entry && connect) {
+      await mkdir(target);
+    }
+
     if ((!entry && connect) || (entry?.isDirectory() && (await readdir(target)).length === 0)) {
       mounts.push({ source: installed, target: path }, { source: installed, target });
       dependencies.push(name);
@@ -98,20 +111,28 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
   if (
     version &&
     (version.length > 200 || !/^[\w.-]+$/.test(version) || [".", ".."].includes(version))
-  )
+  ) {
     warnings.push(
       "Invalid .python-version selection was ignored; no arbitrary environment path was mounted.",
     );
+  }
+
   const pythonCandidates = [join(worktree, ".venv"), join(worktree, "venv")];
-  for (const name of [".venv", "venv"])
-    if (dependencies.includes(name)) pythonCandidates.push(join(source, name));
+  for (const name of [".venv", "venv"]) {
+    if (dependencies.includes(name)) {
+      pythonCandidates.push(join(source, name));
+    }
+  }
+
   if (
     version &&
     version.length <= 200 &&
     /^[\w.-]+$/.test(version) &&
     ![".", ".."].includes(version)
-  )
+  ) {
     pythonCandidates.unshift(join(homedir(), ".pyenv", "versions", version));
+  }
+
   const versions = await realpath(join(homedir(), ".pyenv", "versions")).catch(() => null);
   for (const candidate of pythonCandidates) {
     const prefix = await realpath(candidate).catch(() => null);
@@ -122,28 +143,42 @@ export const taskRuntime = async (source: string, worktree: string, connect = fa
         inside(worktree, prefix) ||
         (versions && inside(versions, prefix))
       )
-    )
+    ) {
       continue;
+    }
+
     const binary = await realpath(join(prefix, "bin", "python3")).catch(() => null);
-    if (!binary) continue;
+    if (!binary) {
+      continue;
+    }
+
     const base = dirname(dirname(binary));
     if (!(
       binary.startsWith("/usr/") ||
       (versions && inside(versions, binary)) ||
       inside(prefix, binary)
-    ))
+    )) {
       continue;
-    if (versions && inside(versions, base)) mounts.push({ source: base, target: base });
-    if (!inside(worktree, prefix))
+    }
+
+    if (versions && inside(versions, base)) {
+      mounts.push({ source: base, target: base });
+    }
+
+    if (!inside(worktree, prefix)) {
       mounts.push({ source: prefix, target: prefix }, { source: prefix, target: candidate });
+    }
+
     python = join(candidate, "bin", "python3");
     pythonPrefix = candidate;
     break;
   }
 
-  if (version && !python)
+  if (version && !python) {
     warnings.push(
       `Selected Python environment ${version} is unavailable; system Python will be used. No dependencies were installed automatically.`,
     );
+  }
+
   return { python, pythonPrefix, dependencies, mounts, warnings };
 };

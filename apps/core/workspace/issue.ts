@@ -20,11 +20,13 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
         signal: signal || AbortSignal.timeout(30000),
       });
 
-      if (!response.ok)
+      if (!response.ok) {
         throw new AdeError(
           "github",
           `GitHub context retrieval returned ${response.status}. Connect GitHub in the configured WSL distribution and retry.`,
         );
+      }
+
       return response.json();
     }
   };
@@ -33,10 +35,14 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
     const rows: Record<string, unknown>[] = [];
     for (let page = 1; page <= 100; page++) {
       const part = await get(`${endpoint}?per_page=100&page=${page}`);
-      if (!Array.isArray(part))
+      if (!Array.isArray(part)) {
         throw new AdeError("github", "Unexpected issue context pagination response");
+      }
+
       rows.push(...part.map(object));
-      if (part.length < 100) return rows;
+      if (part.length < 100) {
+        return rows;
+      }
     }
 
     throw new AdeError(
@@ -47,8 +53,10 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
 
   const base = `repos/${reference.owner}/${reference.repo}/issues/${reference.number}`;
   const issue = object(await get(base));
-  if (issue.pull_request)
+  if (issue.pull_request) {
     throw new AdeError("invalid_input", "URL identifies a pull request, not an issue");
+  }
+
   const comments = await pages(`${base}/comments`);
   const warnings: string[] = [];
   let timeline: Record<string, unknown>[] = [];
@@ -70,8 +78,9 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
   ]) {
     for (const match of String(text || "").matchAll(
       /https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)/g,
-    ))
+    )) {
       links.add(`${match[1]}/${match[2]}/${match[3]}`);
+    }
   }
 
   const linkedPullRequests: Record<string, unknown>[] = [];
@@ -109,8 +118,10 @@ export const fetchIssue = async (reference: IssueRef, cwd: string, signal?: Abor
     }
   }
 
-  if (links.size > 20)
+  if (links.size > 20) {
     warnings.push(`${links.size - 20} linked PRs omitted by the 20-PR context limit.`);
+  }
+
   return {
     title: issue.title,
     body: issue.body,

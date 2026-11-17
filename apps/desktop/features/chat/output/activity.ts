@@ -35,10 +35,15 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
   );
 
   for (const event of ordered) {
-    if (event.kind.startsWith("run.") && !["run.failed", "run.cancelled"].includes(event.kind))
+    if (event.kind.startsWith("run.") && !["run.failed", "run.cancelled"].includes(event.kind)) {
       continue;
+    }
+
     const data = eventData(event.data);
-    if (["userMessage", "user_message", "user_input"].includes(String(data.tool))) continue;
+    if (["userMessage", "user_message", "user_input"].includes(String(data.tool))) {
+      continue;
+    }
+
     if (
       event.kind === "analysis.status" &&
       ![
@@ -50,8 +55,9 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
         data.path,
         data.unparsed,
       ].some((value) => typeof value === "string" && value.trim())
-    )
+    ) {
       continue;
+    }
 
     const matches =
       !search || `${event.data}\n${event.raw}`.toLowerCase().includes(search.toLowerCase());
@@ -81,9 +87,13 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
           : {}),
       };
 
-      if (!terminal || incomingTerminal) row.event = event;
+      if (!terminal || incomingTerminal) {
+        row.event = event;
+      }
     } else {
-      if (call) calls.set(call, entries.length);
+      if (call) {
+        calls.set(call, entries.length);
+      }
 
       entries.push({
         key: call || event.id,
@@ -104,8 +114,14 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
 
 export const toolState = (event: AgentEvent, data: Record<string, unknown>, run?: Run) => {
   const status = String(data.status || "").toLowerCase();
-  if (["interrupted", "cancelled", "canceled"].includes(status)) return "interrupted";
-  if (status === "blocked") return "blocked";
+  if (["interrupted", "cancelled", "canceled"].includes(status)) {
+    return "interrupted";
+  }
+
+  if (status === "blocked") {
+    return "blocked";
+  }
+
   if (
     event.kind.startsWith("command") &&
     (typeof data.exit_code === "number" || ["failed", "error"].includes(status))
@@ -121,23 +137,34 @@ export const toolState = (event: AgentEvent, data: Record<string, unknown>, run?
       stderr: typeof data.stderr === "string" ? data.stderr : "",
     });
 
-    if (["blocked", "interrupted"].includes(verification.outcome))
+    if (["blocked", "interrupted"].includes(verification.outcome)) {
       return verification.outcome === "blocked" ? "blocked" : "interrupted";
+    }
   }
 
   if (
     ["failed", "error"].includes(status) ||
     (typeof data.exit_code === "number" && data.exit_code !== 0)
-  )
+  ) {
     return "failed";
-  if (["skipped", "not_run"].includes(status)) return "skipped";
+  }
+
+  if (["skipped", "not_run"].includes(status)) {
+    return "skipped";
+  }
+
   if (
     event.kind === "command.finished" ||
     typeof data.exit_code === "number" ||
     ["done", "completed", "success", "succeeded", "passed"].includes(status)
-  )
+  ) {
     return "completed";
-  if (run && run.status !== "running") return "interrupted";
+  }
+
+  if (run && run.status !== "running") {
+    return "interrupted";
+  }
+
   return "running";
 };
 

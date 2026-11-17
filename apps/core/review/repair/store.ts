@@ -20,7 +20,10 @@ export class RepairStore {
 
   get = (id: string) => {
     const row = this.db.all<{ data: string }>("SELECT data FROM pr_repairs WHERE id=?", id)[0];
-    if (!row) throw new AdeError("not_found", "PR repair session not found.");
+    if (!row) {
+      throw new AdeError("not_found", "PR repair session not found.");
+    }
+
     return this.db.records.decode(
       {
         table: "pr_repairs",

@@ -73,8 +73,9 @@ export class Scheduler {
     );
 
   private save = (job: ScheduleJob) => {
-    if (job.task_id && !this.engine.db.all("SELECT id FROM tasks WHERE id=?", job.task_id).length)
+    if (job.task_id && !this.engine.db.all("SELECT id FROM tasks WHERE id=?", job.task_id).length) {
       job.task_id = null;
+    }
 
     this.engine.db.run(
       "INSERT INTO scheduled_jobs VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
@@ -91,7 +92,10 @@ export class Scheduler {
       id,
     )[0];
 
-    if (!row) throw new AdeError("not_found", "Tracked PR not found");
+    if (!row) {
+      throw new AdeError("not_found", "Tracked PR not found");
+    }
+
     return this.engine.db.records.decode(
       {
         table: "scheduled_jobs",
@@ -109,14 +113,18 @@ export class Scheduler {
     const p = ScheduleInput.parse(input);
     const ref = parsePullRequest(p.url);
     const existing = this.jobs().find((j) => j.url === ref.url);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
+
     if (p.task_id) {
       const repo = this.engine.db.repository(this.engine.db.task(p.task_id).repo_id);
-      if (`${repo.owner}/${repo.name}`.toLowerCase() !== `${ref.owner}/${ref.repo}`.toLowerCase())
+      if (`${repo.owner}/${repo.name}`.toLowerCase() !== `${ref.owner}/${ref.repo}`.toLowerCase()) {
         throw new AdeError(
           "invalid_input",
           "PR and linked task must belong to the same upstream repository",
         );
+      }
     }
 
     const job: ScheduleJob = {
@@ -148,19 +156,30 @@ export class Scheduler {
         verify_codex: false,
       });
 
-    if (this.active.has(job.id)) return;
+    if (this.active.has(job.id)) {
+      return;
+    }
+
     job.title = pr.title;
-    if (["OPEN", "CLOSED", "MERGED"].includes(pr.state)) job.archived = pr.state !== "OPEN";
-    if (!job.task_id && pr.task_id) job.task_id = pr.task_id;
+    if (["OPEN", "CLOSED", "MERGED"].includes(pr.state)) {
+      job.archived = pr.state !== "OPEN";
+    }
+
+    if (!job.task_id && pr.task_id) {
+      job.task_id = pr.task_id;
+    }
+
     this.save(job);
   };
 
   setEnabled = (id: string, enabled: boolean) => {
-    if (enabled)
+    if (enabled) {
       throw new AdeError(
         "manual_policy",
         "Automatic PR inspection is disabled. Use Analyze PR explicitly.",
       );
+    }
+
     this.save(this.job(id));
   };
 
@@ -242,13 +261,17 @@ export class Scheduler {
     )[0];
 
     if (duplicate) {
-      if (duplicate.job_id !== id)
+      if (duplicate.job_id !== id) {
         throw new AdeError("isolation", "Analysis request belongs to a different PR");
+      }
+
       return { analysis_id: requestId };
     }
 
-    if (this.stopped || this.active.has(id))
+    if (this.stopped || this.active.has(id)) {
       throw new AdeError("busy", "PR inspection already running or the core is stopping");
+    }
+
     const job = this.job(id);
     const controller = new AbortController();
 
@@ -291,18 +314,23 @@ export class Scheduler {
                 job.url,
                 AbortSignal.any([controller.signal, deadline]),
                 (phase) => {
-                  if (controller.signal.aborted) return;
+                  if (controller.signal.aborted) {
+                    return;
+                  }
+
                   session.phase = phase;
                   this.analysis.save(session);
                 },
               ),
             );
           } catch (error) {
-            if (deadline.aborted && !controller.signal.aborted)
+            if (deadline.aborted && !controller.signal.aborted) {
               throw new AdeError(
                 "github_timeout",
                 "GitHub context retrieval exceeded two minutes. Retry this PR after checking the GitHub connection.",
               );
+            }
+
             throw error;
           }
 
@@ -383,7 +411,7 @@ export class Scheduler {
 
             job.changes = session.changes || [];
             this.engine.db.run("UPDATE scheduled_attention SET dismissed=1 WHERE job_id=?", id);
-            if (job.action.manualActionRequired)
+            if (job.action.manualActionRequired) {
               this.engine.db.run(
                 "INSERT INTO scheduled_attention(id,job_id,task_id,created_at,summary,changes,analysis) VALUES(?,?,?,?,?,?,?)",
                 randomUUID(),
@@ -394,6 +422,7 @@ export class Scheduler {
                 JSON.stringify(job.changes),
                 JSON.stringify(session.report),
               );
+            }
           }
         } catch (error) {
           session.status =
@@ -440,7 +469,10 @@ export class Scheduler {
 
   close = async () => {
     this.stopped = true;
-    for (const operation of this.active.values()) operation.controller.abort();
+    for (const operation of this.active.values()) {
+      operation.controller.abort();
+    }
+
     await Promise.all([...this.active.values()].map((operation) => operation.promise));
   };
 }

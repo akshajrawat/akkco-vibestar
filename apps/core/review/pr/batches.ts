@@ -76,8 +76,12 @@ export class PRAnalysisBatches {
     )) {
       batch.status = "interrupted";
       batch.ended_at = now();
-      for (const item of batch.items)
-        if (["pending", "running"].includes(item.status)) item.status = "interrupted";
+      for (const item of batch.items) {
+        if (["pending", "running"].includes(item.status)) {
+          item.status = "interrupted";
+        }
+      }
+
       this.save(batch);
     }
   }
@@ -105,11 +109,14 @@ export class PRAnalysisBatches {
   };
 
   private validateSelection = (ids: string[]) => {
-    if (new Set(ids).size !== ids.length)
+    if (new Set(ids).size !== ids.length) {
       throw new AdeError("invalid_input", "Select each PR once.");
+    }
+
     const jobs = this.scheduler.jobs();
-    if (ids.some((id) => !jobs.some((job) => job.id === id)))
+    if (ids.some((id) => !jobs.some((job) => job.id === id))) {
       throw new AdeError("not_found", "A selected PR is no longer available.");
+    }
   };
 
   /** Inspects report reuse with bounded GitHub reads and no inference authorization. */
@@ -122,7 +129,12 @@ export class PRAnalysisBatches {
 
     const promise = Promise.resolve().then(async () => {
       let reusable = 0;
-      for (const id of p.job_ids) if (await this.scheduler.inspectForBatch(id, signal)) reusable++;
+      for (const id of p.job_ids) {
+        if (await this.scheduler.inspectForBatch(id, signal)) {
+          reusable++;
+        }
+      }
+
       signal.throwIfAborted();
       return { selected: p.job_ids.length, reusable, checked_at: now() };
     });
@@ -163,16 +175,19 @@ export class PRAnalysisBatches {
 
     if (existing) {
       const batch = BatchSchema.parse(JSON.parse(existing.data));
-      if (batch.digest !== digest)
+      if (batch.digest !== digest) {
         throw new AdeError(
           "invalid_input",
           "This batch request belongs to a different selection or allowance.",
         );
+      }
+
       return batch;
     }
 
-    if (this.active.size)
+    if (this.active.size) {
       throw new AdeError("busy", "Another PR batch is already running. Cancel or finish it first.");
+    }
 
     const batch: PRBatch = {
       id: p.request_id,
@@ -214,7 +229,10 @@ export class PRAnalysisBatches {
     operation.promise = Promise.resolve().then(async () => {
       try {
         for (const item of batch.items) {
-          if (operation.cancelled) break;
+          if (operation.cancelled) {
+            break;
+          }
+
           item.status = "running";
           operation.jobId = item.job_id;
           this.save(batch);
@@ -225,13 +243,17 @@ export class PRAnalysisBatches {
                 provider: batch.configuration.provider,
               },
               authorizeInference: () => {
-                if (operation.cancelled)
+                if (operation.cancelled) {
                   throw new AdeError("cancelled", "Batch cancelled before inference.");
-                if (batch.analyses_used >= batch.max_analyses)
+                }
+
+                if (batch.analyses_used >= batch.max_analyses) {
                   throw new AdeError(
                     "analysis_cap",
                     "The authorized AI analysis cap is reached. Current GitHub evidence is retained; authorize another analysis explicitly.",
                   );
+                }
+
                 batch.analyses_used++;
                 this.save(batch);
               },
@@ -248,7 +270,11 @@ export class PRAnalysisBatches {
         }
 
         batch.status = operation.cancelled ? "cancelled" : "completed";
-        for (const item of batch.items) if (item.status === "pending") item.status = "cancelled";
+        for (const item of batch.items) {
+          if (item.status === "pending") {
+            item.status = "cancelled";
+          }
+        }
       } finally {
         batch.ended_at = now();
         this.save(batch);
@@ -263,18 +289,32 @@ export class PRAnalysisBatches {
 
   cancel = async (id: string) => {
     const operation = this.active.get(id);
-    if (!operation) return;
-    if (operation.cancelled) return operation.promise;
+    if (!operation) {
+      return;
+    }
+
+    if (operation.cancelled) {
+      return operation.promise;
+    }
+
     operation.cancelled = true;
     operation.batch.status = "cancelling";
     this.save(operation.batch);
-    if (operation.jobId) await this.scheduler.cancel(operation.jobId);
+    if (operation.jobId) {
+      await this.scheduler.cancel(operation.jobId);
+    }
+
     await operation.promise;
   };
 
   close = async () => {
-    for (const controller of this.previews.keys()) controller.abort();
+    for (const controller of this.previews.keys()) {
+      controller.abort();
+    }
+
     await Promise.allSettled(this.previews.values());
-    for (const id of this.active.keys()) await this.cancel(id);
+    for (const id of this.active.keys()) {
+      await this.cancel(id);
+    }
   };
 }

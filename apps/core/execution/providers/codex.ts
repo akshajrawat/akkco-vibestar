@@ -57,8 +57,10 @@ export class CodexProvider implements AgentProvider {
       const output = login.stdout + login.stderr;
       d.connected = login.code === 0 && output.includes("ChatGPT");
       d.accountLabel = d.connected ? "ChatGPT subscription" : undefined;
-      if (login.code === 0 && !d.connected)
+      if (login.code === 0 && !d.connected) {
         d.error = "API-key login detected. Connect with ChatGPT to use your subscription.";
+      }
+
       if (d.connected) {
         Object.assign(d, await discoverCodexModels(cwd, signal));
         d.efforts = d.models.find((m) => m.isDefault)?.supportedEfforts || [];
@@ -109,27 +111,39 @@ export class CodexProvider implements AgentProvider {
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {
     if (typeof raw.method === "string" || raw.result) {
       const translated = codexSessionEvent(raw);
-      if (translated === raw) return [];
+      if (translated === raw) {
+        return [];
+      }
+
       raw = translated;
     }
 
     const event = raw.type;
     const item = object(raw.item);
-    if (["userMessage", "user_message", "user_input"].includes(String(item.type))) return [];
+    if (["userMessage", "user_message", "user_input"].includes(String(item.type))) {
+      return [];
+    }
+
     let kind: NormalizedEvent["kind"] = "analysis.status";
-    if (event === "thread.started") kind = "run.started";
-    else if (event === "turn.completed") kind = "run.completed";
-    else if (event === "turn.failed" || event === "error") kind = "run.failed";
-    else if (["item.started", "item.updated", "item.completed"].includes(String(event))) {
-      if (item.type === "agent_message") kind = "message";
-      else if (item.type === "file_change") kind = "file.changed";
-      else if (item.type === "command_execution")
+    if (event === "thread.started") {
+      kind = "run.started";
+    } else if (event === "turn.completed") {
+      kind = "run.completed";
+    } else if (event === "turn.failed" || event === "error") {
+      kind = "run.failed";
+    } else if (["item.started", "item.updated", "item.completed"].includes(String(event))) {
+      if (item.type === "agent_message") {
+        kind = "message";
+      } else if (item.type === "file_change") {
+        kind = "file.changed";
+      } else if (item.type === "command_execution") {
         kind =
           event === "item.started"
             ? "command.started"
             : event === "item.completed"
               ? "command.finished"
               : "command.output";
+      }
     }
 
     return [
@@ -168,7 +182,10 @@ export class CodexProvider implements AgentProvider {
   };
 
   result = (raw: Record<string, unknown>) => {
-    if (typeof raw.method === "string") raw = codexSessionEvent(raw);
+    if (typeof raw.method === "string") {
+      raw = codexSessionEvent(raw);
+    }
+
     const item = object(raw.item);
     if (
       raw.type === "item.completed" &&
@@ -186,7 +203,10 @@ export class CodexProvider implements AgentProvider {
   };
 
   conversationId = (raw: Record<string, unknown>) => {
-    if (typeof raw.method === "string" || raw.result) raw = codexSessionEvent(raw);
+    if (typeof raw.method === "string" || raw.result) {
+      raw = codexSessionEvent(raw);
+    }
+
     return typeof raw.thread_id === "string" ? raw.thread_id : null;
   };
 }

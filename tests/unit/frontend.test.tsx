@@ -517,8 +517,10 @@ it("shows active connections and an All GitHub catalog without legacy filters or
 
   expect(screen.getByText("No active repositories")).toBeTruthy();
   expect(screen.getByText("Discovered, not connected", { exact: false })).toBeTruthy();
-  for (const label of ["Recent", "Owned", "Forks", "Organizations", "Advanced · add by Git URL"])
+  for (const label of ["Recent", "Owned", "Forks", "Organizations", "Advanced · add by Git URL"]) {
     expect(screen.queryByText(label)).toBeNull();
+  }
+
   fireEvent.click(screen.getByRole("button", { name: "Connect" }));
   expect((screen.getByLabelText("Path") as HTMLInputElement).value).toBe("/home/aksha/oppia");
   expect(rpc).not.toHaveBeenCalled();
@@ -615,7 +617,10 @@ it("selects a managed repository found through a canonical lookup without re-imp
   };
 
   const rpc = vi.fn(async (method: string) => {
-    if (method === "repository.locateLocal") return existing;
+    if (method === "repository.locateLocal") {
+      return existing;
+    }
+
     throw new Error("A managed checkout must not be verified for external import");
   });
 

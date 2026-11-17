@@ -35,8 +35,16 @@ const notify = (kind: Kind, message: string, options: Options = {}) => {
   }
 
   const previous = recent.get(id);
-  if (previous?.message === message && Date.now() - previous.at < 10000) return id;
-  for (const [key, entry] of recent) if (Date.now() - entry.at > 60000) recent.delete(key);
+  if (previous?.message === message && Date.now() - previous.at < 10000) {
+    return id;
+  }
+
+  for (const [key, entry] of recent) {
+    if (Date.now() - entry.at > 60000) {
+      recent.delete(key);
+    }
+  }
+
   recent.set(id, { message, at: Date.now(), essential });
 
   const Icon = {
@@ -117,7 +125,12 @@ export const notifications = {
       /* This display cache never replaces authoritative core settings. */
     }
 
-    if (next === "necessary")
-      for (const [id, entry] of recent) if (!entry.essential) toast.dismiss(id);
+    if (next === "necessary") {
+      for (const [id, entry] of recent) {
+        if (!entry.essential) {
+          toast.dismiss(id);
+        }
+      }
+    }
   },
 };

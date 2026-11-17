@@ -7,7 +7,10 @@ export const usePRWatch = (enabled: boolean) => {
   const requested = useRef(false);
 
   useEffect(() => {
-    if (!enabled || requested.current) return;
+    if (!enabled || requested.current) {
+      return;
+    }
+
     requested.current = true;
 
     void rpc("pr.watch.start", { request_id: crypto.randomUUID(), trigger: "open" }).catch(() => {

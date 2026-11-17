@@ -20,11 +20,13 @@ export class GitHubClient {
       timeoutMs: 60000,
     });
 
-    if (result.code !== 0)
+    if (result.code !== 0) {
       throw new AdeError(
         "github",
         `GitHub CLI: ${result.stderr.slice(-3000) || result.stdout.slice(-3000)}`,
       );
+    }
+
     return result.stdout;
   };
 
@@ -35,16 +37,34 @@ export class GitHubClient {
   ): Promise<T> => {
     const args = ["api", "--hostname", "github.com", "--method", "GET"];
     const saved = cache?.get(endpoint);
-    if (cache) args.push("--include");
-    if (saved) args.push("-H", `If-None-Match: ${saved.etag}`);
+    if (cache) {
+      args.push("--include");
+    }
+
+    if (saved) {
+      args.push("-H", `If-None-Match: ${saved.etag}`);
+    }
+
     const response = await this.gh([...args, endpoint], signal);
-    if (!cache) return JSON.parse(response);
+    if (!cache) {
+      return JSON.parse(response);
+    }
+
     const match = response.match(/^HTTP\/[\d.]+ (\d{3})[^\n]*\r?\n([\s\S]*?)\r?\n\r?\n([\s\S]*)$/);
-    if (!match) throw new AdeError("github", "GitHub response headers were unavailable.");
-    if (match[1] === "304" && saved) return structuredClone(saved.body) as T;
+    if (!match) {
+      throw new AdeError("github", "GitHub response headers were unavailable.");
+    }
+
+    if (match[1] === "304" && saved) {
+      return structuredClone(saved.body) as T;
+    }
+
     const value = JSON.parse(match[3]);
     const etag = match[2].match(/^etag:\s*([^\r\n]+)/im)?.[1].trim();
-    if (etag && etag.length <= 1000) cache.set(endpoint, etag, value);
+    if (etag && etag.length <= 1000) {
+      cache.set(endpoint, etag, value);
+    }
+
     return value as T;
   };
 
@@ -69,11 +89,15 @@ export class GitHubClient {
           ? (response as Record<string, unknown>)[collection]
           : response;
 
-      if (!Array.isArray(part))
+      if (!Array.isArray(part)) {
         throw new AdeError("github", "Unexpected repository pagination response");
+      }
+
       rows.push(...part);
       onPage?.(page, rows.length);
-      if (part.length < 100) return rows;
+      if (part.length < 100) {
+        return rows;
+      }
     }
 
     throw new AdeError("github", "GitHub pagination limit reached; catalog was not advanced");
@@ -92,7 +116,9 @@ export class GitHubClient {
       const version = await capture("gh", ["--version"], this.cwd, signal);
       status.installed = version.code === 0;
       status.version = version.stdout.split("\n")[0];
-      if (!status.installed) return status;
+      if (!status.installed) {
+        return status;
+      }
 
       // auth status output is never returned or stored: it can contain token metadata.
       const auth = await capture(
@@ -102,7 +128,10 @@ export class GitHubClient {
         signal,
       );
 
-      if (auth.code !== 0) return status;
+      if (auth.code !== 0) {
+        return status;
+      }
+
       status.username = (await this.api<{ login: string }>("user", signal)).login;
       status.connected = true;
     } catch (e) {
@@ -113,8 +142,10 @@ export class GitHubClient {
   };
 
   repository = async (name: string, signal?: AbortSignal): Promise<GitHubRepository> => {
-    if (!/^[\w.-]+\/[\w.-]+$/.test(name) || name.split("/").some((p) => p === "." || p === ".."))
+    if (!/^[\w.-]+\/[\w.-]+$/.test(name) || name.split("/").some((p) => p === "." || p === "..")) {
       throw new AdeError("invalid_input", "Use owner/repository");
+    }
+
     try {
       return await this.api<GitHubRepository>(`repos/${name}`, signal);
     } catch {
@@ -126,11 +157,13 @@ export class GitHubClient {
         signal: signal || AbortSignal.timeout(30000),
       });
 
-      if (!response.ok)
+      if (!response.ok) {
         throw new AdeError(
           "github",
           `Cannot resolve ${name} (${response.status}); connect GitHub for private repositories`,
         );
+      }
+
       return response.json() as Promise<GitHubRepository>;
     }
   };

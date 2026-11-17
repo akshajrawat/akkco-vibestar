@@ -102,7 +102,9 @@ export const flowTaskActivity = (
   runId: string,
 ): TaskActivity | undefined => {
   const run = [...workspace.runs, ...workspace.conversations].find((run) => run.id === runId);
-  if (!run) return;
+  if (!run) {
+    return;
+  }
 
   const attempts = [...workspace.attempts, ...workspace.conversation_attempts].filter(
     (attempt) => attempt.run_id === run.id && attempt.configuration.node.type !== "approval",
@@ -132,14 +134,23 @@ export const legacyTaskActivity = (detail: Detail): TaskActivity => ({
 
 /** Union recorded execution intervals so parallel agents and idle approval time are not double counted. */
 export const taskExecutionDuration = (activity: TaskActivity | undefined, now: number) => {
-  if (!activity?.intervals.length) return;
+  if (!activity?.intervals.length) {
+    return;
+  }
+
   const intervals: [number, number][] = [];
 
   for (const interval of activity.intervals) {
-    if (!interval.end && !activity.executing) return;
+    if (!interval.end && !activity.executing) {
+      return;
+    }
+
     const start = Date.parse(interval.start);
     const end = interval.end ? Date.parse(interval.end) : now;
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end > now) return;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end > now) {
+      return;
+    }
+
     intervals.push([start, end]);
   }
 
@@ -153,7 +164,13 @@ export const taskExecutionDuration = (activity: TaskActivity | undefined, now: n
   }
 
   const seconds = Math.floor(elapsed / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  }
+
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 };

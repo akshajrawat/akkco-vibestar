@@ -39,8 +39,14 @@ const ConversationSurface = ({
 
   const alignOutput = useCallback(() => {
     const element = scroll.current;
-    if (!element || element.closest("[hidden]")) return;
-    if (position.current.follow) element.scrollTop = element.scrollHeight;
+    if (!element || element.closest("[hidden]")) {
+      return;
+    }
+
+    if (position.current.follow) {
+      element.scrollTop = element.scrollHeight;
+    }
+
     position.current.top = element.scrollTop;
   }, []);
 
@@ -54,22 +60,35 @@ const ConversationSurface = ({
 
   useLayoutEffect(() => {
     const element = scroll.current;
-    if (!element || view.expandedTool) return;
-    if (position.current.follow) alignOutput();
-    else element.scrollTop = position.current.top;
+    if (!element || view.expandedTool) {
+      return;
+    }
+
+    if (position.current.follow) {
+      alignOutput();
+    } else {
+      element.scrollTop = position.current.top;
+    }
+
     setAway(!position.current.follow);
   }, [revision, view.expandedTool, alignOutput]);
 
   useLayoutEffect(() => {
     position.current.follow = view.chatFollow;
-    if (view.chatFollow) alignOutput();
+    if (view.chatFollow) {
+      alignOutput();
+    }
+
     setAway(!view.chatFollow);
   }, [view.chatFollow, alignOutput]);
 
   useLayoutEffect(() => {
     const element = scroll.current;
     const body = content.current;
-    if (!element || !body) return;
+    if (!element || !body) {
+      return;
+    }
+
     let frame = 0;
 
     const observer =
@@ -90,8 +109,9 @@ const ConversationSurface = ({
                 previousLayout.current?.empty &&
                 element.parentElement?.classList.contains("chat-draft") &&
                 composerBounds
-              )
+              ) {
                 previousLayout.current = { empty: true, rect: composerBounds };
+              }
 
               if (position.current.follow && !element.closest("[hidden]")) {
                 alignOutput();
@@ -101,7 +121,10 @@ const ConversationSurface = ({
 
     observer?.observe(body);
     observer?.observe(element);
-    if (composerLane.current) observer?.observe(composerLane.current);
+    if (composerLane.current) {
+      observer?.observe(composerLane.current);
+    }
+
     return () => {
       observer?.disconnect();
       cancelAnimationFrame(frame);
@@ -113,7 +136,10 @@ const ConversationSurface = ({
   // Keep the composer transition from the empty workspace responsive to reduced motion.
   useLayoutEffect(() => {
     const lane = composerLane.current;
-    if (!lane) return;
+    if (!lane) {
+      return;
+    }
+
     const rect = lane.getBoundingClientRect();
     const previous = previousLayout.current;
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -147,7 +173,10 @@ const ConversationSurface = ({
         tabIndex={0}
         aria-label="Conversation"
         onScroll={(event) => {
-          if (view.expandedTool) return;
+          if (view.expandedTool) {
+            return;
+          }
+
           const element = event.currentTarget;
           const follow = element.scrollHeight - element.scrollTop - element.clientHeight <= 32;
 
@@ -168,7 +197,10 @@ const ConversationSurface = ({
           title="Jump to latest"
           onClick={() => {
             const element = scroll.current;
-            if (!element) return;
+            if (!element) {
+              return;
+            }
+
             position.current.follow = true;
             element.scrollTop = element.scrollHeight;
             position.current.top = element.scrollTop;

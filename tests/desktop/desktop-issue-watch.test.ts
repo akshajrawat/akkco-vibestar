@@ -120,12 +120,13 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
     const cli = join(dir, "blocked-cli");
     await mkdir(home);
     await mkdir(cli);
-    for (const name of ["codex", "agy", "gh"])
+    for (const name of ["codex", "agy", "gh"]) {
       await writeFile(
         join(cli, name),
         "#!/bin/sh\necho 'Real provider/GitHub CLI disabled in fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
 
     const app = await _electron.launch({
       executablePath: require("electron") as string,
@@ -395,7 +396,7 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
             exact: true,
           })
           .count()
-      )
+      ) {
         await page
           .getByRole("button", {
             name: "Dismiss notification",
@@ -403,6 +404,8 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
           })
           .first()
           .click();
+      }
+
       await page.getByRole("button", { name: "Watch actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
       await page.getByRole("dialog", { name: "Edit Issue Watch" }).waitFor();
@@ -525,7 +528,10 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
       expect(provider.calls).toBe(3);
       expect(fixture.service.store.get(watch.id).last_complete_scan_id).toBe(second.id);
 
-      for (let number = 20; number < 40; number++) fixture.issues.set(number, githubIssue(number));
+      for (let number = 20; number < 40; number++) {
+        fixture.issues.set(number, githubIssue(number));
+      }
+
       const batched = await fixture.create();
       await page.reload();
       await page.getByRole("button", { name: "Issues", exact: true }).click();
@@ -614,19 +620,25 @@ it.skipIf(process.env.VIBESTAR_WATCH_DESKTOP_TEST !== "1")(
         .then((page) => page.screenshot({ path: join(screenshots, "final-state.png") }))
         .catch(() => {});
 
-      if (forward) fixture.engine.off("event", forward);
+      if (forward) {
+        fixture.engine.off("event", forward);
+      }
+
       await app.close();
       await rpc.close();
       await fixture.engine.close();
-      if (process.env.VIBESTAR_KEEP_EVIDENCE === "1")
+      if (process.env.VIBESTAR_KEEP_EVIDENCE === "1") {
         await cp(
           join(fixture.dir, "data", "state", "vibestar.sqlite"),
           join(evidence, "fixture.sqlite"),
         );
+      }
+
       await fixture.close();
       vi.restoreAllMocks();
-      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1")
+      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1") {
         await rm(evidence, { recursive: true, force: true });
+      }
     }
   },
   120000,

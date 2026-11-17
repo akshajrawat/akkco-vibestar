@@ -16,11 +16,16 @@ export const availabilityState = (
   candidate: Pick<WatchCandidate, "claim_state" | "classification" | "uncertainty" | "eligible">,
   provisional: boolean,
 ) => {
-  if (candidate.classification === "not_rechecked") return "eligibility_uncertain";
+  if (candidate.classification === "not_rechecked") {
+    return "eligibility_uncertain";
+  }
+
   if (
     candidate.claim_state === "candidate_for_claim_request" &&
     (provisional || candidate.uncertainty.length > 0)
-  )
+  ) {
     return "eligibility_uncertain";
+  }
+
   return candidate.claim_state;
 };

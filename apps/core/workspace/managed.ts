@@ -14,12 +14,16 @@ const location = async (root: string, task: WorkspaceAssignment) => {
     !/^[a-f0-9]{8}-[a-f0-9-]{27}$/i.test(task.id) ||
     task.branch_name ||
     task.workspace_mode
-  )
+  ) {
     throw new AdeError("ownership", "This task is not an owned repository-free workspace.");
+  }
+
   const owner = await managedPath(root, join("workspaces", task.id));
   const files = join(owner, "files");
-  if (task.worktree_path && task.worktree_path !== files)
+  if (task.worktree_path && task.worktree_path !== files) {
     throw new AdeError("ownership", "The managed task workspace identity changed.");
+  }
+
   return { owner, files };
 };
 
@@ -33,20 +37,29 @@ export const prepareManagedWorkspace = async (root: string, task: Task) => {
     await mkdir(owner, { mode: 0o700 });
     created = true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw error;
+    }
   }
 
   await managedPath(root, owner);
-  if (created) await writeWorktreeOwner(owner, "vibestar-task-owner", task.id);
-  if ((await readWorktreeOwner(owner, "vibestar-task-owner")) !== task.id)
+  if (created) {
+    await writeWorktreeOwner(owner, "vibestar-task-owner", task.id);
+  }
+
+  if ((await readWorktreeOwner(owner, "vibestar-task-owner")) !== task.id) {
     throw new AdeError(
       "ownership",
       "Unknown managed workspace contents were preserved. Inspect their owner before retrying.",
     );
+  }
+
   await managedPath(root, files);
 
   await mkdir(files, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== "EEXIST") throw error;
+    if (error.code !== "EEXIST") {
+      throw error;
+    }
   });
 
   const prepared = { ...task, worktree_path: files };
@@ -59,11 +72,15 @@ export const assertManagedWorkspace = async (root: string, task: WorkspaceAssign
   if (
     task.worktree_path !== files ||
     (await readWorktreeOwner(owner, "vibestar-task-owner")) !== task.id
-  )
+  ) {
     throw new AdeError("ownership", "Managed workspace ownership could not be proved.");
+  }
+
   await managedPath(root, files);
-  if (!(await lstat(files)).isDirectory() || (await realpath(files)) !== files)
+  if (!(await lstat(files)).isDirectory() || (await realpath(files)) !== files) {
     throw new AdeError("ownership", "Managed workspace is not its canonical directory.");
+  }
+
   return files;
 };
 
@@ -78,11 +95,13 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
     const names = (await readdir(directory)).sort();
     for (const name of names) {
       entries++;
-      if (entries > 10000)
+      if (entries > 10000) {
         throw new AdeError(
           "fingerprint",
           "Managed workspace exceeds the 10,000-entry integrity limit.",
         );
+      }
+
       const path = await managedPath(root, join(directory, name));
       const metadata = await lstat(path, { bigint: true });
       hash.update(JSON.stringify([relative(cwd, path), String(metadata.mode)]));
@@ -91,17 +110,21 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
         continue;
       }
 
-      if (!metadata.isFile() || metadata.nlink !== 1n)
+      if (!metadata.isFile() || metadata.nlink !== 1n) {
         throw new AdeError(
           "ownership",
           "Managed workspace integrity cannot follow links or special files.",
         );
+      }
+
       bytes += Number(metadata.size);
-      if (bytes > 64 * 1024 * 1024)
+      if (bytes > 64 * 1024 * 1024) {
         throw new AdeError(
           "fingerprint",
           "Managed workspace exceeds the 64 MiB integrity limit. Reduce its contents before running an agent.",
         );
+      }
+
       const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
       const fileHash = createHash("sha256");
       try {
@@ -111,16 +134,23 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
           before.nlink !== 1n ||
           before.ino !== metadata.ino ||
           before.dev !== metadata.dev
-        )
+        ) {
           throw new AdeError("ownership", "A workspace file changed identity during inspection.");
+        }
+
         const buffer = Buffer.alloc(65536);
         let count = 0;
         while (true) {
           const read = await handle.read(buffer, 0, buffer.length, null);
-          if (!read.bytesRead) break;
+          if (!read.bytesRead) {
+            break;
+          }
+
           count += read.bytesRead;
-          if (count > Number(metadata.size))
+          if (count > Number(metadata.size)) {
             throw new AdeError("fingerprint", "A workspace file changed during inspection.");
+          }
+
           fileHash.update(buffer.subarray(0, read.bytesRead));
         }
 
@@ -130,16 +160,19 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
           before.mtimeNs !== after.mtimeNs ||
           before.ctimeNs !== after.ctimeNs ||
           count !== Number(metadata.size)
-        )
+        ) {
           throw new AdeError("fingerprint", "A workspace file changed during inspection.");
+        }
+
         hash.update(fileHash.digest("hex"));
       } finally {
         await handle.close();
       }
     }
 
-    if (JSON.stringify(names) !== JSON.stringify((await readdir(directory)).sort()))
+    if (JSON.stringify(names) !== JSON.stringify((await readdir(directory)).sort())) {
       throw new AdeError("fingerprint", "Workspace entries changed during inspection.");
+    }
   };
 
   await visit(cwd);

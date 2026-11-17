@@ -104,39 +104,53 @@ export class PRAnalysis {
           .map((source) => `New or edited ${source.type}: @${source.author} · ${source.id}`)
       : ["Initial analysis"];
 
-    if (previous?.snapshot && previous.snapshot.headRefOid !== snapshot.headRefOid)
+    if (previous?.snapshot && previous.snapshot.headRefOid !== snapshot.headRefOid) {
       session.changes.push("PR head changed; a new commit alone does not prove a fix.");
-    if (previous?.snapshot && previous.snapshot.baseRefOid !== snapshot.baseRefOid)
+    }
+
+    if (previous?.snapshot && previous.snapshot.baseRefOid !== snapshot.baseRefOid) {
       session.changes.push("PR base changed.");
+    }
+
     if (
       previous?.snapshot &&
       (previous.snapshot.state !== snapshot.state ||
         previous.snapshot.reviewDecision !== snapshot.reviewDecision ||
         previous.snapshot.mergeable !== snapshot.mergeable)
-    )
+    ) {
       session.changes.push("PR lifecycle, review decision or mergeability changed.");
+    }
+
     if (
       previous?.snapshot &&
       JSON.stringify(previous.snapshot.checks) !== JSON.stringify(snapshot.checks)
-    )
+    ) {
       session.changes.push("CI/check status changed.");
+    }
+
     if (
       previous?.snapshot &&
       discussionEntries(previous.snapshot).some(
         (old) => !sources.some((source) => source.id === old.id),
       )
-    )
+    ) {
       session.changes.push("Discussion items removed or unavailable.");
-    if (!session.changes.length)
+    }
+
+    if (!session.changes.length) {
       session.changes.push("No discussion changes; context/status inspected again.");
+    }
+
     session.phase = "Assessing review coverage";
     this.save(session);
 
     const chunks = (value: string) => {
       const points = Array.from(value);
       const result = [];
-      for (let i = 0; i < points.length; i += 12000)
+      for (let i = 0; i < points.length; i += 12000) {
         result.push(points.slice(i, i + 12000).join(""));
+      }
+
       return result.length ? result : [""];
     };
 
@@ -288,10 +302,11 @@ export class PRAnalysis {
       const inline = Buffer.byteLength(inlineContext) <= 96000;
 
       const contextPaths = contextParts.map((_, index) => `context-${index}.txt`);
-      for (const [index, body] of contextParts.entries())
+      for (const [index, body] of contextParts.entries()) {
         await writeFile(join(workspace, directory, contextPaths[index]), body, {
           mode: 0o600,
         });
+      }
 
       await writeFile(
         join(workspace, directory, "manifest.json"),
@@ -338,11 +353,13 @@ export class PRAnalysis {
           seen.has(coverage.sourceId) ||
           new Set(coverage.segmentIds).size !== coverage.segmentIds.length ||
           coverage.segmentIds.some((id) => !source.segments.some((s) => s.id === id))
-        )
+        ) {
           throw new AdeError(
             "analysis_coverage",
             "Analysis contains invalid or duplicated source coverage.",
           );
+        }
+
         seen.add(coverage.sourceId);
       }
 

@@ -31,21 +31,26 @@ export class CommandExecution {
       nodeAttemptId?: string;
     },
   ) => {
-    if (!argv.length || argv.length > 100 || argv.some((s) => typeof s !== "string"))
+    if (!argv.length || argv.length > 100 || argv.some((s) => typeof s !== "string")) {
       throw new AdeError(
         "invalid_input",
         "Provide executable and arguments as a JSON string array",
       );
-    if (!internal && this.host.isActive(id))
+    }
+
+    if (!internal && this.host.isActive(id)) {
       throw new AdeError(
         "invalid_state",
         "Wait for task execution to finish before running a manual command",
       );
+    }
+
     const t = repair || this.host.db.task(id);
     let input: string | undefined;
     if (verification?.nodeAttemptId) {
-      if (repair)
+      if (repair) {
         throw new AdeError("isolation", "Task flow nodes cannot attach repair execution.");
+      }
 
       new FlowRunStore(this.host.db).assertCommandExecution(
         verification.nodeAttemptId,
@@ -56,7 +61,9 @@ export class CommandExecution {
       );
 
       const inputs = new FlowRunStore(this.host.db).attempt(verification.nodeAttemptId).inputs;
-      if (inputs.length) input = `${JSON.stringify({ inputs })}\n`;
+      if (inputs.length) {
+        input = `${JSON.stringify({ inputs })}\n`;
+      }
     }
 
     const cwd = await this.host.git.assertTask(t);
@@ -79,11 +86,12 @@ export class CommandExecution {
         if (
           runs.attempt(verification.nodeAttemptId).workspace_fingerprint !==
           (await this.host.git.fingerprint(t))
-        )
+        ) {
           throw new AdeError(
             "stale_context",
             "The workspace changed after command inputs were captured. Retry explicitly.",
           );
+        }
       }
 
       const invocation = await sandboxInvocation(
@@ -154,12 +162,18 @@ export class CommandExecution {
 
   runCommand = async (id: string, argv: string[], diagnostic = false) => {
     this.host.assertAvailable();
-    if (this.state.taskMaintenance.has(id))
+    if (this.state.taskMaintenance.has(id)) {
       throw new AdeError("busy", "Task data cleanup is running");
-    if (this.host.isActive(id))
+    }
+
+    if (this.host.isActive(id)) {
       throw new AdeError("invalid_state", "Task already has an active process");
-    if (this.state.active.size >= this.host.db.settings().concurrency)
+    }
+
+    if (this.state.active.size >= this.host.db.settings().concurrency) {
       throw new AdeError("busy", "Wait for execution capacity before running another command.");
+    }
+
     const controller = new AbortController();
 
     const output = Promise.resolve().then(() =>

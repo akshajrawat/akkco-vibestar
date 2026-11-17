@@ -16,10 +16,22 @@ const savedCollapse = (section: string) => {
 
 const createdAge = (createdAt: string, now: number) => {
   const seconds = Math.floor((now - Date.parse(createdAt)) / 1000);
-  if (!Number.isFinite(seconds) || seconds < 0) return;
-  if (seconds < 60) return "<1m";
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return;
+  }
+
+  if (seconds < 60) {
+    return "<1m";
+  }
+
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m`;
+  }
+
+  if (seconds < 86400) {
+    return `${Math.floor(seconds / 3600)}h`;
+  }
+
   return `${Math.floor(seconds / 86400)}d`;
 };
 
@@ -63,7 +75,10 @@ export const TaskNavigation = ({
   );
 
   useEffect(() => {
-    if (!ticking) return;
+    if (!ticking) {
+      return;
+    }
+
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [ticking]);
@@ -82,11 +97,16 @@ export const TaskNavigation = ({
   };
 
   useEffect(() => {
-    if (!menu) return;
+    if (!menu) {
+      return;
+    }
+
     surface.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
 
     const dismiss = (e: MouseEvent) => {
-      if (!surface.current?.contains(e.target as Node)) setMenu(undefined);
+      if (!surface.current?.contains(e.target as Node)) {
+        setMenu(undefined);
+      }
     };
 
     document.addEventListener("mousedown", dismiss);
@@ -94,8 +114,11 @@ export const TaskNavigation = ({
   }, [menu]);
 
   const report = (error: unknown) => {
-    if (onError) onError(errorMessage(error));
-    else setError(errorMessage(error));
+    if (onError) {
+      onError(errorMessage(error));
+    } else {
+      setError(errorMessage(error));
+    }
   };
 
   const action = (operation: () => Promise<unknown>) => {
@@ -125,8 +148,13 @@ export const TaskNavigation = ({
   const search = query.trim().toLowerCase();
 
   const visible = tasks.filter((task) => {
-    if (task.archived && !archived) return false;
-    if (!search) return true;
+    if (task.archived && !archived) {
+      return false;
+    }
+
+    if (!search) {
+      return true;
+    }
 
     const repository = repositories.find((repository) => repository.id === task.repo_id);
     const state = states.get(task.id)!;
@@ -152,8 +180,12 @@ export const TaskNavigation = ({
 
   const toggle = (section: "tasks" | "working") => {
     const value = !(section === "tasks" ? tasksCollapsed : workingCollapsed);
-    if (section === "tasks") setTasksCollapsed(value);
-    else setWorkingCollapsed(value);
+    if (section === "tasks") {
+      setTasksCollapsed(value);
+    } else {
+      setWorkingCollapsed(value);
+    }
+
     try {
       localStorage.setItem(`vibestar.sidebar.${section}Collapsed`, String(value));
     } catch {
@@ -323,7 +355,10 @@ export const TaskNavigation = ({
                 close();
               }
 
-              if (e.key === "Tab") close();
+              if (e.key === "Tab") {
+                close();
+              }
+
               if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
                 e.preventDefault();
 
@@ -375,7 +410,9 @@ export const TaskNavigation = ({
               disabled={!task.issue_url}
               onClick={() => {
                 const url = task.issue_url;
-                if (url) action(() => navigator.clipboard.writeText(url));
+                if (url) {
+                  action(() => navigator.clipboard.writeText(url));
+                }
               }}
             >
               Copy issue URL

@@ -45,7 +45,7 @@ it("rejects retired task execution endpoints without mutating task history or st
       "task.verification.fix",
       "task.verification.reviewPreview",
       "task.verification.continueReview",
-    ])
+    ]) {
       await expect(
         rpc.call(method, {
           id: task.id,
@@ -54,6 +54,8 @@ it("rejects retired task execution endpoints without mutating task history or st
           confirmed: true,
         }),
       ).rejects.toMatchObject({ kind: "invalid_method" });
+    }
+
     expect(engine.db.detail(task.id)).toEqual(original);
     expect(engine.db.all("SELECT id FROM flow_runs")).toEqual([]);
     expect(engine.db.all("SELECT id FROM agent_runs")).toEqual([]);

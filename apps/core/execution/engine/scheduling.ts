@@ -34,10 +34,12 @@ export class EngineScheduling {
 
   withStorageMaintenance = async <T>(operation: () => Promise<T>) => {
     const blockers = this.cleanupBlockers();
-    if (blockers.length)
+    if (blockers.length) {
       throw new AdeError("busy", "Storage cleanup is waiting for active operations to finish.", {
         blockers,
       });
+    }
+
     this.state.maintenance = true;
     try {
       return await operation();
@@ -60,13 +62,17 @@ export class EngineScheduling {
 
     const blockers: ActivityBlocker[] = [];
     for (const [id, activity] of this.state.active) {
-      if (activity.taskId && this.state.activities.has(`git:${activity.taskId}`)) continue;
+      if (activity.taskId && this.state.activities.has(`git:${activity.taskId}`)) {
+        continue;
+      }
+
       if (
         id.startsWith("utility:") &&
         (this.state.activities.has(`pr-watch:${id.slice(8)}`) ||
           this.state.activities.has(`issue-watch:${id.slice(8)}`))
-      )
+      ) {
         continue;
+      }
 
       blockers.push({
         id: `run:${id}`,
@@ -80,7 +86,9 @@ export class EngineScheduling {
     }
 
     for (const [id, activity] of this.state.interactive) {
-      if (this.state.activities.has(`git:${id}`)) continue;
+      if (this.state.activities.has(`git:${id}`)) {
+        continue;
+      }
 
       blockers.push({
         id: `terminal:${id}`,
@@ -91,9 +99,12 @@ export class EngineScheduling {
       });
     }
 
-    for (const { blocker } of this.state.activities.values()) blockers.push(blocker);
+    for (const { blocker } of this.state.activities.values()) {
+      blockers.push(blocker);
+    }
+
     for (const { run } of this.operations.queuedFlows?.() || []) {
-      if (!this.state.active.has(run.task_id))
+      if (!this.state.active.has(run.task_id)) {
         blockers.push({
           id: `flow:${run.id}`,
           kind: "task",
@@ -101,16 +112,19 @@ export class EngineScheduling {
           label: "Viber flow is queued",
           stoppable: true,
         });
+      }
     }
 
-    if (this.state.maintenance)
+    if (this.state.maintenance) {
       blockers.push({
         id: "storage-maintenance",
         kind: "maintenance",
         label: "Storage cleanup is already running",
         stoppable: false,
       });
-    for (const [id, activity] of this.state.taskMaintenance)
+    }
+
+    for (const [id, activity] of this.state.taskMaintenance) {
       blockers.push({
         id: `cleanup:${id}`,
         kind: "maintenance",
@@ -118,14 +132,19 @@ export class EngineScheduling {
         label: `${label(id)} · ${activity}`,
         stoppable: false,
       });
-    if (!taskId)
-      for (const [index, description] of [...this.state.repositoryOperations.values()].entries())
+    }
+
+    if (!taskId) {
+      for (const [index, description] of [...this.state.repositoryOperations.values()].entries()) {
         blockers.push({
           id: `repository-operation:${index}`,
           kind: "repository",
           label: description,
           stoppable: false,
         });
+      }
+    }
+
     return blockers.filter(
       (b) => !taskId || b.task_id === taskId || b.id === "storage-maintenance",
     );
@@ -133,10 +152,12 @@ export class EngineScheduling {
 
   trackActivity = (blocker: ActivityBlocker, stop: () => Promise<void>) => {
     this.assertAvailable();
-    if (blocker.task_id && this.state.taskMaintenance.has(blocker.task_id))
+    if (blocker.task_id && this.state.taskMaintenance.has(blocker.task_id)) {
       throw new AdeError("busy", "Task data cleanup is running", {
         blockers: this.cleanupBlockers(blocker.task_id),
       });
+    }
+
     this.state.activities.set(blocker.id, { blocker, stop });
     this.host.changed();
     return () => {
@@ -158,7 +179,9 @@ export class EngineScheduling {
         active.controller.abort();
         await active.promise;
       }
-    } else await this.state.activities.get(id)?.stop();
+    } else {
+      await this.state.activities.get(id)?.stop();
+    }
   };
 
   withTaskMaintenance = async <T>(
@@ -168,12 +191,14 @@ export class EngineScheduling {
   ) => {
     this.assertAvailable();
     const blockers = this.cleanupBlockers(id);
-    if (blockers.length)
+    if (blockers.length) {
       throw new AdeError(
         "busy",
         "Task data cleanup is waiting for this task's active operations to finish.",
         { blockers },
       );
+    }
+
     this.state.taskMaintenance.set(id, activity);
     try {
       return await operation();
@@ -185,11 +210,27 @@ export class EngineScheduling {
   };
 
   assertAvailable = () => {
-    if (this.state.maintenance || this.state.closed)
+    if (this.state.maintenance || this.state.closed) {
       throw new AdeError(
         "busy",
         "Vibestar storage is being maintained. Try again when it finishes.",
       );
+    }
+  };
+
+  assertExecutionSlot = (key: string, taskId?: string) => {
+    this.assertAvailable();
+    if (
+      this.state.active.has(key) ||
+      this.state.interactive.has(taskId || key) ||
+      this.state.taskMaintenance.has(taskId || key) ||
+      this.state.active.size >= this.host.db.settings().concurrency
+    ) {
+      throw new AdeError(
+        "busy",
+        "The configured execution slots are occupied. Retry this action explicitly when a slot is available.",
+      );
+    }
   };
 
   withExecutionSlot = async <T>(
@@ -199,17 +240,7 @@ export class EngineScheduling {
     run: (signal: AbortSignal) => Promise<T>,
     taskId?: string,
   ) => {
-    this.assertAvailable();
-    if (
-      this.state.active.has(key) ||
-      this.state.interactive.has(taskId || key) ||
-      this.state.taskMaintenance.has(taskId || key) ||
-      this.state.active.size >= this.host.db.settings().concurrency
-    )
-      throw new AdeError(
-        "busy",
-        "The configured execution slots are occupied. Retry this action explicitly when a slot is available.",
-      );
+    this.assertExecutionSlot(key, taskId);
     const controller = new AbortController();
     const result = Promise.resolve().then(() => run(AbortSignal.any([signal, controller.signal])));
 
@@ -234,10 +265,14 @@ export class EngineScheduling {
 
   acquireTaskWorkspace = (id: string, label: string) => {
     this.assertAvailable();
-    if (this.state.taskMaintenance.has(id))
+    if (this.state.taskMaintenance.has(id)) {
       throw new AdeError("busy", "Task data cleanup is running");
-    if (this.host.isActive(id))
+    }
+
+    if (this.host.isActive(id)) {
       throw new AdeError("busy", "Wait for task execution to finish before opening its terminal");
+    }
+
     this.state.interactive.set(id, label);
     this.host.changed(id);
     return () => {
@@ -250,12 +285,18 @@ export class EngineScheduling {
   acquireTerminal = (id: string) => this.acquireTaskWorkspace(id, "terminal session");
 
   drain = async () => {
-    if (this.state.draining || this.state.closed || this.state.maintenance) return;
+    if (this.state.draining || this.state.closed || this.state.maintenance) {
+      return;
+    }
+
     this.state.draining = true;
     try {
       this.operations.drainFlows?.();
     } catch (error) {
-      if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
+      if (!(error instanceof AdeError && error.kind === "corrupt_record")) {
+        throw error;
+      }
+
       this.host.publish({ event: "core.error", text: error.message });
     } finally {
       this.state.draining = false;

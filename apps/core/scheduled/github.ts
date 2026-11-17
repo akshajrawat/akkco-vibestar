@@ -17,8 +17,10 @@ export class GitHubMonitor {
   private gh = (args: string[], signal: AbortSignal) => this.client.gh(args, signal);
 
   discover = async (repository: string, signal: AbortSignal) => {
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repository))
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) {
       throw new AdeError("invalid_input", "Use owner/repository");
+    }
+
     return JSON.parse(
       await this.gh(
         [
@@ -104,8 +106,9 @@ export class GitHubMonitor {
     const linkedUrls = new Set<string>();
     for (const match of String(metadata.body || pr.body || "").matchAll(
       /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/[1-9]\d*/g,
-    ))
+    )) {
       linkedUrls.add(match[0]);
+    }
 
     const [comments, reviews, inline, viewer] = await Promise.all([
       pages(`${base}/issues/${ref.number}/comments`, "Reading conversation"),
@@ -119,8 +122,10 @@ export class GitHubMonitor {
     let baseRefOid = "";
     let threadPages = 0;
     do {
-      if (++threadPages > 100)
+      if (++threadPages > 100) {
         throw new AdeError("github", "Review thread pagination exceeded its safety limit");
+      }
+
       progress?.(`Reading review threads · page ${threadPages}`);
       const query = `query($owner:String!,$repo:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$repo){pullRequest(number:$number){baseRefOid closingIssuesReferences(first:100){nodes{url} pageInfo{hasNextPage endCursor}} reviewThreads(first:100,after:$cursor){nodes{id isResolved isOutdated path line startLine comments(first:100){nodes{id body author{login} createdAt updatedAt url} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}}`;
 
@@ -143,11 +148,16 @@ export class GitHubMonitor {
         ),
       );
 
-      if (result.errors)
+      if (result.errors) {
         throw new AdeError("github", "Review thread inspection failed; snapshot was not advanced");
+      }
+
       baseRefOid = result.data.repository.pullRequest.baseRefOid;
       const linked = result.data.repository.pullRequest.closingIssuesReferences;
-      for (const issue of linked?.nodes || []) linkedUrls.add(issue.url);
+      for (const issue of linked?.nodes || []) {
+        linkedUrls.add(issue.url);
+      }
+
       if (linked?.pageInfo.hasNextPage && !coverage.missing.includes("linked issue references")) {
         coverage.complete = false;
         coverage.missing.push("linked issue references");
@@ -181,13 +191,17 @@ export class GitHubMonitor {
         let info = t.comments.pageInfo;
         let count = 0;
         while (info.hasNextPage) {
-          if (!info.endCursor)
+          if (!info.endCursor) {
             throw new AdeError(
               "github",
               "Thread comment pagination did not advance; context is incomplete.",
             );
-          if (++count > 100)
+          }
+
+          if (++count > 100) {
             throw new AdeError("github", "Thread history exceeds the inspection safety limit");
+          }
+
           progress?.(`Reading thread replies · page ${count + 1}`);
 
           const part = JSON.parse(
@@ -206,17 +220,21 @@ export class GitHubMonitor {
             ),
           );
 
-          if (part.errors)
+          if (part.errors) {
             throw new AdeError(
               "github",
               "Thread history inspection failed; snapshot was not advanced",
             );
+          }
+
           const next = part.data.node.comments;
-          if (next.pageInfo.hasNextPage && next.pageInfo.endCursor === info.endCursor)
+          if (next.pageInfo.hasNextPage && next.pageInfo.endCursor === info.endCursor) {
             throw new AdeError(
               "github",
               "Thread comment pagination did not advance; context is incomplete.",
             );
+          }
+
           nodes.push(...next.nodes);
           info = next.pageInfo;
         }
@@ -237,11 +255,13 @@ export class GitHubMonitor {
       if (
         page.pageInfo.hasNextPage &&
         (!page.pageInfo.endCursor || page.pageInfo.endCursor === cursor)
-      )
+      ) {
         throw new AdeError(
           "github",
           "Review thread pagination did not advance; context is incomplete.",
         );
+      }
+
       cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
     } while (cursor);
 
@@ -315,7 +335,10 @@ export class GitHubMonitor {
 
     for (const thread of threads) {
       for (const comment of thread.comments || []) {
-        if (discussion.some((source) => source.id === comment.id)) continue;
+        if (discussion.some((source) => source.id === comment.id)) {
+          continue;
+        }
+
         const raw = object(comment);
 
         discussion.push({
@@ -409,10 +432,12 @@ export class GitHubMonitor {
     }
 
     const missingPatches = files.filter((f) => typeof f.patch !== "string");
-    if (missingPatches.length)
+    if (missingPatches.length) {
       coverage.warnings.push(
         `Patches unavailable for ${missingPatches.length} binary or omitted files; code evidence may be incomplete.`,
       );
+    }
+
     const linkedIssues: Record<string, unknown>[] = [];
     for (const url of [...linkedUrls].slice(0, 20)) {
       progress?.(
@@ -431,7 +456,9 @@ export class GitHubMonitor {
         null as Record<string, unknown> | null,
       );
 
-      if (context) linkedIssues.push(context);
+      if (context) {
+        linkedIssues.push(context);
+      }
     }
 
     if (linkedUrls.size > 20) {

@@ -22,11 +22,13 @@ it.each([false, true])(
       ...fixture,
       invocation: (request) => {
         const invocation = fixture.invocation(request);
-        if (failProvider)
+        if (failProvider) {
           invocation.args[1] = invocation.args[1].replace(
             "emit({ type: 'turn.completed' });",
             "emit({ type: 'turn.completed' }); process.exitCode = 9;",
           );
+        }
+
         return invocation;
       },
     }));
@@ -52,8 +54,10 @@ it.each([false, true])(
         exit_code: 130,
       });
 
-      if (!failProvider)
+      if (!failProvider) {
         expect(JSON.parse(attempt.output!).testsPassed).toContain("Generated table");
+      }
+
       expect(detail.runs).toHaveLength(1);
       expect(detail.task).toMatchObject({ status: "not_started", stage: 0 });
     } finally {

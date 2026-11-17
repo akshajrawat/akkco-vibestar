@@ -39,7 +39,10 @@ export const resolveNodeInputs = (
 
   const node = runs.definition(run.id).nodes.find((entry) => entry.id === nodeId);
 
-  if (!node) throw new AdeError("isolation", "The input target is outside this flow revision.");
+  if (!node) {
+    throw new AdeError("isolation", "The input target is outside this flow revision.");
+  }
+
   return resolveBoundInputs(db, run.task_id, run.snapshot.goal, node, runs.results(runId));
 };
 
@@ -55,20 +58,23 @@ export const resolveBoundInputs = (
 
   const resolved = node.inputs.map((binding) => {
     let content: string;
-    if (binding.kind === "task-goal") content = goal;
-    else if (binding.kind === "task-brief")
+    if (binding.kind === "task-goal") {
+      content = goal;
+    } else if (binding.kind === "task-brief") {
       content = JSON.stringify({
         scope_mode: task.scope_mode,
         claimed_scope: task.claimed_scope,
         notes: task.notes,
         reviewed_summary: task.workflow_start?.summary || null,
       });
-    else if (binding.kind === "repository") {
-      if (!task.repo_id)
+    } else if (binding.kind === "repository") {
+      if (!task.repo_id) {
         throw new AdeError(
           "context_unavailable",
           "This node selected repository context, but the task has no repository.",
         );
+      }
+
       const repository = db.repository(task.repo_id);
 
       content = JSON.stringify({
@@ -82,11 +88,12 @@ export const resolveBoundInputs = (
         workspace: task.worktree_path,
       });
     } else if (binding.kind === "issue") {
-      if (!task.issue_url || !task.issue_number)
+      if (!task.issue_url || !task.issue_number) {
         throw new AdeError(
           "context_unavailable",
           "This node selected issue context, but the task has no issue.",
         );
+      }
 
       content = JSON.stringify({
         url: task.issue_url,
@@ -102,15 +109,18 @@ export const resolveBoundInputs = (
         taskId,
       )[0];
 
-      if (!message)
+      if (!message) {
         throw new AdeError("isolation", "Selected conversation messages must belong to this task.");
+      }
+
       content = JSON.stringify(message);
     } else if (binding.kind === "command-evidence") {
       if (
         binding.run_id !== null &&
         !db.all("SELECT id FROM agent_runs WHERE id=? AND task_id=?", binding.run_id, taskId).length
-      )
+      ) {
         throw new AdeError("isolation", "Selected command evidence must belong to this task.");
+      }
 
       content = JSON.stringify({
         observed_commands: db.all(
@@ -127,37 +137,51 @@ export const resolveBoundInputs = (
         taskId,
       )[0];
 
-      if (!artifact || artifact.task_id !== taskId)
+      if (!artifact || artifact.task_id !== taskId) {
         throw new AdeError("isolation", "Selected artifacts must belong to this task.");
+      }
+
       content = artifact.content;
     } else if (binding.kind === "attempt-output" || binding.kind === "attempt-verification") {
       const runs = new FlowRunStore(db);
       const source = runs.attempt(binding.attempt_id);
-      if (runs.run(source.run_id).task_id !== taskId)
+      if (runs.run(source.run_id).task_id !== taskId) {
         throw new AdeError("isolation", "Selected retained results must belong to this task.");
-      if (source.status !== "completed")
+      }
+
+      if (source.status !== "completed") {
         throw new AdeError(
           "context_unavailable",
           "Select a completed retained result; incomplete attempts are not conversation handoffs.",
         );
+      }
+
       if (binding.kind === "attempt-output") {
-        if (source.output === null)
+        if (source.output === null) {
           throw new AdeError("context_unavailable", "The selected attempt has no retained output.");
+        }
+
         content = source.output;
-      } else content = verificationContent(db, taskId, source);
+      } else {
+        content = verificationContent(db, taskId, source);
+      }
     } else {
       const source = attempts.filter((attempt) => attempt.node_id === binding.node_id).at(-1);
-      if (!source || source.status !== "completed")
+      if (!source || source.status !== "completed") {
         throw new AdeError(
           "dependencies",
           "Selected predecessor context requires a completed result.",
         );
+      }
+
       if (binding.kind === "output") {
-        if (source.output === null)
+        if (source.output === null) {
           throw new AdeError(
             "context_unavailable",
             "The selected predecessor has no retained output.",
           );
+        }
+
         content = source.output;
       } else {
         content = verificationContent(db, taskId, source);
@@ -168,10 +192,12 @@ export const resolveBoundInputs = (
   });
 
   const result = ResolvedInputsSchema.safeParse(resolved);
-  if (!result.success)
+  if (!result.success) {
     throw new AdeError(
       "context_limit",
       "Selected context exceeds 128 KiB. Select fewer inputs or artifacts; no context was silently truncated.",
     );
+  }
+
   return result.data;
 };

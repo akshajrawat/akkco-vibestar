@@ -25,12 +25,17 @@ export class AuthSessions {
             ? "gh"
             : null;
 
-    if (!program) throw new AdeError("invalid_input", "Unknown provider");
-    if (this.sessions.size >= 4)
+    if (!program) {
+      throw new AdeError("invalid_input", "Unknown provider");
+    }
+
+    if (this.sessions.size >= 4) {
       throw new AdeError(
         "terminal_limit",
         "Close an existing login session before opening another (maximum 4).",
       );
+    }
+
     const id = randomUUID();
 
     const pty = spawn(
@@ -55,7 +60,10 @@ export class AuthSessions {
       pty,
       stopping: false,
       stop: () => {
-        if (session.stopping) return;
+        if (session.stopping) {
+          return;
+        }
+
         session.stopping = true;
         try {
           pty.kill("SIGHUP");
@@ -65,7 +73,10 @@ export class AuthSessions {
 
         killTimer = setTimeout(() => {
           try {
-            if (process.platform !== "win32") terminateGroup(pty.pid, "SIGKILL");
+            if (process.platform !== "win32") {
+              terminateGroup(pty.pid, "SIGKILL");
+            }
+
             pty.kill("SIGKILL");
           } catch {
             /* Already reaped. */
@@ -82,11 +93,16 @@ export class AuthSessions {
     let limited = false;
 
     const publish = (text: string) => {
-      if (text) this.emit({ event: "auth.output", session_id: id, text });
+      if (text) {
+        this.emit({ event: "auth.output", session_id: id, text });
+      }
     };
 
     pty.onData((text) => {
-      if (limited) return;
+      if (limited) {
+        return;
+      }
+
       try {
         budget.consume(text);
         publish(redactor.push(text));
@@ -98,7 +114,10 @@ export class AuthSessions {
     });
 
     pty.onExit(() => {
-      if (killTimer) clearTimeout(killTimer);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+
       publish(redactor.finish());
       this.sessions.delete(id);
       this.emit({ event: "auth.closed", session_id: id });
@@ -109,8 +128,14 @@ export class AuthSessions {
 
   input = (id: string, text: string) => {
     const session = this.sessions.get(id);
-    if (!session || session.stopping) throw new AdeError("authentication", "Login session ended");
-    if (text.length > 8192) throw new AdeError("invalid_input", "PTY input too large");
+    if (!session || session.stopping) {
+      throw new AdeError("authentication", "Login session ended");
+    }
+
+    if (text.length > 8192) {
+      throw new AdeError("invalid_input", "PTY input too large");
+    }
+
     session.pty.write(text);
   };
 
@@ -119,6 +144,8 @@ export class AuthSessions {
   };
 
   dispose = () => {
-    for (const id of this.sessions.keys()) this.close(id);
+    for (const id of this.sessions.keys()) {
+      this.close(id);
+    }
   };
 }

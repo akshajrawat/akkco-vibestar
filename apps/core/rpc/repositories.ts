@@ -85,8 +85,10 @@ export const callRepositories = async (
 
     case "github.clone.logs": {
       const p = idInput.strict().parse(input);
-      if (!services.github.cloneActivities().some((c) => c.id === p.id))
+      if (!services.github.cloneActivities().some((c) => c.id === p.id)) {
         throw new AdeError("not_found", "Clone activity not found");
+      }
+
       const log = await open(join(e.root, "logs", `clone-${p.id}.log`), "r");
       try {
         const size = (await log.stat()).size;

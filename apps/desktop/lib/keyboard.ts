@@ -11,7 +11,9 @@ export const focusWorkspace = (root: Element | null | undefined) => {
 };
 
 export const containDialogFocus = (event: KeyboardEvent<HTMLElement>) => {
-  if (event.key !== "Tab") return;
+  if (event.key !== "Tab") {
+    return;
+  }
 
   const controls = [
     ...event.currentTarget.querySelectorAll<HTMLElement>(
@@ -28,8 +30,13 @@ export const containDialogFocus = (event: KeyboardEvent<HTMLElement>) => {
 
 export const navigateTabs = (event: KeyboardEvent<HTMLDivElement>) => {
   const target = event.target;
-  if (!(target instanceof HTMLElement) || target.getAttribute("role") !== "tab") return;
-  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  if (!(target instanceof HTMLElement) || target.getAttribute("role") !== "tab") {
+    return;
+  }
+
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+    return;
+  }
 
   const tabs = [
     ...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[role=tab]:not(:disabled)"),

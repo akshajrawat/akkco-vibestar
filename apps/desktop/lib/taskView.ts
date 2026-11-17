@@ -327,8 +327,11 @@ export const updateTaskView = (id: string, update: Partial<TaskView>) => {
 
   try {
     if (update.draft !== undefined || state(id).persistenceError) {
-      if (value.draft) localStorage.setItem(`vibestar.draft.${id}`, value.draft);
-      else localStorage.removeItem(`vibestar.draft.${id}`);
+      if (value.draft) {
+        localStorage.setItem(`vibestar.draft.${id}`, value.draft);
+      } else {
+        localStorage.removeItem(`vibestar.draft.${id}`);
+      }
     }
 
     const layout = {
@@ -346,7 +349,9 @@ export const updateTaskView = (id: string, update: Partial<TaskView>) => {
   }
 
   views.set(id, value);
-  for (const listener of listeners) listener();
+  for (const listener of listeners) {
+    listener();
+  }
 };
 
 export const openWorkspaceTool = (id: string, selected: SecondarySection) => {

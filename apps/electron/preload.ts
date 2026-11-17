@@ -5,7 +5,10 @@ import type { DesktopApi, ElectronWindowApi } from "./contracts";
 const api: DesktopApi = {
   rpc: async (method, params = {}) => {
     const response = await ipcRenderer.invoke("core:rpc", { method, params });
-    if (!response.ok) throw response.error;
+    if (!response.ok) {
+      throw response.error;
+    }
+
     return response.result;
   },
   subscribe: (callback) => {

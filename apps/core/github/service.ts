@@ -50,7 +50,10 @@ export class GitHubService {
 
   cancelClone = async (id: string) => {
     const clone = this.clones.get(id);
-    if (!clone) throw new AdeError("not_found", "Clone activity not found.");
+    if (!clone) {
+      throw new AdeError("not_found", "Clone activity not found.");
+    }
+
     clone.controller.abort();
     await clone.promise;
   };
@@ -63,8 +66,10 @@ export class GitHubService {
           c.activity.repository.toLowerCase() === name.toLowerCase() &&
           ["resolving", "cloning"].includes(c.activity.status),
       )
-    )
+    ) {
       throw new AdeError("busy", "This repository is already being cloned.");
+    }
+
     const id = randomUUID();
     const controller = new AbortController();
 
@@ -120,7 +125,10 @@ export class GitHubService {
           );
 
           await this.engine.prepareClone(repo, controller.signal, undefined, progress);
-          if (controller.signal.aborted) throw new AdeError("cancelled", "Clone cancelled");
+          if (controller.signal.aborted) {
+            throw new AdeError("cancelled", "Clone cancelled");
+          }
+
           repo.connected = true;
           this.engine.db.saveRepository(repo);
           activity.status = "completed";
@@ -134,8 +142,9 @@ export class GitHubService {
             ? "Clone cancelled · incomplete managed checkout removed"
             : "Clone failed";
 
-          if (repositoryId && !this.engine.db.tasks().some((t) => t.repo_id === repositoryId))
+          if (repositoryId && !this.engine.db.tasks().some((t) => t.repo_id === repositoryId)) {
             this.engine.db.run("DELETE FROM repositories WHERE id=?", repositoryId);
+          }
         } finally {
           try {
             await writes;
@@ -164,9 +173,12 @@ export class GitHubService {
     );
 
     this.clones.set(id, { activity, controller, promise });
-    for (const [key, clone] of this.clones)
-      if (this.clones.size > 20 && !["resolving", "cloning"].includes(clone.activity.status))
+    for (const [key, clone] of this.clones) {
+      if (this.clones.size > 20 && !["resolving", "cloning"].includes(clone.activity.status)) {
         this.clones.delete(key);
+      }
+    }
+
     this.engine.changed();
     return activity;
   };
@@ -263,11 +275,12 @@ export class GitHubService {
 
   configure = (input: unknown) => {
     const value = watchSchema.parse(input);
-    if (value.auto_watch || value.verify_codex)
+    if (value.auto_watch || value.verify_codex) {
       throw new AdeError(
         "manual_policy",
         "PR inspection and analysis require an explicit user action. Automatic watching and second-model verification are disabled.",
       );
+    }
 
     this.engine.db.run(
       "INSERT INTO settings VALUES('github_watch',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -317,8 +330,9 @@ export class GitHubService {
           if (
             info.fork &&
             info.parent?.full_name.toLowerCase() === repository.full_name.toLowerCase()
-          )
+          ) {
             fork = info;
+          }
         } catch {
           /* A fork is optional; absence never guesses a relationship. */
         }
@@ -342,8 +356,9 @@ export class GitHubService {
   ) => {
     let metadata = await this.client.repository(name, signal);
     const selectedFork = metadata.fork && metadata.parent ? metadata.clone_url : null;
-    if (metadata.fork && metadata.parent)
+    if (metadata.fork && metadata.parent) {
       metadata = await this.client.repository(metadata.parent.full_name, signal);
+    }
 
     const existing = this.engine.db
       .repositories()
@@ -360,19 +375,29 @@ export class GitHubService {
         !this.cloneActivities().some(
           (a) => a.repository_id === existing.id && a.status === "cloning",
         )
-      )
+      ) {
         return existing;
-      if (managed)
+      }
+
+      if (managed) {
         throw new AdeError(
           "repository_exists",
           `This repository is already registered from ${existing.path}. Connect that checkout explicitly.`,
         );
-      if (!deferred) await this.engine.prepareClone(existing, undefined, localPath);
+      }
+
+      if (!deferred) {
+        await this.engine.prepareClone(existing, undefined, localPath);
+      }
+
       return existing;
     }
 
     const resolved = await this.resolve(metadata.full_name, signal);
-    if (selectedFork) resolved.origin_url = selectedFork;
+    if (selectedFork) {
+      resolved.origin_url = selectedFork;
+    }
+
     return this.engine.register(
       resolved.upstream_url,
       resolved.origin_url,
@@ -392,7 +417,9 @@ export class GitHubService {
       return includeCatalog && !catalogIncluded ? this.sync(true) : result;
     }
 
-    if (this.closed || this.stopping) return Promise.resolve(this.snapshot());
+    if (this.closed || this.stopping) {
+      return Promise.resolve(this.snapshot());
+    }
 
     const release = this.engine.trackActivity(
       {
@@ -436,11 +463,13 @@ export class GitHubService {
       this.engine.changed();
       this.status = await this.client.detect(signal);
       signal.throwIfAborted();
-      if (!this.status.connected || !this.status.username)
+      if (!this.status.connected || !this.status.username) {
         throw new AdeError(
           "github_auth",
           this.status.error || "Connect GitHub through Providers, then retry Refresh PR List.",
         );
+      }
+
       let repos: GitHubRepository[] | undefined;
       if (includeCatalog) {
         this.phase = "Retrieving repository catalog";
@@ -458,7 +487,10 @@ export class GitHubService {
       const urls = new Set(found.map((pr) => pr.url.toLowerCase()));
       const known = this.prs();
       for (const job of this.scheduler.jobs()) {
-        if (known.some((pr) => pr.url.toLowerCase() === job.url.toLowerCase())) continue;
+        if (known.some((pr) => pr.url.toLowerCase() === job.url.toLowerCase())) {
+          continue;
+        }
+
         const ref = parsePullRequest(job.url);
 
         known.push({
@@ -485,7 +517,12 @@ export class GitHubService {
             signal,
           );
         } catch (error) {
-          if (!signal.aborted) for (const pr of missing) this.recordInaccessible(pr, error);
+          if (!signal.aborted) {
+            for (const pr of missing) {
+              this.recordInaccessible(pr, error);
+            }
+          }
+
           throw error;
         }
       }
@@ -516,7 +553,7 @@ export class GitHubService {
 
       this.engine.db.transaction(() => {
         if (repos) {
-          for (const repo of repos)
+          for (const repo of repos) {
             this.engine.db.run(
               "INSERT INTO github_repositories VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET full_name=excluded.full_name,data=excluded.data,synced_at=excluded.synced_at",
               repo.id,
@@ -524,13 +561,20 @@ export class GitHubService {
               JSON.stringify(repo),
               refreshed,
             );
+          }
+
           this.engine.db.run("DELETE FROM github_repositories WHERE synced_at<>?", refreshed);
         }
 
-        for (const value of updates) this.savePR(value);
+        for (const value of updates) {
+          this.savePR(value);
+        }
       });
 
-      for (const value of updates) this.scheduler.discovered(value);
+      for (const value of updates) {
+        this.scheduler.discovered(value);
+      }
+
       this.lastSync = refreshed;
       this.error = null;
     } catch (error) {
@@ -553,8 +597,10 @@ export class GitHubService {
   };
 
   private savePR = (pr: GitHubPullRequest) => {
-    if (pr.task_id && !this.engine.db.tasks().some((t) => t.id === pr.task_id))
+    if (pr.task_id && !this.engine.db.tasks().some((t) => t.id === pr.task_id)) {
       pr = { ...pr, task_id: null };
+    }
+
     return this.engine.db.run(
       "INSERT INTO github_pull_requests VALUES(?,?,?) ON CONFLICT(url) DO UPDATE SET data=excluded.data,updated_at=excluded.updated_at",
       pr.url,
@@ -581,7 +627,10 @@ export class GitHubService {
   close = async () => {
     this.closed = true;
     this.controller.abort();
-    for (const clone of this.clones.values()) clone.controller.abort();
+    for (const clone of this.clones.values()) {
+      clone.controller.abort();
+    }
+
     await Promise.all([...this.clones.values()].map((c) => c.promise));
     await this.running;
   };

@@ -29,8 +29,9 @@ it("rejects retired commit, push and destination methods without executing Git o
       "repair.publish",
       "repair.reconcilePublication",
       "repair.keepLocal",
-    ])
+    ]) {
       await expect(rpc.call(method, {})).rejects.toMatchObject({ kind: "invalid_method" });
+    }
 
     expect(engine.db.all("SELECT id FROM git_finalizations")).toEqual([]);
     expect(engine.db.all("SELECT id FROM repair_publications")).toEqual([]);

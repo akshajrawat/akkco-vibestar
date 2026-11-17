@@ -61,6 +61,7 @@ export const callSystem = async (
           agent_flows: 1,
           flow_continuations: 1,
           viber_conversations: 1,
+          viber_sessions: 1,
           manual_issue_watch: true,
           issue_watch_contract: 1,
           issue_watch_batches: 1,
@@ -82,6 +83,7 @@ export const callSystem = async (
           agent_flows: 1,
           flow_continuations: 1,
           viber_conversations: 1,
+          viber_sessions: 1,
           manual_issue_watch: true,
           issue_watch_contract: 1,
           issue_watch_batches: 1,
@@ -234,7 +236,10 @@ export const callSystem = async (
       if (process.env.WSL_DISTRO_NAME) {
         const windows = await checked("wslpath", ["-w", path], e.root);
         await capture("explorer.exe", [windows], e.root);
-      } else await capture("xdg-open", [path], e.root);
+      } else {
+        await capture("xdg-open", [path], e.root);
+      }
+
       return null;
     }
 

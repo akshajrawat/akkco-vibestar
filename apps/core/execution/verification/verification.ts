@@ -40,8 +40,9 @@ interface VerificationEvidence extends z.infer<typeof VerificationCheckSchema> {
 export const verificationArgv = (command: string) => {
   try {
     const argv: unknown = JSON.parse(command);
-    if (Array.isArray(argv) && argv.length && argv.every((arg) => typeof arg === "string"))
+    if (Array.isArray(argv) && argv.length && argv.every((arg) => typeof arg === "string")) {
       return argv as string[];
+    }
   } catch {
     /* Provider commands commonly arrive as text rather than JSON argv. */
   }
@@ -51,9 +52,15 @@ export const verificationArgv = (command: string) => {
 
 const canonicalArgv = (command: string) => {
   const argv = verificationArgv(verificationCommandText(command));
-  if (argv?.[0].split("/").at(-1) !== "npx") return argv;
+  if (argv?.[0].split("/").at(-1) !== "npx") {
+    return argv;
+  }
+
   const [program, ...args] = argv;
-  while (["--offline", "--no-install"].includes(args[0])) args.shift();
+  while (["--offline", "--no-install"].includes(args[0])) {
+    args.shift();
+  }
+
   return [program, ...args];
 };
 
@@ -62,7 +69,10 @@ const commandKey = (command: string) =>
 
 const commandKind = (command: string) => {
   const words = canonicalArgv(command);
-  if (!words) return "unknown";
+  if (!words) {
+    return "unknown";
+  }
+
   const [program, ...args] = words;
   const executable = program.split("/").at(-1);
   if (
@@ -71,8 +81,10 @@ const commandKind = (command: string) => {
       args[0] === "playwright" &&
       ["install", "install-deps"].includes(args[1])) ||
     (executable === "python" && args[0] === "-m" && args[1] === "pip" && args[2] === "install")
-  )
+  ) {
     return "setup";
+  }
+
   if (
     (executable === "npm" &&
       (args[0] === "test" ||
@@ -84,8 +96,10 @@ const commandKind = (command: string) => {
       (["tsc", "eslint", "vitest"].includes(args[0]) ||
         (args[0] === "playwright" && args[1] === "test"))) ||
     (executable === "git" && args[0] === "diff" && args.includes("--check"))
-  )
+  ) {
     return "check";
+  }
+
   return "unknown";
 };
 
@@ -97,37 +111,54 @@ const applicationError = (output: string) =>
   );
 
 const environmentReason = (output: string) => {
-  if (applicationError(output)) return undefined;
-  if (/\bEROFS\b|read-only file system/i.test(output))
+  if (applicationError(output)) {
+    return undefined;
+  }
+
+  if (/\bEROFS\b|read-only file system/i.test(output)) {
     return "Verification requires a writable filesystem";
+  }
+
   if (
     /AF_UNIX.{0,100}(?:path|socket).{0,50}(?:too long|length)|(?:unix|socket) path.{0,50}too long/i.test(
       output,
     )
-  )
+  ) {
     return "Verification socket path exceeds the platform limit";
-  if (/canceled due to missing packages|could not determine executable to run/i.test(output))
+  }
+
+  if (/canceled due to missing packages|could not determine executable to run/i.test(output)) {
     return "Verification tooling unavailable";
+  }
+
   if (
     /\b(?:EAI_AGAIN|ENOTFOUND)\b|Temporary failure in name resolution|Could not resolve host:/i.test(
       output,
     )
-  )
+  ) {
     return "DNS resolution unavailable";
+  }
+
   if (
     /(?:listen|bind|socket).*\b(?:EPERM|EACCES)\b|(?:operation not permitted|permission denied).*(?:listen|socket)/i.test(
       output,
     )
-  )
+  ) {
     return "Loopback socket denied";
+  }
+
   if (
     /Executable doesn't exist|browser executable (?:missing|not found)|Cannot find (?:module|package).*playwright|playwright.*(?:not installed|unavailable)|browserType\.launch:.*(?:not found|missing)/i.test(
       output,
     )
-  )
+  ) {
     return "Browser tooling unavailable";
-  if (/unsupported platform|platform.*(?:unavailable|not supported)/i.test(output))
+  }
+
+  if (/unsupported platform|platform.*(?:unavailable|not supported)/i.test(output)) {
     return "Platform unavailable";
+  }
+
   return undefined;
 };
 
@@ -150,7 +181,9 @@ export const commandVerification = (
     recognized === "unknown" &&
     applicationError(`${command.stdout || ""}\n${command.stderr || ""}`);
 
-  if (demonstratedFailure) kind = "check";
+  if (demonstratedFailure) {
+    kind = "check";
+  }
 
   const environment = failed
     ? environmentReason(`${command.stdout || ""}\n${command.stderr || ""}`)
@@ -221,14 +254,18 @@ export const verificationSummary = (
   ) => {
     const evidence = commandVerification(command, reported);
     const key = reported && uniqueName ? `name:${reported.name}` : commandKey(command.command);
-    if (evidence.required && evidence.outcome === "failed") priorFailures.set(key, evidence);
-    else if (evidence.outcome === "passed") {
-      for (const [identity, failure] of priorFailures)
+    if (evidence.required && evidence.outcome === "failed") {
+      priorFailures.set(key, evidence);
+    } else if (evidence.outcome === "passed") {
+      for (const [identity, failure] of priorFailures) {
         if (
           identity === key ||
           (failure.command && commandKey(failure.command) === commandKey(command.command))
-        )
+        ) {
           priorFailures.delete(identity);
+        }
+      }
+
       ambiguousFailures.delete(evidence.name);
     }
 
@@ -249,8 +286,10 @@ export const verificationSummary = (
 
     invalidHistory ||= previous.verification !== undefined && !previousChecks.success;
     const previousCommands = new Map<string, VerificationCommand>();
-    for (const command of entry.commands)
+    for (const command of entry.commands) {
       previousCommands.set(commandKey(command.command), command);
+    }
+
     for (const old of previousChecks.success ? previousChecks.data : []) {
       if (old.required || old.kind === "setup") {
         const current =
@@ -269,23 +308,30 @@ export const verificationSummary = (
 
         if (current) {
           current.required ||= old.required;
-          if (old.scope === "repository" || old.scope === "issue") current.scope = old.scope;
-          if (old.kind === "check") current.kind = "check";
+          if (old.scope === "repository" || old.scope === "issue") {
+            current.scope = old.scope;
+          }
+
+          if (old.kind === "check") {
+            current.kind = "check";
+          }
+
           if (!currentTemplates.has(current)) {
             current.command = old.command;
             current.detail = old.detail;
             current.prerequisite = old.prerequisite;
             current.outcome = old.kind === "setup" ? old.outcome : "not_run";
           }
-        } else
+        } else {
           reportedChecks.push({
             ...old,
             outcome: old.kind === "setup" ? old.outcome : "not_run",
           });
+        }
       }
 
       const command = old.command ? previousCommands.get(commandKey(old.command)) : undefined;
-      if (!command && old.required && old.outcome === "failed")
+      if (!command && old.required && old.outcome === "failed") {
         priorFailures.set(
           previousChecks.success &&
             previousChecks.data.filter((check) => check.name === old.name).length === 1
@@ -295,6 +341,7 @@ export const verificationSummary = (
               : `name:${old.name}`,
           { ...old, source: "provider_reported" },
         );
+      }
     }
 
     for (const command of entry.commands) {
@@ -318,8 +365,9 @@ export const verificationSummary = (
           previousChecks.data.some(
             (check) => check.command && commandKey(check.command) === commandKey(command.command),
           )
-        )
+        ) {
           continue;
+        }
 
         const current = reportedChecks.find(
           (check) => check.command && commandKey(check.command) === commandKey(command.command),
@@ -328,7 +376,7 @@ export const verificationSummary = (
         if (current) {
           current.required = true;
           current.kind = evidence.kind;
-        } else
+        } else {
           reportedChecks.push({
             name: evidence.name,
             command: evidence.command,
@@ -339,14 +387,19 @@ export const verificationSummary = (
               "A required observed check from a previous implementation needs verification after implementation changes.",
             prerequisite: evidence.prerequisite,
           });
+        }
       }
     }
 
     for (const key of ["testsPassed", "testsFailed", "testsSkipped"]) {
-      if (!Array.isArray(previous[key])) continue;
+      if (!Array.isArray(previous[key])) {
+        continue;
+      }
 
       const names = previous[key].filter((name) => {
-        if (typeof name !== "string") return false;
+        if (typeof name !== "string") {
+          return false;
+        }
 
         const structured = previousChecks.success
           ? previousChecks.data.find((check) =>
@@ -362,23 +415,30 @@ export const verificationSummary = (
         );
       });
 
-      if (key === "testsFailed")
-        for (const name of names)
+      if (key === "testsFailed") {
+        for (const name of names) {
           if (
             !previousChecks.success ||
             !previousChecks.data.some((check) =>
               [check.name, check.command, check.detail].includes(name),
             )
-          )
+          ) {
             ambiguousFailures.add(name);
-      if (key === "testsFailed")
+          }
+        }
+      }
+
+      if (key === "testsFailed") {
         for (const name of names) {
           const current = reportedChecks.find((check) =>
             [check.name, check.command, check.detail].includes(name),
           );
 
-          if (current) current.required = true;
+          if (current) {
+            current.required = true;
+          }
         }
+      }
 
       report[key] = [...new Set([...(Array.isArray(report[key]) ? report[key] : []), ...names])];
     }
@@ -427,7 +487,10 @@ export const verificationSummary = (
     ["testsSkipped", "not_run"],
   ] as const) {
     const entries = report[key];
-    if (!Array.isArray(entries)) continue;
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+
     for (const name of entries.filter((entry) => typeof entry === "string")) {
       const structured = reportedChecks.find((check) =>
         [check.name, check.command, check.detail].includes(name),
@@ -440,7 +503,9 @@ export const verificationSummary = (
 
         // A contradictory legacy failure cannot disappear behind an unobserved
         // structured pass. An actual matching command retry can settle it.
-        if (key !== "testsFailed" || structured.outcome !== "passed" || observed) continue;
+        if (key !== "testsFailed" || structured.outcome !== "passed" || observed) {
+          continue;
+        }
       }
 
       checks.push({
@@ -461,9 +526,14 @@ export const verificationSummary = (
   }
 
   for (const command of latest.values()) {
-    if (used.has(command.id)) continue;
+    if (used.has(command.id)) {
+      continue;
+    }
+
     const evidence = commandVerification(command);
-    if (evidence.required || evidence.outcome !== "passed") checks.push(evidence);
+    if (evidence.required || evidence.outcome !== "passed") {
+      checks.push(evidence);
+    }
   }
 
   for (const check of checks) {
@@ -491,7 +561,7 @@ export const verificationSummary = (
     }
   }
 
-  if (invalidHistory)
+  if (invalidHistory) {
     checks.push({
       name: "Invalid historical verification requirements",
       command: null,
@@ -503,7 +573,9 @@ export const verificationSummary = (
       prerequisite: null,
       source: "vibestar",
     });
-  if (requiredDiff && !latest.has(commandKey(requiredDiff)))
+  }
+
+  if (requiredDiff && !latest.has(commandKey(requiredDiff))) {
     checks.push({
       name: "Pinned-base diff hygiene",
       command: requiredDiff,
@@ -515,7 +587,9 @@ export const verificationSummary = (
       prerequisite: null,
       source: "vibestar",
     });
-  if (report.verification !== undefined && !parsed.success)
+  }
+
+  if (report.verification !== undefined && !parsed.success) {
     checks.push({
       name: "Invalid structured verification report",
       command: null,
@@ -526,6 +600,7 @@ export const verificationSummary = (
       prerequisite: null,
       source: "provider_reported",
     });
+  }
 
   const parents = (check: VerificationEvidence) =>
     check.prerequisite
@@ -539,7 +614,7 @@ export const verificationSummary = (
       ) || [];
 
   const optional = new Map<VerificationEvidence, string>();
-  for (const check of checks)
+  for (const check of checks) {
     if (
       check.kind === "check" &&
       !check.command &&
@@ -548,11 +623,14 @@ export const verificationSummary = (
       !["passed", "failed"].includes(check.outcome) &&
       !["repository", "issue"].includes(check.scope || "") &&
       /browser|viewport|responsive|zoom|screenshot/i.test(`${check.name} ${check.detail}`)
-    )
+    ) {
       optional.set(
         check,
         "Extra manual browser verification is optional under the repository-check policy. This check was not run.",
       );
+    }
+  }
+
   let added = true;
   while (added) {
     added = false;
@@ -565,8 +643,9 @@ export const verificationSummary = (
         check.outcome === "failed" ||
         optional.has(check) ||
         ["repository", "issue"].includes(check.scope || "")
-      )
+      ) {
         continue;
+      }
 
       const dependents = checks.filter(
         (candidate) => candidate.required && parents(candidate).includes(check),
@@ -589,11 +668,15 @@ export const verificationSummary = (
     .filter(([check]) => check.required)
     .map(([check, reason]) => ({ name: check.name, reason }));
 
-  if (policy === "repository")
+  if (policy === "repository") {
     for (const [check, reason] of optional) {
-      if (check.required) check.optionalReason = reason;
+      if (check.required) {
+        check.optionalReason = reason;
+      }
+
       check.required = false;
     }
+  }
 
   const roots = checks.filter(
     (check) =>
@@ -611,10 +694,12 @@ export const verificationSummary = (
     check: VerificationEvidence,
     visited = new Set<VerificationEvidence>(),
   ): string | undefined => {
-    if (visited.has(check) || check.priorFailure || ["passed", "failed"].includes(check.outcome))
+    if (visited.has(check) || check.priorFailure || ["passed", "failed"].includes(check.outcome)) {
       return undefined;
+    }
+
     visited.add(check);
-    if (roots.includes(check))
+    if (roots.includes(check)) {
       return (
         check.environment ||
         environmentReason(check.detail) ||
@@ -622,6 +707,8 @@ export const verificationSummary = (
           ? "Tooling setup interrupted"
           : "Tooling setup unavailable")
       );
+    }
+
     const dependencies = parents(check);
     const unresolved = dependencies.filter((parent) => parent?.outcome !== "passed");
     const reasons = unresolved.map((parent) => parent && environmentFor(parent, new Set(visited)));
@@ -630,7 +717,9 @@ export const verificationSummary = (
 
   for (const check of checks) {
     const environment = environmentFor(check);
-    if (environment) check.environment = environment;
+    if (environment) {
+      check.environment = environment;
+    }
   }
 
   const blockers = roots.map((root) => ({
@@ -638,13 +727,22 @@ export const verificationSummary = (
     reason: root.detail,
     source: root.source,
     checks: checks.filter((check) => {
-      if (["passed", "failed"].includes(check.outcome)) return false;
+      if (["passed", "failed"].includes(check.outcome)) {
+        return false;
+      }
+
       const visited = new Set<VerificationEvidence>();
       const queue = [check];
       while (queue.length) {
         const current = queue.shift()!;
-        if (visited.has(current)) continue;
-        if (current === root) return true;
+        if (visited.has(current)) {
+          continue;
+        }
+
+        if (current === root) {
+          return true;
+        }
+
         visited.add(current);
         queue.push(...parents(current).filter((parent) => parent !== undefined));
       }
@@ -659,10 +757,13 @@ export const verificationSummary = (
   )) {
     const key = `${blocker.title}:${blocker.source}`;
     const previous = grouped.get(key);
-    if (!previous) grouped.set(key, blocker);
-    else {
+    if (!previous) {
+      grouped.set(key, blocker);
+    } else {
       previous.checks = [...new Set([...previous.checks, ...blocker.checks])];
-      if (previous.reason !== blocker.reason) previous.reason += `\n${blocker.reason}`;
+      if (previous.reason !== blocker.reason) {
+        previous.reason += `\n${blocker.reason}`;
+      }
     }
   }
 

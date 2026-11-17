@@ -75,12 +75,18 @@ export const AvatarBuilder = ({
             onClick={() => setCategory(item)}
             onKeyDown={(event) => {
               let next = index;
-              if (event.key === "ArrowRight") next = (index + 1) % categories.length;
-              else if (event.key === "ArrowLeft")
+              if (event.key === "ArrowRight") {
+                next = (index + 1) % categories.length;
+              } else if (event.key === "ArrowLeft") {
                 next = (index + categories.length - 1) % categories.length;
-              else if (event.key === "Home") next = 0;
-              else if (event.key === "End") next = categories.length - 1;
-              else return;
+              } else if (event.key === "Home") {
+                next = 0;
+              } else if (event.key === "End") {
+                next = categories.length - 1;
+              } else {
+                return;
+              }
+
               event.preventDefault();
               setCategory(categories[next]);
               tabs.current[next]?.focus();
@@ -147,7 +153,9 @@ export const AvatarBuilder = ({
               onChange={(event) => {
                 const color = event.target.value;
                 setCustomColor(color);
-                if (/^#[0-9a-fA-F]{6}$/.test(color)) change({ ...appearance, color });
+                if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+                  change({ ...appearance, color });
+                }
               }}
             />
             {!/^#[0-9a-fA-F]{6}$/.test(customColor) && (

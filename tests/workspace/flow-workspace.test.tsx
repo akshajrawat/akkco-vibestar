@@ -87,7 +87,10 @@ it("keeps drafts and history separate for two connected instances of the same Vi
     async () => ({}),
     (detail, workspace) => {
       const first = workspace.revision.definition.nodes[0];
-      if (first.type !== "agent") throw new Error("Expected fixture agent");
+      if (first.type !== "agent") {
+        throw new Error("Expected fixture agent");
+      }
+
       first.name = "Scout";
 
       const second = {
@@ -208,7 +211,10 @@ it.each([false, true])(
     fireEvent.keyDown(field, { key: "Enter" });
     expect(screen.getByText("A pending instruction")).toBeTruthy();
     expect(field.value).toBe("");
-    if (typeAhead) fireEvent.change(field, { target: { value: "My newer draft" } });
+    if (typeAhead) {
+      fireEvent.change(field, { target: { value: "My newer draft" } });
+    }
+
     await act(async () => reject(new Error("Fixture transport failure")));
     expect(field.value).toBe(typeAhead ? "My newer draft" : "A pending instruction");
     expect(screen.getByRole("alert").textContent).toContain("Fixture transport failure");

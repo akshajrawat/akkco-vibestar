@@ -42,7 +42,10 @@ const resources: Awaited<ReturnType<typeof watchFixture>>[] = [];
 afterEach(async () => {
   cleanup();
   localStorage.clear();
-  for (const f of resources.splice(0)) await f.close();
+  for (const f of resources.splice(0)) {
+    await f.close();
+  }
+
   vi.restoreAllMocks();
 });
 
@@ -62,9 +65,18 @@ const setup = async () => {
   const listeners = new Set<(event: CoreEvent) => void>();
 
   const api = vi.fn(async (method: string, params: unknown) => {
-    if (method.startsWith("issueWatch.")) return f.service.call(method.slice(11), params);
-    if (method === "snapshot") return snapshot;
-    if (method === "usage.info") return { database: "fixture.sqlite" };
+    if (method.startsWith("issueWatch.")) {
+      return f.service.call(method.slice(11), params);
+    }
+
+    if (method === "snapshot") {
+      return snapshot;
+    }
+
+    if (method === "usage.info") {
+      return { database: "fixture.sqlite" };
+    }
+
     throw new Error(`Unexpected renderer RPC ${method}`);
   });
 
@@ -98,8 +110,10 @@ it("loads older local history pages without GitHub reads or inference", async ()
   const { f, snapshot } = await setup();
   const { watch } = await f.create();
   const first = await f.scan(watch.id);
-  for (let index = 0; index < 52; index++)
+  for (let index = 0; index < 52; index++) {
     f.service.store.reserve({ ...first, id: randomUUID() }, randomUUID(), randomUUID());
+  }
+
   const reads = f.api.mock.calls.length;
   const infer = vi.spyOn(f.engine.utility, "run");
   render(<IssueWatchPage snapshot={snapshot} initialWatchId={watch.id} startTask={vi.fn()} />);

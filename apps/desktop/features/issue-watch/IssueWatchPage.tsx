@@ -84,12 +84,15 @@ export const IssueWatchPage = ({
         (candidate) =>
           candidate.issue.id === selected && (showDismissed || !candidate.dismissed_at),
       )
-    )
+    ) {
       setSelected("");
+    }
   }, [candidates, selected, showDismissed]);
 
   useEffect(() => {
-    if (initialWatchId) setOverview(false);
+    if (initialWatchId) {
+      setOverview(false);
+    }
   }, [initialWatchId]);
 
   const openWatch = (id: string) => {
@@ -104,7 +107,10 @@ export const IssueWatchPage = ({
     ids?: string[],
     next = false,
   ) => {
-    if (!detail) return;
+    if (!detail) {
+      return;
+    }
+
     setBusy(true);
     state.setError("");
     try {
@@ -148,7 +154,10 @@ export const IssueWatchPage = ({
   };
 
   const cancel = async () => {
-    if (!detail || !active) return;
+    if (!detail || !active) {
+      return;
+    }
+
     setBusy(true);
     try {
       await rpc("issueWatch.cancel", {
@@ -165,7 +174,10 @@ export const IssueWatchPage = ({
   };
 
   const organize = async () => {
-    if (!detail) return;
+    if (!detail) {
+      return;
+    }
+
     setBusy(true);
     try {
       await rpc("issueWatch.archive", {
@@ -189,7 +201,7 @@ export const IssueWatchPage = ({
       ["pending", "unavailable", "invalid"].includes(candidate.semantic_state),
   );
 
-  if (!enabled)
+  if (!enabled) {
     return (
       <section className="watch-update-required">
         <Search size={24} />
@@ -200,6 +212,8 @@ export const IssueWatchPage = ({
         </p>
       </section>
     );
+  }
+
   return (
     <section className="issue-watch-page">
       {!overview && (
@@ -510,8 +524,10 @@ export const IssueWatchPage = ({
                         onSelect={(id) => {
                           if (
                             candidates.find((candidate) => candidate.issue.id === id)?.dismissed_at
-                          )
+                          ) {
                             setShowDismissed(true);
+                          }
+
                           setSelected(id);
                           setShowDetails(true);
                         }}
@@ -704,7 +720,10 @@ export const IssueWatchPage = ({
             aria-label="Continue Analysis"
             ref={dialog}
             onKeyDown={(event) => {
-              if (event.key === "Escape" && !busy) setSelection(null);
+              if (event.key === "Escape" && !busy) {
+                setSelection(null);
+              }
+
               containDialogFocus(event);
             }}
           >
@@ -777,7 +796,10 @@ export const IssueWatchPage = ({
             aria-label="Saved source evidence"
             ref={dialog}
             onKeyDown={(event) => {
-              if (event.key === "Escape") setSource(null);
+              if (event.key === "Escape") {
+                setSource(null);
+              }
+
               containDialogFocus(event);
             }}
           >

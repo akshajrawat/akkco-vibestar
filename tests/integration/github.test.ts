@@ -261,10 +261,12 @@ it("retrieves 501 PR statuses in six metadata pages without per-PR detail reques
   const client = new GitHubClient("/tmp");
   const gh = vi.spyOn(client, "gh");
   const nodes = Array.from({ length: 501 }, (_, i) => node(i + 1));
-  for (let offset = 0; offset < nodes.length; offset += 100)
+  for (let offset = 0; offset < nodes.length; offset += 100) {
     gh.mockResolvedValueOnce(
       page(nodes.slice(offset, offset + 100), 501, offset < 500 ? `cursor-${offset}` : null),
     );
+  }
+
   expect(await client.authored("viewer")).toHaveLength(501);
   expect(gh).toHaveBeenCalledTimes(6);
   expect(gh.mock.calls.every(([args]) => args.includes("graphql"))).toBe(true);

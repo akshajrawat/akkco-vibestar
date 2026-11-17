@@ -23,8 +23,14 @@ export const useAutosave = <T extends object>(
   };
 
   const flush = (): Promise<void> => {
-    if (saving.current) return saving.current;
-    if (!Object.keys(pending.current).length) return Promise.resolve();
+    if (saving.current) {
+      return saving.current;
+    }
+
+    if (!Object.keys(pending.current).length) {
+      return Promise.resolve();
+    }
+
     setBusy(true);
 
     saving.current = Promise.resolve()
@@ -54,10 +60,11 @@ export const useAutosave = <T extends object>(
           show({ ...acknowledged.current, ...pending.current });
         }
 
-        if (!failed)
+        if (!failed) {
           notifications.success(`${label.charAt(0).toUpperCase()}${label.slice(1)} saved`, {
             id: `settings:${label}`,
           });
+        }
       })
       .finally(() => {
         saving.current = null;
@@ -73,15 +80,24 @@ export const useAutosave = <T extends object>(
     flush,
     update: (next: T) => {
       const patch: Partial<T> = {};
-      for (const key of Object.keys(next) as (keyof T)[])
-        if (JSON.stringify(next[key]) !== JSON.stringify(displayed.current[key]))
+      for (const key of Object.keys(next) as (keyof T)[]) {
+        if (JSON.stringify(next[key]) !== JSON.stringify(displayed.current[key])) {
           patch[key] = next[key];
-      if (!Object.keys(patch).length) return;
+        }
+      }
+
+      if (!Object.keys(patch).length) {
+        return;
+      }
+
       pending.current = { ...pending.current, ...patch };
       show(next);
     },
     receive: (next: T) => {
-      if (saving.current || Object.keys(pending.current).length) return;
+      if (saving.current || Object.keys(pending.current).length) {
+        return;
+      }
+
       acknowledged.current = next;
       show(next);
     },

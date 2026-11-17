@@ -14,25 +14,33 @@ export const inside = (root: string, path: string) => {
 // root is the canonical identity retained by createLayout, not a fresh trust boundary.
 export const managedPath = async (root: string, path: string) => {
   const candidate = resolve(root, path);
-  if (!inside(root, candidate) || (await realpath(root)) !== root)
+  if (!inside(root, candidate) || (await realpath(root)) !== root) {
     throw new AdeError(
       "isolation",
       "Managed storage root or path changed. Restore the original dedicated directory before retrying.",
     );
+  }
+
   let parent = root;
   for (const part of relative(root, candidate).split(sep)) {
     parent = join(parent, part);
     try {
       const entry = await lstat(parent);
-      if (entry.isSymbolicLink())
+      if (entry.isSymbolicLink()) {
         throw new AdeError(
           "isolation",
           `Managed storage path ${parent} is a symlink. Restore dedicated directories; Vibestar will not relocate or remove its target.`,
         );
-      if (parent !== candidate && !entry.isDirectory())
+      }
+
+      if (parent !== candidate && !entry.isDirectory()) {
         throw new AdeError("isolation", "A managed storage parent is not a directory.");
+      }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        break;
+      }
+
       throw error;
     }
   }
@@ -47,7 +55,10 @@ export const worktreePath = (
   scope: string,
   suffix = 0,
 ) => {
-  if (!/^[a-zA-Z0-9-]+$/.test(repoId)) throw new AdeError("isolation", "Invalid repository ID");
+  if (!/^[a-zA-Z0-9-]+$/.test(repoId)) {
+    throw new AdeError("isolation", "Invalid repository ID");
+  }
+
   return join(root, "worktrees", repoId, branchName(number, scope, suffix).slice("akkco/".length));
 };
 
@@ -58,8 +69,9 @@ const validateFilePath = (path: string) => {
     path.includes("\0") ||
     path.includes("\\") ||
     path.split("/").some((p) => !p || p === "." || p === ".." || p === ".git")
-  )
+  ) {
     throw new AdeError("isolation", "Invalid relative file path");
+  }
 };
 
 export const workspaceEntry = async (root: string, path: string) => {
@@ -72,14 +84,22 @@ export const workspaceEntry = async (root: string, path: string) => {
     current = join(current, part);
 
     const metadata = await lstat(current).catch((error: NodeJS.ErrnoException) => {
-      if (["ENOENT", "ENOTDIR"].includes(error.code || "")) return null;
+      if (["ENOENT", "ENOTDIR"].includes(error.code || "")) {
+        return null;
+      }
+
       throw error;
     });
 
-    if (index === parts.length - 1) return { path: destination, metadata };
+    if (index === parts.length - 1) {
+      return { path: destination, metadata };
+    }
+
     // Git can retain a deleted descendant after its parent becomes a file/link.
     // It is absent from the working tree; never follow that parent into a target.
-    if (!metadata?.isDirectory()) return { path: destination, metadata: null };
+    if (!metadata?.isDirectory()) {
+      return { path: destination, metadata: null };
+    }
   }
 
   throw new AdeError("isolation", "Invalid workspace entry");
@@ -93,13 +113,21 @@ export const safeFile = async (root: string, path: string) => {
   while (true) {
     try {
       const actual = await realpath(parent);
-      if (actual !== canonicalRoot && !inside(canonicalRoot, actual))
+      if (actual !== canonicalRoot && !inside(canonicalRoot, actual)) {
         throw new AdeError("isolation", "Symlink escapes assigned worktree");
+      }
+
       break;
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw e;
+      }
+
       const next = dirname(parent);
-      if (next === parent) throw e;
+      if (next === parent) {
+        throw e;
+      }
+
       parent = next;
     }
   }
@@ -112,16 +140,20 @@ export const taskRoot = async (
   task: WorkspaceAssignment,
   repository?: Repository,
 ) => {
-  if (!task.repo_id || !/^[a-zA-Z0-9-]+$/.test(task.repo_id))
+  if (!task.repo_id || !/^[a-zA-Z0-9-]+$/.test(task.repo_id)) {
     throw new AdeError("isolation", "Invalid repository ID");
+  }
+
   if (task.workspace_mode === "source") {
     if (
       !repository ||
       repository.id !== task.repo_id ||
       repository.path !== task.worktree_path ||
       (await realpath(repository.path)) !== repository.path
-    )
+    ) {
       throw new AdeError("ownership", "Source task no longer matches its registered checkout.");
+    }
+
     const cwd = repository.path;
 
     const common = await realpath(
@@ -140,18 +172,22 @@ export const taskRoot = async (
         ["config", "--local", "--get", `branch.${task.branch_name}.vibestarTask`],
         cwd,
       )) !== task.id
-    )
+    ) {
       throw new AdeError(
         "ownership",
         "Source task branch or ownership changed; its files were preserved.",
       );
+    }
+
     return cwd;
   }
 
   const allowed = await managedPath(root, join("worktrees", task.repo_id));
   const path = await realpath(await managedPath(root, task.worktree_path));
-  if (!inside(allowed, path))
+  if (!inside(allowed, path)) {
     throw new AdeError("isolation", "Task worktree is outside its managed repository boundary");
+  }
+
   return path;
 };
 
@@ -178,15 +214,19 @@ export const createLayout = async (root: string) => {
       (name) => candidate === join(homedir(), name) || inside(join(homedir(), name), candidate),
     );
 
-  if (!isAbsolute(root) || protectedRoot(resolve(root)))
+  if (!isAbsolute(root) || protectedRoot(resolve(root))) {
     throw new AdeError(
       "invalid_input",
       "Choose a dedicated absolute data directory, not a home, system or provider state directory",
     );
+  }
+
   await mkdir(root, { recursive: true, mode: 0o700 });
   root = await realpath(root);
-  if (protectedRoot(root))
+  if (protectedRoot(root)) {
     throw new AdeError("invalid_input", "Data directory resolves to a protected root");
+  }
+
   for (const d of [
     "repos",
     "worktrees",
@@ -210,7 +250,10 @@ export const exists = async (path: string) =>
   stat(path).then(
     () => true,
     (e) => {
-      if (e.code === "ENOENT") return false;
+      if (e.code === "ENOENT") {
+        return false;
+      }
+
       throw e;
     },
   );

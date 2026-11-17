@@ -9,7 +9,10 @@ export const UserMessageBody = ({ children }: { children: React.ReactNode }) => 
 
   useLayoutEffect(() => {
     const element = body.current;
-    if (!element || expanded) return;
+    if (!element || expanded) {
+      return;
+    }
+
     const measure = () => setOverflow(element.scrollHeight > element.clientHeight + 1);
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);

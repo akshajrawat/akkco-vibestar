@@ -38,10 +38,15 @@ const scopedDefinition = (
   definition: FlowDefinition,
   conversation?: z.infer<typeof ConversationScopeSchema>,
 ) => {
-  if (!conversation) return definition;
+  if (!conversation) {
+    return definition;
+  }
+
   const node = definition.nodes.find((node) => node.id === conversation.node_id);
-  if (node?.type !== "agent")
+  if (node?.type !== "agent") {
     throw new AdeError("isolation", "Select a Viber from this task's saved graph.");
+  }
+
   return FlowDefinitionSchema.parse({
     name: `Viber · ${node.name}`.slice(0, 100),
     nodes: [
@@ -93,8 +98,10 @@ export class FlowRunStore {
   ) => {
     const request = FlowStartSchema.parse(input);
     const conversation = scope && ConversationScopeSchema.parse(scope);
-    if (conversation && origin !== "user")
+    if (conversation && origin !== "user") {
       throw new AdeError("isolation", "Conversation authority requires an explicit user request.");
+    }
+
     const kind = conversation ? "conversation" : "flow";
     const requestDigest = digest(conversation ? { ...request, conversation } : request);
     return this.db.transaction(() => {
@@ -104,11 +111,13 @@ export class FlowRunStore {
       )[0];
 
       if (previous) {
-        if (previous.request_digest !== requestDigest || previous.origin !== origin)
+        if (previous.request_digest !== requestDigest || previous.origin !== origin) {
           throw new AdeError(
             "request_conflict",
             "This run request belongs to a different configuration.",
           );
+        }
+
         return this.run(previous.id);
       }
 
@@ -119,23 +128,28 @@ export class FlowRunStore {
         request.flow_id,
       )[0];
 
-      if (!owner || owner.task_id !== request.task_id)
+      if (!owner || owner.task_id !== request.task_id) {
         throw new AdeError("isolation", "Only a flow owned by this task can execute.");
+      }
+
       if (request.parent_run_id) {
         const parent = this.run(request.parent_run_id);
-        if (parent.task_id !== request.task_id || parent.flow_id !== request.flow_id)
+        if (parent.task_id !== request.task_id || parent.flow_id !== request.flow_id) {
           throw new AdeError("isolation", "A continuation must belong to the same task and flow.");
+        }
+
         if (
           parent.kind !== "flow" ||
           (conversation
             ? ["queued", "running", "pausing"]
             : ["queued", "running", "pausing", "waiting"]
           ).includes(parent.status)
-        )
+        ) {
           throw new AdeError(
             "busy",
             "Pause or stop the previous run before creating a continuation.",
           );
+        }
       }
 
       const active = this.db.all<Pick<FlowRun, "id" | "kind" | "status">>(
@@ -149,12 +163,15 @@ export class FlowRunStore {
             row.id !== request.parent_run_id ||
             (conversation && (row.kind !== "flow" || !["paused", "waiting"].includes(row.status))),
         )
-      )
+      ) {
         throw new AdeError("busy", "This task already has an active flow run.");
+      }
+
       const revision = this.definitions.definition(request.flow_id, request.revision);
       const definition = scopedDefinition(revision.definition, conversation);
-      if (!definition.nodes.length)
+      if (!definition.nodes.length) {
         throw new AdeError("invalid_input", "Add a node before running this flow.");
+      }
 
       const agents = Object.fromEntries(
         definition.nodes
@@ -185,8 +202,9 @@ export class FlowRunStore {
         !conversation &&
         request.parent_run_id &&
         this.run(request.parent_run_id).status === "paused"
-      )
+      ) {
         this.setRunStatus(request.parent_run_id, "paused", "continued");
+      }
 
       this.db.run(
         "INSERT INTO flow_runs(id,flow_id,revision,task_id,status,request_id,request_digest,parent_run_id,snapshot,created_at,updated_at,error,origin,kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -219,7 +237,10 @@ export class FlowRunStore {
       id,
     )[0];
 
-    if (!row) throw new AdeError("not_found", "Flow run not found.");
+    if (!row) {
+      throw new AdeError("not_found", "Flow run not found.");
+    }
+
     return this.db.records.decode(
       { table: "flow_runs", id, column: "snapshot", source: row.snapshot },
       (value) => {
@@ -227,8 +248,9 @@ export class FlowRunStore {
         if (
           (run.kind === "conversation") !== !!run.snapshot.conversation ||
           (run.kind === "conversation" && run.origin !== "user")
-        )
+        ) {
           throw new Error("Run kind and captured conversation authority disagree.");
+        }
 
         const nodes = scopedDefinition(
           this.definitions.definition(run.flow_id, run.revision).definition,
@@ -243,8 +265,10 @@ export class FlowRunStore {
               !captured || digest(captured) !== digest(resolveAgentNode(node, captured.profile))
             );
           })
-        )
+        ) {
           throw new Error("Captured profiles do not match this run's flow revision.");
+        }
+
         return run;
       },
     );
@@ -268,16 +292,19 @@ export class FlowRunStore {
   invalidateWorkspace = (runId: string, reason: string) =>
     this.db.transaction(() => {
       const run = this.run(runId);
-      if (run.kind !== "flow")
+      if (run.kind !== "flow") {
         throw new AdeError(
           "isolation",
           "Only graph authority can be invalidated by a separate Viber conversation.",
         );
-      if (this.attempts(runId).some((attempt) => attempt.status === "running"))
+      }
+
+      if (this.attempts(runId).some((attempt) => attempt.status === "running")) {
         throw new AdeError(
           "busy",
           "Stop the active graph node before invalidating its workspace evidence.",
         );
+      }
 
       const invalidation = FlowRunInvalidationSchema.parse({
         run_id: runId,
@@ -305,8 +332,10 @@ export class FlowRunStore {
         this.transition(runId, attempt.id, "waiting", "interrupted");
       }
 
-      if (["queued", "running", "pausing", "paused", "waiting"].includes(run.status))
+      if (["queued", "running", "pausing", "paused", "waiting"].includes(run.status)) {
         this.setRunStatus(runId, run.status, "failed", invalidation.reason);
+      }
+
       return this.invalidation(runId)!;
     });
 
@@ -335,31 +364,37 @@ export class FlowRunStore {
         source.status !== "completed" ||
         source.node_id !== nodeId ||
         source.completed_fingerprint !== workspaceFingerprint
-      )
+      ) {
         throw new AdeError(
           "stale_result",
           "Only a proved completed result from this continuation's parent can be reused.",
         );
+      }
+
       const graph = this.definition(runId);
       const node = graph.nodes.find((node) => node.id === nodeId);
       if (
         !node ||
         source.configuration_hash !==
           digest({ node, agent: node.type === "agent" ? run.snapshot.agents[nodeId] : null })
-      )
+      ) {
         throw new AdeError(
           "stale_result",
           "The node configuration changed; recompute it explicitly.",
         );
+      }
+
       const results = this.results(runId);
       if (
         JSON.stringify(nodeDependencies(this.definition(source.run_id), nodeId)) !==
         JSON.stringify(nodeDependencies(graph, nodeId))
-      )
+      ) {
         throw new AdeError(
           "stale_result",
           "The node's dependencies changed; recompute it explicitly.",
         );
+      }
+
       if (
         results.some((result) => result.node_id === nodeId) ||
         graph.edges.some(
@@ -368,27 +403,32 @@ export class FlowRunStore {
             results.filter((result) => result.node_id === edge.source).at(-1)?.status !==
               "completed",
         )
-      )
+      ) {
         throw new AdeError(
           "dependencies",
           "Reused nodes require their own completed predecessors and cannot replace an attempt.",
         );
-      if (digest(resolveNodeInputs(this.db, this, runId, nodeId)) !== source.inputs_hash)
+      }
+
+      if (digest(resolveNodeInputs(this.db, this, runId, nodeId)) !== source.inputs_hash) {
         throw new AdeError(
           "stale_result",
           "The selected inputs changed; recompute this node explicitly.",
         );
+      }
+
       if (
         node.type === "approval" &&
         !this.db.all(
           "SELECT attempt_id FROM flow_approval_decisions WHERE attempt_id=? AND decision='accepted'",
           source.id,
         ).length
-      )
+      ) {
         throw new AdeError(
           "stale_approval",
           "A reused approval requires its original accepted decision.",
         );
+      }
 
       this.db.run(
         "INSERT INTO flow_result_links VALUES(?,?,?,?,?)",
@@ -417,7 +457,9 @@ export class FlowRunStore {
       Omit<NodeAttempt, "configuration" | "inputs"> & { configuration: string; inputs: string }
     >("SELECT * FROM flow_node_attempts WHERE id=?", id)[0];
 
-    if (!row) throw new AdeError("not_found", "Node attempt not found.");
+    if (!row) {
+      throw new AdeError("not_found", "Node attempt not found.");
+    }
 
     const inputs = this.db.records.decode(
       { table: "flow_node_attempts", id, column: "inputs", source: row.inputs },
@@ -432,8 +474,10 @@ export class FlowRunStore {
           attempt.node_id !== attempt.configuration.node.id ||
           digest(attempt.configuration) !== attempt.configuration_hash ||
           digest(attempt.inputs) !== attempt.inputs_hash
-        )
+        ) {
           throw new Error("Node attempt snapshot integrity failed.");
+        }
+
         return attempt;
       },
     );
@@ -447,17 +491,21 @@ export class FlowRunStore {
   ) =>
     this.db.transaction(() => {
       const run = this.run(id);
-      if (run.status !== expected || !runTransitions[run.status].includes(next))
+      if (run.status !== expected || !runTransitions[run.status].includes(next)) {
         throw new AdeError(
           "invalid_state",
           "The flow run changed or this transition is not allowed.",
         );
+      }
+
       const attempts = this.results(id);
       if (
         ["paused", "completed", "waiting", "continued"].includes(next) &&
         attempts.some((attempt) => attempt.status === "running")
-      )
+      ) {
         throw new AdeError("busy", "Wait for the current node to stop before settling this run.");
+      }
+
       if (next === "completed") {
         const nodes = this.definition(run.id).nodes;
         if (
@@ -466,11 +514,12 @@ export class FlowRunStore {
               attempts.filter((attempt) => attempt.node_id === node.id).at(-1)?.status !==
               "completed",
           )
-        )
+        ) {
           throw new AdeError(
             "invalid_state",
             "Every node must complete before the flow can complete.",
           );
+        }
       }
 
       const updated = FlowRunSchema.parse({ ...run, status: next, error, updated_at: now() });
@@ -514,8 +563,10 @@ export class FlowRunStore {
   ) =>
     this.db.transaction(() => {
       const run = this.run(runId);
-      if (run.status !== "running")
+      if (run.status !== "running") {
         throw new AdeError("invalid_state", "Explicitly continue the flow before starting a node.");
+      }
+
       if (dispatchId) {
         const dispatch = this.db.all<{
           run_id: string;
@@ -534,19 +585,24 @@ export class FlowRunStore {
           dispatch.status !== "running" ||
           (dispatch.kind !== "flow" && dispatch.node_id !== nodeId) ||
           (dispatch.retry_of ?? undefined) !== retryOf
-        )
+        ) {
           throw new AdeError("isolation", "This node is outside its explicit execution request.");
+        }
       }
 
-      if (this.invalidation(run.id))
+      if (this.invalidation(run.id)) {
         throw new AdeError(
           "stale_workspace",
           "A separate Viber changed this graph's workspace. Apply a saved revision or start a fresh run explicitly.",
         );
+      }
+
       const flow = this.definition(run.id);
       const node = flow.nodes.find((entry) => entry.id === nodeId);
-      if (!node)
+      if (!node) {
         throw new AdeError("isolation", "This node is not part of the captured flow revision.");
+      }
+
       const attempts = this.results(runId);
       const latest = (id: string) => attempts.filter((attempt) => attempt.node_id === id).at(-1);
       if (
@@ -554,56 +610,70 @@ export class FlowRunStore {
           "SELECT a.id FROM flow_node_attempts a JOIN flow_runs r ON r.id=a.run_id WHERE r.task_id=? AND a.status='running'",
           run.task_id,
         ).length
-      )
+      ) {
         throw new AdeError("busy", "Operations sharing this task workspace must execute serially.");
+      }
+
       const previous = latest(nodeId);
       if (
         previous &&
         (retryOf !== previous.id ||
           !["failed", "rejected", "cancelled", "interrupted"].includes(previous.status))
-      )
+      ) {
         throw new AdeError(
           "invalid_state",
           "Retry must explicitly identify the latest failed, cancelled or interrupted attempt.",
         );
-      if (!previous && retryOf)
+      }
+
+      if (!previous && retryOf) {
         throw new AdeError("invalid_state", "This node has no attempt to retry.");
+      }
+
       if (
         flow.edges.some(
           (edge) => edge.target === nodeId && latest(edge.source)?.status !== "completed",
         )
-      )
+      ) {
         throw new AdeError(
           "dependencies",
           "Wait for all required predecessors to complete successfully.",
         );
+      }
+
       const resolvedInputs = ResolvedInputsSchema.parse(inputs);
       if (
         JSON.stringify(resolvedInputs.map((entry) => entry.binding)) !== JSON.stringify(node.inputs)
-      )
+      ) {
         throw new AdeError(
           "context",
           "Resolved inputs must match every selected binding in order.",
         );
+      }
+
       for (const entry of resolvedInputs) {
         const binding = entry.binding;
-        if (binding.kind === "task-goal" && entry.content !== run.snapshot.goal)
+        if (binding.kind === "task-goal" && entry.content !== run.snapshot.goal) {
           throw new AdeError("context", "Task goal input differs from the captured run goal.");
-        if (binding.kind === "output" && entry.content !== latest(binding.node_id)?.output)
+        }
+
+        if (binding.kind === "output" && entry.content !== latest(binding.node_id)?.output) {
           throw new AdeError(
             "context",
             "Predecessor output differs from the captured completed result.",
           );
+        }
       }
 
       if (
         JSON.stringify(resolvedInputs) !==
         JSON.stringify(resolveNodeInputs(this.db, this, runId, nodeId))
-      )
+      ) {
         throw new AdeError(
           "context",
           "Selected inputs changed or do not match their owned source records.",
         );
+      }
 
       const timestamp = now();
 
@@ -676,8 +746,9 @@ export class FlowRunStore {
       attempt.configuration.node.type !== "agent" ||
       digest(attempt.configuration.agent?.execution) !== digest(execution) ||
       prompt !== agentNodePrompt(attempt)
-    )
+    ) {
       throw new AdeError("isolation", "Agent execution must match its active task/node snapshot.");
+    }
   };
 
   assertCommandExecution = (
@@ -699,11 +770,12 @@ export class FlowRunStore {
       JSON.stringify(argv) !== JSON.stringify(node.argv) ||
       readOnly !== (node.access === "read-only") ||
       timeoutMs !== node.timeout_secs * 1000
-    )
+    ) {
       throw new AdeError(
         "isolation",
         "Command execution must match its active task/node snapshot.",
       );
+    }
   };
 
   attachExecution = (attemptId: string, recordId: string, kind: "agent" | "command") =>
@@ -716,8 +788,10 @@ export class FlowRunStore {
         attempt.configuration.node.type !== kind ||
         attempt.agent_run_id ||
         attempt.command_run_id
-      )
+      ) {
         throw new AdeError("invalid_state", "This attempt cannot attach another execution record.");
+      }
+
       const table = kind === "agent" ? "agent_runs" : "test_runs";
 
       const record = this.db.all<{ task_id: string | null; repair_id: string | null }>(
@@ -725,8 +799,9 @@ export class FlowRunStore {
         recordId,
       )[0];
 
-      if (!record || record.task_id !== run.task_id || record.repair_id)
+      if (!record || record.task_id !== run.task_id || record.repair_id) {
         throw new AdeError("isolation", "Execution telemetry must belong to the same task.");
+      }
 
       this.db.run(
         `UPDATE flow_node_attempts SET ${kind === "agent" ? "agent_run_id" : "command_run_id"}=? WHERE id=?`,
@@ -746,11 +821,12 @@ export class FlowRunStore {
         attempt.status !== "waiting" ||
         !["paused", "waiting", "failed"].includes(run.status) ||
         this.db.all("SELECT attempt_id FROM flow_approval_decisions WHERE attempt_id=?", id).length
-      )
+      ) {
         throw new AdeError(
           "invalid_state",
           "Only a waiting undecided approval can be explicitly refreshed.",
         );
+      }
 
       this.db.run(
         "UPDATE flow_node_attempts SET status='interrupted',ended_at=?,error='The user requested fresh approval evidence.' WHERE id=?",
@@ -772,11 +848,13 @@ export class FlowRunStore {
   ) =>
     this.db.transaction(() => {
       const attempt = this.attempt(id);
-      if (attempt.status !== "running")
+      if (attempt.status !== "running") {
         throw new AdeError(
           "invalid_state",
           "Only an active process attempt can settle; approval nodes require a decision.",
         );
+      }
+
       if (status === "completed") {
         const recordId = attempt.agent_run_id || attempt.command_run_id;
         const table = attempt.agent_run_id ? "agent_runs" : "test_runs";
@@ -788,30 +866,37 @@ export class FlowRunStore {
             recordId,
           )[0];
 
-        if (!record || record.exit_code !== 0 || !["completed", "passed"].includes(record.status))
+        if (!record || record.exit_code !== 0 || !["completed", "passed"].includes(record.status)) {
           throw new AdeError(
             "missing_evidence",
             "A completed node requires its successful observed execution record.",
           );
-        if (attempt.agent_run_id && output !== record.output)
+        }
+
+        if (attempt.agent_run_id && output !== record.output) {
           throw new AdeError(
             "missing_evidence",
             "Node output must match its retained agent result.",
           );
+        }
+
         if (
           attempt.command_run_id &&
           output !== JSON.stringify({ command_run_id: attempt.command_run_id })
-        )
+        ) {
           throw new AdeError(
             "missing_evidence",
             "Command output must reference its observed command record.",
           );
+        }
 
-        if (verification === "passed" && observedVerification(this.db, attempt) !== "passed")
+        if (verification === "passed" && observedVerification(this.db, attempt) !== "passed") {
           throw new AdeError(
             "missing_evidence",
             "Passing verification requires observed passing checks, not provider reports.",
           );
+        }
+
         const node = attempt.configuration.node;
         if (
           node.type === "agent" &&
@@ -871,11 +956,12 @@ export class FlowRunStore {
         attempt.configuration_hash !== decision.configuration_hash ||
         attempt.inputs_hash !== decision.inputs_hash ||
         decision.workspace_fingerprint !== attempt.workspace_fingerprint
-      )
+      ) {
         throw new AdeError(
           "stale_approval",
           "The approval configuration, inputs or workspace changed. Inspect a fresh attempt.",
         );
+      }
 
       const stored = this.db.all<ApprovalDecision>(
         "SELECT * FROM flow_approval_decisions WHERE attempt_id=? OR request_id=?",
@@ -888,25 +974,30 @@ export class FlowRunStore {
         if (
           JSON.stringify({ ...previous, created_at: "" }) !==
           JSON.stringify({ ...decision, created_at: "" })
-        )
+        ) {
           throw new AdeError(
             "request_conflict",
             "This approval request already has a different decision.",
           );
+        }
+
         return previous;
       }
 
-      if (currentFingerprint !== attempt.workspace_fingerprint)
+      if (currentFingerprint !== attempt.workspace_fingerprint) {
         throw new AdeError(
           "stale_approval",
           "The approval workspace changed. Inspect a fresh attempt.",
         );
+      }
+
       const run = this.run(attempt.run_id);
       if (
         attempt.status !== "waiting" ||
         !["running", "waiting", "paused", "failed"].includes(run.status)
-      )
+      ) {
         throw new AdeError("invalid_state", "This approval is no longer waiting for a decision.");
+      }
 
       this.db.run(
         "INSERT INTO flow_approval_decisions VALUES(?,?,?,?,?,?,?)",
@@ -950,7 +1041,9 @@ export class FlowRunStore {
             "The execution core restarted. Retry explicitly; no process was replayed.",
           );
         } catch (error) {
-          if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
+          if (!(error instanceof AdeError && error.kind === "corrupt_record")) {
+            throw error;
+          }
 
           this.db.run(
             "UPDATE flow_node_attempts SET status='interrupted',ended_at=?,error=? WHERE id=?",
@@ -978,7 +1071,9 @@ export class FlowRunStore {
 
           this.transition(run.id, null, run.status, "interrupted");
         } catch (error) {
-          if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
+          if (!(error instanceof AdeError && error.kind === "corrupt_record")) {
+            throw error;
+          }
 
           this.db.run(
             "UPDATE flow_runs SET status='interrupted',updated_at=?,error=? WHERE id=?",

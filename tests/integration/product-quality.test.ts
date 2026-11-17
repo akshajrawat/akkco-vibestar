@@ -120,13 +120,15 @@ it("records successful, failed and cancelled provider invocations without starti
 
     const rows = new Usage(engine.db).list();
     expect(rows).toHaveLength(6);
-    for (const provider of ["antigravity", "codex"])
+    for (const provider of ["antigravity", "codex"]) {
       expect(
         rows
           .filter((r) => r.provider === provider)
           .map((r) => r.status)
           .sort(),
       ).toEqual(["cancelled", "completed", "failed"]);
+    }
+
     expect(rows.every((r) => r.duration_ms !== null && r.ended_at)).toBe(true);
 
     expect(
@@ -257,8 +259,10 @@ it("persists content-bound reviewed state, invalidates modified files and links 
       if (
         !(request.schema.properties as Record<string, unknown>).summary ||
         Object.keys(request.schema.properties as object).length > 1
-      )
+      ) {
         return fixture.invocation(request);
+      }
+
       requests.push(request);
       return {
         program: process.execPath,
@@ -474,7 +478,9 @@ lines.on('close',()=>process.exit(0));
           await expect(bridge.request("newer.method")).rejects.toThrow(
             "Install / update WSL helper",
           );
-        } else expect(snapshot.warning).toBeUndefined();
+        } else {
+          expect(snapshot.warning).toBeUndefined();
+        }
       } finally {
         await bridge.stop();
       }

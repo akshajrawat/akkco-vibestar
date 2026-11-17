@@ -172,8 +172,10 @@ export class PRFixtureProvider extends FixtureProvider {
       };
     }
 
-    if (!("observations" in object(request.schema.properties)))
+    if (!("observations" in object(request.schema.properties))) {
       return new FixtureProvider().invocation(request);
+    }
+
     return {
       program: process.execPath,
       input: "",

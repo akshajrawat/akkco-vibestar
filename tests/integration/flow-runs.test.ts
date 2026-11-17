@@ -22,19 +22,23 @@ afterEach(() => databases.splice(0).forEach((db) => db.close()));
 
 const fixture = (database?: Database) => {
   const db = database || new Database(":memory:");
-  if (!database) databases.push(db);
+  if (!database) {
+    databases.push(db);
+  }
 
   db.run(
     "INSERT INTO repositories VALUES('repo','fixture','fixture',?)",
     JSON.stringify({ id: "repo", owner: "fixture", name: "fixture" }),
   );
 
-  for (const id of ["task", "other-task"])
+  for (const id of ["task", "other-task"]) {
     db.run(
       "INSERT INTO tasks(id,repo_id,status,stage,data,created_at) VALUES(?,'repo','not_started',0,?,'fixture')",
       id,
       JSON.stringify({ id, repo_id: "repo" }),
     );
+  }
+
   const definitions = new FlowStore(db);
   const runs = new FlowRunStore(db);
 

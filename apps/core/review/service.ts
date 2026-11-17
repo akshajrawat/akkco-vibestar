@@ -78,12 +78,13 @@ export class ReviewService {
       const content = await this.engine.git.file(task, file.path, file.old_path);
       const hash = fileHash(content.original, content.modified);
       const saved = rows.find((r) => r.path === file.path);
-      if (saved && saved.source_hash !== hash)
+      if (saved && saved.source_hash !== hash) {
         this.engine.db.run(
           "DELETE FROM task_reviewed_files WHERE task_id=? AND path=?",
           id,
           file.path,
         );
+      }
 
       result.push({
         path: file.path,
@@ -109,15 +110,19 @@ export class ReviewService {
       .parse(input);
 
     const content = await this.engine.git.file(this.engine.db.task(p.id), p.path, p.old_path);
-    if (content.binary)
+    if (content.binary) {
       throw new AdeError("binary", "Review binary or oversized files in your editor.");
+    }
+
     const hash = fileHash(content.original, content.modified);
-    if (hash !== p.expected_hash)
+    if (hash !== p.expected_hash) {
       throw new AdeError(
         "changed",
         "This file changed during review. Refresh before marking it reviewed.",
       );
-    if (p.reviewed)
+    }
+
+    if (p.reviewed) {
       this.engine.db.run(
         "INSERT INTO task_reviewed_files VALUES(?,?,?,?) ON CONFLICT(task_id,path) DO UPDATE SET source_hash=excluded.source_hash,reviewed_at=excluded.reviewed_at",
         p.id,
@@ -125,12 +130,14 @@ export class ReviewService {
         hash,
         now(),
       );
-    else
+    } else {
       this.engine.db.run(
         "DELETE FROM task_reviewed_files WHERE task_id=? AND path=?",
         p.id,
         p.path,
       );
+    }
+
     this.engine.changed(p.id);
   };
 
@@ -146,21 +153,31 @@ export class ReviewService {
     const p = questionInput.parse(input);
     this.engine.assertAvailable();
     const task = this.engine.db.task(p.id);
-    if (this.engine.isActive(task.id))
+    if (this.engine.isActive(task.id)) {
       throw new AdeError(
         "busy",
         "Stop this task's current run or terminal before asking about its code.",
       );
-    if (p.line_end < p.line_start || p.line_end - p.line_start > 199)
+    }
+
+    if (p.line_end < p.line_start || p.line_end - p.line_start > 199) {
       throw new AdeError("selection", "Select between 1 and 200 code lines.");
+    }
+
     const file = await this.engine.git.file(task, p.path, p.old_path);
-    if (file.binary) throw new AdeError("selection", "Select code in a text file.");
+    if (file.binary) {
+      throw new AdeError("selection", "Select code in a text file.");
+    }
+
     const lines = (p.side === "base" ? file.original : file.modified).split("\n");
-    if (p.line_end > lines.length)
+    if (p.line_end > lines.length) {
       throw new AdeError("selection", "The selected lines no longer exist. Refresh the diff.");
+    }
+
     const code = lines.slice(p.line_start - 1, p.line_end).join("\n");
-    if (code.length > 16000)
+    if (code.length > 16000) {
       throw new AdeError("selection", "Select a smaller section (maximum 16,000 characters).");
+    }
 
     const parent = p.parent_id
       ? this.questions(p.id).find(
@@ -168,8 +185,10 @@ export class ReviewService {
         )
       : null;
 
-    if (p.parent_id && !parent)
+    if (p.parent_id && !parent) {
       throw new AdeError("not_found", "The prior question does not belong to this file and task.");
+    }
+
     const repository = this.engine.db.repository(task.repo_id);
     const id = randomUUID();
     const created = now();
@@ -270,7 +289,9 @@ export class ReviewService {
           }
         }
 
-        if (prose) explanation = prose.slice(0, 24000);
+        if (prose) {
+          explanation = prose.slice(0, 24000);
+        }
       }
 
       this.engine.db.run(
@@ -306,7 +327,9 @@ export class ReviewService {
     const p = noteInput.parse(input);
     const task = this.engine.db.task(p.id);
     const file = await this.engine.git.file(task, p.path, p.old_path);
-    if (file.binary) throw new AdeError("invalid_input", "Text review notes require a text file");
+    if (file.binary) {
+      throw new AdeError("invalid_input", "Text review notes require a text file");
+    }
 
     const note: ReviewNote = {
       id: randomUUID(),

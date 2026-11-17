@@ -43,23 +43,30 @@ export const SecondaryWorkspace = ({
         ?.querySelector<HTMLButtonElement>("button[aria-label='Return to chat']")
         ?.focus();
     } else if (view.secondaryOpen && !view.expandedTool && expanded.current) {
-      if (narrow)
+      if (narrow) {
         dialog.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-      else if (previousFocus.current?.isConnected) previousFocus.current.focus();
-      else focusWorkspace(anchor.current?.closest(".workspace"));
+      } else if (previousFocus.current?.isConnected) {
+        previousFocus.current.focus();
+      } else {
+        focusWorkspace(anchor.current?.closest(".workspace"));
+      }
     }
 
     expanded.current = view.expandedTool;
   }, [view.expandedTool, view.secondaryOpen, narrow, dialog]);
 
   useEffect(() => {
-    if (content.current)
+    if (content.current) {
       content.current.scrollTop = scrollPositions.current[view.secondarySection] || 0;
+    }
   }, [view.secondarySection, view.secondaryOpen, view.expandedTool]);
 
   useEffect(() => {
     const parent = anchor.current?.parentElement;
-    if (!parent || typeof ResizeObserver === "undefined") return;
+    if (!parent || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
     const observer = new ResizeObserver(() => setNarrow(parent.clientWidth < 960));
     observer.observe(parent);
     return () => observer.disconnect();
@@ -109,11 +116,16 @@ export const SecondaryWorkspace = ({
               if (e.key === "Escape") {
                 e.preventDefault();
                 e.stopPropagation();
-                if (view.expandedTool) updateTaskView(id, { expandedTool: false });
-                else close();
+                if (view.expandedTool) {
+                  updateTaskView(id, { expandedTool: false });
+                } else {
+                  close();
+                }
               }
 
-              if (narrow && !view.expandedTool) containDialogFocus(e);
+              if (narrow && !view.expandedTool) {
+                containDialogFocus(e);
+              }
             }}
           >
             <header className="secondary-heading">

@@ -100,7 +100,9 @@ export const callRepairs = async (
       const session = services.repairs.store.get(p.id);
       await services.repairs.workspaces.assert(session, e.db.repository(session.repo_id));
       const assignment = services.repairs.assignment(p.id);
-      if (p.layer === "repair") return e.git.diff(assignment);
+      if (p.layer === "repair") {
+        return e.git.diff(assignment);
+      }
 
       const base =
         p.layer === "original" ? session.workspace.original_base : session.workspace.original_head;
@@ -110,7 +112,10 @@ export const callRepairs = async (
           ? session.workspace.original_head
           : session.workspace.integrated_head;
 
-      if (!head) throw new AdeError("invalid_state", "Upstream integration has not completed.");
+      if (!head) {
+        throw new AdeError("invalid_state", "Upstream integration has not completed.");
+      }
+
       return e.git.diff({ ...assignment, base_commit_sha: base }, head);
     }
 

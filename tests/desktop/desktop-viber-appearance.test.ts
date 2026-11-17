@@ -20,12 +20,13 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
     const home = join(dir, "home");
     const blocked = join(dir, "blocked-cli");
     await Promise.all([mkdir(screenshots), mkdir(home), mkdir(blocked)]);
-    for (const name of ["gh", "agy", "codex"])
+    for (const name of ["gh", "agy", "codex"]) {
       await writeFile(
         join(blocked, name),
         "#!/bin/sh\necho 'Live CLI disabled in avatar fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
 
     const engine = await createFixtureEngine(join(dir, "fixture-data"));
     const rpc = new Rpc(engine);
@@ -89,9 +90,15 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
       await page.getByRole("heading", { name: "Tasks", exact: true }).waitFor();
 
       await page.exposeFunction("fixtureRpc", (method: string, input: unknown) => {
-        if (method === "pr.watch.start") return null;
-        if (method === "profile.save") profileSaves.push(input);
-        if (method === "providers.detect")
+        if (method === "pr.watch.start") {
+          return null;
+        }
+
+        if (method === "profile.save") {
+          profileSaves.push(input);
+        }
+
+        if (method === "providers.detect") {
           return [
             {
               provider: "codex",
@@ -127,6 +134,8 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
               efforts: ["low", "medium", "high"],
             },
           ];
+        }
+
         return rpc.call(method, input);
       });
 
@@ -416,7 +425,7 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
           "2026-11-14T09:41:05.000Z",
         ],
         ["user", "Perfect. Keep me posted this week.", "2026-11-14T09:41:10.000Z"],
-      ])
+      ]) {
         engine.db.run(
           "INSERT INTO task_messages(id,task_id,role,content,created_at,status,purpose,flow_node_id,viber_profile_id) VALUES(?,?,?,?,?,'chat_completed','chat',?,?)",
           randomUUID(),
@@ -427,6 +436,7 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
           chatNode.id,
           profile.id,
         );
+      }
 
       await sidebar.getByRole("button", { name: /Orbit/ }).click();
       await page.getByRole("region", { name: "Chat with Orbit" }).waitFor();
@@ -550,7 +560,9 @@ it.skipIf(process.env.VIBESTAR_AVATAR_DESKTOP_TEST !== "1")(
       await app.close();
       await rpc.close();
       await engine.close();
-      if (!process.env.VIBESTAR_KEEP_EVIDENCE) await rm(dir, { recursive: true, force: true });
+      if (!process.env.VIBESTAR_KEEP_EVIDENCE) {
+        await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   90000,

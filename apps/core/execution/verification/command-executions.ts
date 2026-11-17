@@ -41,7 +41,10 @@ export class CommandExecutions {
         continue;
       }
 
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        continue;
+      }
+
       for (const normalized of provider.normalize(raw)) {
         const parsed = CommandEvidenceSchema.safeParse(normalized.data);
         if (
@@ -49,8 +52,9 @@ export class CommandExecutions {
           !parsed.success ||
           typeof parsed.data.exit_code !== "number" ||
           parsed.data.call_id == null
-        )
+        ) {
           continue;
+        }
 
         const saved = this.db.all<{ exit_code: number | null }>(
           "SELECT exit_code FROM test_runs WHERE task_id=? AND run_id=? AND call_id=?",
@@ -59,7 +63,10 @@ export class CommandExecutions {
           String(parsed.data.call_id),
         )[0];
 
-        if (!saved || saved.exit_code !== null) continue;
+        if (!saved || saved.exit_code !== null) {
+          continue;
+        }
+
         this.observe(taskId, event.run_id, normalized, event.timestamp);
         recovered++;
       }
@@ -75,9 +82,15 @@ export class CommandExecutions {
     timestamp = now(),
     repairId: string | null = null,
   ) => {
-    if (!event.kind.startsWith("command.")) return;
+    if (!event.kind.startsWith("command.")) {
+      return;
+    }
+
     const data = CommandEvidenceSchema.parse(event.data);
-    if (data.call_id === undefined || data.call_id === null) return;
+    if (data.call_id === undefined || data.call_id === null) {
+      return;
+    }
+
     const callId = String(data.call_id);
 
     const row = this.db.all<{
@@ -99,7 +112,10 @@ export class CommandExecutions {
     )[0];
 
     const command = typeof data.command === "string" ? data.command : row?.command;
-    if (!command) return;
+    if (!command) {
+      return;
+    }
+
     const failed = ["failed", "error"].includes(String(data.status).toLowerCase());
     const exit = typeof data.exit_code === "number" ? data.exit_code : (row?.exit_code ?? null);
 

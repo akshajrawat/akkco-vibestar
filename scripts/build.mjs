@@ -67,7 +67,10 @@ if (process.platform !== "win32") {
     } catch {
       const lockData = JSON.parse(lock.toString("utf8"));
       for (const p of Object.keys(lockData.packages || {})) {
-        if (!p || !p.startsWith("node_modules/")) continue;
+        if (!p || !p.startsWith("node_modules/")) {
+          continue;
+        }
+
         await cp(p, join("out/core", p), { recursive: true });
       }
     }

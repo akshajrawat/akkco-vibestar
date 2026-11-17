@@ -9,7 +9,10 @@ import { Select } from "../../components/ui/Select";
 import { commandVerification } from "../../../core/execution/verification/verification";
 
 const displayCommand = (command: string) => {
-  if (!command.trim().startsWith("[")) return command;
+  if (!command.trim().startsWith("[")) {
+    return command;
+  }
+
   try {
     return parseArgv(command)
       .map((arg) => (/^[\w./:=@-]+$/.test(arg) ? arg : JSON.stringify(arg)))
@@ -49,15 +52,22 @@ export const CommandRuns = ({
         (!!attempt.agent_run_id && attempt.agent_run_id === test.run_id),
     );
 
-    if (attempt)
+    if (attempt) {
       return {
         value: `attempt:${attempt.id}`,
         label: `${attempt.configuration.node.name} · attempt ${attempt.ordinal}${attempt.configuration.agent ? ` · ${attempt.configuration.agent.execution.provider}` : ""}`,
       };
+    }
+
     const run = detail.runs.find((run) => run.id === test.run_id);
-    if (run)
+    if (run) {
       return { value: `run:${run.id}`, label: `${run.provider} · ${run.purpose || "Saved run"}` };
-    if (test.run_id) return { value: `run:${test.run_id}`, label: `Recorded run ${test.run_id}` };
+    }
+
+    if (test.run_id) {
+      return { value: `run:${test.run_id}`, label: `Recorded run ${test.run_id}` };
+    }
+
     return { value: "manual", label: "Manual / unassigned" };
   };
 

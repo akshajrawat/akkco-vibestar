@@ -106,14 +106,18 @@ export const SettingsSchema = z
   .superRefine((settings, context) => {
     for (const { key, provider } of pipelineStages) {
       const config = settings[key];
-      if (!config) continue;
+      if (!config) {
+        continue;
+      }
+
       const error = modelEffortError(config.provider || provider, config.model, config.effort);
-      if (error)
+      if (error) {
         context.addIssue({
           code: "custom",
           path: [key, "effort"],
           message: error,
         });
+      }
     }
   });
 
@@ -127,7 +131,10 @@ export const pipelineConfiguration = (
   overrides?: z.infer<typeof PipelineStageSettingsSchema>,
 ) => {
   const role = pipelineStages.find((entry) => entry.stage === stage);
-  if (!role) throw new AdeError("invalid_stage", "Unknown agent pipeline stage.");
+  if (!role) {
+    throw new AdeError("invalid_stage", "Unknown agent pipeline stage.");
+  }
+
   const configured = settings[role.key];
   const saved = overrides?.[role.stage] || configured;
   const config = saved || settings.antigravity;
@@ -318,7 +325,10 @@ export interface NormalizedEvent {
 export const parseIssue = (input: string | null): IssueRef => {
   let u: URL;
   try {
-    if (!input) throw new Error("Issue URL is required.");
+    if (!input) {
+      throw new Error("Issue URL is required.");
+    }
+
     u = new URL(input.trim());
   } catch {
     throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
@@ -334,11 +344,15 @@ export const parseIssue = (input: string | null): IssueRef => {
     !m ||
     [".", ".."].includes(m[1]) ||
     [".", ".."].includes(m[2])
-  )
+  ) {
     throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
+  }
+
   const number = Number(m[3]);
-  if (!Number.isSafeInteger(number) || number <= 0)
+  if (!Number.isSafeInteger(number) || number <= 0) {
     throw new AdeError("invalid_input", "Invalid GitHub issue number");
+  }
+
   return {
     owner: m[1],
     repo: m[2],
@@ -359,8 +373,10 @@ export const slug = (scope: string) =>
     .replace(/^-|-$/g, "") || "scope";
 
 export const branchName = (identifier: number | string, scope: string, suffix = 0) => {
-  if (!/^[a-zA-Z0-9-]+$/.test(String(identifier)))
+  if (!/^[a-zA-Z0-9-]+$/.test(String(identifier))) {
     throw new AdeError("isolation", "Invalid task branch identifier.");
+  }
+
   return `akkco/${identifier}-${slug(scope)}${suffix ? `-${suffix}` : ""}`;
 };
 
@@ -380,11 +396,13 @@ export const remoteIdentity = (input: string) => {
     u.hash ||
     !m ||
     m.slice(1).some((s) => s === "." || s === "..")
-  )
+  ) {
     throw new AdeError(
       "invalid_input",
       "Use a GitHub HTTPS URL or git@github.com:owner/repository.git",
     );
+  }
+
   return { owner: m[1], name: m[2] };
 };
 

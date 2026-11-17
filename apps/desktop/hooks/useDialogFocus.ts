@@ -4,7 +4,10 @@ export const useDialogFocus = (enabled = true) => {
   const dialog = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
+
     const previous = document.activeElement as HTMLElement | null;
 
     dialog.current
@@ -14,7 +17,9 @@ export const useDialogFocus = (enabled = true) => {
       ?.focus();
 
     return () => {
-      if (previous?.isConnected) previous.focus();
+      if (previous?.isConnected) {
+        previous.focus();
+      }
     };
   }, [enabled]);
 

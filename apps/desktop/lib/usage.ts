@@ -6,8 +6,9 @@ export const readLimits = (
 ): ProviderDetection["subscriptionLimits"] => {
   try {
     const value = JSON.parse(json || "null");
-    if (!value || typeof value.reportedAt !== "string" || !Array.isArray(value.windows))
+    if (!value || typeof value.reportedAt !== "string" || !Array.isArray(value.windows)) {
       return undefined;
+    }
 
     const windows = value.windows.filter(
       (w: Record<string, unknown>) =>
@@ -36,7 +37,10 @@ export const readLimits = (
 export const limitDeltas = (row: UsageRecord) => {
   const before = readLimits(row.subscription_limits);
   const after = readLimits(row.subscription_limits_after);
-  if (!before || !after || before.planType !== after.planType) return [];
+  if (!before || !after || before.planType !== after.planType) {
+    return [];
+  }
+
   return before.windows.flatMap((a) => {
     const b = after.windows.find(
       (w) => w.windowDurationMins === a.windowDurationMins && w.resetsAt === a.resetsAt,

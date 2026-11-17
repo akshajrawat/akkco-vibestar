@@ -97,10 +97,14 @@ export class RepairService {
       if (
         !session.workspace.operation &&
         !["preparing", "codex_implementing", "antigravity_verifying"].includes(session.status)
-      )
+      ) {
         continue;
-      if (session.workspace.operation)
+      }
+
+      if (session.workspace.operation) {
         this.store.activity(session, "interrupted_git_operation", session.workspace.operation);
+      }
+
       session.workspace.operation = null;
       session.approved_hash = null;
       let state = "pending";
@@ -172,19 +176,26 @@ export class RepairService {
       fresh.head.branch !== old.head.branch ||
       fresh.base.branch !== old.base.branch ||
       fresh.upstream.name !== old.upstream.name
-    )
+    ) {
       throw new AdeError(
         "pr_identity",
         "The PR or destination identity changed. Import and analyze the current PR explicitly.",
       );
-    if (fresh.state !== "open") throw new AdeError("pr_closed", "The PR is no longer open.");
+    }
+
+    if (fresh.state !== "open") {
+      throw new AdeError("pr_closed", "The PR is no longer open.");
+    }
+
     session.identity = fresh;
     this.store.save(session);
-    if (fresh.head.sha !== session.workspace.original_head)
+    if (fresh.head.sha !== session.workspace.original_head) {
       throw new AdeError(
         "stale_remote_head",
         "The remote PR head changed. Analyze again and create a new repair session.",
       );
+    }
+
     return fresh;
   };
 
@@ -194,13 +205,15 @@ export class RepairService {
     operation: (session: RepairSession, signal: AbortSignal) => Promise<T>,
   ) => {
     this.engine.assertAvailable();
-    if (this.active.has(id) || this.terminalLeases.has(id))
+    if (this.active.has(id) || this.terminalLeases.has(id)) {
       throw new AdeError("busy", "This repair workspace is already in use.");
+    }
+
     const session = this.store.get(id);
     for (const row of this.engine.db.all<{ id: string; data: string }>(
       "SELECT id,data FROM repair_publications WHERE repair_id=?",
       id,
-    ))
+    )) {
       this.engine.db.records.decode(
         {
           table: "repair_publications",
@@ -211,6 +224,8 @@ export class RepairService {
         },
         HistoricalRepairPublicationSchema.parse,
       );
+    }
+
     const controller = new AbortController();
     let releaseActivity = () => {};
 
@@ -247,9 +262,9 @@ export class RepairService {
             error: message,
           });
 
-          if (error instanceof AdeError && error.kind === "stale_remote_head")
+          if (error instanceof AdeError && error.kind === "stale_remote_head") {
             this.transition(session, "stale_remote_head", message);
-          else {
+          } else {
             session.error = message;
             this.store.save(session);
           }
@@ -287,11 +302,13 @@ export class RepairService {
 
     const active = this.creating.get(request.request_id);
     if (active) {
-      if (active.key !== key)
+      if (active.key !== key) {
         throw new AdeError(
           "invalid_input",
           "This request identity already belongs to another repair selection.",
         );
+      }
+
       return active.promise;
     }
 
@@ -341,11 +358,13 @@ export class RepairService {
           .sort()
           .join() !== [...request.action_ids].sort().join() ||
         originalInstructions !== request.instructions
-      )
+      ) {
         throw new AdeError(
           "invalid_input",
           "This request identity already belongs to another repair selection.",
         );
+      }
+
       return previous;
     }
 
@@ -370,11 +389,16 @@ export class RepairService {
         PRAnalysisSessionSchema.parse,
       );
 
-    if (!context?.snapshot?.identity || !context.report?.complete || context.status !== "completed")
+    if (
+      !context?.snapshot?.identity ||
+      !context.report?.complete ||
+      context.status !== "completed"
+    ) {
       throw new AdeError(
         "analysis_required",
         "Complete an explicit PR analysis before solving selected review items.",
       );
+    }
 
     const actions = request.action_ids.map((id) => {
       const action = context.report!.actions.find((a) => a.id === id);
@@ -382,11 +406,13 @@ export class RepairService {
         !action ||
         !["required_change", "suggested_change", "question"].includes(action.classification) ||
         action.responseState === "answered"
-      )
+      ) {
         throw new AdeError(
           "invalid_input",
           "Select outstanding review observations from this analysis.",
         );
+      }
+
       return action;
     });
 
@@ -410,7 +436,9 @@ export class RepairService {
         request.job_id,
       )[0];
 
-      if (!job) throw new AdeError("not_found", "Tracked PR no longer exists.");
+      if (!job) {
+        throw new AdeError("not_found", "Tracked PR no longer exists.");
+      }
 
       const identity = await this.readIdentity(
         this.engine.db.records.decode({
@@ -432,11 +460,13 @@ export class RepairService {
         identity.base.branch !== analyzed.baseBranch ||
         identity.head.sha !== context.snapshot.headRefOid ||
         identity.state !== "open"
-      )
+      ) {
         throw new AdeError(
           "stale_remote_head",
           "The PR identity or head changed since analysis. Analyze again before repairing.",
         );
+      }
+
       await this.workspaces.validateRepository(repo, identity);
       const settings = this.engine.db.settings();
 
@@ -488,7 +518,10 @@ export class RepairService {
 
       this.store.save(session);
       this.store.activity(session, "creation_request", request);
-      if (request.instructions) this.store.message(session.id, request.instructions);
+      if (request.instructions) {
+        this.store.message(session.id, request.instructions);
+      }
+
       this.changed(session);
       await this.start(session.id);
       return this.store.get(session.id);
@@ -501,8 +534,9 @@ export class RepairService {
     await this.ready;
     const session = this.store.get(id);
     if (requestId) {
-      if (!instructions.trim())
+      if (!instructions.trim()) {
         throw new AdeError("invalid_input", "An instruction request must contain text.");
+      }
 
       const previous = this.engine.db.all<{
         repair_id: string;
@@ -510,40 +544,51 @@ export class RepairService {
       }>("SELECT repair_id,content FROM repair_messages WHERE id=?", requestId)[0];
 
       if (previous) {
-        if (previous.repair_id !== id || previous.content !== instructions)
+        if (previous.repair_id !== id || previous.content !== instructions) {
           throw new AdeError(
             "invalid_input",
             "This repair instruction request already belongs to different content.",
           );
+        }
+
         return session;
       }
     }
 
-    if (session.workspace.preparation === "removed")
+    if (session.workspace.preparation === "removed") {
       throw new AdeError(
         "invalid_state",
         "This repair workspace was removed. Its saved history remains available.",
       );
-    if (["published", "ready_to_publish", "stale_remote_head"].includes(session.status))
+    }
+
+    if (["published", "ready_to_publish", "stale_remote_head"].includes(session.status)) {
       throw new AdeError(
         "invalid_state",
         "This session cannot start another repair in its current state.",
       );
-    if (this.active.has(id) || this.terminalLeases.has(id))
+    }
+
+    if (this.active.has(id) || this.terminalLeases.has(id)) {
       throw new AdeError("busy", "This repair is already running.");
-    if (session.workspace.merge_state === "conflict")
+    }
+
+    if (session.workspace.merge_state === "conflict") {
       throw new AdeError(
         "merge_conflict",
         "Resolve and recover the preserved merge before starting agents.",
       );
+    }
+
     if (
       !instructions &&
       ["awaiting_manual_review", "verification_blocked"].includes(session.status)
-    )
+    ) {
       throw new AdeError(
         "invalid_input",
         "Describe the further fix before requesting another model run.",
       );
+    }
 
     this.engine.db.transaction(() => {
       if (instructions) {
@@ -628,13 +673,18 @@ export class RepairService {
         .map((i) => i.actionId)
         .sort()
         .join() !== expected.join()
-    )
+    ) {
       throw new AdeError(
         "repair_evidence",
         "The model must return exactly one result for every selected reviewer observation.",
       );
-    for (const item of items)
-      for (const path of item.files) await safeFile(session.workspace.worktree_path, path);
+    }
+
+    for (const item of items) {
+      for (const path of item.files) {
+        await safeFile(session.workspace.worktree_path, path);
+      }
+    }
   };
 
   private pipeline = async (session: RepairSession, signal: AbortSignal) => {
@@ -685,8 +735,10 @@ export class RepairService {
     if (
       (await gitCapture(["rev-parse", "--verify", "MERGE_HEAD"], session.workspace.worktree_path))
         .code === 0
-    )
+    ) {
       throw new AdeError("git_merge", "A merge is still pending; no reviewer will start.");
+    }
+
     this.transition(session, "antigravity_verifying");
     const context = await this.context(session);
     const before = await this.engine.git.repairFingerprint(repairAssignment(session));
@@ -705,11 +757,13 @@ export class RepairService {
     );
 
     await this.validateItems(session, review.items);
-    if (before !== (await this.engine.git.repairFingerprint(repairAssignment(session))))
+    if (before !== (await this.engine.git.repairFingerprint(repairAssignment(session)))) {
       throw new AdeError(
         "review_changed",
         "Repair workspace changed during independent verification.",
       );
+    }
+
     session.verification = review;
     session.review_hash = before;
 
@@ -721,8 +775,10 @@ export class RepairService {
 
   recoverConflict = async (id: string) =>
     this.exclusive(id, "Resolving PR merge checkpoint", async (session, signal) => {
-      if (session.workspace.merge_state !== "conflict")
+      if (session.workspace.merge_state !== "conflict") {
         throw new AdeError("invalid_state", "This repair has no saved merge conflict.");
+      }
+
       await this.verifyIdentity(session, signal);
 
       await this.workspaces.recoverConflict(
@@ -774,8 +830,10 @@ export class RepairService {
   acquireTerminal = async (id: string) => {
     await this.ready;
     this.engine.assertAvailable();
-    if (this.active.has(id) || this.terminalLeases.has(id))
+    if (this.active.has(id) || this.terminalLeases.has(id)) {
       throw new AdeError("busy", "Close the active repair operation before opening its terminal.");
+    }
+
     this.terminalLeases.add(id);
     let releaseDestination: (() => Promise<void>) | undefined;
     try {
@@ -825,7 +883,11 @@ export class RepairService {
         join(this.engine.root, "artifacts", `repair-${id}-context`),
       ];
 
-      if (history) for (const path of paths) await managedPath(this.engine.root, path);
+      if (history) {
+        for (const path of paths) {
+          await managedPath(this.engine.root, path);
+        }
+      }
 
       await this.workspaces.cleanup(session, this.engine.db.repository(session.repo_id), () =>
         this.store.save(session),
@@ -833,11 +895,12 @@ export class RepairService {
 
       this.store.activity(session, "workspace_removed", { timestamp: now() });
       if (history) {
-        for (const path of paths)
+        for (const path of paths) {
           await rm(await managedPath(this.engine.root, path), {
             recursive: true,
             force: true,
           });
+        }
 
         this.engine.db.transaction(() => {
           for (const table of [
@@ -849,8 +912,10 @@ export class RepairService {
             "repair_publications",
             "repair_reviewed_files",
             "agent_runs",
-          ])
+          ]) {
             this.engine.db.run(`DELETE FROM ${table} WHERE repair_id=?`, id);
+          }
+
           this.engine.db.run("DELETE FROM pr_repairs WHERE id=?", id);
         });
       }
@@ -873,7 +938,10 @@ export class RepairService {
 
     const result = [];
     for (const file of diff.files) {
-      if (file.binary) continue;
+      if (file.binary) {
+        continue;
+      }
+
       const content = await this.engine.git.file(assignment, file.path, file.old_path);
       const hash = fileHash(content.original, content.modified);
 
@@ -897,12 +965,14 @@ export class RepairService {
     await this.ready;
     return this.exclusive(id, "Recording reviewed repair file", async (session) => {
       const content = await this.engine.git.file(repairAssignment(session), path, oldPath);
-      if (content.binary || fileHash(content.original, content.modified) !== expectedHash)
+      if (content.binary || fileHash(content.original, content.modified) !== expectedHash) {
         throw new AdeError(
           "review_changed",
           "This file changed during review. Refresh before marking it reviewed.",
         );
-      if (reviewed)
+      }
+
+      if (reviewed) {
         this.engine.db.run(
           "INSERT INTO repair_reviewed_files VALUES(?,?,?,?) ON CONFLICT(repair_id,path) DO UPDATE SET source_hash=excluded.source_hash,reviewed_at=excluded.reviewed_at",
           id,
@@ -910,12 +980,14 @@ export class RepairService {
           expectedHash,
           now(),
         );
-      else
+      } else {
         this.engine.db.run(
           "DELETE FROM repair_reviewed_files WHERE repair_id=? AND path=?",
           id,
           path,
         );
+      }
+
       return { reviewed };
     });
   };
@@ -924,7 +996,10 @@ export class RepairService {
 
   cancel = async (id: string) => {
     const operation = this.active.get(id);
-    if (!operation) throw new AdeError("invalid_state", "This repair has no active operation.");
+    if (!operation) {
+      throw new AdeError("invalid_state", "This repair has no active operation.");
+    }
+
     operation.controller.abort();
     await operation.promise.catch(() => {});
     return this.store.get(id);
@@ -932,13 +1007,17 @@ export class RepairService {
 
   close = async () => {
     await this.ready;
-    for (const creation of this.creating.values()) creation.controller.abort();
+    for (const creation of this.creating.values()) {
+      creation.controller.abort();
+    }
 
     await Promise.all(
       [...this.creating.values()].map((creation) => creation.promise.catch(() => {})),
     );
 
-    for (const operation of this.active.values()) operation.controller.abort();
+    for (const operation of this.active.values()) {
+      operation.controller.abort();
+    }
 
     await Promise.all(
       [...this.active.values()].map((operation) => operation.promise.catch(() => {})),

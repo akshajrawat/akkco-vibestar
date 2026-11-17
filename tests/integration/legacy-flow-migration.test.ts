@@ -140,7 +140,7 @@ const historicalTask = async (
   for (const [id, status] of [
     [delivered, "delivered"],
     [pending, "queued"],
-  ])
+  ]) {
     engine.db.run(
       "INSERT INTO task_messages(id,task_id,role,content,created_at,status,purpose) VALUES(?,?,'user',?,?,?,'instruction')",
       id,
@@ -149,6 +149,8 @@ const historicalTask = async (
       now(),
       status,
     );
+  }
+
   return { task: engine.db.task(task.id), runId, delivered, pending };
 };
 
@@ -204,8 +206,10 @@ it("converts each saved approval boundary on reopen without inference, fabricate
       ).toEqual([{ data: original.raw }]);
 
       const detail = engine.db.detail(task.id);
-      for (const key of ["runs", "messages", "artifacts", "tests", "usage"] as const)
+      for (const key of ["runs", "messages", "artifacts", "tests", "usage"] as const) {
         expect(detail[key]).toEqual(original.detail[key]);
+      }
+
       expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
       expect(detail.runs[0]).toMatchObject({ execution: null, model: "actual-old-model" });
       for (const node of graph.nodes.filter((node) => node.type === "agent")) {
@@ -218,7 +222,9 @@ it("converts each saved approval boundary on reopen without inference, fabricate
     expect(engine.db.all("SELECT id FROM flow_dispatches")).toHaveLength(0);
     expect(engine.db.all("SELECT attempt_id FROM flow_approval_decisions")).toHaveLength(0);
     expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
-    if (reopen === 0) await engine.close();
+    if (reopen === 0) {
+      await engine.close();
+    }
   }
 });
 

@@ -207,11 +207,26 @@ it("assesses review requests with the conversation, ignores own comments and ret
   vi.spyOn(rpc.prWatch.reader, "read").mockImplementation(async (url) => {
     const number = Number(url.split("/").at(-1));
     const data = context(number);
-    if (number === 1) data.review_decision = "CHANGES_REQUESTED";
-    if (number === 2) data.requested_reviewers = 1;
-    if (number === 3) data.sources[0].author = "AkshaJRawat";
-    if (number === 4) data.complete = false;
-    if (number === 5) await blocked;
+    if (number === 1) {
+      data.review_decision = "CHANGES_REQUESTED";
+    }
+
+    if (number === 2) {
+      data.requested_reviewers = 1;
+    }
+
+    if (number === 3) {
+      data.sources[0].author = "AkshaJRawat";
+    }
+
+    if (number === 4) {
+      data.complete = false;
+    }
+
+    if (number === 5) {
+      await blocked;
+    }
+
     return data;
   });
 
@@ -236,9 +251,11 @@ it.each(["fabricated evidence", "missing PR", "timeout"])(
     );
 
     const infer = classifier();
-    if (failure === "timeout") infer.mockRejectedValue(new Error("Run exceeded 120s timeout"));
-    else if (failure === "missing PR") infer.mockResolvedValue({ results: [] });
-    else
+    if (failure === "timeout") {
+      infer.mockRejectedValue(new Error("Run exceeded 120s timeout"));
+    } else if (failure === "missing PR") {
+      infer.mockResolvedValue({ results: [] });
+    } else {
       infer.mockImplementation(async (request) => {
         const data = JSON.parse(request.prompt.split("\nPR_WATCH_CONTEXT_JSON\n")[1]) as {
           key: string;
@@ -253,6 +270,8 @@ it.each(["fabricated evidence", "missing PR", "timeout"])(
           })),
         };
       });
+    }
+
     rpc.prWatch.start({ request_id: randomUUID(), trigger: "recheck" });
     const result = await finish();
     expect(result.items.every((item) => item.status === "unknown")).toBe(true);
@@ -269,7 +288,10 @@ it.each(["fabricated evidence", "missing PR", "timeout"])(
 
 it("cancels all concurrent reads, retains finished decisions and does not replay on reopen", async () => {
   vi.spyOn(rpc.prWatch.reader, "read").mockImplementation(async (url, signal) => {
-    if (url.endsWith("/1")) return { ...context(1), requested_reviewers: 1, sources: [] };
+    if (url.endsWith("/1")) {
+      return { ...context(1), requested_reviewers: 1, sources: [] };
+    }
+
     return new Promise<never>((_, reject) =>
       signal.addEventListener("abort", () => reject(new Error("Stopped")), { once: true }),
     );

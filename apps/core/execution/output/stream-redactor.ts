@@ -46,7 +46,10 @@ export class StreamRedactor {
 
   private consume = (raw: string, value: string) => {
     if (this.mode === "opaque") {
-      if (!/^[\r\n]$/.test(value)) return;
+      if (!/^[\r\n]$/.test(value)) {
+        return;
+      }
+
       this.mode = "plain";
     }
 
@@ -56,18 +59,29 @@ export class StreamRedactor {
           this.pending = [];
           this.mode = "opaque";
           this.output += "[REDACTED]";
-        } else this.pending.push({ raw, value });
-      } else this.output += raw;
+        } else {
+          this.pending.push({ raw, value });
+        }
+      } else {
+        this.output += raw;
+      }
+
       return;
     }
 
     if (this.mode === "token") {
-      if (/^[a-z0-9_.-]$/i.test(value)) return;
+      if (/^[a-z0-9_.-]$/i.test(value)) {
+        return;
+      }
+
       this.mode = "plain";
     }
 
     if (this.mode === "value") {
-      if (this.afterScheme && /^[ \t]$/.test(value)) return;
+      if (this.afterScheme && /^[ \t]$/.test(value)) {
+        return;
+      }
+
       this.afterScheme = false;
       const cookie = this.field === "cookie" || this.field === "set-cookie";
       if (/^[\r\n"']$/.test(value) || (!cookie && /^[\s,;}\]]$/.test(value))) {
@@ -84,7 +98,10 @@ export class StreamRedactor {
 
         this.mode = "plain";
       } else {
-        if (this.scheme.length < 16) this.scheme += value;
+        if (this.scheme.length < 16) {
+          this.scheme += value;
+        }
+
         return;
       }
     }
@@ -134,10 +151,15 @@ export class StreamRedactor {
         return;
       }
 
-      if (candidates.some((prefix) => prefix.startsWith(text))) return;
+      if (candidates.some((prefix) => prefix.startsWith(text))) {
+        return;
+      }
+
       const unit = this.pending.shift()!;
       this.output += unit.raw;
-      if (unit.value) this.previous = unit.value;
+      if (unit.value) {
+        this.previous = unit.value;
+      }
     }
   };
 

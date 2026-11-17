@@ -19,10 +19,14 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
 
     void rpc<typeof preview>("storage.resetPreview", {})
       .then((value) => {
-        if (alive) setPreview(value);
+        if (alive) {
+          setPreview(value);
+        }
       })
       .catch((error) => {
-        if (alive) setError(errorMessage(error));
+        if (alive) {
+          setError(errorMessage(error));
+        }
       });
 
     return () => {

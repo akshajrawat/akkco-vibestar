@@ -17,7 +17,10 @@ it("limits both bytes and entries queued behind a slow log sink", async () => {
   await writer.drain();
   expect(sink).toHaveBeenCalledTimes(1);
   const small = new BoundedWriter(vi.fn());
-  for (let i = 0; i < 4096; i++) small.write("", sink);
+  for (let i = 0; i < 4096; i++) {
+    small.write("", sink);
+  }
+
   expect(() => small.write("", sink)).toThrow("faster than");
   await small.drain();
 });

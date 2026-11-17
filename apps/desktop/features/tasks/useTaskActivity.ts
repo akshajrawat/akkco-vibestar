@@ -19,7 +19,10 @@ export const useTaskActivity = (
     tasks
       .flatMap((task) => {
         const flow = flowStates?.[task.id];
-        if (task.flow_id ? !flow?.run_id : task.status === "not_started") return [];
+        if (task.flow_id ? !flow?.run_id : task.status === "not_started") {
+          return [];
+        }
+
         const state = taskNavigationState(task, flow);
         return [
           {
@@ -43,14 +46,20 @@ export const useTaskActivity = (
     let alive = true;
     const requests = JSON.parse(requestKey) as { id: string; runId?: string; key: string }[];
     const ids = new Set(requests.map((request) => request.id));
-    for (const id of cache.current.keys()) if (!ids.has(id)) cache.current.delete(id);
+    for (const id of cache.current.keys()) {
+      if (!ids.has(id)) {
+        cache.current.delete(id);
+      }
+    }
 
     let next = 0;
 
     const read = async () => {
       while (alive && next < requests.length) {
         const request = requests[next++];
-        if (cache.current.get(request.id)?.key === request.key) continue;
+        if (cache.current.get(request.id)?.key === request.key) {
+          continue;
+        }
 
         let activity: TaskActivity | undefined;
         try {
@@ -64,9 +73,15 @@ export const useTaskActivity = (
           // Missing or unavailable history provides no reliable timing evidence.
         }
 
-        if (!alive) return;
-        if (activity) cache.current.set(request.id, { key: request.key, activity });
-        else cache.current.delete(request.id);
+        if (!alive) {
+          return;
+        }
+
+        if (activity) {
+          cache.current.set(request.id, { key: request.key, activity });
+        } else {
+          cache.current.delete(request.id);
+        }
 
         setActivities(
           Object.fromEntries([...cache.current].map(([id, entry]) => [id, entry.activity])),

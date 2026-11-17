@@ -13,14 +13,20 @@ const setup = async () => {
 };
 
 afterEach(async () => {
-  for (const resource of resources.splice(0)) await resource.close();
+  for (const resource of resources.splice(0)) {
+    await resource.close();
+  }
+
   vi.restoreAllMocks();
 });
 
 it("advances through saved newest batches without re-fetching prior candidates, including after restart", async () => {
   const f = await setup();
   f.issues.clear();
-  for (let number = 1; number <= 25; number++) f.issues.set(number, githubIssue(number));
+  for (let number = 1; number <= 25; number++) {
+    f.issues.set(number, githubIssue(number));
+  }
+
   const { watch } = await f.create();
   const first = await f.scan(watch.id);
 
@@ -91,7 +97,10 @@ it("advances through saved newest batches without re-fetching prior candidates, 
 it("starts oldest discovery independently and validates next-batch ownership and order", async () => {
   const f = await setup();
   f.issues.clear();
-  for (let number = 1; number <= 15; number++) f.issues.set(number, githubIssue(number));
+  for (let number = 1; number <= 15; number++) {
+    f.issues.set(number, githubIssue(number));
+  }
+
   const { watch } = await f.create();
 
   const start = f.service.launch({

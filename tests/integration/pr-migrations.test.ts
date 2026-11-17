@@ -79,8 +79,9 @@ it("disables every legacy automatic PR inspection while retaining snapshots, con
           expect(job.pending_snapshot).toEqual(prSnapshot);
           expect(job.action.summary).toBe("Saved decision");
           expect(job.conversation_action.summary).toBe("Saved conversation");
-          if (["pending", "polling", "analyzing"].includes(job.id))
+          if (["pending", "polling", "analyzing"].includes(job.id)) {
             expect(job.status).toBe("interrupted");
+          }
         }
 
         expect(

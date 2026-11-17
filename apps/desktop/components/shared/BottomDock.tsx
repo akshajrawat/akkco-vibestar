@@ -20,7 +20,9 @@ export const BottomDock = ({
   const [attached, setAttached] = useState(view.terminalDock && view.dockTab === "Terminal");
 
   useEffect(() => {
-    if (view.terminalDock && view.dockTab === "Terminal") setAttached(true);
+    if (view.terminalDock && view.dockTab === "Terminal") {
+      setAttached(true);
+    }
   }, [view.terminalDock, view.dockTab]);
 
   return (

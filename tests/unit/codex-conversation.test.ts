@@ -191,7 +191,9 @@ it("keeps stdin open through the real process transport and closes after one com
     `,
     ],
     onLine: (stream, line) => {
-      if (stream === "stdout") lines.push(line);
+      if (stream === "stdout") {
+        lines.push(line);
+      }
     },
   });
 

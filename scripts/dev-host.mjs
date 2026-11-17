@@ -16,8 +16,10 @@ export const resolveDevHost = async () => {
     process.platform !== "linux" ||
     !process.env.WSL_DISTRO_NAME ||
     process.env.VIBESTAR_DEV_HOST === "linux"
-  )
+  ) {
     return { executable: electronPath, args: [resolve(".")], env };
+  }
+
   await access("/proc/sys/fs/binfmt_misc/WSLInterop");
 
   const windowsLocal = (
@@ -68,7 +70,9 @@ export const resolveDevHost = async () => {
 
   const metadata = join(await mkdtemp(join(tmpdir(), "vibestar-dev-")), "window.json");
   env.VIBESTAR_DEV_WINDOW_META = await wslpath("-w", metadata);
-  if (env.VIBESTAR_USER_DATA) env.VIBESTAR_USER_DATA = await wslpath("-w", env.VIBESTAR_USER_DATA);
+  if (env.VIBESTAR_USER_DATA) {
+    env.VIBESTAR_USER_DATA = await wslpath("-w", env.VIBESTAR_USER_DATA);
+  }
 
   env.WSLENV = [
     env.WSLENV,
@@ -93,8 +97,9 @@ export const resolveDevHost = async () => {
         !/^\d+$/.test(handle) ||
         !Number.isSafeInteger(pid) ||
         pid <= 0
-      )
+      ) {
         throw new Error("Invalid development window handle");
+      }
 
       await exec("powershell.exe", [
         "-NoProfile",

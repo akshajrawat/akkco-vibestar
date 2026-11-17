@@ -14,8 +14,9 @@ export const useOptimisticMessages = (owner: string, persisted: Message[]) => {
   const pending =
     local.owner === owner ? local.messages.filter((message) => !ids.has(message.id)) : [];
 
-  if (local.owner !== owner || pending.length !== local.messages.length)
+  if (local.owner !== owner || pending.length !== local.messages.length) {
     setLocal({ owner, messages: pending });
+  }
 
   return {
     messages: [...persisted, ...pending],

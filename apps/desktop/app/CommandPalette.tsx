@@ -34,7 +34,9 @@ export const CommandPalette = ({
     <div
       className="palette-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
+        if (e.target === e.currentTarget) {
+          close();
+        }
       }}
     >
       <section

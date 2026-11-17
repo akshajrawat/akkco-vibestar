@@ -18,9 +18,14 @@ export const observedVerification = (
   );
 
   const evidence = rows.map((row) => commandVerification(row));
-  if (evidence.some((check) => check.kind === "check" && check.outcome === "failed"))
+  if (evidence.some((check) => check.kind === "check" && check.outcome === "failed")) {
     return "failed";
-  if (rows.some((row) => row.status !== "passed" || row.exit_code !== 0)) return "missing";
+  }
+
+  if (rows.some((row) => row.status !== "passed" || row.exit_code !== 0)) {
+    return "missing";
+  }
+
   return evidence.some(
     (check) => check.required && check.kind === "check" && check.outcome === "passed",
   )

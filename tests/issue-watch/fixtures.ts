@@ -67,12 +67,14 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
       return structuredClone(typeof value === "function" ? await value() : value) as never;
     }
 
-    if (endpoint === "repos/oppia/oppia")
+    if (endpoint === "repos/oppia/oppia") {
       return {
         node_id: "R_oppia",
         full_name: "oppia/oppia",
         html_url: "https://github.com/oppia/oppia",
       } as never;
+    }
+
     if (endpoint.startsWith("search/issues?")) {
       const params = new URL(`https://api.github.com/${endpoint}`).searchParams;
       const size = Number(params.get("per_page") || 100);
@@ -95,7 +97,7 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
       } as never;
     }
 
-    if (endpoint.endsWith("community/profile"))
+    if (endpoint.endsWith("community/profile")) {
       return {
         files: {
           contributing: {
@@ -103,7 +105,9 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
           },
         },
       } as never;
-    if (endpoint === "repos/oppia/oppia/contents/CONTRIBUTING.md")
+    }
+
+    if (endpoint === "repos/oppia/oppia/contents/CONTRIBUTING.md") {
       return {
         type: "file",
         sha: "policy-sha",
@@ -114,6 +118,7 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
         encoding: "base64",
         size: 60,
       } as never;
+    }
 
     const match = endpoint.match(
       /^repos\/oppia\/oppia\/issues\/(\d+)(?:\/(comments|timeline)\?per_page=100&page=(\d+))?$/,
@@ -121,14 +126,19 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
 
     if (match) {
       const number = Number(match[1]);
-      if (match[2])
+      if (match[2]) {
         return (
           Number(match[3]) === 1
             ? (match[2] === "comments" ? comments.get(number) : timeline.get(number)) || []
             : []
         ) as never;
+      }
+
       const value = issues.get(number);
-      if (!value) throw new Error("Fixture GitHub 404");
+      if (!value) {
+        throw new Error("Fixture GitHub 404");
+      }
+
       return structuredClone(value) as never;
     }
 
@@ -198,5 +208,7 @@ export const watchFixture = async (providers?: Parameters<typeof createFixtureEn
 };
 
 const expectTerminal = (status: string) => {
-  if (status === "running" || status === "cancelling") throw new Error("Scan is still active.");
+  if (status === "running" || status === "cancelling") {
+    throw new Error("Scan is still active.");
+  }
 };

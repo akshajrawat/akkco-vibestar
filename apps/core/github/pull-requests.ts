@@ -28,8 +28,9 @@ const metadata = (input: unknown): GitHubPullRequest => {
   if (
     value.number !== ref.number ||
     value.repository.nameWithOwner.toLowerCase() !== `${ref.owner}/${ref.repo}`.toLowerCase()
-  )
+  ) {
     throw new AdeError("github", "GitHub returned inconsistent PR metadata");
+  }
 
   return {
     url: ref.url,
@@ -59,8 +60,10 @@ const pageSchema = z.object({
 
 /** Lifecycle discovery returns metadata in the search itself, without per-PR REST reads. */
 export const authoredPullRequests = async (username: string, query: Query) => {
-  if (!/^[a-z\d-]{1,39}$/i.test(username))
+  if (!/^[a-z\d-]{1,39}$/i.test(username)) {
     throw new AdeError("github", "GitHub returned an invalid account login");
+  }
+
   let requests = 0;
 
   const search = async (from: number, until: number): Promise<GitHubPullRequest[]> => {
@@ -69,11 +72,12 @@ export const authoredPullRequests = async (username: string, query: Query) => {
     let cursor = "";
     let count: number | undefined;
     do {
-      if (++requests > 200)
+      if (++requests > 200) {
         throw new AdeError(
           "github",
           "Authored PR search exceeded its request budget; saved results remain.",
         );
+      }
 
       const result = pageSchema.parse(
         await query(
@@ -90,33 +94,46 @@ export const authoredPullRequests = async (username: string, query: Query) => {
         ),
       );
 
-      if (result.errors?.length)
+      if (result.errors?.length) {
         throw new AdeError("github", "GitHub returned incomplete PR results; retry refresh");
+      }
+
       const page = result.data.search;
       if (page.issueCount > 1000) {
         const mid = Math.floor((from + until) / 2000) * 1000;
-        if (mid <= from)
+        if (mid <= from) {
           throw new AdeError(
             "github",
             "More than 1,000 PRs in one second; discovery is incomplete",
           );
+        }
+
         return [...(await search(from, mid)), ...(await search(mid + 1000, until))];
       }
 
       count ??= page.issueCount;
-      if (page.issueCount !== count)
+      if (page.issueCount !== count) {
         throw new AdeError("github", "GitHub PR results changed during pagination; retry refresh");
+      }
+
       rows.push(...page.nodes.map(metadata));
-      if (!page.pageInfo.hasNextPage) break;
+      if (!page.pageInfo.hasNextPage) {
+        break;
+      }
+
       const next = page.pageInfo.endCursor;
-      if (!next || cursors.has(next))
+      if (!next || cursors.has(next)) {
         throw new AdeError("github", "GitHub PR pagination did not advance; saved results remain");
+      }
+
       cursors.add(next);
       cursor = next;
     } while (cursor);
 
-    if (new Set(rows.map((row) => row.url)).size !== count || rows.length !== count)
+    if (new Set(rows.map((row) => row.url)).size !== count || rows.length !== count) {
       throw new AdeError("github", "GitHub PR results were truncated or duplicated; retry refresh");
+    }
+
     return rows;
   };
 
@@ -150,15 +167,21 @@ export const knownPullRequests = async (urls: string[], query: Query) => {
         ),
       );
 
-    if (result.errors?.length)
+    if (result.errors?.length) {
       throw new AdeError("github", "GitHub could not retrieve all known PR metadata");
+    }
+
     for (const [index, ref] of batch.entries()) {
       const value = result.data[`p${index}`]?.pullRequest;
-      if (!value)
+      if (!value) {
         throw new AdeError("github", `Cannot access ${ref.url}; its lifecycle is unknown`);
+      }
+
       const pr = metadata(value);
-      if (pr.url.toLowerCase() !== ref.url.toLowerCase())
+      if (pr.url.toLowerCase() !== ref.url.toLowerCase()) {
         throw new AdeError("github", "GitHub returned metadata for a different PR");
+      }
+
       rows.push(pr);
     }
   }

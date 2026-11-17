@@ -85,15 +85,21 @@ export const instantiateTemplate = (id: TemplateId, identity: () => string): Flo
   }
 
   if (id !== "plan-build") {
-    if (id === "full") approval("Approve implementation");
+    if (id === "full") {
+      approval("Approve implementation");
+    }
+
     agent("reviewer", "Reviewer");
-    if (id === "full") approval("Accept review");
+    if (id === "full") {
+      approval("Accept review");
+    }
   }
 
   // An approval's output is its decision. Agents also receive the result being approved.
   for (const [index, node] of nodes.entries()) {
-    if (node.type === "agent" && nodes[index - 1]?.type === "approval" && nodes[index - 2])
+    if (node.type === "agent" && nodes[index - 1]?.type === "approval" && nodes[index - 2]) {
       node.inputs.push({ kind: "output", node_id: nodes[index - 2].id });
+    }
   }
 
   return { name: flowTemplates.find((template) => template.id === id)!.name, nodes, edges };

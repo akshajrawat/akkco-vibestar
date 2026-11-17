@@ -33,7 +33,7 @@ export class PRWatch {
       "SELECT value FROM settings WHERE key='pr_quick_watch'",
     )[0];
 
-    if (row)
+    if (row) {
       this.state =
         engine.db.records.tryDecode(
           {
@@ -44,15 +44,18 @@ export class PRWatch {
           },
           PRWatchStateSchema.parse,
         ) || null;
+    }
+
     if (this.state && ["running", "cancelling"].includes(this.state.status)) {
       this.state.status = "interrupted";
       this.state.phase = "Check interrupted. Recheck to continue.";
       this.state.ended_at = now();
-      for (const item of this.state.items)
+      for (const item of this.state.items) {
         if (item.status === "checking") {
           item.status = "unknown";
           item.reason = "Check interrupted; recheck explicitly.";
         }
+      }
 
       this.save();
     }
@@ -72,16 +75,25 @@ export class PRWatch {
   start = (input: unknown) => {
     const request = PRWatchStartSchema.parse(input);
     this.engine.assertAvailable();
-    if (this.closed) throw new AdeError("closed", "PR watch is closed.");
-    if (request.trigger === "open") {
-      if (this.opened) return this.state;
-      this.opened = true;
-      // Opening must not retry a cancelled, failed or interrupted inference operation.
-      if (this.state && ["interrupted", "cancelled", "failed"].includes(this.state.status))
-        return this.state;
+    if (this.closed) {
+      throw new AdeError("closed", "PR watch is closed.");
     }
 
-    if (this.active || this.state?.request_id === request.request_id) return this.state;
+    if (request.trigger === "open") {
+      if (this.opened) {
+        return this.state;
+      }
+
+      this.opened = true;
+      // Opening must not retry a cancelled, failed or interrupted inference operation.
+      if (this.state && ["interrupted", "cancelled", "failed"].includes(this.state.status)) {
+        return this.state;
+      }
+    }
+
+    if (this.active || this.state?.request_id === request.request_id) {
+      return this.state;
+    }
 
     const previous = this.state?.items || [];
 
@@ -135,7 +147,10 @@ export class PRWatch {
         });
 
         controller.signal.throwIfAborted();
-        if (metadata.error) throw new AdeError("github", metadata.error);
+        if (metadata.error) {
+          throw new AdeError("github", metadata.error);
+        }
+
         const prs = metadata.pull_requests.filter((pr) => pr.state === "OPEN");
 
         state.items = prs.map((pr) => ({
@@ -260,9 +275,11 @@ export class PRWatch {
             last &&
             Buffer.byteLength(JSON.stringify([...last, candidate].map((value) => value.context))) <=
               85000
-          )
+          ) {
             last.push(candidate);
-          else groups.push([candidate]);
+          } else {
+            groups.push([candidate]);
+          }
         }
 
         for (const group of groups) {
@@ -287,8 +304,9 @@ Pending reviewer assignments, REVIEW_REQUIRED, an old CHANGES_REQUESTED decision
             if (
               output.results.length !== group.length ||
               new Set(output.results.map((result) => result.key)).size !== group.length
-            )
+            ) {
               throw new AdeError("watch_coverage", "The model omitted or duplicated PR results.");
+            }
 
             const assessed = group.map(({ context, item }, index) => {
               const result = output.results.find((result) => result.key === String(index));
@@ -304,11 +322,13 @@ Pending reviewer assignments, REVIEW_REQUIRED, an old CHANGES_REQUESTED decision
                       source.body.trim() &&
                       source.author.toLowerCase() !== context.viewer.toLowerCase(),
                   ))
-              )
+              ) {
                 throw new AdeError(
                   "watch_evidence",
                   "The model returned missing or invalid comment evidence.",
                 );
+              }
+
               return {
                 item,
                 result,
@@ -354,11 +374,12 @@ Pending reviewer assignments, REVIEW_REQUIRED, an old CHANGES_REQUESTED decision
           ? null
           : redact(error instanceof Error ? error.message : String(error)).slice(-1000);
       } finally {
-        for (const item of state.items)
+        for (const item of state.items) {
           if (item.status === "checking") {
             item.status = "unknown";
             item.reason = "Check did not finish; recheck explicitly.";
           }
+        }
 
         state.ended_at = now();
         this.save();
@@ -371,7 +392,10 @@ Pending reviewer assignments, REVIEW_REQUIRED, an old CHANGES_REQUESTED decision
   };
 
   cancel = async () => {
-    if (!this.active) return;
+    if (!this.active) {
+      return;
+    }
+
     this.state!.status = "cancelling";
     this.state!.phase = "Stopping PR check";
     this.save();

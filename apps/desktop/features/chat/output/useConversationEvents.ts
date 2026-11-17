@@ -37,25 +37,45 @@ export const useConversationEvents = (
     }
 
     const visibleRuns = new Set(events.map((event) => event.run_id));
-    for (const [key, event] of state.messages)
-      if (!visibleRuns.has(event.run_id)) state.messages.delete(key);
-    for (const runId of state.complete) if (!visibleRuns.has(runId)) state.complete.delete(runId);
+    for (const [key, event] of state.messages) {
+      if (!visibleRuns.has(event.run_id)) {
+        state.messages.delete(key);
+      }
+    }
+
+    for (const runId of state.complete) {
+      if (!visibleRuns.has(runId)) {
+        state.complete.delete(runId);
+      }
+    }
+
     if (events.length >= 2000 && state.last && events[0].id > state.last) {
       state.complete.clear();
       state.generation++;
     }
 
     state.last = events.at(-1)?.id || state.last;
-    if (events.length < 2000) for (const runId of visibleRuns) state.complete.add(runId);
-    for (const event of events) if (event.kind === "run.started") state.complete.add(event.run_id);
+    if (events.length < 2000) {
+      for (const runId of visibleRuns) {
+        state.complete.add(runId);
+      }
+    }
+
+    for (const event of events) {
+      if (event.kind === "run.started") {
+        state.complete.add(event.run_id);
+      }
+    }
+
     const recovered = history.scope === scope ? history.events : [];
     for (const event of [...recovered, ...events]) {
       if (
         event.kind === "message" &&
         visibleRuns.has(event.run_id) &&
         state.complete.has(event.run_id)
-      )
+      ) {
         state.messages.set(event.id, event);
+      }
     }
 
     const rows = [
@@ -79,7 +99,10 @@ export const useConversationEvents = (
       const recovered: AgentEvent[] = [];
       try {
         for (const runId of runs) {
-          if (cache.current.complete.has(runId)) continue;
+          if (cache.current.complete.has(runId)) {
+            continue;
+          }
+
           let after = 0;
           while (alive && after < boundary.current) {
             const page = await rpc<{ events: AgentEvent[]; more: boolean }>(`${owner}.events`, {
@@ -88,21 +111,37 @@ export const useConversationEvents = (
               after,
             });
 
-            if (!alive || cache.current.generation !== generation) return;
+            if (!alive || cache.current.generation !== generation) {
+              return;
+            }
+
             recovered.push(...page.events.filter((event) => event.kind === "message"));
             const last = page.events.at(-1)?.id;
-            if (!last || !page.more) break;
-            if (last <= after) throw new Error("Conversation history did not advance.");
+            if (!last || !page.more) {
+              break;
+            }
+
+            if (last <= after) {
+              throw new Error("Conversation history did not advance.");
+            }
+
             after = last;
           }
 
-          if (!alive || cache.current.generation !== generation) return;
+          if (!alive || cache.current.generation !== generation) {
+            return;
+          }
+
           cache.current.complete.add(runId);
         }
 
-        if (alive && recovered.length) setHistory({ scope, events: recovered });
+        if (alive && recovered.length) {
+          setHistory({ scope, events: recovered });
+        }
       } catch (reason) {
-        if (alive) error.current(errorMessage(reason));
+        if (alive) {
+          error.current(errorMessage(reason));
+        }
       }
     };
 

@@ -48,11 +48,13 @@ export const OpenInEditor = ({
           setError("");
           try {
             const result = await rpc<NonNullable<typeof selection>>("editors.list");
-            if (kind !== "repository" && result.editors.some((e) => e.id === "code"))
+            if (kind !== "repository" && result.editors.some((e) => e.id === "code")) {
               await open("code");
-            else if (result.default && result.editors.some((e) => e.id === result.default))
+            } else if (result.default && result.editors.some((e) => e.id === result.default)) {
               await open(result.default);
-            else setSelection(result);
+            } else {
+              setSelection(result);
+            }
           } catch (e) {
             setError(errorMessage(e));
           } finally {

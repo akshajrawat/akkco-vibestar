@@ -57,7 +57,10 @@ export const UsageView = ({
     let fetching = false;
 
     const fetch = () => {
-      if (fetching) return;
+      if (fetching) {
+        return;
+      }
+
       fetching = true;
       setRefreshing(true);
       return rpc<UsageRecord[]>("usage.list", { task_id: taskId })
@@ -76,7 +79,9 @@ export const UsageView = ({
         })
         .finally(() => {
           fetching = false;
-          if (alive) setRefreshing(false);
+          if (alive) {
+            setRefreshing(false);
+          }
         });
     };
 
@@ -89,17 +94,21 @@ export const UsageView = ({
         ["usage.changed", "changed"].includes(e.event) &&
         (!taskId || !e.task_id || e.task_id === taskId) &&
         !refreshTimer
-      )
+      ) {
         refreshTimer = setTimeout(() => {
           refreshTimer = undefined;
           void fetch();
         }, 350);
+      }
     });
 
     return () => {
       alive = false;
       clearInterval(timer);
-      if (refreshTimer) clearTimeout(refreshTimer);
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+      }
+
       void subscription.then((fn) => fn());
     };
   }, [taskId, revision, records]);
@@ -107,7 +116,10 @@ export const UsageView = ({
   const running = rows.some((r) => r.status === "running");
 
   useEffect(() => {
-    if (!running) return;
+    if (!running) {
+      return;
+    }
+
     const timer = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(timer);
   }, [running]);

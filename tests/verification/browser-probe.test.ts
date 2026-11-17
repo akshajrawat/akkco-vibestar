@@ -28,9 +28,9 @@ const probe = async (
       errorHandler = callback;
     },
     listen: (_port: number, _host: string, callback: () => void) => {
-      if (options.socket === false)
+      if (options.socket === false) {
         errorHandler(new Error("listen EPERM: operation not permitted 127.0.0.1"));
-      else {
+      } else {
         server.listening = true;
         callback();
       }
@@ -45,8 +45,10 @@ const probe = async (
   const playwright = {
     chromium: {
       launch: async () => {
-        if (options.launch === false)
+        if (options.launch === false) {
           throw new Error("browserType.launch: Executable doesn't exist");
+        }
+
         return {
           close: async () => {},
           newPage: async () => ({
@@ -68,7 +70,9 @@ const probe = async (
       {
         readdir: async () => [],
         access: async () => {
-          if (options.browser === false) throw new Error("ENOENT");
+          if (options.browser === false) {
+            throw new Error("ENOENT");
+          }
         },
         realpath: async (path: string) => path,
         mkdtemp: async () => "/tmp/probe",
@@ -84,7 +88,10 @@ const probe = async (
       {
         Resolver: class {
           resolve4 = async () => {
-            if (options.dns === false) throw new Error("getaddrinfo EAI_AGAIN registry.npmjs.org");
+            if (options.dns === false) {
+              throw new Error("getaddrinfo EAI_AGAIN registry.npmjs.org");
+            }
+
             return ["127.0.0.1"];
           };
 
@@ -99,13 +106,18 @@ const probe = async (
 
   const require = Object.assign(
     (name: string) => {
-      if (!modules.has(name)) throw new Error(`Unexpected probe capability: ${name}`);
+      if (!modules.has(name)) {
+        throw new Error(`Unexpected probe capability: ${name}`);
+      }
+
       return modules.get(name);
     },
     {
       resolve: (name: string) => {
-        if (options.package === false || name !== "playwright-core/package.json")
+        if (options.package === false || name !== "playwright-core/package.json") {
           throw new Error("MODULE_NOT_FOUND");
+        }
+
         return "/fixture/playwright-core/package.json";
       },
     },

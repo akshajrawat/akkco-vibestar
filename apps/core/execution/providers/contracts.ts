@@ -38,11 +38,15 @@ export const supportedEfforts = (d: ProviderDetection | undefined, model: string
   [];
 
 export const configurationError = (d: ProviderDetection, config: StageConfig) => {
-  if (config.model && !d.models.some((m) => m.id === config.model))
+  if (config.model && !d.models.some((m) => m.id === config.model)) {
     return `${d.provider} model '${config.model}' is not available from the official CLI. Refresh model discovery.`;
+  }
+
   const efforts = supportedEfforts(d, config.model);
-  if (!efforts.includes(config.effort))
+  if (!efforts.includes(config.effort)) {
     return `${d.provider} model '${config.model || "CLI default"}' does not support '${config.effort}' effort. Supported: ${efforts.join(", ") || "capabilities unavailable"}.`;
+  }
+
   return null;
 };
 
@@ -147,9 +151,11 @@ export const validatePlan = (stage: number, value: unknown) =>
   planSchemas[stage as keyof typeof planSchemas].parse(value);
 
 export const verifyFlags = (help: string, flags: string[]) => {
-  for (const flag of flags)
-    if (!help.includes(flag))
+  for (const flag of flags) {
+    if (!help.includes(flag)) {
       throw new Error(`Installed CLI lacks ${flag}. Update the official CLI before running.`);
+    }
+  }
 };
 
 export const object = (value: unknown): Record<string, unknown> =>

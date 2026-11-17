@@ -122,7 +122,10 @@ it("tracks desktop changes automatically and displays error if core save fails",
   });
 
   rpc.mockImplementation(async (method: string) => {
-    if (method === "settings.save") throw new Error("Core save failed");
+    if (method === "settings.save") {
+      throw new Error("Core save failed");
+    }
+
     return {};
   });
 
@@ -166,8 +169,14 @@ it("continues newer saves after a failure without replaying a failed field", asy
   const attempts: unknown[] = [];
 
   rpc.mockImplementation((method: string, input: unknown) => {
-    if (method === "editors.list") return Promise.resolve({ editors: [] });
-    if (method !== "settings.save") return Promise.resolve({});
+    if (method === "editors.list") {
+      return Promise.resolve({ editors: [] });
+    }
+
+    if (method !== "settings.save") {
+      return Promise.resolve({});
+    }
+
     attempts.push(input);
     return attempts.length === 1
       ? new Promise((_resolve, reject) => {
@@ -211,8 +220,14 @@ it("serializes rapid edits and rolls a later failure back to the newest acknowle
   const attempts: unknown[] = [];
 
   rpc.mockImplementation((method: string, input: unknown) => {
-    if (method === "editors.list") return Promise.resolve({ editors: [] });
-    if (method !== "settings.save") return Promise.resolve({});
+    if (method === "editors.list") {
+      return Promise.resolve({ editors: [] });
+    }
+
+    if (method !== "settings.save") {
+      return Promise.resolve({});
+    }
+
     attempts.push(input);
     return attempts.length === 1
       ? new Promise<void>((resolve) => {
@@ -264,8 +279,14 @@ it("announces success only after all rapid changes have persisted with All notif
   const finish: (() => void)[] = [];
 
   rpc.mockImplementation((method: string) => {
-    if (method === "editors.list") return Promise.resolve({ editors: [] });
-    if (method !== "settings.save") return Promise.resolve({});
+    if (method === "editors.list") {
+      return Promise.resolve({ editors: [] });
+    }
+
+    if (method !== "settings.save") {
+      return Promise.resolve({});
+    }
+
     return new Promise<void>((resolve) => {
       finish.push(resolve);
     });

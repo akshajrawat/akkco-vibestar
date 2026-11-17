@@ -24,8 +24,9 @@ vite.stdout.pipe(process.stdout);
 
 await new Promise((resolve, reject) => {
   vite.stdout.on("data", (data) => {
-    if (data.toString().includes("localhost:1420") || data.toString().includes("127.0.0.1:1420"))
+    if (data.toString().includes("localhost:1420") || data.toString().includes("127.0.0.1:1420")) {
       resolve();
+    }
   });
 
   vite.on("exit", (code) => reject(new Error(`Vite exited ${code}`)));
@@ -39,18 +40,29 @@ let timer;
 const watchers = new AbortController();
 
 const quitDesktop = async () => {
-  if (!electron || electron.exitCode !== null || electron.signalCode !== null) return;
-  if (host.close) await host.close();
-  else if (electron && !electron.stdin.destroyed && !electron.stdin.writableEnded)
+  if (!electron || electron.exitCode !== null || electron.signalCode !== null) {
+    return;
+  }
+
+  if (host.close) {
+    await host.close();
+  } else if (electron && !electron.stdin.destroyed && !electron.stdin.writableEnded) {
     electron.stdin.end("vibestar:quit\n");
+  }
 };
 
 const stop = () => {
-  if (stopping) return;
+  if (stopping) {
+    return;
+  }
+
   stopping = true;
   watchers.abort();
   clearTimeout(timer);
-  if (electron) void quitDesktop().catch((error) => process.stderr.write(`${error}\n`));
+  if (electron) {
+    void quitDesktop().catch((error) => process.stderr.write(`${error}\n`));
+  }
+
   vite.kill();
 };
 
@@ -69,16 +81,23 @@ const launch = async () => {
   });
 
   electron.stdin.on("error", (error) => {
-    if (!stopping && !restarting) process.stderr.write(`${error}\n`);
+    if (!stopping && !restarting) {
+      process.stderr.write(`${error}\n`);
+    }
   });
 
   electron.once("exit", () => {
-    if (!restarting) stop();
+    if (!restarting) {
+      stop();
+    }
   });
 };
 
 const rebuild = async () => {
-  if (stopping) return;
+  if (stopping) {
+    return;
+  }
+
   if (restarting) {
     rebuildAgain = true;
     return;
@@ -91,17 +110,24 @@ const rebuild = async () => {
       await import(`./build.mjs?reload=${Date.now()}`);
     } while (rebuildAgain && !stopping);
 
-    if (stopping) return;
+    if (stopping) {
+      return;
+    }
+
     process.stdout.write("\nExecution core / desktop changed. Restarting Electron…\n");
     const exited = once(electron, "exit");
     await quitDesktop();
     await exited;
-    if (!stopping) await launch();
+    if (!stopping) {
+      await launch();
+    }
   } catch (error) {
     process.stderr.write(`Desktop rebuild failed: ${error}\n`);
   } finally {
     restarting = false;
-    if (rebuildAgain && !stopping) void rebuild();
+    if (rebuildAgain && !stopping) {
+      void rebuild();
+    }
   }
 };
 
@@ -113,12 +139,17 @@ for (const directory of ["apps/electron", "apps/core"]) {
         recursive: true,
         signal: watchers.signal,
       })) {
-        if (!event.filename?.endsWith(".ts")) continue;
+        if (!event.filename?.endsWith(".ts")) {
+          continue;
+        }
+
         clearTimeout(timer);
         timer = setTimeout(() => void rebuild(), 300);
       }
     } catch (error) {
-      if (!watchers.signal.aborted) process.stderr.write(`${error}\n`);
+      if (!watchers.signal.aborted) {
+        process.stderr.write(`${error}\n`);
+      }
     }
   })();
 }

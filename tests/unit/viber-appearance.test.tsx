@@ -31,7 +31,10 @@ it("validates every layer option and rejects unsupported versions, unknown parts
   const base = defaultAppearance();
   for (const [key, value] of Object.entries(ViberAppearanceSchema.shape)) {
     const field = key === "lips" ? ViberAppearanceSchema.shape.lips.unwrap() : value;
-    if (!("options" in field)) continue;
+    if (!("options" in field)) {
+      continue;
+    }
+
     for (const option of field.options) {
       const appearance = ViberAppearanceSchema.parse({ ...base, [key]: option });
       const markup = renderToStaticMarkup(<ViberFace appearance={appearance} />);
@@ -47,13 +50,16 @@ it("validates every layer option and rejects unsupported versions, unknown parts
     { color: "red" },
     { color: "#abc" },
     { extra: true },
-  ])
+  ]) {
     expect(ViberAppearanceSchema.safeParse({ ...base, ...input }).success).toBe(false);
+  }
+
   expect(AgentProfileSchema.parse(viberProfile)).toEqual(viberProfile);
   expect(defaultAppearance()).toEqual(defaultAppearance());
   expect(viberProfile.appearance).toBeUndefined();
-  for (let index = 0; index < 30; index++)
+  for (let index = 0; index < 30; index++) {
     expect(ViberAppearanceSchema.safeParse(randomAppearance()).success).toBe(true);
+  }
 });
 
 it("keeps appearance selections across categories and saves customizations using the existing revision API", async () => {

@@ -31,13 +31,19 @@ export const callOutput = async (
         .parse(input);
 
       const owner = method.startsWith("repair.") ? "repair_id" : "task_id";
-      if (owner === "repair_id") services.repairs.store.get(p.id);
-      else e.db.task(p.id);
+      if (owner === "repair_id") {
+        services.repairs.store.get(p.id);
+      } else {
+        e.db.task(p.id);
+      }
+
       if (
         p.run_id &&
         !e.db.all(`SELECT id FROM agent_runs WHERE id=? AND ${owner}=?`, p.run_id, p.id).length
-      )
+      ) {
         throw new AdeError("isolation", "Run does not belong to this task");
+      }
+
       if (method.endsWith(".events")) {
         const rows = e.db.all<{ id: number; data: string; kind: string }>(
           `SELECT * FROM agent_events WHERE ${owner}=? AND run_id=?
@@ -53,7 +59,9 @@ export const callOutput = async (
 
         const more = rows.length > 500;
         const events = rows.slice(0, 500);
-        if (p.after === undefined) events.reverse();
+        if (p.after === undefined) {
+          events.reverse();
+        }
 
         const calls = [
           ...new Set(

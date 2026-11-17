@@ -16,12 +16,14 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
     const bin = join(dir, "blocked-cli");
     await mkdir(home);
     await mkdir(bin);
-    for (const name of ["codex", "agy", "gh"])
+    for (const name of ["codex", "agy", "gh"]) {
       await writeFile(
         join(bin, name),
         "#!/bin/sh\necho 'Live account access disabled in package smoke' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
+
     vi.stubEnv("HOME", home);
     vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
     const reports: unknown[] = [];
@@ -135,8 +137,9 @@ it.skipIf(process.env.VIBESTAR_PACKAGED_TEST !== "1" || process.platform !== "li
       process.stdout.write(`Packaged Issue Watch evidence: ${dir}\n`);
     } finally {
       vi.unstubAllEnvs();
-      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1")
+      if (process.env.VIBESTAR_KEEP_EVIDENCE !== "1") {
         await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   90000,

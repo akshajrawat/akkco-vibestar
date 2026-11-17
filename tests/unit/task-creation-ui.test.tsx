@@ -44,22 +44,32 @@ it("retains the task request identity across transport retries and changes it af
   let attempts = 0;
 
   const rpc = vi.fn(async (method: string, input?: Record<string, unknown>) => {
-    if (method === "profile.list") return [viberProfile];
-    if (method === "snapshot")
+    if (method === "profile.list") {
+      return [viberProfile];
+    }
+
+    if (method === "snapshot") {
       return {
         repositories: [repository],
         settings: defaultSettings,
         root: "/data",
       };
-    if (method === "task.preview")
+    }
+
+    if (method === "task.preview") {
       return {
         repository,
         reference: { owner: "fixture", repo: "project", number: 1 },
         issue: { title: "Fixture preview", body: "Requirements", comments: [] },
       };
+    }
+
     if (method === "task.createIssue") {
       attempts++;
-      if (attempts < 3) throw new Error("fixture transport failure");
+      if (attempts < 3) {
+        throw new Error("fixture transport failure");
+      }
+
       return { id: "created-task", ...input };
     }
 

@@ -85,7 +85,9 @@ const workspace = () => {
   const goal = "Work on this general task";
   const task = engine.createGeneralTask({ request_id: randomUUID(), goal, profile_id: profile.id });
   const flowId = task.flow_id;
-  if (!flowId) throw new Error("Fixture task did not create its owned flow.");
+  if (!flowId) {
+    throw new Error("Fixture task did not create its owned flow.");
+  }
 
   const agent = (tag: string): Extract<FlowNode, { type: "agent" }> => ({
     id: randomUUID(),
@@ -253,7 +255,10 @@ it.each(["edit_chat", "partial_chat"])(
 
       engine.cancelFlow(turn.id);
       await settled(turn, "cancelled");
-    } else await settled(turn, "completed");
+    } else {
+      await settled(turn, "completed");
+    }
+
     expect(engine.flowRuns.run(graph.id).status).toBe("failed");
 
     expect(engine.flowRuns.invalidation(graph.id)?.reason).toContain(
@@ -363,7 +368,10 @@ const decision = (
     .filter((entry) => entry.node_id === nodeId)
     .at(-1);
 
-  if (!attempt) throw new Error("Expected a waiting approval attempt.");
+  if (!attempt) {
+    throw new Error("Expected a waiting approval attempt.");
+  }
+
   return {
     attempt_id: attempt.id,
     request_id: randomUUID(),

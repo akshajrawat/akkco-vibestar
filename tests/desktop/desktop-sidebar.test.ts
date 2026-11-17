@@ -21,12 +21,13 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
     const home = join(dir, "home");
     const blocked = join(dir, "blocked-cli");
     await Promise.all([mkdir(screenshots), mkdir(home), mkdir(blocked)]);
-    for (const name of ["gh", "agy", "codex"])
+    for (const name of ["gh", "agy", "codex"]) {
       await writeFile(
         join(blocked, name),
         "#!/bin/sh\necho 'Live CLI disabled in sidebar fixture' >&2\nexit 1\n",
         { mode: 0o755 },
       );
+    }
 
     const engine = await createFixtureEngine(join(dir, "fixture-data"));
     const rpc = new Rpc(engine);
@@ -456,7 +457,10 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
 
       const resize = page.getByRole("separator", { name: "Resize navigation pane" });
       await resize.focus();
-      for (let index = 0; index < 5; index++) await page.keyboard.press("ArrowLeft");
+      for (let index = 0; index < 5; index++) {
+        await page.keyboard.press("ArrowLeft");
+      }
+
       expect(await resize.getAttribute("aria-valuenow")).toBe("180");
 
       expect(
@@ -502,7 +506,10 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
       expect(Number(await resize.getAttribute("aria-valuenow"))).toBeGreaterThan(250);
 
       await resize.focus();
-      for (let index = 0; index < 7; index++) await page.keyboard.press("ArrowRight");
+      for (let index = 0; index < 7; index++) {
+        await page.keyboard.press("ArrowRight");
+      }
+
       expect(await resize.getAttribute("aria-valuenow")).toBe("380");
       await sidebar.screenshot({ path: join(screenshots, "sidebar-380.png") });
       await page.screenshot({ path: join(screenshots, "sidebar-window-380.png") });
@@ -598,12 +605,15 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
       await sidebar.screenshot({ path: join(screenshots, "sidebar-custom-theme.png") });
 
       await page.evaluate(() => {
-        for (const token of ["--accent", "--background-sidebar", "--foreground"])
+        for (const token of ["--accent", "--background-sidebar", "--foreground"]) {
           document.documentElement.style.removeProperty(token);
+        }
       });
 
-      for (let index = 0; index < 35; index++)
+      for (let index = 0; index < 35; index++) {
         create(`Saved development task ${index + 1} with a long descriptive title`);
+      }
+
       await refresh();
       await sidebar.getByRole("button", { name: "Tasks, 39" }).waitFor();
 
@@ -636,7 +646,10 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
       await expect.poll(() => taskList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
       await taskList.locator(".tree-task").first().focus();
       expect(await taskList.evaluate((element) => element.scrollTop)).toBe(0);
-      for (let index = 0; index < 26; index++) await page.keyboard.press("Tab");
+      for (let index = 0; index < 26; index++) {
+        await page.keyboard.press("Tab");
+      }
+
       expect(await taskList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
       expect((await dock.boundingBox())!.y).toBe(dockY);
 
@@ -675,7 +688,10 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
 
       expect(await taskList.evaluate((element) => element.scrollTop)).toBe(savedScroll);
       await sidebar.screenshot({ path: join(screenshots, "sidebar-many-working.png") });
-      for (const run of extra) engine.flowRuns.setRunStatus(run.id, "queued", "cancelled");
+      for (const run of extra) {
+        engine.flowRuns.setRunStatus(run.id, "queued", "cancelled");
+      }
+
       engine.flowRuns.finishAttempt(attempt.id, "cancelled", null, "missing");
       engine.flowRuns.setRunStatus(activeRun.id, "running", "paused");
       engine.flowRuns.setRunStatus(queuedRun.id, "queued", "cancelled");
@@ -704,7 +720,9 @@ it.skipIf(process.env.VIBESTAR_SIDEBAR_DESKTOP_TEST !== "1")(
       await app.close();
       await rpc.close();
       await engine.close();
-      if (!process.env.VIBESTAR_KEEP_EVIDENCE) await rm(dir, { recursive: true, force: true });
+      if (!process.env.VIBESTAR_KEEP_EVIDENCE) {
+        await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   90000,

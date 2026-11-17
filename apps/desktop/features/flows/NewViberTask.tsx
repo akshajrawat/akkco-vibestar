@@ -58,7 +58,10 @@ export const NewViberTask = ({
         aria-modal="true"
         aria-label="New Viber task"
         onKeyDown={(event) => {
-          if (event.key === "Escape") close();
+          if (event.key === "Escape") {
+            close();
+          }
+
           containDialogFocus(event);
         }}
       >
@@ -84,8 +87,10 @@ export const NewViberTask = ({
             };
 
             const digest = JSON.stringify(payload);
-            if (request.current.digest !== digest)
+            if (request.current.digest !== digest) {
               request.current = { digest, id: crypto.randomUUID() };
+            }
+
             try {
               const task = await rpc<Task>("task.createGeneral", {
                 ...payload,

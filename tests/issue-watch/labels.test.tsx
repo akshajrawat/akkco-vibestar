@@ -36,8 +36,9 @@ it("decodes exact labels from Markdown, encoded GitHub search, plain names and m
     "javascript:alert(1)",
     "<img src=x onerror=alert(1)>",
     "https://github.com/oppia/oppia/issues?q=state:open",
-  ])
+  ]) {
     expect(() => parseLabelInput(input, "oppia/oppia")).toThrow();
+  }
 });
 
 it("supports pasted and URI-dropped links as removable text chips and loads official label suggestions without scans", async () => {

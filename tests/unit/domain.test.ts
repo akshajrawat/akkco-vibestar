@@ -135,7 +135,7 @@ describe("domain and persistence", () => {
           }),
         );
 
-        if (error)
+        if (error) {
           db.run(
             "INSERT INTO scheduled_attention(id,job_id,created_at,summary,changes,error) VALUES(?,?,?,?,?,?)",
             id,
@@ -145,6 +145,7 @@ describe("domain and persistence", () => {
             "[]",
             error,
           );
+        }
       }
     } finally {
       db.close();
@@ -229,8 +230,9 @@ describe("domain and persistence", () => {
       "https://github.com/a/b/issues/0",
       "https://user@github.com/a/b/issues/1",
       "https://github.com/a/b/issues/9007199254740993",
-    ])
+    ]) {
       expect(() => parseIssue(url)).toThrow();
+    }
   });
 
   it("generates valid branches and deterministic collisions", () => {
@@ -294,7 +296,7 @@ describe("domain and persistence", () => {
       db.saveSettings({ ...defaultSettings, concurrency: 3 });
 
       expect(db.all("SELECT MAX(version) AS version FROM schema_migrations")).toEqual([
-        { version: 37 },
+        { version: 38 },
       ]);
 
       expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
@@ -379,7 +381,7 @@ it("upgrades the V2 database additively without changing authorized queued tasks
 
     expect(
       current.all<{ version: number }>("SELECT version FROM schema_migrations").at(-1)?.version,
-    ).toBe(37);
+    ).toBe(38);
   } finally {
     current.close();
     await rm(dir, { recursive: true, force: true });

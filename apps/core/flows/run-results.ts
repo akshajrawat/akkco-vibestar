@@ -48,11 +48,13 @@ export class FlowRunResults {
           source.run_id === runId ||
           source.configuration_hash !==
             digest({ node, agent: node.type === "agent" ? run.snapshot.agents[node.id] : null })
-        )
+        ) {
           throw new AdeError(
             "corrupt_record",
             "A reused result no longer matches its captured source and owner. Original history was preserved.",
           );
+        }
+
         return source;
       });
 
@@ -62,11 +64,13 @@ export class FlowRunResults {
   staleResults = (runId: string) => {
     this.reads.run(runId);
     const invalidation = this.invalidation(runId);
-    if (invalidation)
+    if (invalidation) {
       return this.results(runId, { includeStale: true }).map((attempt) => ({
         node_id: attempt.node_id,
         reason: invalidation.reason,
       }));
+    }
+
     return this.db.all<{ node_id: string; reason: string }>(
       "SELECT node_id,reason FROM flow_result_invalidations WHERE run_id=? ORDER BY rowid",
       runId,
@@ -81,7 +85,10 @@ export class FlowRunResults {
       runId,
     )[0];
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
+
     return this.db.records.decode(
       { table: "flow_run_invalidations", id: runId, column: "reason", source: JSON.stringify(row) },
       FlowRunInvalidationSchema.parse,

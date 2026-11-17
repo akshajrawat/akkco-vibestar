@@ -94,12 +94,13 @@ it("colors lexical tokens without changing or interpreting source, and bounds lo
     [".example { color: red; }", "style.css"],
   ];
 
-  for (const [text, path] of examples)
+  for (const [text, path] of examples) {
     expect(
       highlightCode(text, path)
         .map((token) => token.text)
         .join(""),
     ).toBe(text);
+  }
 
   expect(highlightCode(examples[0][0], "script.ts")).toContainEqual({
     kind: "keyword",

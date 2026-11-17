@@ -102,7 +102,10 @@ const ignored = new Set([
 ]);
 
 const indexedRemote = (value: string | null) => {
-  if (!value) return value;
+  if (!value) {
+    return value;
+  }
+
   try {
     const url = new URL(value);
     if (["https:", "http:"].includes(url.protocol)) {
@@ -129,21 +132,25 @@ export interface RepositoryIndexSnapshot {
 
 export const discoveryRoot = (value: string, home = homedir()) => {
   const path = value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value;
-  if (!isAbsolute(path))
+  if (!isAbsolute(path)) {
     throw new AdeError(
       "invalid_input",
       "Repository search roots must be absolute or start with ~/.",
     );
+  }
+
   const root = resolve(path);
   if (
     ["/", "/home", "/mnt"].includes(root) ||
     /^\/mnt\/[a-z](?:\/Users)?\/?$/i.test(root) ||
     /^\/(?:proc|sys|dev|etc|usr|var|bin|sbin|run)(?:\/|$)/.test(root)
-  )
+  ) {
     throw new AdeError(
       "invalid_input",
       "Choose a specific repository location. System roots and entire drives cannot be scanned.",
     );
+  }
+
   return root;
 };
 
@@ -194,24 +201,29 @@ export class RepositoryIndex {
     const p = LocalRepositoryInput.parse(input);
     let executionPath = p.path;
     if (p.environment === "windows") {
-      if (!/^[a-z]:[\\/].+/i.test(p.path) || /^[a-z]:[\\/]+$/i.test(p.path))
+      if (!/^[a-z]:[\\/].+/i.test(p.path) || /^[a-z]:[\\/]+$/i.test(p.path)) {
         throw new AdeError(
           "invalid_input",
           "Enter a Windows repository path such as D:\\projects\\my-repo, not a drive root.",
         );
+      }
+
       executionPath = await checked("wslpath", ["-u", p.path], this.root);
-      if (!isAbsolute(executionPath))
+      if (!isAbsolute(executionPath)) {
         throw new AdeError(
           "invalid_input",
           "Windows path conversion did not produce an absolute execution path.",
         );
+      }
     } else if (!p.path.startsWith("/") && !p.path.startsWith("~/")) {
       throw new AdeError("invalid_input", "Enter an absolute WSL path or a path starting with ~/.");
     }
 
     const path = await realpath(discoveryRoot(executionPath));
-    if (discoveryRoot(path) !== path)
+    if (discoveryRoot(path) !== path) {
       throw new AdeError("invalid_input", "Invalid repository location.");
+    }
+
     return path;
   };
 
@@ -224,8 +236,10 @@ export class RepositoryIndex {
     const p = LocalRepositoryInput.parse(input);
     const path = await this.resolveLocalPath(p);
     const local = await this.inspect(path, undefined, allowManaged);
-    if (local.path !== path)
+    if (local.path !== path) {
       throw new AdeError("invalid_input", `Choose the repository root: ${local.path}`);
+    }
+
     const git = (args: string[]) => gitCapture(["-c", "core.fsmonitor=false", ...args], path);
 
     const status = await git([
@@ -235,10 +249,12 @@ export class RepositoryIndex {
       "--untracked-files=normal",
     ]);
 
-    if (status.code !== 0)
+    if (status.code !== 0) {
       throw new AdeError("git_verify", "Couldn't read repository status.", {
         details: status.stderr,
       });
+    }
+
     const names = await gitChecked(["remote"], path);
 
     const remotes = await Promise.all(
@@ -325,8 +341,9 @@ export class RepositoryIndex {
         top === this.root ||
         inside(this.root, common) ||
         common === this.root)
-    )
+    ) {
       throw new AdeError("isolation", "Vibestar-managed directories cannot be imported.");
+    }
 
     const git = async (args: string[]) => {
       const result = await gitCapture(["-c", "core.fsmonitor=false", ...args], top, signal);
@@ -382,7 +399,10 @@ export class RepositoryIndex {
       );
 
   scan = () => {
-    if (this.running) return this.running;
+    if (this.running) {
+      return this.running;
+    }
+
     const release = this.onScan?.();
     this.controller = new AbortController();
 
@@ -435,10 +455,16 @@ export class RepositoryIndex {
 
     const visit = async (path: string, depth: number) => {
       signal.throwIfAborted();
-      if (depth > settings.max_depth || entries >= 30000 || Date.now() - start > 60000) return;
+      if (depth > settings.max_depth || entries >= 30000 || Date.now() - start > 60000) {
+        return;
+      }
+
       try {
         const actual = await realpath(path);
-        if (visited.has(actual) || actual === this.root || inside(this.root, actual)) return;
+        if (visited.has(actual) || actual === this.root || inside(this.root, actual)) {
+          return;
+        }
+
         visited.add(actual);
         const rows = await readdir(actual, { withFileTypes: true });
         entries += rows.length;
@@ -457,13 +483,15 @@ export class RepositoryIndex {
               row.name,
             ) &&
             !row.name.startsWith(".")
-          )
+          ) {
             await visit(join(actual, row.name), depth + 1);
+          }
         }
       } catch (e) {
         signal.throwIfAborted();
-        if (!["ENOENT", "EACCES", "EPERM"].includes((e as NodeJS.ErrnoException).code || ""))
+        if (!["ENOENT", "EACCES", "EPERM"].includes((e as NodeJS.ErrnoException).code || "")) {
           warnings.push(`${path}: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
     };
 
@@ -471,17 +499,22 @@ export class RepositoryIndex {
       signal.throwIfAborted();
       try {
         const actual = discoveryRoot(await realpath(root));
-        if (!(await lstat(root)).isSymbolicLink()) await visit(actual, 0);
+        if (!(await lstat(root)).isSymbolicLink()) {
+          await visit(actual, 0);
+        }
       } catch (e) {
         signal.throwIfAborted();
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT") warnings.push(`${root}: ${String(e)}`);
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+          warnings.push(`${root}: ${String(e)}`);
+        }
       }
     }
 
-    if (entries >= 30000 || Date.now() - start > 60000)
+    if (entries >= 30000 || Date.now() - start > 60000) {
       warnings.push(
         "Scan reached its safety limit. Add narrower search roots for complete coverage.",
       );
+    }
 
     const metadata = {
       last_scan: now(),
@@ -493,13 +526,14 @@ export class RepositoryIndex {
 
     this.db.transaction(() => {
       this.db.run("DELETE FROM local_repositories");
-      for (const repo of found.values())
+      for (const repo of found.values()) {
         this.db.run(
           "INSERT INTO local_repositories VALUES(?,?,?)",
           repo.path,
           JSON.stringify(repo),
           repo.indexed_at,
         );
+      }
 
       this.db.run(
         "INSERT INTO settings VALUES('repository_index',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",

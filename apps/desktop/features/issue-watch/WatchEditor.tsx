@@ -99,11 +99,13 @@ export const WatchEditor = ({
           .map((line) => line.trim())
           .filter(Boolean)
           .map((line) => {
-            if (/^#?[1-9]\d*$/.test(line))
+            if (/^#?[1-9]\d*$/.test(line)) {
               return {
                 repository: `${repo.owner}/${repo.name}`,
                 number: Number(line.replace("#", "")),
               };
+            }
+
             const ref = parseIssue(line);
             return {
               repository: `${ref.owner}/${ref.repo}`,
@@ -132,7 +134,9 @@ export const WatchEditor = ({
           setError(errorMessage(e));
         }
       } finally {
-        if (alive) setCompiling(false);
+        if (alive) {
+          setCompiling(false);
+        }
       }
     };
 
@@ -144,7 +148,10 @@ export const WatchEditor = ({
   }, [repository, prompt, labels, banned, trackers, unassigned]);
 
   const save = async () => {
-    if (!preview) return;
+    if (!preview) {
+      return;
+    }
+
     setBusy(true);
     setError("");
     try {
@@ -176,8 +183,9 @@ export const WatchEditor = ({
       };
 
       const serialized = JSON.stringify(payload);
-      if (request.current.payload !== serialized)
+      if (request.current.payload !== serialized) {
         request.current = { payload: serialized, id: crypto.randomUUID() };
+      }
 
       const result = await rpc<{ watch: Watch }>(
         initial ? "issueWatch.update" : "issueWatch.create",

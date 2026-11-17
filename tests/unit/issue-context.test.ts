@@ -17,20 +17,24 @@ afterEach(() => {
 
 it("retrieves the complete issue and paginated comments plus linked PRs from text and timeline, including fork review context", async () => {
   api.mockImplementation(async (endpoint: string) => {
-    if (endpoint === "repos/oppia/oppia/issues/26831")
+    if (endpoint === "repos/oppia/oppia/issues/26831") {
       return {
         title: "Migration",
         body: "Full body https://github.com/oppia/oppia/pull/10",
         state: "open",
       };
-    if (endpoint.includes("issues/26831/comments"))
+    }
+
+    if (endpoint.includes("issues/26831/comments")) {
       return endpoint.endsWith("page=1")
         ? Array.from({ length: 100 }, (_, i) => ({
             id: i,
             body: `Comment ${i}`,
           }))
         : [{ id: 101, body: "Last comment" }];
-    if (endpoint.includes("issues/26831/timeline"))
+    }
+
+    if (endpoint.includes("issues/26831/timeline")) {
       return [
         {
           source: {
@@ -38,7 +42,9 @@ it("retrieves the complete issue and paginated comments plus linked PRs from tex
           },
         },
       ];
-    if (endpoint === "repos/oppia/oppia/pulls/10" || endpoint === "repos/fork/oppia/pulls/11")
+    }
+
+    if (endpoint === "repos/oppia/oppia/pulls/10" || endpoint === "repos/fork/oppia/pulls/11") {
       return {
         title: "Related implementation",
         body: "PR full requirements",
@@ -47,10 +53,16 @@ it("retrieves the complete issue and paginated comments plus linked PRs from tex
         base: { ref: "develop" },
         head: { ref: "migration" },
       };
-    if (endpoint.includes("/reviews?"))
+    }
+
+    if (endpoint.includes("/reviews?")) {
       return [{ body: "Review feedback", state: "CHANGES_REQUESTED" }];
-    if (endpoint.includes("/files?"))
+    }
+
+    if (endpoint.includes("/files?")) {
       return [{ filename: "spec.ts", status: "added", additions: 10, deletions: 0 }];
+    }
+
     return [{ body: "PR discussion", user: { login: "author" } }];
   });
 
@@ -75,8 +87,14 @@ it("retrieves the complete issue and paginated comments plus linked PRs from tex
 
 it("makes unavailable linked context explicit and rejects incomplete issue comments", async () => {
   api.mockImplementation(async (endpoint: string) => {
-    if (endpoint.endsWith("issues/1")) return { title: "Issue", body: "Requirements" };
-    if (endpoint.includes("/timeline?")) throw new Error("Unavailable");
+    if (endpoint.endsWith("issues/1")) {
+      return { title: "Issue", body: "Requirements" };
+    }
+
+    if (endpoint.includes("/timeline?")) {
+      throw new Error("Unavailable");
+    }
+
     return [];
   });
 
@@ -89,7 +107,10 @@ it("makes unavailable linked context explicit and rejects incomplete issue comme
   expect(context.contextWarnings[0]).toContain("timeline unavailable");
 
   api.mockImplementation(async (endpoint: string) => {
-    if (endpoint.endsWith("issues/1")) return { title: "Issue", body: "Requirements" };
+    if (endpoint.endsWith("issues/1")) {
+      return { title: "Issue", body: "Requirements" };
+    }
+
     throw new Error("Unavailable");
   });
 

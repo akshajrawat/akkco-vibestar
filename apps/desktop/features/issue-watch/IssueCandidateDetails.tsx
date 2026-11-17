@@ -45,10 +45,14 @@ export const IssueCandidateDetails = ({
       issue_id: issueId,
     })
       .then((value) => {
-        if (alive) setDetail(value);
+        if (alive) {
+          setDetail(value);
+        }
       })
       .catch((e) => {
-        if (alive) setError(errorMessage(e));
+        if (alive) {
+          setError(errorMessage(e));
+        }
       });
 
     return () => {
@@ -56,12 +60,14 @@ export const IssueCandidateDetails = ({
     };
   }, [watchId, scanId, issueId, revision]);
 
-  if (!detail)
+  if (!detail) {
     return (
       <aside className="watch-candidate-details">
         <p role="status">{error || "Loading saved issue…"}</p>
       </aside>
     );
+  }
+
   const { candidate } = detail;
   const claim = availabilityState(candidate, provisional);
   const issue = candidate.issue;

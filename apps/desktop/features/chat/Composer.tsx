@@ -71,13 +71,19 @@ export const Composer = ({
 
   useLayoutEffect(() => {
     const field = textarea.current;
-    if (!field) return;
+    if (!field) {
+      return;
+    }
+
     field.style.height = "auto";
     field.style.height = `${Math.max(compact ? 24 : 56, Math.min(field.scrollHeight, 240))}px`;
   }, [view.draft, view.expandedTool, compact]);
 
   const attach = async (source: ContextOption, value = "") => {
-    if (attaching) return;
+    if (attaching) {
+      return;
+    }
+
     setAttaching(true);
     setError("");
     try {
@@ -88,14 +94,18 @@ export const Composer = ({
           ? `${loaded.text.slice(0, 4000)}\n[Snapshot truncated at 4,000 characters]`
           : loaded.text;
 
-      if (!text.trim()) throw new Error("This source has no text to attach.");
+      if (!text.trim()) {
+        throw new Error("This source has no text to attach.");
+      }
+
       if (
         view.draftContext.length >= 6 ||
         view.draftContext.reduce((sum, entry) => sum + entry.text.length, text.length) > 16000
-      )
+      ) {
         throw new Error(
           "Keep up to six context items and 16,000 context characters. Remove an item before adding more.",
         );
+      }
 
       updateTaskView(id, {
         draftContext: [
@@ -120,7 +130,9 @@ export const Composer = ({
       className={`chat-input ${compact ? "chat-input-compact" : ""}`}
       onSubmit={(event) => {
         event.preventDefault();
-        if (!busy && !disabled && content && !tooLong) onSend();
+        if (!busy && !disabled && content && !tooLong) {
+          onSend();
+        }
       }}
     >
       {view.draftContext.length > 0 && (
@@ -235,7 +247,9 @@ export const Composer = ({
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          if (input.trim()) void attach(option, input.trim());
+                          if (input.trim()) {
+                            void attach(option, input.trim());
+                          }
                         }
                       }}
                     />
@@ -263,7 +277,9 @@ export const Composer = ({
                       if (source.input) {
                         setOption(source);
                         setInput("");
-                      } else void attach(source);
+                      } else {
+                        void attach(source);
+                      }
                     }}
                   >
                     {source.label}

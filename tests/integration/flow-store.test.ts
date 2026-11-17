@@ -139,11 +139,13 @@ it("binds saved flows to their task and rolls back missing task ownership", () =
     expect(db.all("SELECT * FROM flow_definitions")).toEqual([]);
     expect(db.all("SELECT * FROM flow_revisions")).toEqual([]);
     db.run("INSERT INTO repositories VALUES('repo','fixture','fixture','{}')");
-    for (const id of ["task-a", "task-b"])
+    for (const id of ["task-a", "task-b"]) {
       db.run(
         "INSERT INTO tasks(id,repo_id,status,stage,data,created_at) VALUES(?,'repo','not_started',0,'{}','fixture')",
         id,
       );
+    }
+
     store.saveDefinition(flowId, definition, null, "task-a");
     expect(() => store.saveDefinition(flowId, definition, 1, "task-b")).toThrow("another task");
     expect(store.definition(flowId).revision).toBe(1);

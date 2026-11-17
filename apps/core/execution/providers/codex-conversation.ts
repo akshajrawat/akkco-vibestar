@@ -25,12 +25,17 @@ export const codexConversation = (request: AgentRunRequest) => {
     },
     receive: (line) => {
       const response = object(JSON.parse(line));
-      if (phase === "finished") return;
-      if (response.error)
+      if (phase === "finished") {
+        return;
+      }
+
+      if (response.error) {
         throw new AdeError(
           "provider_failed",
           String(object(response.error).message || "Codex session request failed"),
         );
+      }
+
       // Approval and dynamic-tool requests cannot extend the host-authorized workspace.
       if (response.id != null && typeof response.method === "string") {
         send({
@@ -62,8 +67,10 @@ export const codexConversation = (request: AgentRunRequest) => {
         });
       } else if (response.id === 1 && phase === "thread") {
         threadId = object(object(response.result).thread).id as string;
-        if (typeof threadId !== "string" || !threadId)
+        if (typeof threadId !== "string" || !threadId) {
           throw new AdeError("provider_failed", "Codex returned no conversation identity.");
+        }
+
         phase = "turn";
 
         send({
@@ -83,8 +90,10 @@ export const codexConversation = (request: AgentRunRequest) => {
         });
       } else if (response.method === "turn/completed" && phase === "turn") {
         const turn = object(object(response.params).turn);
-        if (!["completed", "failed", "interrupted"].includes(String(turn.status)))
+        if (!["completed", "failed", "interrupted"].includes(String(turn.status))) {
           throw new AdeError("provider_failed", "Codex returned an unknown turn outcome.");
+        }
+
         phase = "finished";
         end();
       }
@@ -115,8 +124,10 @@ export const codexSessionEvent = (raw: Record<string, unknown>): Record<string, 
 
   const params = object(raw.params);
   const item = object(params.item);
-  if (raw.method === "thread/started")
+  if (raw.method === "thread/started") {
     return { type: "thread.started", thread_id: object(params.thread).id };
+  }
+
   if (raw.method === "turn/completed") {
     const turn = object(params.turn);
     return {
@@ -125,7 +136,7 @@ export const codexSessionEvent = (raw: Record<string, unknown>): Record<string, 
     };
   }
 
-  if (raw.method === "error")
+  if (raw.method === "error") {
     return params.willRetry === true
       ? {
           type: "provider.retrying",
@@ -133,8 +144,12 @@ export const codexSessionEvent = (raw: Record<string, unknown>): Record<string, 
           text: String(object(params.error).message || "Provider request is retrying"),
         }
       : { type: "error", error: params.error };
+  }
+
   if (["item/started", "item/completed"].includes(raw.method)) {
-    if (item.type === "userMessage") return raw;
+    if (item.type === "userMessage") {
+      return raw;
+    }
 
     const types: Record<string, string> = {
       agentMessage: "agent_message",
@@ -155,7 +170,7 @@ export const codexSessionEvent = (raw: Record<string, unknown>): Record<string, 
     };
   }
 
-  if (raw.method === "item/agentMessage/delta")
+  if (raw.method === "item/agentMessage/delta") {
     return {
       type: "item.updated",
       item: {
@@ -165,7 +180,9 @@ export const codexSessionEvent = (raw: Record<string, unknown>): Record<string, 
         status: "running",
       },
     };
-  if (raw.method === "item/commandExecution/outputDelta")
+  }
+
+  if (raw.method === "item/commandExecution/outputDelta") {
     return {
       type: "item.updated",
       item: {
@@ -175,7 +192,9 @@ export const codexSessionEvent = (raw: Record<string, unknown>): Record<string, 
         status: "running",
       },
     };
-  if (raw.method === "item/reasoning/summaryTextDelta")
+  }
+
+  if (raw.method === "item/reasoning/summaryTextDelta") {
     return {
       type: "item.updated",
       item: {
@@ -185,5 +204,7 @@ export const codexSessionEvent = (raw: Record<string, unknown>): Record<string, 
         status: "running",
       },
     };
+  }
+
   return raw;
 };

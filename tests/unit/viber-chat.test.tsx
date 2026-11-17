@@ -3,10 +3,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { ViberChat } from "../../apps/desktop/features/flows/ViberChat";
-import { viberDetail, viberProfile, viberWorkspace } from "../workspace/flow-fixtures";
+import { viberProfile } from "../workspace/flow-fixtures";
 
-vi.mock("../../apps/desktop/features/flows/ViberConversation", () => ({
-  ViberConversation: () => <p>Existing conversation view</p>,
+vi.mock("../../apps/desktop/features/flows/ViberSessionChat", () => ({
+  ViberSessionChat: () => <p>Existing conversation view</p>,
 }));
 
 vi.mock("../../apps/desktop/features/flows/ViberModelPicker", () => ({
@@ -31,18 +31,34 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("opens a Viber into chat without execution and reuses the existing APIs on explicit send, retaining a failed request for retry", async () => {
-  const detail = viberDetail();
-  const workspace = viberWorkspace(detail);
+it("opens a Viber without execution and uses standalone sessions on explicit send, retaining a failed request for retry", async () => {
+  const session = {
+    id: crypto.randomUUID(),
+    profile_id: viberProfile.id,
+    title: "Explain this idea",
+    selection: { provider: "codex", model: "session-only", effort: "low" },
+  };
+
   let fail = true;
 
   rpc.mockImplementation(async (method: string) => {
-    if (method === "providers.detect") return [];
-    if (method === "viber.instances") return [];
-    if (method === "task.createGeneral") return detail.task;
-    if (method === "flow.workspace") return workspace;
-    if (method === "task.detail") return detail;
-    if (method === "viber.chat" && fail) {
+    if (method === "providers.detect") {
+      return [];
+    }
+
+    if (method === "viber.instances") {
+      return [];
+    }
+
+    if (method === "viber.session.list") {
+      return [];
+    }
+
+    if (method === "viber.session.create") {
+      return session;
+    }
+
+    if (method === "viber.session.send" && fail) {
       fail = false;
       throw new Error("Try again");
     }
@@ -57,7 +73,7 @@ it("opens a Viber into chat without execution and reuses the existing APIs on ex
   expect(screen.getByRole("heading", { name: "Ready when you are." })).toBeTruthy();
 
   await waitFor(() => expect(rpc).toHaveBeenCalledWith("viber.instances", {}));
-  expect(rpc.mock.calls.filter(([method]) => method !== "providers.detect")).toHaveLength(1);
+  expect(rpc.mock.calls.filter(([method]) => method !== "providers.detect")).toHaveLength(2);
   expect(document.querySelector(".flow-editor")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Edit Viber" }));
   expect(edit).toHaveBeenCalledOnce();
@@ -75,14 +91,13 @@ it("opens a Viber into chat without execution and reuses the existing APIs on ex
   await screen.findByText("Existing conversation view");
   expect(screen.queryByRole("heading", { name: "Ready when you are." })).toBeNull();
   expect(document.querySelector(".viber-chat-welcome")).toBeNull();
-  expect(rpc.mock.calls.filter(([method]) => method === "task.createGeneral")).toHaveLength(1);
-  const sends = rpc.mock.calls.filter(([method]) => method === "viber.chat");
+  expect(rpc.mock.calls.filter(([method]) => method === "viber.session.create")).toHaveLength(1);
+  const sends = rpc.mock.calls.filter(([method]) => method === "viber.session.send");
   expect(sends).toHaveLength(2);
   expect(sends[0]).toEqual(sends[1]);
 
   expect(sends[0][1]).toMatchObject({
-    task_id: detail.task.id,
-    node_id: workspace.revision.definition.nodes[0].id,
+    session_id: session.id,
     profile_id: viberProfile.id,
     content: "Explain this idea",
     selection: { provider: "codex", model: "session-only", effort: "low" },
@@ -90,7 +105,11 @@ it("opens a Viber into chat without execution and reuses the existing APIs on ex
   });
 
   expect(
-    rpc.mock.calls.some(([method]) => method === "flow.start" || method === "profile.save"),
+    rpc.mock.calls.some(([method]) =>
+      ["flow.start", "profile.save", "task.createGeneral", "flow.workspace", "viber.chat"].includes(
+        method,
+      ),
+    ),
   ).toBe(false);
 
   fireEvent.click(screen.getByRole("button", { name: "New chat" }));

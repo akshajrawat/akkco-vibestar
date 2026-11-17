@@ -65,8 +65,12 @@ export const cleanEnvironment = () => {
     "WSL_DISTRO_NAME",
     "TERM",
     "SSH_AUTH_SOCK",
-  ])
-    if (process.env[k]) env[k] = process.env[k];
+  ]) {
+    if (process.env[k]) {
+      env[k] = process.env[k];
+    }
+  }
+
   env.PATH = `${homedir()}/.local/bin:${env.PATH || "/usr/local/bin:/usr/bin:/bin"}`;
   env.GIT_TERMINAL_PROMPT = "0";
   return env;
@@ -85,7 +89,9 @@ export const terminateGroup = (pid: number, signal: NodeJS.Signals = "SIGINT") =
   try {
     process.kill(-pid, signal);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e;
+    if ((e as NodeJS.ErrnoException).code !== "ESRCH") {
+      throw e;
+    }
   }
 };
 
@@ -95,9 +101,14 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     r.program.startsWith("-") ||
     r.program.includes("\0") ||
     r.args.some((a) => a.includes("\0"))
-  )
+  ) {
     throw new AdeError("invalid_input", "Invalid executable or argv");
-  if (r.signal?.aborted) throw new AdeError("cancelled", "Run cancelled");
+  }
+
+  if (r.signal?.aborted) {
+    throw new AdeError("cancelled", "Run cancelled");
+  }
+
   const cwd = await realpath(r.cwd);
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -147,24 +158,37 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     const outputBudget = new OutputBudget();
 
     const line = (stream: "stdout" | "stderr", value: string) => {
-      if (aborted) return;
+      if (aborted) {
+        return;
+      }
+
       try {
         const safe = redact(value);
         r.onLine?.(stream, safe);
-        if (stream === "stdout") r.inputProtocol?.receive(safe);
+        if (stream === "stdout") {
+          r.inputProtocol?.receive(safe);
+        }
       } catch (e) {
         aborted = e instanceof Error ? e : new Error(String(e));
-        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        if (child.pid) {
+          terminateGroup(child.pid, "SIGKILL");
+        }
       }
     };
 
     const consume = (stream: "stdout" | "stderr", chunk: Buffer) => {
-      if (aborted) return;
+      if (aborted) {
+        return;
+      }
+
       try {
         outputBudget.consume(chunk);
       } catch (error) {
         aborted = error as Error;
-        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        if (child.pid) {
+          terminateGroup(child.pid, "SIGKILL");
+        }
+
         return;
       }
 
@@ -180,11 +204,17 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
           "Integrity identifiers contain unsupported non-UTF-8 bytes",
         );
 
-        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        if (child.pid) {
+          terminateGroup(child.pid, "SIGKILL");
+        }
+
         return;
       }
 
-      if (stream === "stdout" && integrityDecoder) integrityBytes += chunk.length;
+      if (stream === "stdout" && integrityDecoder) {
+        integrityBytes += chunk.length;
+      }
+
       if (stream === "stdout") {
         truncated.stdout ||= stdout.length + text.length > cap;
         stdout += text.slice(0, Math.max(0, cap - stdout.length));
@@ -195,15 +225,24 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       if (r.rawStdoutForIntegrity && (truncated.stdout || integrityBytes > cap)) {
         aborted = new AdeError("output_limit", "Integrity output exceeded the capture limit");
-        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        if (child.pid) {
+          terminateGroup(child.pid, "SIGKILL");
+        }
+
         return;
       }
 
-      if (r.rawStdoutForIntegrity && stream === "stdout" && !r.onLine) return;
+      if (r.rawStdoutForIntegrity && stream === "stdout" && !r.onLine) {
+        return;
+      }
+
       buffers[stream] += text;
       if (buffers[stream].length > 2 * 1024 * 1024) {
         aborted = new AdeError("output_limit", "Provider emitted a line larger than 2 MiB");
-        if (child.pid) terminateGroup(child.pid, "SIGKILL");
+        if (child.pid) {
+          terminateGroup(child.pid, "SIGKILL");
+        }
+
         return;
       }
 
@@ -219,13 +258,18 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     };
 
     const interrupt = (error: Error) => {
-      if (settled || aborted) return;
+      if (settled || aborted) {
+        return;
+      }
+
       aborted = error;
       if (child.pid) {
         terminateGroup(child.pid);
 
         killTimer = setTimeout(() => {
-          if (child.pid) terminateGroup(child.pid, "SIGKILL");
+          if (child.pid) {
+            terminateGroup(child.pid, "SIGKILL");
+          }
         }, 3000);
 
         killTimer.unref();
@@ -248,20 +292,29 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     const cleanup = () => {
       settled = true;
       clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+
       r.signal?.removeEventListener("abort", abort);
     };
 
     child.on("spawn", () => {
-      if (child.pid)
+      if (child.pid) {
         void processIdentity(child.pid)
           .then((identity) => {
-            if (!settled && child.pid) r.onSpawn?.(child.pid, identity);
+            if (!settled && child.pid) {
+              r.onSpawn?.(child.pid, identity);
+            }
           })
           .catch((error: unknown) =>
             interrupt(error instanceof Error ? error : new Error(String(error))),
           );
-      if (r.signal?.aborted) abort();
+      }
+
+      if (r.signal?.aborted) {
+        abort();
+      }
     });
 
     child.on("error", (e) => {
@@ -281,7 +334,9 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       } catch (error) {
         interrupt(error instanceof Error ? error : new Error(String(error)));
       }
-    } else child.stdin.end(r.input);
+    } else {
+      child.stdin.end(r.input);
+    }
 
     child.on("close", (code) => {
       for (const stream of ["stdout", "stderr"] as const) {
@@ -299,15 +354,25 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         }
 
         buffers[stream] += remaining;
-        if (stream === "stdout") stdout += remaining;
-        else stderr += remaining;
-        if (buffers[stream]) line(stream, buffers[stream]);
+        if (stream === "stdout") {
+          stdout += remaining;
+        } else {
+          stderr += remaining;
+        }
+
+        if (buffers[stream]) {
+          line(stream, buffers[stream]);
+        }
       }
 
       cleanup();
-      if (child.pid) terminateGroup(child.pid, "SIGKILL");
-      if (aborted) reject(aborted);
-      else
+      if (child.pid) {
+        terminateGroup(child.pid, "SIGKILL");
+      }
+
+      if (aborted) {
+        reject(aborted);
+      } else {
         resolve({
           code: code ?? -1,
           stdout: r.rawStdoutForIntegrity ? stdout : redact(stdout),
@@ -316,6 +381,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
           ...(truncated.stdout ? { stdout_truncated: true } : {}),
           ...(truncated.stderr ? { stderr_truncated: true } : {}),
         });
+      }
     });
   });
 };
@@ -330,10 +396,12 @@ export const checked = async (
   signal?: AbortSignal,
 ) => {
   const o = await capture(program, args, cwd, signal);
-  if (o.code !== 0)
+  if (o.code !== 0) {
     throw new AdeError("command_failed", `${program} exited ${o.code}: ${o.stderr.slice(-6000)}`, {
       program,
       code: o.code,
     });
+  }
+
   return o.stdout.trim();
 };

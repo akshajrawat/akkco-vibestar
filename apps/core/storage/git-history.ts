@@ -85,11 +85,13 @@ export class HistoricalFinalizations {
 
   private validate = (taskId: string, source: unknown) => {
     const record = FinalizationSchema.parse(source);
-    if (record.task_id !== taskId)
+    if (record.task_id !== taskId) {
       throw new AdeError(
         "ownership",
         "Saved Git operation task ownership does not match its persisted owner.",
       );
+    }
+
     return record;
   };
 
@@ -118,11 +120,12 @@ export class HistoricalFinalizations {
       value.updated_at,
     );
 
-    if (result.changes !== 1)
+    if (result.changes !== 1) {
       throw new AdeError(
         "ownership",
         "This Git request identity already belongs to a different task.",
       );
+    }
   };
 }
 

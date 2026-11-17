@@ -76,12 +76,16 @@ const OutputBody = ({
 
   useEffect(() => {
     const element = scroll.current;
-    if (!element) return;
+    if (!element) {
+      return;
+    }
+
     if (restore.current && !output.loading) {
       element.scrollTop = restore.current.top + element.scrollHeight - restore.current.height;
       restore.current = null;
-    } else if (!restore.current && view.outputFollow)
+    } else if (!restore.current && view.outputFollow) {
       element.scrollTo({ top: element.scrollHeight });
+    }
   }, [text, output.events.length, output.loading, view.outputFollow, run?.output]);
 
   const copy = async () => {
@@ -163,8 +167,9 @@ const OutputBody = ({
         aria-label="Agent output transcript"
         onScroll={(e) => {
           const el = e.currentTarget;
-          if (view.outputFollow && el.scrollHeight - el.scrollTop - el.clientHeight > 80)
+          if (view.outputFollow && el.scrollHeight - el.scrollTop - el.clientHeight > 80) {
             updateTaskView(taskId, { outputFollow: false });
+          }
         }}
         onKeyDown={(e) => {
           if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
@@ -185,11 +190,13 @@ const OutputBody = ({
             disabled={output.loading}
             onClick={() => {
               updateTaskView(taskId, { outputFollow: false });
-              if (scroll.current && !view.outputSearch)
+              if (scroll.current && !view.outputSearch) {
                 restore.current = {
                   height: scroll.current.scrollHeight,
                   top: scroll.current.scrollTop,
                 };
+              }
+
               void output.loadMore();
             }}
           >

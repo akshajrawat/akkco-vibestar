@@ -31,8 +31,10 @@ beforeEach(async () => {
     ".prettierrc.json",
     "eslint.config.js",
     "lint-staged.config.js",
-  ])
+  ]) {
     await copyFile(resolve(file), join(repository, file));
+  }
+
   await symlink(resolve("node_modules"), join(repository, "node_modules"), "dir");
 
   await writeFile(
@@ -48,11 +50,13 @@ beforeEach(async () => {
     }),
   );
 
-  for (const name of ["check", "security"])
+  for (const name of ["check", "security"]) {
     await writeFile(
       join(repository, `${name}.mjs`),
       `import { access, writeFile } from "node:fs/promises"; await writeFile(".${name}-ran", "yes"); process.exit(await access(".${name}-fail").then(() => 1, () => 0));\n`,
     );
+  }
+
   await writeFile(join(repository, ".gitignore"), "node_modules/\n.husky/_/\n.*-ran\n.*-fail\n");
 
   await writeFile(

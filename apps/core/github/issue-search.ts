@@ -25,17 +25,18 @@ export class GitHubReadPool {
   private waiting: (() => void)[] = [];
 
   assertAvailable = () => {
-    if (Date.now() < this.limitedUntil)
+    if (Date.now() < this.limitedUntil) {
       throw new AdeError(
         "github_rate_limit",
         `GitHub temporarily limited requests. Wait at least ${Math.ceil((this.limitedUntil - Date.now()) / 1000)} seconds, then retry explicitly. Saved results are retained.`,
       );
+    }
   };
 
   run = async <T>(operation: () => Promise<T>, signal: AbortSignal) => {
     signal.throwIfAborted();
     this.assertAvailable();
-    if (this.active >= 1)
+    if (this.active >= 1) {
       await new Promise<void>((resolve, reject) => {
         const ready = () => {
           signal.removeEventListener("abort", aborted);
@@ -50,7 +51,10 @@ export class GitHubReadPool {
         this.waiting.push(ready);
         signal.addEventListener("abort", aborted, { once: true });
       });
-    else this.active++;
+    } else {
+      this.active++;
+    }
+
     try {
       signal.throwIfAborted();
       this.assertAvailable();
@@ -69,8 +73,11 @@ export class GitHubReadPool {
       throw error;
     } finally {
       const next = this.waiting.shift();
-      if (next) next();
-      else this.active--;
+      if (next) {
+        next();
+      } else {
+        this.active--;
+      }
     }
   };
 }
@@ -121,13 +128,17 @@ export class IssueSearch {
       !/^(?:repos\/[\w.-]+\/[\w.-]+(?:\/|\?|$)|search\/issues\?)/.test(endpoint) ||
       endpoint.includes("..") ||
       endpoint.includes("#")
-    )
+    ) {
       throw new AdeError(
         "invalid_input",
         "Issue Watch only reads bounded GitHub repository endpoints.",
       );
-    if (this.requests >= this.limits.max_requests)
+    }
+
+    if (this.requests >= this.limits.max_requests) {
       throw new CollectionLimit("GitHub request budget exhausted.");
+    }
+
     this.requests++;
     this.activity?.();
 
@@ -139,8 +150,10 @@ export class IssueSearch {
     this.signal.throwIfAborted();
     this.bytes += Buffer.byteLength(JSON.stringify(value));
     this.activity?.();
-    if (this.bytes > 20 * 1024 * 1024)
+    if (this.bytes > 20 * 1024 * 1024) {
       throw new CollectionLimit("Collected GitHub data exceeded 20 MiB.");
+    }
+
     return value;
   };
 
@@ -150,11 +163,13 @@ export class IssueSearch {
     if (
       fullName !== repositoryName(value.full_name) ||
       (expectedId && expectedId !== value.node_id)
-    )
+    ) {
       throw new AdeError(
         "github_identity",
         "Repository identity changed. Correct the saved repository explicitly before scanning.",
       );
+    }
+
     return RepositoryIdentitySchema.parse({
       id: value.node_id,
       full_name: fullName,
@@ -170,13 +185,17 @@ export class IssueSearch {
       (ref &&
         (`${ref.owner}/${ref.repo}`.toLowerCase() !== repository.full_name ||
           ref.number !== number))
-    )
+    ) {
       throw new AdeError(
         "github_identity",
         "Issue response does not match the requested repository and number.",
       );
-    if (Buffer.byteLength(value.body || "") > 1048576)
+    }
+
+    if (Buffer.byteLength(value.body || "") > 1048576) {
       throw new CollectionLimit("Issue body exceeded the 1 MiB source limit.");
+    }
+
     return IssueSnapshotSchema.parse({
       id: value.node_id,
       repository_id: repository.id,
@@ -203,17 +222,28 @@ export class IssueSearch {
         `${endpoint}${endpoint.includes("?") ? "&" : "?"}per_page=100&page=${page}`,
       );
 
-      if (!Array.isArray(value))
+      if (!Array.isArray(value)) {
         throw new AdeError("github", "Unexpected Issue Watch pagination response.");
-      if (value.length > 100) throw new AdeError("github", "Oversized GitHub page.");
+      }
+
+      if (value.length > 100) {
+        throw new AdeError("github", "Oversized GitHub page.");
+      }
+
       const hash = digest(value);
-      if (value.length && seen.has(hash))
+      if (value.length && seen.has(hash)) {
         throw new CollectionLimit("GitHub pagination did not advance.");
+      }
+
       seen.add(hash);
       rows.push(...value);
-      if (rows.length > maxRows)
+      if (rows.length > maxRows) {
         throw new CollectionLimit("Discussion or tracker exceeded its declared entry limit.");
-      if (value.length < 100) return rows;
+      }
+
+      if (value.length < 100) {
+        return rows;
+      }
     }
 
     throw new CollectionLimit("GitHub discussion pagination limit reached.");
@@ -251,7 +281,10 @@ export class IssueSearch {
     const seen = new Set<string>();
     const warnings: string[] = [];
     let batchComplete = !value.incomplete_results;
-    if (value.incomplete_results) warnings.push("GitHub reported incomplete search results.");
+    if (value.incomplete_results) {
+      warnings.push("GitHub reported incomplete search results.");
+    }
+
     for (const item of value.items) {
       if (item.pull_request || seen.has(item.node_id)) {
         batchComplete = false;
@@ -263,8 +296,10 @@ export class IssueSearch {
       if (
         `${ref.owner}/${ref.repo}`.toLowerCase() !== repository.full_name ||
         ref.number !== item.number
-      )
+      ) {
         throw new AdeError("github_identity", "Search result belongs to a different repository.");
+      }
+
       seen.add(item.node_id);
       identities.push({ id: item.node_id, number: item.number });
     }
@@ -276,14 +311,18 @@ export class IssueSearch {
     }
 
     const complete = batchComplete && batch.page === 1 && total <= size;
-    if (!complete)
+    if (!complete) {
       warnings.push(
         `Batch ${batch.page}: only up to ${size} issues are checked. Saved results remain historical until rechecked.`,
       );
-    if (total > 1000)
+    }
+
+    if (total > 1000) {
       warnings.push(
         "GitHub search exposes at most 1,000 results. Narrow the watch criteria to inspect more.",
       );
+    }
+
     return {
       identities,
       total,
@@ -315,9 +354,10 @@ export const verifyIssueIdentity = (
   actual: IssueSnapshot,
   expected: { id: string; number: number },
 ) => {
-  if (actual.id !== expected.id || actual.number !== expected.number)
+  if (actual.id !== expected.id || actual.number !== expected.number) {
     throw new AdeError(
       "github_identity",
       "Issue identity changed; this result needs manual correction.",
     );
+  }
 };

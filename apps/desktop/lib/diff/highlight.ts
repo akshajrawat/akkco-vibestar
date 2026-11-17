@@ -22,8 +22,10 @@ export const highlightCode = (text: string, path: string) => {
   ].includes(extension || "");
 
   const tokens: { kind: string; text: string }[] = [];
-  if ((!markup && !style && !python && !script) || text.length > 4000)
+  if ((!markup && !style && !python && !script) || text.length > 4000) {
     return [{ kind: "text", text }];
+  }
+
   const comments = markup ? "<!--.*?(?:-->|$)" : python ? "#.*$" : "//.*$|/\\*.*?(?:\\*/|$)";
 
   const pattern = new RegExp(
@@ -33,8 +35,14 @@ export const highlightCode = (text: string, path: string) => {
 
   let offset = 0;
   for (const match of text.matchAll(pattern)) {
-    if (tokens.length >= 500) break;
-    if (match.index > offset) tokens.push({ kind: "text", text: text.slice(offset, match.index) });
+    if (tokens.length >= 500) {
+      break;
+    }
+
+    if (match.index > offset) {
+      tokens.push({ kind: "text", text: text.slice(offset, match.index) });
+    }
+
     const value = match[0];
 
     const kind =
@@ -56,6 +64,9 @@ export const highlightCode = (text: string, path: string) => {
     offset = match.index + value.length;
   }
 
-  if (offset < text.length) tokens.push({ kind: "text", text: text.slice(offset) });
+  if (offset < text.length) {
+    tokens.push({ kind: "text", text: text.slice(offset) });
+  }
+
   return tokens;
 };

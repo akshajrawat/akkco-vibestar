@@ -27,7 +27,9 @@ export class TaskLifecycle {
   private readonly creatingTasks = new Map<string, { digest: string; promise: Promise<Task> }>();
 
   private saveInitialFlow = (task: Task, profileId: string, template?: TemplateId) => {
-    if (template) initializeProfiles(this.host.db);
+    if (template) {
+      initializeProfiles(this.host.db);
+    }
 
     const flows = new FlowStore(this.host.db);
     const profile = flows.profile(profileId);
@@ -83,14 +85,22 @@ export class TaskLifecycle {
 
     const task = this.host.db.transaction(() => {
       const previous = this.existingTaskRequest(request.request_id, digest);
-      if (previous) return previous;
+      if (previous) {
+        return previous;
+      }
+
       const repo = request.repository_id ? this.host.db.repository(request.repository_id) : null;
-      if (repo?.connected === false)
+      if (repo?.connected === false) {
         throw new AdeError(
           "repository_missing",
           "Reconnect this repository before creating a task.",
         );
-      if (repo) this.host.db.saveRepository({ ...repo, selection: "explicit" });
+      }
+
+      if (repo) {
+        this.host.db.saveRepository({ ...repo, selection: "explicit" });
+      }
+
       const timestamp = now();
       const flowId = randomUUID();
 
@@ -167,14 +177,19 @@ export class TaskLifecycle {
       .digest("hex");
 
     const previous = this.existingTaskRequest(requestId, digest);
-    if (previous) return previous;
+    if (previous) {
+      return previous;
+    }
+
     const active = this.creatingTasks.get(requestId);
     if (active) {
-      if (active.digest !== digest)
+      if (active.digest !== digest) {
         throw new AdeError(
           "invalid_input",
           "This task request identity already belongs to a different payload.",
         );
+      }
+
       return active.promise;
     }
 
@@ -193,7 +208,9 @@ export class TaskLifecycle {
 
       return this.host.db.transaction(() => {
         const previous = this.existingTaskRequest(requestId, digest);
-        if (previous) return previous;
+        if (previous) {
+          return previous;
+        }
 
         const goal =
           scopeMode === "partial"
@@ -202,8 +219,10 @@ export class TaskLifecycle {
               ? context.title.trim()
               : `Contribute to ${reference.url}`;
 
-        if (!goal || goal.length > 32000)
+        if (!goal || goal.length > 32000) {
           throw new AdeError("invalid_input", "The task goal must contain 1–32,000 characters.");
+        }
+
         const timestamp = now();
 
         const task: Task = {
@@ -263,29 +282,40 @@ export class TaskLifecycle {
       id,
     )[0];
 
-    if (!row) return undefined;
-    if (row.digest !== digest)
+    if (!row) {
+      return undefined;
+    }
+
+    if (row.digest !== digest) {
       throw new AdeError(
         "invalid_input",
         "This task request identity already belongs to a different payload.",
       );
-    if (!row.task_id)
+    }
+
+    if (!row.task_id) {
       throw new AdeError(
         "request_completed",
         "This request already created a task whose history was removed. Start a new explicit request to create another task.",
       );
+    }
+
     return this.host.db.task(row.task_id);
   };
 
   taskRepository = (id: string | null, reference: IssueRef) => {
     const repo = this.host.db.repository(id);
-    if (repo.connected === false)
+    if (repo.connected === false) {
       throw new AdeError("repository_missing", "Reconnect this repository before creating a task.");
-    if (!repositoryMatchesIssue(repo, reference))
+    }
+
+    if (!repositoryMatchesIssue(repo, reference)) {
       throw new AdeError(
         "repository_mismatch",
         `Repository mismatch: this issue belongs to ${reference.owner}/${reference.repo}. Selected repository: ${repo.owner}/${repo.name}.`,
       );
+    }
+
     return repo;
   };
 }

@@ -82,7 +82,10 @@ it("keeps missing implementation checks separate from independently observed rea
     const task = fixtureFlowTask(engine, repo);
     const saved = engine.flows.definition(task.flow_id!);
     const implementation = saved.definition.nodes[0];
-    if (implementation.type !== "agent") throw new Error("Missing fixture agent");
+    if (implementation.type !== "agent") {
+      throw new Error("Missing fixture agent");
+    }
+
     const profile = engine.flows.profile(implementation.profile_id);
 
     const reviewer = {

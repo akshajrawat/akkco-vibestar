@@ -51,16 +51,26 @@ export class TaskTerminals {
   ) {}
 
   open = async (id: string, cols: number, rows: number) => {
-    if (this.closed) throw new AdeError("closed", "Terminals are shutting down.");
+    if (this.closed) {
+      throw new AdeError("closed", "Terminals are shutting down.");
+    }
+
     const existing = this.current(id);
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
+
     const pending = this.opening.get(id);
-    if (pending) return pending;
-    if (this.sessions.size + this.opening.size >= 4)
+    if (pending) {
+      return pending;
+    }
+
+    if (this.sessions.size + this.opening.size >= 4) {
       throw new AdeError(
         "terminal_limit",
         "Close an existing task terminal before opening another (maximum 4)",
       );
+    }
 
     const started = this.start(id, cols, rows).finally(() => this.opening.delete(id));
     this.opening.set(id, started);
@@ -88,11 +98,12 @@ export class TaskTerminals {
       const repository = this.engine.db.repository(task.repo_id);
       if (repository.source !== "imported") {
         const remotes = (await gitChecked(["remote"], cwd)).split("\n");
-        if (!remotes.includes("origin"))
+        if (!remotes.includes("origin")) {
           await gitChecked(
             ["remote", "add", "--", "origin", repository.origin_url || repository.upstream_url],
             cwd,
           );
+        }
       }
 
       return cwd;
@@ -164,7 +175,10 @@ export class TaskTerminals {
         shell: basename(shell),
         branch: task.branch_name,
         stop: async () => {
-          if (stopping) return exited;
+          if (stopping) {
+            return exited;
+          }
+
           stopping = true;
           try {
             pty.write("\x03");
@@ -191,7 +205,10 @@ export class TaskTerminals {
       let outputFailure = false;
 
       const failOutput = (error: unknown) => {
-        if (outputFailure) return;
+        if (outputFailure) {
+          return;
+        }
+
         outputFailure = true;
 
         this.engine.publish({
@@ -205,7 +222,7 @@ export class TaskTerminals {
 
       const writes = new BoundedWriter(failOutput);
       this.sessions.set(id, session);
-      if (this.repair)
+      if (this.repair) {
         releaseActivity = this.engine.trackActivity(
           {
             id: `repair-terminal:${id}`,
@@ -215,19 +232,24 @@ export class TaskTerminals {
           },
           () => this.close(id),
         );
+      }
 
       void processIdentity(pty.pid).then((identity) => {
-        if (this.sessions.has(id))
+        if (this.sessions.has(id)) {
           this.engine.db.run(
             "UPDATE terminal_sessions SET pid=?,process_identity=? WHERE id=?",
             pty.pid,
             identity,
             sessionId,
           );
+        }
       });
 
       const publish = (text: string) => {
-        if (!text || outputFailure) return;
+        if (!text || outputFailure) {
+          return;
+        }
+
         writes.write(text, (value) => handle!.write(value));
         session.output = (session.output + text).slice(-65536);
         session.sequence++;
@@ -242,7 +264,10 @@ export class TaskTerminals {
       };
 
       pty.onData((raw) => {
-        if (outputFailure) return;
+        if (outputFailure) {
+          return;
+        }
+
         try {
           budget.consume(raw);
           publish(redactor.push(raw));
@@ -253,7 +278,10 @@ export class TaskTerminals {
 
       pty.onExit(({ exitCode }) => {
         stopping = true;
-        if (timer) clearTimeout(timer);
+        if (timer) {
+          clearTimeout(timer);
+        }
+
         try {
           publish(redactor.finish());
         } catch (error) {
@@ -341,14 +369,18 @@ export class TaskTerminals {
 
   input = (taskId: string, sessionId: string, text: string) => {
     const session = this.sessions.get(taskId);
-    if (!session || session.id !== sessionId)
+    if (!session || session.id !== sessionId) {
       throw new AdeError("terminal", "Task terminal has ended");
+    }
+
     session.pty.write(text);
   };
 
   resize = (taskId: string, sessionId: string, cols: number, rows: number) => {
     const session = this.sessions.get(taskId);
-    if (session?.id === sessionId) session.pty.resize(cols, rows);
+    if (session?.id === sessionId) {
+      session.pty.resize(cols, rows);
+    }
   };
 
   close = async (taskId: string) => {

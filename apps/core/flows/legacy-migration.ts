@@ -98,13 +98,18 @@ export const legacyMigration = (db: Database, taskId: string): LegacyMigration |
     taskId,
   )[0];
 
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
+
   return db.records.decode(
     { table: "flow_task_migrations", id: taskId, column: "data", source: row.data },
     (value) => {
       const record = LegacyMigrationSchema.parse(value);
-      if (record.task_id !== taskId || record.source_hash !== row.source_hash)
+      if (record.task_id !== taskId || record.source_hash !== row.source_hash) {
         throw new Error("Historical task migration identity mismatch.");
+      }
+
       return record;
     },
   );
@@ -137,11 +142,13 @@ const sameProfile = (a: AgentProfile, b: AgentProfile) =>
   });
 
 const profilesFor = (db: Database, task: Task, store: FlowStore) => {
-  if (!task.execution_settings)
+  if (!task.execution_settings) {
     throw new AdeError(
       "missing_history",
       "The historical execution settings were not captured. Restore the original snapshot or create a new task with explicit Viber settings; current defaults cannot prove the old configuration.",
     );
+  }
+
   const settings = task.execution_settings;
 
   const existing = db
@@ -150,7 +157,10 @@ const profilesFor = (db: Database, task: Task, store: FlowStore) => {
       try {
         return [store.profile(id)];
       } catch (error) {
-        if (error instanceof AdeError && error.kind === "corrupt_record") return [];
+        if (error instanceof AdeError && error.kind === "corrupt_record") {
+          return [];
+        }
+
         throw error;
       }
     });
@@ -220,36 +230,44 @@ const artifactFor = (db: Database, taskId: string, stage: number) => {
     stage,
   )[0];
 
-  if (!row)
+  if (!row) {
     throw new AdeError(
       "missing_history",
       `The saved stage ${stage} result is missing. Restore its artifact or start a new flow explicitly; previous work was preserved.`,
     );
+  }
 
   db.records.decode(
     { table: "task_artifacts", id: row.id, column: "content", source: row.content },
     (value) => validatePlan(stage, value),
   );
 
-  if (!identity.safeParse(row.id).success)
+  if (!identity.safeParse(row.id).success) {
     throw new AdeError(
       "missing_history",
       "This historical artifact has an unsupported identity. Restore its record before selecting it as new execution context.",
     );
+  }
+
   return row;
 };
 
 const initialBoundary = (task: Task) => {
   if (task.status === "awaiting_approval") {
-    if (!task.approval_gate)
+    if (!task.approval_gate) {
       throw new AdeError(
         "missing_history",
         "This task is waiting for an unidentified approval. Restore its saved gate before continuing.",
       );
+    }
+
     return { stage: gateStages[task.approval_gate], type: "approval" as const };
   }
 
-  if (task.stage === 4) return { stage: 3 as const, type: "approval" as const };
+  if (task.stage === 4) {
+    return { stage: 3 as const, type: "approval" as const };
+  }
+
   return {
     stage: task.stage <= 1 ? 1 : task.stage === 2 ? 2 : task.stage === 3 ? 3 : 5,
     type: "agent" as const,
@@ -263,7 +281,10 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
     taskId,
   )[0];
 
-  if (!row) throw new AdeError("not_found", "Historical task not found.");
+  if (!row) {
+    throw new AdeError("not_found", "Historical task not found.");
+  }
+
   // Validate an existing journal before any upsert; corrupt journal bytes must survive recovery.
   const previous = legacyMigration(db, taskId);
   const sourceHash = createHash("sha256").update(row.data).digest("hex");
@@ -285,7 +306,9 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
 
   try {
     const original = db.task(taskId);
-    if (original.flow_id) return previous;
+    if (original.flow_id) {
+      return previous;
+    }
 
     db.run(
       "INSERT INTO flow_migration_sources VALUES(?,?,?,?) ON CONFLICT(task_id,source_hash) DO NOTHING",
@@ -295,51 +318,62 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
       now(),
     );
 
-    if (["removing", "removed"].includes(original.workspace_checkpoint?.state || ""))
+    if (["removing", "removed"].includes(original.workspace_checkpoint?.state || "")) {
       throw new AdeError(
         "removal_pending",
         "Complete the previously confirmed workspace cleanup explicitly before continuing. Its saved authorization and original history were preserved.",
       );
+    }
 
-    if (!identity.safeParse(taskId).success)
+    if (!identity.safeParse(taskId).success) {
       throw new AdeError(
         "missing_history",
         "This historical task identity is unsupported by the desktop transport. Its exact source and ID were preserved for recovery.",
       );
+    }
 
-    if (original.status !== row.status || original.stage !== row.stage)
+    if (original.status !== row.status || original.stage !== row.stage) {
       throw new AdeError(
         "missing_history",
         "Task metadata disagrees with its saved execution state. Restore the record from its backup before migrating it.",
       );
+    }
+
     if (
       original.kind === "general" ||
       !original.repo_id ||
       !original.issue_url ||
       !original.issue_number
-    )
+    ) {
       throw new AdeError(
         "missing_history",
         "The historical repository or issue identity is incomplete. Restore the original ownership record or create a new task; existing files and history were preserved.",
       );
-    if (original.status === "preserved")
+    }
+
+    if (original.status === "preserved") {
       throw new AdeError(
         "preserved",
         "This task's history was deliberately removed. Its ownership record and files remain preserved; create a new task for further work.",
       );
+    }
+
     const repository = db.repository(original.repo_id);
     const issue = parseIssue(original.issue_url);
-    if (!repositoryMatchesIssue(repository, issue) || issue.number !== original.issue_number)
+    if (!repositoryMatchesIssue(repository, issue) || issue.number !== original.issue_number) {
       throw new AdeError(
         "ownership",
         "The saved issue no longer matches its registered repository. Restore that identity before migration.",
       );
+    }
+
     const scopeMode = original.scope_mode || row.scope_mode;
-    if (!["partial", "whole_issue"].includes(scopeMode))
+    if (!["partial", "whole_issue"].includes(scopeMode)) {
       throw new AdeError(
         "missing_history",
         "This task has no known scope decision. Restore its saved scope before migration.",
       );
+    }
 
     const goal =
       scopeMode === "partial"
@@ -348,11 +382,13 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
           ? original.issue.title.trim()
           : `Contribute to ${original.issue_url}`;
 
-    if (!goal || goal.length > 32000)
+    if (!goal || goal.length > 32000) {
       throw new AdeError(
         "missing_history",
         "Restore a nonempty scoped goal of at most 32,000 characters; the original brief was preserved without truncation.",
       );
+    }
+
     const task = { ...original, scope_mode: scopeMode as Task["scope_mode"], goal };
     return db.transaction(() => {
       const store = new FlowStore(db);
@@ -382,11 +418,13 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
             id,
             taskId,
           ).length
-        )
+        ) {
           throw new AdeError(
             "missing_history",
             "A previously selected conversation message is unavailable. Restore it or explicitly choose a new flow context.",
           );
+        }
+
         selectedMessages.push(id);
       }
 
@@ -394,7 +432,10 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
         ...template,
         name: "Imported contribution flow",
         nodes: template.nodes.map((node) => {
-          if (node.type !== "agent") return node;
+          if (node.type !== "agent") {
+            return node;
+          }
+
           const slot = slots.find((slot) => slot.id === node.id)!;
           return {
             ...node,
@@ -433,20 +474,28 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
           (slot) => slot.stage === boundary.stage && slot.type === boundary.type,
         );
 
-        if (!slot)
+        if (!slot) {
           throw new AdeError(
             "missing_history",
             "This historical execution boundary cannot be translated. Its source state remains preserved.",
           );
+        }
+
         boundaryId = slot.id;
         const offset = full.nodes.findIndex((node) => node.id === boundaryId);
         const remaining = new Set(full.nodes.slice(offset).map((node) => node.id));
 
         const nodes = full.nodes.slice(offset).map((node): FlowNode => {
           const inputs = node.inputs.flatMap((input) => {
-            if (!("node_id" in input) || remaining.has(input.node_id)) return [input];
+            if (!("node_id" in input) || remaining.has(input.node_id)) {
+              return [input];
+            }
+
             const source = slots.find((slot) => slot.id === input.node_id);
-            if (!source || source.type === "approval") return [];
+            if (!source || source.type === "approval") {
+              return [];
+            }
+
             return [
               { kind: "artifact" as const, artifact_id: artifactFor(db, taskId, source.stage).id },
             ];
@@ -455,12 +504,16 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
           if (node.type === "approval" && node.id === boundaryId) {
             const source = slots.find((slot) => slot.id === node.id)!;
             const observed = historicalRuns(db, taskId, source.stage).at(-1);
-            if (observed) inputs.push({ kind: "command-evidence", run_id: observed.id });
+            if (observed) {
+              inputs.push({ kind: "command-evidence", run_id: observed.id });
+            }
+
             if (
               db.all("SELECT id FROM test_runs WHERE task_id=? AND run_id IS NULL LIMIT 1", taskId)
                 .length
-            )
+            ) {
               inputs.push({ kind: "command-evidence", run_id: null });
+            }
           }
 
           return {
@@ -515,7 +568,9 @@ export const migrateLegacyTask = (db: Database, taskId: string): LegacyMigration
                 ? "failed"
                 : "interrupted";
 
-        if (status === "waiting") runs.setRunStatus(run.id, "queued", "running");
+        if (status === "waiting") {
+          runs.setRunStatus(run.id, "queued", "running");
+        }
 
         runs.setRunStatus(
           run.id,
@@ -563,7 +618,9 @@ export const migrateLegacyTasks = (db: Database) => {
     try {
       migrateLegacyTask(db, id);
     } catch (error) {
-      if (!(error instanceof AdeError && error.kind === "corrupt_record")) throw error;
+      if (!(error instanceof AdeError && error.kind === "corrupt_record")) {
+        throw error;
+      }
     }
   }
 };

@@ -63,7 +63,10 @@ export const callFlows = async (
           try {
             return [e.flows.profile(id)];
           } catch (error) {
-            if (error instanceof AdeError && error.kind === "corrupt_record") return [];
+            if (error instanceof AdeError && error.kind === "corrupt_record") {
+              return [];
+            }
+
             throw error;
           }
         });
@@ -120,7 +123,9 @@ export const callFlows = async (
         .parse(raw);
 
       const task = e.db.task(p.task_id);
-      if (!task.flow_id) throw new AdeError("invalid_state", "This task has no editable flow.");
+      if (!task.flow_id) {
+        throw new AdeError("invalid_state", "This task has no editable flow.");
+      }
 
       const result = e.flows.saveDefinition(
         task.flow_id,
@@ -137,7 +142,10 @@ export const callFlows = async (
       e.assertAvailable();
       const p = taskInput.extend({ layout: CanvasLayoutSchema }).strict().parse(raw);
       const task = e.db.task(p.task_id);
-      if (!task.flow_id) throw new AdeError("invalid_state", "This task has no canvas.");
+      if (!task.flow_id) {
+        throw new AdeError("invalid_state", "This task has no canvas.");
+      }
+
       return e.flows.saveLayout(task.flow_id, p.layout);
     }
 
@@ -177,19 +185,22 @@ export const callFlows = async (
         .parse(raw);
 
       const task = e.db.task(p.task_id);
-      if (!task.flow_id)
+      if (!task.flow_id) {
         throw new AdeError(
           "invalid_state",
           "Inspect this task’s recovery diagnostic or create a new task with explicit Viber settings.",
         );
+      }
+
       if (
         e.cleanupBlockers(task.id).length ||
         e.db.all(
           "SELECT id FROM flow_runs WHERE task_id=? AND status IN ('queued','running','pausing','waiting')",
           task.id,
         ).length
-      )
+      ) {
         throw new AdeError("busy", "Pause or stop execution before changing the task lifecycle.");
+      }
 
       e.db.saveTask({
         ...task,

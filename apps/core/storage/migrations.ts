@@ -399,4 +399,21 @@ DROP TABLE unused_viber_profiles;
 CREATE TABLE viber_session_settings(task_id TEXT NOT NULL REFERENCES tasks(id),node_id TEXT NOT NULL,selection TEXT NOT NULL CHECK(json_valid(selection)),PRIMARY KEY(task_id,node_id));
 `,
   },
+  {
+    version: 38,
+    sql: `
+CREATE TABLE viber_sessions(id TEXT PRIMARY KEY,profile_id TEXT NOT NULL REFERENCES agent_profiles(id),title TEXT NOT NULL,selection TEXT NOT NULL CHECK(json_valid(selection)),configuration TEXT NOT NULL CHECK(json_valid(configuration)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE INDEX viber_profile_sessions ON viber_sessions(profile_id,updated_at);
+CREATE TRIGGER viber_session_owner_immutable BEFORE UPDATE OF id,profile_id,configuration,created_at ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber session ownership is immutable'); END;
+CREATE TABLE viber_messages(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES viber_sessions(id),role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','completed','failed','cancelled','interrupted')),run_id TEXT REFERENCES utility_runs(id),configuration TEXT CHECK(configuration IS NULL OR json_valid(configuration)),created_at TEXT NOT NULL,error TEXT);
+CREATE INDEX viber_session_messages ON viber_messages(session_id,created_at);
+CREATE UNIQUE INDEX viber_pending_message ON viber_messages(session_id) WHERE status='pending';
+CREATE TRIGGER viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;
+ALTER TABLE utility_runs ADD COLUMN viber_session_id TEXT REFERENCES viber_sessions(id);
+ALTER TABLE utility_runs ADD COLUMN viber_message_id TEXT REFERENCES viber_messages(id);
+CREATE UNIQUE INDEX viber_message_run ON utility_runs(viber_message_id);
+CREATE INDEX viber_session_runs ON utility_runs(viber_session_id,started_at);
+ALTER TABLE ai_usage ADD COLUMN viber_session_id TEXT REFERENCES viber_sessions(id);
+`,
+  },
 ];

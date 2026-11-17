@@ -11,8 +11,10 @@ export const digest = (value: unknown) =>
 export const repositoryName = (input: string) => {
   const value = input.trim();
   const identity = remoteIdentity(value.includes("://") ? value : `https://github.com/${value}`);
-  if (!identity || (value.includes("://") && !value.startsWith("https://github.com/")))
+  if (!identity || (value.includes("://") && !value.startsWith("https://github.com/"))) {
     throw new AdeError("invalid_input", "Use owner/repository or its HTTPS GitHub URL.");
+  }
+
   return `${identity.owner}/${identity.name}`.toLowerCase();
 };
 
@@ -117,13 +119,18 @@ export const previewRules = (input: unknown) => {
 
   for (const match of p.prompt.matchAll(
     /\b(?:open issues?|unassigned|no\s+assignee|not\s+(?:already\s+)?claimed|no\s+other\s+contributor[^.!?\n]*claimed|request\s+assignment)\b/gi,
-  ))
+  )) {
     add(
       match.index,
       match[0],
       "Open issues only; inspect assignments, active claims and competing PRs. Uncertain claims require manual review.",
     );
-  for (const label of p.controls?.excluded_labels || []) labels.add(label.trim().toLowerCase());
+  }
+
+  for (const label of p.controls?.excluded_labels || []) {
+    labels.add(label.trim().toLowerCase());
+  }
+
   for (const reference of p.controls?.excluded_issues || []) {
     const normalized = {
       ...reference,
@@ -143,18 +150,21 @@ export const previewRules = (input: unknown) => {
   }
 
   let remaining = p.prompt;
-  for (const span of [...explanation].sort((a, b) => b.start - a.start))
+  for (const span of [...explanation].sort((a, b) => b.start - a.start)) {
     remaining =
       remaining.slice(0, span.start) +
       " ".repeat(span.end - span.start) +
       remaining.slice(span.end);
-  if (/\b(?:not|exclude|only|must|make sure|without|no other)\b/i.test(remaining))
+  }
+
+  if (/\b(?:not|exclude|only|must|make sure|without|no other)\b/i.test(remaining)) {
     ambiguities.push({
       id: "remaining-requirements",
       text: remaining.trim(),
       explanation:
         "Some requirements are outside this small deterministic grammar. Confirm the visible hard controls or acknowledge the remaining text as AI preferences; they are not guaranteed hard filters.",
     });
+  }
 
   const rules = WatchRulesSchema.parse({
     compiler_version: 1,
@@ -202,11 +212,12 @@ export const confirmConfiguration = (repository: string, configuration: WatchCon
   if (
     preview.digest !== configuration.preview_digest ||
     digest(preview.rules) !== digest(configuration.rules)
-  )
+  ) {
     throw new AdeError(
       "stale_preview",
       "Preview the current prompt and hard controls again before saving.",
     );
+  }
 
   const decisions = new Map(
     configuration.ambiguity_decisions.map((decision) => [decision.id, decision.interpretation]),
@@ -216,7 +227,9 @@ export const confirmConfiguration = (repository: string, configuration: WatchCon
     decisions.size !== configuration.ambiguity_decisions.length ||
     [...decisions.keys()].some((id) => !preview.ambiguities.some((item) => item.id === id)) ||
     preview.ambiguities.some((item) => !decisions.has(item.id))
-  )
+  ) {
     throw new AdeError("ambiguous_rules", "Confirm every rule ambiguity before saving this watch.");
+  }
+
   return preview;
 };

@@ -162,7 +162,9 @@ it("pages and searches saved run events beyond 2000 and retains full tool contex
       status: "running",
     });
 
-    for (let i = 0; i < 2100; i++) insert("message", { text: `event ${i}` });
+    for (let i = 0; i < 2100; i++) {
+      insert("message", { text: `event ${i}` });
+    }
 
     insert("command.finished", {
       call_id: "tool",

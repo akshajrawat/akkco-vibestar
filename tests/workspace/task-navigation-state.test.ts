@@ -97,8 +97,9 @@ it("omits timing when evidence is missing, invalid, future-dated or unfinished a
     activity({ intervals: [{ start: "2026-11-06T01:00:00Z", end: null }] }),
     activity({ intervals: [{ start: "2026-11-06T00:00:00Z", end: "2026-11-06T01:00:00Z" }] }),
     activity({ intervals: [{ start: "2026-11-06T00:04:00Z", end: "2026-11-06T00:03:00Z" }] }),
-  ])
+  ]) {
     expect(taskExecutionDuration(value, now)).toBeUndefined();
+  }
 });
 
 it("reads the exact captured run and excludes approval attempts and unrelated Viber turns", () => {

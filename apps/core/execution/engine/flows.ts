@@ -85,7 +85,9 @@ export class FlowExecution {
         run.task_id,
         async () => {
           const task = this.host.db.task(run.task_id);
-          if (task.worktree_path) await this.host.git.assertOwnedTask(task);
+          if (task.worktree_path) {
+            await this.host.git.assertOwnedTask(task);
+          }
 
           const fingerprint = task.worktree_path
             ? await this.host.git.fingerprint(task)
@@ -103,11 +105,13 @@ export class FlowExecution {
     const digest = continuationRequestDigest(input);
     const pending = this.state.flowContinuations.get(input.request_id);
     if (pending) {
-      if (pending.digest !== digest)
+      if (pending.digest !== digest) {
         throw new AdeError(
           "request_conflict",
           "This continuation request belongs to a different saved revision or preview.",
         );
+      }
+
       return pending.promise;
     }
 
@@ -132,11 +136,12 @@ export class FlowExecution {
       )[0];
 
       if (previous) {
-        if (previous.request_digest !== digest)
+        if (previous.request_digest !== digest) {
           throw new AdeError(
             "request_conflict",
             "This continuation request belongs to a different saved revision or preview.",
           );
+        }
 
         this.host.db.records.decode(
           {
@@ -157,7 +162,9 @@ export class FlowExecution {
         parent.task_id,
         async () => {
           const task = this.host.db.task(parent.task_id);
-          if (task.worktree_path) await this.host.git.assertOwnedTask(task);
+          if (task.worktree_path) {
+            await this.host.git.assertOwnedTask(task);
+          }
 
           const fingerprint = task.worktree_path
             ? await this.host.git.fingerprint(task)
@@ -172,21 +179,23 @@ export class FlowExecution {
             fingerprint,
           );
 
-          if (plan.hash !== input.plan_hash)
+          if (plan.hash !== input.plan_hash) {
             throw new AdeError(
               "stale_continuation",
               "The saved settings, inputs or workspace changed after this preview. Inspect a fresh continuation preview.",
             );
+          }
 
           const run = this.host.db.transaction(() => {
             if (
               this.host.db.all("SELECT id FROM flow_runs WHERE request_id=?", input.request_id)
                 .length
-            )
+            ) {
               throw new AdeError(
                 "request_conflict",
                 "This request identity already belongs to another flow startup action.",
               );
+            }
 
             const captured = this.host.flowRuns.createRun({
               task_id: task.id,
@@ -201,19 +210,23 @@ export class FlowExecution {
               .update(JSON.stringify(captured.snapshot))
               .digest("hex");
 
-            if (captureHash !== plan.configuration_hash)
+            if (captureHash !== plan.configuration_hash) {
               throw new AdeError(
                 "stale_continuation",
                 "The captured settings changed. Inspect a fresh preview.",
               );
-            for (const node of plan.nodes)
-              if (node.status === "reuse" && node.source_attempt_id)
+            }
+
+            for (const node of plan.nodes) {
+              if (node.status === "reuse" && node.source_attempt_id) {
                 this.host.flowRuns.linkResult(
                   captured.id,
                   node.node_id,
                   node.source_attempt_id,
                   fingerprint,
                 );
+              }
+            }
 
             this.host.db.run(
               "INSERT INTO flow_continuations VALUES(?,?,?,?,?,?)",
@@ -250,20 +263,23 @@ export class FlowExecution {
 
       if (!existing) {
         const task = this.host.db.task(input.task_id);
-        if (task.flow_id !== input.flow_id || !task.goal || task.goal !== input.goal)
+        if (task.flow_id !== input.flow_id || !task.goal || task.goal !== input.goal) {
           throw new AdeError(
             "invalid_state",
             "Use the task's current goal and owned flow before starting execution.",
           );
+        }
+
         if (
           task.archived ||
           ["preserved", "completed"].includes(task.status) ||
           this.state.taskMaintenance.has(task.id)
-        )
+        ) {
           throw new AdeError(
             "busy",
             "Reopen this task and finish maintenance before starting a flow.",
           );
+        }
       }
 
       const captured = this.host.flowRuns.createRun(input);
@@ -274,13 +290,18 @@ export class FlowExecution {
         kind: "flow",
       };
 
-      if (existing && !this.dispatches.replay(request))
+      if (existing && !this.dispatches.replay(request)) {
         throw new AdeError(
           "request_completed",
           "This startup request already exists without a live dispatch. Submit a new explicit run request.",
         );
+      }
+
       this.dispatches.enqueue(request);
-      if (captured.parent_run_id) this.dispatches.stopRun(captured.parent_run_id, "cancelled");
+      if (captured.parent_run_id) {
+        this.dispatches.stopRun(captured.parent_run_id, "cancelled");
+      }
+
       return captured;
     });
 
@@ -326,7 +347,10 @@ export class FlowExecution {
 
     const dispatch = this.host.db.transaction(() => {
       const replay = this.dispatches.replay(request);
-      if (replay) return replay;
+      if (replay) {
+        return replay;
+      }
+
       const run = this.host.flowRuns.run(request.run_id);
       this.assertTaskOpen(run.task_id);
       this.assertGraphAvailable(run);
@@ -336,32 +360,41 @@ export class FlowExecution {
           run.task_id,
         )[0];
 
-        if ((latest?.id || null) !== run.parent_run_id)
+        if ((latest?.id || null) !== run.parent_run_id) {
           throw new AdeError(
             "invalid_state",
             "This conversation predates the current graph. Send a new message to capture its current workspace context.",
           );
+        }
+
         if (
           latest &&
           ["queued", "running", "pausing"].includes(this.host.flowRuns.run(latest.id).status)
-        )
+        ) {
           throw new AdeError("busy", "Pause the graph before continuing this conversation.");
+        }
       }
 
-      if (this.state.taskMaintenance.has(run.task_id) || this.host.isActive(run.task_id))
+      if (this.state.taskMaintenance.has(run.task_id) || this.host.isActive(run.task_id)) {
         throw new AdeError("busy", "Wait for the task's current operation or terminal to stop.");
-      if (!allowed.includes(run.status))
+      }
+
+      if (!allowed.includes(run.status)) {
         throw new AdeError(
           "invalid_state",
           "This run needs a different explicit execution action.",
         );
+      }
+
       const saved = this.dispatches.enqueue(request);
-      if (run.kind === "conversation")
+      if (run.kind === "conversation") {
         this.host.db.run(
           "UPDATE task_messages SET status='chat_pending' WHERE id=? AND task_id=? AND purpose='chat'",
           run.request_id,
           run.task_id,
         );
+      }
+
       return saved;
     });
 
@@ -373,10 +406,15 @@ export class FlowExecution {
   pause = (runId: string) => {
     this.host.assertAvailable();
     const run = this.host.flowRuns.run(runId);
-    if (["paused", "pausing"].includes(run.status)) return run;
+    if (["paused", "pausing"].includes(run.status)) {
+      return run;
+    }
 
     const updated = this.host.db.transaction(() => {
-      if (run.status === "queued") this.dispatches.stopRun(run.id, "cancelled");
+      if (run.status === "queued") {
+        this.dispatches.stopRun(run.id, "cancelled");
+      }
+
       return this.host.flowRuns.setRunStatus(
         run.id,
         run.status,
@@ -392,8 +430,10 @@ export class FlowExecution {
     this.track(async () => {
       this.host.assertAvailable();
       const run = this.host.flowRuns.run(runId);
-      if (["completed", "continued", "cancelled", "failed", "interrupted"].includes(run.status))
+      if (["completed", "continued", "cancelled", "failed", "interrupted"].includes(run.status)) {
         return run;
+      }
+
       const control = this.dispatches.latest(run.id);
       if (run.status !== "cancelled") {
         this.host.db.transaction(() => {
@@ -415,11 +455,13 @@ export class FlowExecution {
     const digest = createHash("sha256").update(JSON.stringify(input)).digest("hex");
     const pending = this.state.flowApprovals.get(input.request_id);
     if (pending) {
-      if (pending.digest !== digest)
+      if (pending.digest !== digest) {
         throw new AdeError(
           "request_conflict",
           "This approval request is settling a different decision.",
         );
+      }
+
       return pending.promise;
     }
 
@@ -442,8 +484,10 @@ export class FlowExecution {
           input.attempt_id,
           input.request_id,
         ).length
-      )
+      ) {
         return this.host.flowRuns.decideApproval(input, attempt.workspace_fingerprint);
+      }
+
       this.assertTaskOpen(run.task_id);
       this.assertGraphAvailable(run);
       return this.host.withTaskMaintenance(
@@ -460,27 +504,34 @@ export class FlowExecution {
               ).length > 0;
 
             const saved = this.host.flowRuns.decideApproval(input, fingerprint);
-            if (previous) return saved;
+            if (previous) {
+              return saved;
+            }
+
             const current = this.host.flowRuns.run(run.id);
             const control = this.dispatches.latest(run.id);
-            if (control?.status === "waiting")
+            if (control?.status === "waiting") {
               this.dispatches.settle(
                 control.id,
                 saved.decision === "accepted" ? "completed" : "failed",
               );
-            if (saved.decision === "rejected")
+            }
+
+            if (saved.decision === "rejected") {
               this.host.flowRuns.setRunStatus(
                 run.id,
                 current.status,
                 "failed",
                 "A required approval was rejected.",
               );
-            else if (current.status !== "paused") {
-              if (this.nodeExecutor.complete(run.id))
+            } else if (current.status !== "paused") {
+              if (this.nodeExecutor.complete(run.id)) {
                 this.host.flowRuns.setRunStatus(run.id, current.status, "completed");
-              else if (control?.kind === "flow")
+              } else if (control?.kind === "flow") {
                 this.dispatches.enqueue({ id: saved.request_id, run_id: run.id, kind: "flow" });
-              else this.host.flowRuns.setRunStatus(run.id, current.status, "paused");
+              } else {
+                this.host.flowRuns.setRunStatus(run.id, current.status, "paused");
+              }
             }
 
             return saved;
@@ -498,7 +549,10 @@ export class FlowExecution {
       try {
         return [{ dispatch, run: this.host.flowRuns.run(dispatch.run_id) }];
       } catch (error) {
-        if (error instanceof AdeError && error.kind === "corrupt_record") return [];
+        if (error instanceof AdeError && error.kind === "corrupt_record") {
+          return [];
+        }
+
         throw error;
       }
     });
@@ -509,9 +563,13 @@ export class FlowExecution {
         this.state.closed ||
         this.state.maintenance ||
         this.state.active.size >= this.host.db.settings().concurrency
-      )
+      ) {
         break;
-      if (this.host.isActive(run.task_id) || this.state.taskMaintenance.has(run.task_id)) continue;
+      }
+
+      if (this.host.isActive(run.task_id) || this.state.taskMaintenance.has(run.task_id)) {
+        continue;
+      }
 
       void this.slots
         .withExecutionSlot(
@@ -523,8 +581,9 @@ export class FlowExecution {
         )
         .catch((error) => {
           // Slot refusal starts no process. The request remains queued for the next lease release.
-          if (!(error instanceof AdeError && error.kind === "busy"))
+          if (!(error instanceof AdeError && error.kind === "busy")) {
             this.host.publish({ event: "core.error", text: message(error) });
+          }
         });
     }
   };
@@ -536,11 +595,13 @@ export class FlowExecution {
       this.host.db.saveTask(task);
     } else if (task.workspace_checkpoint?.state !== "ready") {
       const repo = this.host.db.repository(task.repo_id);
-      if (repo.connected === false)
+      if (repo.connected === false) {
         throw new AdeError(
           "repository_missing",
           "Reconnect this repository before executing the flow.",
         );
+      }
+
       await this.host.prepareClone(repo, signal);
 
       await this.host.git.prepare(
@@ -582,18 +643,22 @@ export class FlowExecution {
 
   private execute = async (dispatchId: string, signal: AbortSignal) => {
     const dispatch = this.dispatches.claim(dispatchId);
-    if (!dispatch) return;
+    if (!dispatch) {
+      return;
+    }
+
     const run = this.host.flowRuns.run(dispatch.run_id);
     try {
       const task = await this.prepare(run, signal);
       const previous = this.host.flowRuns.attempts(run.id);
       if (run.kind === "flow" && dispatch.kind === "flow" && previous.length) {
         const last = previous.at(-1)!;
-        if (!["completed", "waiting"].includes(last.status))
+        if (!["completed", "waiting"].includes(last.status)) {
           throw new AdeError(
             "invalid_state",
             "Retry the stopped node explicitly before continuing this graph.",
           );
+        }
 
         const expected =
           last.status === "completed" ? last.completed_fingerprint : last.workspace_fingerprint;
@@ -615,16 +680,19 @@ export class FlowExecution {
 
         if (reused.length) {
           const actual = await this.host.git.fingerprint(task);
-          if (reused.some((result) => result.workspace_fingerprint !== actual))
+          if (reused.some((result) => result.workspace_fingerprint !== actual)) {
             this.host.flowRuns.invalidateReusedResults(
               run.id,
               "The workspace changed while this continuation was queued.",
             );
-          if (this.host.flowRuns.staleResults(run.id).length && dispatch.kind === "flow")
+          }
+
+          if (this.host.flowRuns.staleResults(run.id).length && dispatch.kind === "flow") {
             throw new AdeError(
               "stale_result",
               "The workspace changed while this continuation was queued. Preview a fresh continuation or run an eligible node explicitly to recompute work.",
             );
+          }
         }
       }
 
@@ -637,20 +705,25 @@ export class FlowExecution {
           return;
         }
 
-        if (current.status !== "running") return;
+        if (current.status !== "running") {
+          return;
+        }
+
         const attempts = this.host.flowRuns.results(run.id);
         const latest = (id: string) => attempts.filter((attempt) => attempt.node_id === id).at(-1);
         const graph = this.host.flowRuns.definition(run.id);
 
         const ready = graph.nodes
           .filter((node) => {
-            if (dispatch.node_id)
+            if (dispatch.node_id) {
               return (
                 node.id === dispatch.node_id &&
                 (dispatch.kind === "retry"
                   ? latest(node.id)?.id === dispatch.retry_of
                   : !latest(node.id))
               );
+            }
+
             return (
               !latest(node.id) &&
               graph.edges
@@ -707,15 +780,18 @@ export class FlowExecution {
             imported?.boundary_node_id === node.id &&
             (!imported.final_review_fingerprint?.startsWith("issue-v2:") ||
               imported.final_review_fingerprint !== fingerprint)
-          )
+          ) {
             throw new AdeError(
               "stale_review",
               "The imported final review no longer proves the current workspace. Add a fresh read-only Reviewer and apply the saved revision before accepting it; the original review was preserved.",
             );
+          }
         }
 
         signal.throwIfAborted();
-        if (this.host.flowRuns.run(run.id).status === "pausing") continue;
+        if (this.host.flowRuns.run(run.id).status === "pausing") {
+          continue;
+        }
 
         const attempt = this.host.flowRuns.beginAttempt(
           run.id,
@@ -727,7 +803,10 @@ export class FlowExecution {
         );
 
         this.host.changed(task.id);
-        if (node.type !== "approval") await this.nodeExecutor.execute(task, attempt, signal);
+        if (node.type !== "approval") {
+          await this.nodeExecutor.execute(task, attempt, signal);
+        }
+
         if (dispatch.node_id) {
           const result = this.host.flowRuns.attempt(attempt.id);
           const state = this.host.flowRuns.run(run.id);
@@ -758,8 +837,10 @@ export class FlowExecution {
       if (
         current.status !== status &&
         !["cancelled", "continued", "completed"].includes(current.status)
-      )
+      ) {
         this.host.flowRuns.setRunStatus(run.id, current.status, status, message(error));
+      }
+
       this.dispatches.settle(dispatch.id, status, message(error));
     } finally {
       this.nodeExecutor.finishConversationMessage(run.id);
@@ -769,11 +850,12 @@ export class FlowExecution {
 
   private assertTaskOpen = (taskId: string) => {
     const task = this.host.db.task(taskId);
-    if (task.archived || ["completed", "preserved"].includes(task.status))
+    if (task.archived || ["completed", "preserved"].includes(task.status)) {
       throw new AdeError(
         "invalid_state",
         "Reopen this task before authorizing more flow execution.",
       );
+    }
   };
 
   private track = <T>(operation: () => Promise<T>) => {
@@ -784,21 +866,27 @@ export class FlowExecution {
   };
 
   private assertGraphAvailable = (run: FlowRun) => {
-    if (run.kind !== "flow") return;
-    if (this.host.flowRuns.invalidation(run.id))
+    if (run.kind !== "flow") {
+      return;
+    }
+
+    if (this.host.flowRuns.invalidation(run.id)) {
       throw new AdeError(
         "stale_workspace",
         "A separate Viber changed this workspace. Apply a saved revision or start a fresh graph run.",
       );
+    }
+
     if (
       this.host.db.all(
         "SELECT id FROM flow_runs WHERE task_id=? AND kind='conversation' AND status IN ('queued','running','pausing','paused') LIMIT 1",
         run.task_id,
       ).length
-    )
+    ) {
       throw new AdeError(
         "busy",
         "Finish or stop the Viber conversation before continuing the graph.",
       );
+    }
   };
 }

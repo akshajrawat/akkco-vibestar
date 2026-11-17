@@ -112,10 +112,11 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
     const cli = join(dir, "blocked-cli");
     await mkdir(home);
     await mkdir(cli);
-    for (const name of ["codex", "agy", "gh"])
+    for (const name of ["codex", "agy", "gh"]) {
       await writeFile(join(cli, name), "#!/bin/sh\necho 'Real CLI disabled' >&2\nexit 1\n", {
         mode: 0o755,
       });
+    }
 
     const app = await _electron.launch({
       executablePath: require("electron") as string,
@@ -258,12 +259,17 @@ it.skipIf(process.env.VIBESTAR_PR_DESKTOP_TEST !== "1")(
       expect(errors).toEqual([]);
       process.stdout.write(`Quick PR watch Electron evidence: ${dir}\n`);
     } finally {
-      if (forward) engine.off("event", forward);
+      if (forward) {
+        engine.off("event", forward);
+      }
+
       await app.close();
       await rpc.close();
       await engine.close();
       vi.restoreAllMocks();
-      if (!process.env.VIBESTAR_KEEP_EVIDENCE) await rm(dir, { recursive: true, force: true });
+      if (!process.env.VIBESTAR_KEEP_EVIDENCE) {
+        await rm(dir, { recursive: true, force: true });
+      }
     }
   },
   60000,

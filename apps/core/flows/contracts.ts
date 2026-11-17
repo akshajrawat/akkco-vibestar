@@ -48,18 +48,21 @@ export const AgentProfileSchema = z
   })
   .strict()
   .superRefine((profile, context) => {
-    if (!profile.supported_access.includes(profile.execution.access))
+    if (!profile.supported_access.includes(profile.execution.access)) {
       context.addIssue({
         code: "custom",
         path: ["execution", "access"],
         message: "The profile's default access must be supported by that profile.",
       });
-    if (new Set(profile.supported_access).size !== profile.supported_access.length)
+    }
+
+    if (new Set(profile.supported_access).size !== profile.supported_access.length) {
       context.addIssue({
         code: "custom",
         path: ["supported_access"],
         message: "Supported access levels must be unique.",
       });
+    }
   });
 
 export const InputBindingSchema = z.discriminatedUnion("kind", [
@@ -152,7 +155,10 @@ export const FlowDefinitionSchema = FlowGraphSchema.superRefine((flow, context) 
 
   const nodes = new Set<string>();
   for (const [index, node] of flow.nodes.entries()) {
-    if (nodes.has(node.id)) issue(["nodes", index, "id"], "Node IDs must be unique.");
+    if (nodes.has(node.id)) {
+      issue(["nodes", index, "id"], "Node IDs must be unique.");
+    }
+
     nodes.add(node.id);
   }
 
@@ -160,16 +166,25 @@ export const FlowDefinitionSchema = FlowGraphSchema.superRefine((flow, context) 
   const connections = new Set<string>();
   const incoming = new Map(flow.nodes.map((node) => [node.id, new Set<string>()]));
   for (const [index, edge] of flow.edges.entries()) {
-    if (edgeIds.has(edge.id)) issue(["edges", index, "id"], "Connection IDs must be unique.");
+    if (edgeIds.has(edge.id)) {
+      issue(["edges", index, "id"], "Connection IDs must be unique.");
+    }
+
     edgeIds.add(edge.id);
     if (!nodes.has(edge.source) || !nodes.has(edge.target)) {
       issue(["edges", index], "Both ends of a connection must exist.");
       continue;
     }
 
-    if (edge.source === edge.target) issue(["edges", index], "A node cannot depend on itself.");
+    if (edge.source === edge.target) {
+      issue(["edges", index], "A node cannot depend on itself.");
+    }
+
     const key = `${edge.source}:${edge.target}`;
-    if (connections.has(key)) issue(["edges", index], "These nodes are already connected.");
+    if (connections.has(key)) {
+      issue(["edges", index], "These nodes are already connected.");
+    }
+
     connections.add(key);
     incoming.get(edge.target)!.add(edge.source);
   }
@@ -179,7 +194,10 @@ export const FlowDefinitionSchema = FlowGraphSchema.superRefine((flow, context) 
     const pending = [...(incoming.get(id) || [])];
     while (pending.length) {
       const parent = pending.pop()!;
-      if (seen.has(parent)) continue;
+      if (seen.has(parent)) {
+        continue;
+      }
+
       seen.add(parent);
       pending.push(...(incoming.get(parent) || []));
     }
@@ -189,22 +207,27 @@ export const FlowDefinitionSchema = FlowGraphSchema.superRefine((flow, context) 
 
   for (const [index, node] of flow.nodes.entries()) {
     const predecessors = ancestors(node.id);
-    if (predecessors.has(node.id))
+    if (predecessors.has(node.id)) {
       issue(["nodes", index], "Flows must be acyclic. Remove the connection that creates a loop.");
+    }
+
     const bindings = new Set<string>();
     for (const [bindingIndex, binding] of node.inputs.entries()) {
       const key = JSON.stringify(binding);
-      if (bindings.has(key))
+      if (bindings.has(key)) {
         issue(["nodes", index, "inputs", bindingIndex], "Input bindings must be unique.");
+      }
+
       bindings.add(key);
       if (
         "node_id" in binding &&
         (!predecessors.has(binding.node_id) || binding.node_id === node.id)
-      )
+      ) {
         issue(
           ["nodes", index, "inputs", bindingIndex],
           "Node inputs must refer to a connected predecessor.",
         );
+      }
     }
   }
 });
@@ -240,20 +263,27 @@ export const resolveAgentNode = (
 ) => {
   const validatedNode = FlowNodeSchema.parse(node);
   const validatedProfile = AgentProfileSchema.parse(profile);
-  if (validatedNode.type !== "agent" || validatedNode.profile_id !== validatedProfile.id)
+  if (validatedNode.type !== "agent" || validatedNode.profile_id !== validatedProfile.id) {
     throw new Error("The agent node must use its selected profile.");
+  }
 
   const execution = FlowExecutionSchema.parse({
     ...validatedProfile.execution,
     ...validatedNode.overrides,
   });
 
-  if (!validatedProfile.supported_access.includes(execution.access))
+  if (!validatedProfile.supported_access.includes(execution.access)) {
     throw new Error("The node requests access that its selected profile does not support.");
-  if (validatedNode.completion.review === "require-approved" && execution.output !== "review")
+  }
+
+  if (validatedNode.completion.review === "require-approved" && execution.output !== "review") {
     throw new Error("An approved-review completion rule requires the review output contract.");
-  if (validatedNode.completion.review === "require-approved" && execution.access !== "read-only")
+  }
+
+  if (validatedNode.completion.review === "require-approved" && execution.access !== "read-only") {
     throw new Error("Independent review must use read-only workspace access.");
+  }
+
   return {
     profile: validatedProfile,
     execution,

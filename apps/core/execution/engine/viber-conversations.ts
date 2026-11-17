@@ -42,11 +42,12 @@ export class ViberConversationRequests {
           previous.task_id !== input.task_id ||
           previous.content !== redact(input.content) ||
           previous.configuration !== JSON.stringify(configuration)
-        )
+        ) {
           throw new AdeError(
             "request_conflict",
             "This conversation request belongs to a different message.",
           );
+        }
 
         const saved = this.host.db.all<{ id: string }>(
           "SELECT id FROM flow_runs WHERE request_id=? AND task_id=?",
@@ -54,37 +55,49 @@ export class ViberConversationRequests {
           input.task_id,
         )[0];
 
-        if (!saved)
+        if (!saved) {
           throw new AdeError(
             "request_completed",
             "This message has no retained execution. Send a new explicit message.",
           );
+        }
+
         return this.host.flowRuns.run(saved.id);
       }
 
       this.assertTaskOpen(input.task_id);
-      if (this.state.taskMaintenance.has(input.task_id))
+      if (this.state.taskMaintenance.has(input.task_id)) {
         throw new AdeError("busy", "Wait for task maintenance before starting a conversation.");
+      }
+
       const task = this.host.db.task(input.task_id);
-      if (!task.flow_id || !task.goal)
+      if (!task.flow_id || !task.goal) {
         throw new AdeError(
           "invalid_state",
           "Select a task with a saved Viber graph before sending a message.",
         );
+      }
+
       const saved = this.host.flows.definition(task.flow_id);
-      if (saved.revision !== input.expected_revision)
+      if (saved.revision !== input.expected_revision) {
         throw new AdeError(
           "revision_conflict",
           "Reload the saved flow before sending this message.",
         );
+      }
+
       const node = saved.definition.nodes.find((node) => node.id === input.node_id);
-      if (node?.type !== "agent")
+      if (node?.type !== "agent") {
         throw new AdeError("invalid_state", "Select an agent Viber from this task's saved graph.");
-      if (input.profile_id !== node.profile_id)
+      }
+
+      if (input.profile_id !== node.profile_id) {
         throw new AdeError(
           "revision_conflict",
           "This graph instance now uses a different Viber. Reload its conversation before sending.",
         );
+      }
+
       const profile = this.host.flows.profile(node.profile_id);
       for (const id of input.history_ids) {
         if (
@@ -95,11 +108,12 @@ export class ViberConversationRequests {
             node.id,
             profile.id,
           ).length
-        )
+        ) {
           throw new AdeError(
             "context",
             "Select completed conversation messages from this task and Viber instance.",
           );
+        }
       }
 
       const inputs = [
