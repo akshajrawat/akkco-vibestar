@@ -5,13 +5,13 @@ import { isAbsolute, join } from "node:path";
 import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
 import { checked } from "../../apps/core/execution/runtime/process";
 import { now, type Repository, type WorkspaceAssignment } from "../../apps/core/domain";
-import { ViberStore } from "../../apps/core/vibers/store";
 import { Engine } from "../../apps/core/execution/engine";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import type {
   AgentRunRequest,
   ProviderDetection,
 } from "../../apps/core/execution/providers/contracts";
+import { createTestProfiles } from "./viber-fixtures";
 
 const fixtureTransport = (url: string) => {
   if (!isAbsolute(url)) {
@@ -27,7 +27,7 @@ export const createFixtureEngine = async (
   transport = fixtureTransport,
 ) => {
   const engine = await Engine.create(root, providers, transport);
-  new ViberStore(engine.db).initialize();
+  createTestProfiles(engine.db);
 
   // Inert provider fixtures retain real filesystem isolation without requiring a Docker daemon.
   const readOnly = new Map<string, boolean>();

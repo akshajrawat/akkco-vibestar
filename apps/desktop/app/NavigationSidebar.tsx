@@ -1,7 +1,7 @@
 import { useState, type Ref } from "react";
 import { Plus, Search, PanelLeftClose, Activity, FolderGit2, Plug, Settings } from "lucide-react";
 import type { AgentProfile } from "../../core/vibers/contracts";
-import { ViberFace } from "../features/flows/ViberFace";
+import { ViberFace } from "../features/vibers/ViberFace";
 import vibestarLogo from "../../../assets/icon.svg";
 import type { Page, Snapshot } from "../lib/types";
 

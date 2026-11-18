@@ -93,15 +93,3 @@ export const randomAppearance = (): ViberAppearance => {
     lips: pick(fields.lips.unwrap().options),
   };
 };
-
-export const builtInProfiles = {
-  planner: "e1bc5ab8-3a96-4d53-96c5-3103cf484501",
-  refiner: "e1bc5ab8-3a96-4d53-96c5-3103cf484502",
-  implementer: "e1bc5ab8-3a96-4d53-96c5-3103cf484503",
-  reviewer: "e1bc5ab8-3a96-4d53-96c5-3103cf484504",
-} as const;
-
-export const isCustomViber = (profile: { id: string }): boolean =>
-  !Object.values(builtInProfiles).includes(
-    profile.id as (typeof builtInProfiles)[keyof typeof builtInProfiles],
-  );

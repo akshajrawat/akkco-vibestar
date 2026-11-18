@@ -4,8 +4,7 @@ export const focusWorkspace = (root: Element | null | undefined) => {
   const target =
     root?.querySelector<HTMLElement>(".chat-main:not([hidden]) textarea:not(:disabled)") ||
     root?.querySelector<HTMLElement>(".secondary-expanded button[aria-label='Return to chat']") ||
-    root?.querySelector<HTMLElement>(".secondary-toggle") ||
-    root?.querySelector<HTMLElement>(".flow-toolbar button[aria-current='page']");
+    root?.querySelector<HTMLElement>(".secondary-toggle");
 
   target?.focus();
 };

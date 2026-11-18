@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MessageSquarePlus, Pencil, Paperclip, X } from "lucide-react";
+import { Pencil, Paperclip, X } from "lucide-react";
 import type { AgentProfile } from "../../../core/vibers/contracts";
 import type { ViberSession } from "../../../core/vibers/contracts";
 import { rpc, errorMessage } from "../../lib/api";
@@ -33,7 +33,6 @@ export const ViberChat = ({
   hideComputer?: () => void;
 }) => {
   const [sessionId, setSessionId] = useState<string>();
-  const [sessions, setSessions] = useState<ViberSession[]>([]);
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [repositoryId, setRepositoryId] = useState("");
   const [error, setError] = useState("");
@@ -70,7 +69,9 @@ export const ViberChat = ({
     ])
       .then(([sessions, snapshot]) => {
         if (active) {
-          setSessions(sessions);
+          if (sessions.length > 0 && !sessionId) {
+            setSessionId(sessions[0].id);
+          }
 
           setRepositories(
             snapshot.repositories.filter(
@@ -192,50 +193,12 @@ export const ViberChat = ({
           <Button
             variant="ghost"
             size="icon"
-            aria-label="New chat"
-            title="New chat"
-            disabled={busy}
-            onClick={() => {
-              updateTaskView(draftId, {
-                followupProvider: null,
-                followupModel: null,
-                followupEffort: null,
-                messageRequest: null,
-              });
-
-              request.current = { signature: "", id: "", session: null };
-              setRepositoryId("");
-              setError("");
-              setSessionId(undefined);
-            }}
-          >
-            <MessageSquarePlus size={15} />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
             aria-label="Edit Viber"
             title="Edit Viber"
             onClick={() => edit(profile)}
           >
             <Pencil size={14} />
           </Button>
-          {!!sessions.length && (
-            <div className="viber-chat-history">
-              <Select
-                label="Chat history"
-                value={sessionId || ""}
-                selectedLabel="Chat history"
-                searchable
-                disabled={busy}
-                options={sessions.map((session) => ({ value: session.id, label: session.title }))}
-                onChange={(value) => {
-                  setError("");
-                  setSessionId(value);
-                }}
-              />
-            </div>
-          )}
         </header>
         {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
         {sessionId ? (

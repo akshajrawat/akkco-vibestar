@@ -127,8 +127,7 @@
   border-color: var(--border-strong);
 }
 
-.sidebar-new-viber,
-.sidebar-new-task {
+.sidebar-new-viber {
   display: grid;
   place-items: center;
   width: 28px;
@@ -146,15 +145,13 @@
     border-color var(--motion-fast);
 }
 
-.sidebar-new-viber:hover:not(:disabled),
-.sidebar-new-task:hover:not(:disabled) {
+.sidebar-new-viber:hover:not(:disabled) {
   background: var(--background-hover);
   color: var(--foreground);
   border-color: var(--border-default);
 }
 
-.sidebar-new-viber:disabled,
-.sidebar-new-task:disabled {
+.sidebar-new-viber:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -13,7 +13,7 @@ it("round-trips appearance and description through profile RPC and database reop
   let engine = await createFixtureEngine(dir);
   let rpc = new Rpc(engine);
   try {
-    const original = engine.flows.profile(
+    const original = engine.vibers.profile(
       engine.db.all<{ id: string }>("SELECT id FROM agent_profiles")[0].id,
     );
 
@@ -24,8 +24,7 @@ it("round-trips appearance and description through profile RPC and database reop
       )[0].data;
 
     const legacy = bytes();
-    expect(original.appearance).toBeUndefined();
-    expect(engine.flows.profile(original.id)).toEqual(original);
+    expect(engine.vibers.profile(original.id)).toEqual(original);
     expect(bytes()).toBe(legacy);
     const appearance = { ...defaultAppearance(), color: "#123aBc", lips: "smile" as const };
     const profile = { ...original, id: randomUUID(), appearance, description: "Fixture avatar" };
@@ -54,10 +53,10 @@ it("round-trips appearance and description through profile RPC and database reop
     await engine.close();
     engine = await createFixtureEngine(dir);
     rpc = new Rpc(engine);
-    expect(engine.flows.profile(profile.id)).toEqual(profile);
-    expect(engine.flows.profile(original.id, 1)).toEqual(original);
+    expect(engine.vibers.profile(profile.id)).toEqual(profile);
+    expect(engine.vibers.profile(original.id, 1)).toEqual(original);
 
-    expect(engine.flows.profile(original.id)).toEqual({
+    expect(engine.vibers.profile(original.id)).toEqual({
       ...original,
       revision: 2,
       appearance,
@@ -72,43 +71,39 @@ it("round-trips appearance and description through profile RPC and database reop
   }
 });
 
-it("starts a fresh core without default Vibers and preserves existing task profile bytes on reopen", async () => {
+it("starts a fresh core without default Vibers and preserves existing profile bytes on reopen", async () => {
   const { Engine } = await import("../../apps/core/execution/engine");
-  const { isCustomViber } = await import("../../apps/core/vibers/appearance");
   const dir = await mkdtemp(join(tmpdir(), "vibestar-no-defaults-"));
   let engine = await Engine.create(dir);
   try {
     expect(engine.db.all("SELECT id FROM agent_profiles")).toEqual([]);
     const { initializeProfiles } = await import("../../apps/core/vibers/store");
     initializeProfiles(engine.db);
-
-    const records = engine.db.all<{ data: string }>(
-      "SELECT data FROM agent_profile_revisions ORDER BY profile_id",
-    );
-
-    const builtIn = JSON.parse(records[0].data);
-    expect(isCustomViber(builtIn)).toBe(false);
+    expect(engine.db.all("SELECT id FROM agent_profiles")).toEqual([]);
 
     const custom = {
-      ...builtIn,
       id: randomUUID(),
+      revision: 1,
       name: "My Buddy",
       appearance: defaultAppearance(),
+      instructions: "Work on user tasks",
+      supported_access: ["read-only", "workspace-write"] as ("read-only" | "workspace-write")[],
+      execution: {
+        provider: "codex" as const,
+        model: "codex",
+        effort: "high",
+        timeout_secs: 1800,
+        access: "workspace-write" as const,
+        output: "conversation" as const,
+      },
     };
 
-    engine.flows.saveProfile(custom, null);
-    expect(isCustomViber(custom)).toBe(true);
+    engine.vibers.saveProfile(custom, null);
+    expect(engine.vibers.profile(custom.id)).toEqual(custom);
+
     await engine.close();
     engine = await Engine.create(dir);
-
-    expect(
-      engine.db.all(
-        "SELECT data FROM agent_profile_revisions WHERE profile_id!=? ORDER BY profile_id",
-        custom.id,
-      ),
-    ).toEqual(records);
-
-    expect(engine.flows.profile(custom.id)).toEqual(custom);
+    expect(engine.vibers.profile(custom.id)).toEqual(custom);
   } finally {
     await engine.close();
     await rm(dir, { recursive: true, force: true });

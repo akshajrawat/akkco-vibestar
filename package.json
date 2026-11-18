@@ -18,10 +18,9 @@
     "desktop:build:windows": "npm run build && electron-builder --win nsis --publish never",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "start": "electron .",
-    "test:tui": "vitest run --project terminals",
     "test:security": "vitest run --project security",
-    "test:regression": "vitest run --project unit --project integration --project security --project terminals",
-    "verify": "npm run check && npm run test:integration && npm run test:security && npm run test:tui && npm run build",
+    "test:regression": "vitest run --project unit --project integration --project security",
+    "verify": "npm run check && npm run test:integration && npm run test:security && npm run build",
     "prepare": "node scripts/install-hooks.mjs",
     "hooks:install": "node scripts/install-hooks.mjs",
     "prepush": "npm run check && npm run test:security"

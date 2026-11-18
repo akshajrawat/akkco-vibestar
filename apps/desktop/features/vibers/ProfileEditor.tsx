@@ -6,7 +6,6 @@ import { AgentProfileSchema, type AgentProfile } from "../../../core/vibers/cont
 import { Button } from "../../components/ui/button";
 import { rpc, computerRpc, errorMessage } from "../../lib/api";
 import { WorkspaceOverlay } from "../../components/ui/WorkspaceOverlay";
-import { ViberModelPicker } from "./ViberModelPicker";
 import { AvatarBuilder } from "./AvatarBuilder";
 import { ViberFace } from "./ViberFace";
 import { DiscardChangesDialog } from "../../components/ui/DiscardChangesDialog";
@@ -51,7 +50,7 @@ export const ProfileEditor = ({
         <Bot size={28} aria-hidden="true" />
         <div>
           <h2>{profile.revision ? "Edit Viber" : "Create Viber"}</h2>
-          <p>Design a Viber with its own identity, style and instructions.</p>
+          <p>Design a Viber with its own name and appearance.</p>
         </div>
         <Button
           type="button"
@@ -107,34 +106,6 @@ export const ProfileEditor = ({
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   required
                   maxLength={100}
-                />
-              </label>
-              <label>
-                Description
-                <textarea
-                  value={draft.description || ""}
-                  rows={2}
-                  maxLength={2000}
-                  placeholder="What does this Viber bring to your crew?"
-                  onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-                />
-              </label>
-              <label>
-                Instructions (System Prompt)
-                <textarea
-                  aria-label="Instructions"
-                  placeholder="Define the role, behavior, constraints and working style for this Viber…"
-                  value={draft.instructions}
-                  onChange={(e) => setDraft({ ...draft, instructions: e.target.value })}
-                  rows={3}
-                  maxLength={32000}
-                />
-              </label>
-              <label>
-                Model
-                <ViberModelPicker
-                  execution={draft.execution}
-                  change={(execution) => setDraft({ ...draft, execution })}
                 />
               </label>
             </div>

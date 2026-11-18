@@ -28,8 +28,6 @@ jobs:
             script: test
           - name: Integration tests
             script: test:integration
-          - name: PTY tests
-            script: test:tui
           - name: Security tests
             script: test:security
     steps:

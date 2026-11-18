@@ -559,4 +559,9 @@ DROP TABLE utility_events;
 ALTER TABLE utility_events_viber RENAME TO utility_events;
 `,
   },
+
+  {
+    version: 43,
+    sql: "ALTER TABLE viber_sessions ADD COLUMN threads TEXT CHECK(threads IS NULL OR json_valid(threads));",
+  },
 ];

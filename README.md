@@ -2,15 +2,15 @@
 
 Vibestar is a platform for persistent AI employees called **Vibers**.
 
-Each Viber is an autonomous agent with a name, appearance, identity, dedicated execution environment ("Computer"), and independent conversational sessions.
+Each Viber is an autonomous agent with a name, custom appearance, dedicated execution environment ("Computer"), and a single continuous conversation.
 
 ## Architecture & Concepts
 
-- **Viber**: Persistent AI employee with name, appearance, identity, and multiple independent sessions.
-- **Sessions**: Independent conversation threads belonging to a Viber, each with its own workspace and native provider thread continuity.
+- **Viber**: Persistent AI employee defined by name and avatar appearance. Creation requires no complex prompt or model setup.
+- **Continuous Conversation**: Each Viber owns exactly one continuous conversation thread and workspace. No session switching or multiple chats per Viber.
+- **Native Provider Session Management**: Maintains separate native conversation IDs for Codex and Antigravity, resumed across turns and restarts. Seamless context handoff on provider or incompatible model switches, and `/clear` command to reset native context without losing history or files.
 - **Computer**: A dedicated, isolated persistent execution environment belonging to a Viber.
-- **BYOS (Bring Your Own Subscription)**: Codex and Antigravity provider integration with per-turn dynamic model and reasoning effort selection.
-- **Teams & Memory**: Future capabilities for grouping Vibers and acquiring cross-session persistent knowledge.
+- **BYOS (Bring Your Own Subscription)**: Official Codex and Antigravity integration with per-turn dynamic model and reasoning effort selection in the composer.
 
 There are no Task or Workflow entities in Vibestar. Vibers are the primary operational and navigation entities.
 
@@ -39,10 +39,10 @@ npm start
 
 ## Basic use
 
-- **Sidebar Navigation**: The sidebar lists your Vibers. Search Vibers by name or role with the search bar (`Ctrl+F` or click), create a new Viber with the **+** button, or adjust settings and usage via the bottom dock.
-- **Conversations & Workspaces**: Selecting a Viber opens directly into its conversational interface. Each Viber can maintain multiple independent sessions with dedicated workspace files or connected repositories.
+- **Sidebar Navigation**: The sidebar lists your Vibers. Search Vibers by name with the search bar (`Ctrl+F` or click), create a new Viber with the **+** button, or adjust settings and usage via the bottom dock.
+- **Conversations & Workspaces**: Selecting a Viber opens directly into its continuous conversation interface with dedicated workspace files or connected repositories.
 - **Viber Computers**: Manage the Viber's dedicated execution environment, persistent home volume, and isolated sandboxing.
-- **Model Selection**: Switch providers (Codex / Antigravity), models, and reasoning effort dynamically per conversation turn.
+- **Model Selection & Composer**: Switch providers (Codex / Antigravity), models, and reasoning effort dynamically in the composer. Use `/clear` to reset native AI context anytime.
 
 ## Project status and documentation
 

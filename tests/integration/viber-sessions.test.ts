@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import { Rpc } from "../../apps/core/rpc";
-import { builtInProfiles } from "../../apps/core/vibers/appearance";
+import { testProfileIds as builtInProfiles } from "../helpers/viber-fixtures";
 import type {
   ViberMessage,
   ViberSession,

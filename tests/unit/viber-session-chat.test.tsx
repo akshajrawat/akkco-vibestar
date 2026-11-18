@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { ViberSessionChat } from "../../apps/desktop/features/flows/ViberSessionChat";
+import { ViberSessionChat } from "../../apps/desktop/features/vibers/ViberSessionChat";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { mockDialog } from "../helpers/dialog";
 
@@ -12,7 +12,7 @@ vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
 
 beforeEach(mockDialog);
 
-vi.mock("../../apps/desktop/features/flows/ViberModelPicker", () => ({
+vi.mock("../../apps/desktop/features/vibers/ViberModelPicker", () => ({
   ViberModelPicker: ({
     execution,
     change,

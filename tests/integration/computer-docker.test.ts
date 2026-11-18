@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 
 import { Engine } from "../../apps/core/execution/engine";
-import { builtInProfiles, initializeProfiles } from "../../apps/core/vibers/store";
+import {
+  testProfileIds as builtInProfiles,
+  createTestProfiles as initializeProfiles,
+} from "../helpers/viber-fixtures";
 import { capture, execute } from "../../apps/core/execution/runtime/process";
 import { Rpc } from "../../apps/core/rpc";
 

@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 
 import { createFixtureEngine, fixtureRepository } from "../helpers/fixtures";
 import { Rpc } from "../../apps/core/rpc";
-import { builtInProfiles } from "../../apps/core/vibers/appearance";
+import { testProfileIds as builtInProfiles } from "../helpers/viber-fixtures";
 
 it("keeps each session's owned workspace and deletes every workspace and computer when its Viber is deleted", async () => {
   const directory = await mkdtemp(join(tmpdir(), "vibestar-computer-workspaces-"));

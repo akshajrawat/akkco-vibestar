@@ -8,7 +8,7 @@ import { GlobalNotifications } from "../../apps/desktop/app/GlobalNotifications"
 import { notifications } from "../../apps/desktop/lib/notifications";
 import toast from "react-hot-toast";
 import { ConnectLocalRepository } from "../../apps/desktop/features/repositories/ConnectLocalRepository";
-import { ProfileEditor } from "../../apps/desktop/features/flows/ProfileEditor";
+import { ProfileEditor } from "../../apps/desktop/features/vibers/ProfileEditor";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { selectValue } from "../helpers/select";
 import { mockDialog } from "../helpers/dialog";
@@ -316,8 +316,8 @@ it("announces success only after all rapid changes have persisted with All notif
 it("protects unsaved Viber profile edits on Escape and preserves them when continuing", () => {
   render(<ProfileEditor profile={viberProfile} close={close} saved={vi.fn()} />);
 
-  fireEvent.change(screen.getByLabelText("Instructions"), {
-    target: { value: "Unsaved instructions" },
+  fireEvent.change(screen.getByLabelText("Name"), {
+    target: { value: "Unsaved name" },
   });
 
   fireEvent(
@@ -329,9 +329,7 @@ it("protects unsaved Viber profile edits on Escape and preserves them when conti
   expect(close).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
 
-  expect((screen.getByLabelText("Instructions") as HTMLTextAreaElement).value).toBe(
-    "Unsaved instructions",
-  );
+  expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Unsaved name");
 });
 
 it("protects a repository connection draft without changing its connection RPC", () => {

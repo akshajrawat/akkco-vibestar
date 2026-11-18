@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { Database } from "../../apps/core/storage/database";
-import { builtInProfiles, initializeProfiles } from "../../apps/core/vibers/store";
+import {
+  testProfileIds as builtInProfiles,
+  createTestProfiles as initializeProfiles,
+} from "../helpers/viber-fixtures";
 import { Computers } from "../../apps/core/computers/service";
 import { computerFiles } from "../../apps/core/computers/files";
 import { ComputerActionSchema, ComputerFileSchema } from "../../apps/core/computers/contracts";

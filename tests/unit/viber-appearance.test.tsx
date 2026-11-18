@@ -9,8 +9,8 @@ import {
   randomAppearance,
 } from "../../apps/core/vibers/appearance";
 import { AgentProfileSchema } from "../../apps/core/vibers/contracts";
-import { ProfileEditor } from "../../apps/desktop/features/flows/ProfileEditor";
-import { ViberFace } from "../../apps/desktop/features/flows/ViberFace";
+import { ProfileEditor } from "../../apps/desktop/features/vibers/ProfileEditor";
+import { ViberFace } from "../../apps/desktop/features/vibers/ViberFace";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { mockDialog } from "../helpers/dialog";
 
@@ -78,8 +78,8 @@ it("keeps appearance selections across categories and saves customizations using
 
   expect(screen.getByRole("button", { name: "Diamond" }).getAttribute("aria-pressed")).toBe("true");
 
-  fireEvent.change(screen.getByLabelText("Description"), {
-    target: { value: "An independent developer." },
+  fireEvent.change(screen.getByLabelText("Name"), {
+    target: { value: "Updated Viber" },
   });
 
   fireEvent.click(screen.getByRole("button", { name: "Save Viber" }));
@@ -89,8 +89,8 @@ it("keeps appearance selections across categories and saves customizations using
     expected_revision: viberProfile.revision,
     profile: {
       ...viberProfile,
+      name: "Updated Viber",
       revision: viberProfile.revision + 1,
-      description: "An independent developer.",
       appearance: {
         ...defaultAppearance(),
         shape: "diamond",

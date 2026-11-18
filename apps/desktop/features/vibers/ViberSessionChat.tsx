@@ -125,6 +125,21 @@ const SessionChat = ({
     setError(undefined);
     let requestId: string | undefined;
     try {
+      if (content.trim() === "/clear") {
+        await rpc("viber.session.send", {
+          session_id: sessionId,
+          profile_id: profile.id,
+          request_id: crypto.randomUUID(),
+          content: "/clear",
+          history_ids: [],
+          selection,
+        });
+
+        updateTaskView(id, { draft: "", draftContext: [] });
+        await refresh();
+        return;
+      }
+
       const inputFor = (reset: boolean, acknowledge: boolean) => ({
         session_id: sessionId,
         profile_id: profile.id,
@@ -234,9 +249,16 @@ const SessionChat = ({
               selectedLabel="•••"
               disabled={!data || busy || active}
               options={[
+                { value: "clear", label: "Clear context now (/clear)" },
                 { value: "reset", label: newThread ? "Keep AI context" : "Reset AI context" },
               ]}
-              onChange={() => setNewThread((value) => !value)}
+              onChange={(value) => {
+                if (value === "clear") {
+                  void send("/clear");
+                } else if (value === "reset") {
+                  setNewThread((v) => !v);
+                }
+              }}
             />
           </div>
         }

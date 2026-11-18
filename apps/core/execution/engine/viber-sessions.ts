@@ -58,6 +58,18 @@ export class ViberSessions {
     const parsed = ViberSessionSendSchema.parse(raw);
     const input = { ...parsed, content: redact(parsed.content) };
     this.host.assertAvailable();
+
+    if (parsed.content.trim() === "/clear") {
+      const cleared = this.store.clearContext(
+        parsed.session_id,
+        parsed.profile_id,
+        parsed.request_id,
+      );
+
+      this.host.changed();
+      return cleared;
+    }
+
     const previous = this.store.previous(input);
     if (previous) {
       return previous;

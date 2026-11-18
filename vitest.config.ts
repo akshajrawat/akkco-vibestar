@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 const testFiles = "**/*.test.{ts,tsx}";
-const separateSuites = ["integration", "security", "terminals", "desktop", "live"];
+const separateSuites = ["integration", "security"];
 
 export default defineConfig({
   test: {

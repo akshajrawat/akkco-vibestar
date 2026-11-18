@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 
 import type { CoreEvent } from "../../apps/core/domain";
 import { Rpc } from "../../apps/core/rpc";
-import { builtInProfiles } from "../../apps/core/vibers/appearance";
+import { testProfileIds as builtInProfiles } from "../helpers/viber-fixtures";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
@@ -345,17 +345,28 @@ it.each(["codex", "antigravity"] as const)(
       expect(requests.at(-1)?.conversation?.threadId).toBeTruthy();
       const otherProvider = providerName === "codex" ? "antigravity" : "codex";
 
-      const previousThread = engine.viberSessions.store.session(session.id, profileId).thread
-        ?.thread_id;
+      const previousSession = engine.viberSessions.store.session(session.id, profileId);
+      const previousThread = previousSession.thread?.thread_id;
+      const previousSelection = previousSession.selection;
 
       await send({ selection: { ...selection, provider: otherProvider } });
       const switched = await settled();
       expect(requests.at(-1)?.conversation).toEqual({});
       expect(switched.thread?.provider).toBe(otherProvider);
       expect(switched.thread?.thread_id).not.toBe(previousThread);
-      await send({ selection });
+      await send({ selection: previousSelection });
       await settled();
-      expect(requests.at(-1)?.conversation).toEqual({});
+      expect(requests.at(-1)?.conversation).toEqual({ threadId: previousThread });
+
+      const beforeClear = await readFile(join(workspace.worktree_path, "source.txt"), "utf8");
+      expect(beforeClear).toContain("changed");
+
+      await send({ content: "/clear" });
+      const clearedSession = engine.viberSessions.store.session(session.id, profileId);
+      expect(clearedSession.thread).toBeNull();
+      expect(clearedSession.threads).toEqual({});
+      expect(await readFile(join(workspace.worktree_path, "source.txt"), "utf8")).toBe(beforeClear);
+
       expect(engine.vibers.profile(profileId)).toEqual(profile);
       expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
 

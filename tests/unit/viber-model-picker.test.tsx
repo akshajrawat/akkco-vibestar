@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 
-import { ViberModelPicker } from "../../apps/desktop/features/flows/ViberModelPicker";
+import { ViberModelPicker } from "../../apps/desktop/features/vibers/ViberModelPicker";
 import { viberProfile } from "../helpers/viber-fixtures";
 
 vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({

@@ -49,7 +49,7 @@ permissions after workspace ownership checks. See the [security guide](docs/secu
 | `apps/core/execution/`                               | Agent runner, providers (Codex, Antigravity), sandbox, output and usage      |
 | `apps/core/workspace/`                               | Git operations, path ownership, worktrees and runtime mounts                 |
 | `apps/core/storage/`                                 | SQLite lifecycle, migrations, recovery, inspection and cleanups              |
-| `tests/`                                             | Unit, domain, integration, security, terminal and live coverage              |
+| `tests/`                                             | Unit, integration and security coverage                                      |
 
 Feature-specific code belongs with its owner. Shared renderer primitives stay under `apps/desktop/components`
 and ordered CSS chapters under `apps/desktop/styles/`. Detailed folder and check ownership is documented in
@@ -87,18 +87,25 @@ next settings save; reads preserve original saved bytes. Historical analysis con
 configuration. Existing PR controls select a provider/model per operation and default to the provider
 CLI; they no longer read a global model setting. No historical run is rewritten or replayed.
 
-## Viber architecture and sessions
+## Viber architecture and continuous conversations
 
 Vibestar is built entirely around persistent AI employees called **Vibers**:
 
-- **Viber identities & profiles**: Each Viber possesses a name, appearance avatar, description, default system instructions, and execution defaults. Built-in profiles and custom user-created Vibers are stored in `agent_profiles`.
-- **Sessions & workspaces**: A Viber owns multiple independent sessions. Each session has its own workspace (either an isolated Git worktree or managed scratch workspace) and native conversation continuity.
-- **Dedicated Computers**: A Viber can have an associated persistent Computer environment (`viber_computers`) with dedicated container isolation, sandboxed tool execution, and private home volume persistence.
-- **Provider threads & BYOS**: Native thread continuity is maintained per session across application restarts with official Codex or Antigravity providers. Dynamic per-turn model and reasoning effort selection allow flexible execution.
+- **Simplified Viber identity**: Each Viber is defined by its name and custom appearance avatar. Viber creation requires only name and appearance; there are no mandatory descriptions, custom instructions, predefined roles, default model configs, or built-in presets (`planner`, `refiner`, `implementer`, `reviewer`). Essential internal runtime and security instructions are applied automatically.
+- **One continuous chat per Viber**: Each Viber owns exactly one continuous conversation. There are no multiple-chat creation buttons or session-switching dropdowns. Selecting a Viber directly displays its ongoing continuous conversation and associated workspace.
+- **Native provider session management**:
+  - Separate native conversation IDs are maintained for Codex and Antigravity.
+  - Native sessions are resumed seamlessly across turns and application restarts.
+  - Context handoff is automatically performed when switching providers or selecting incompatible models.
+  - The `/clear` command resets native context without deleting saved conversation history or workspace files.
+  - Context compaction is delegated directly to the provider CLIs.
+  - The unified message history serves as the durable source of truth.
+- **Dedicated Computers**: A Viber can have an associated persistent Computer environment (`viber_computers`) with container isolation, sandboxed tool execution, and private home volume persistence.
+- **Composer model selection**: Model, provider, and reasoning effort selection happen directly within the chat composer dynamically per turn.
 
 ## Persistence, verification and recovery
 
-SQLite migrations (migration 42) safely pruned all obsolete Task, Graph Workflow, Issue Watch, and PR Watch tables and indices while preserving all Viber identities, appearances, sessions, messages, native threads, and usage records.
+SQLite migrations safely pruned all obsolete Task, Graph Workflow, Issue Watch, and PR Watch tables and indices while preserving all Viber identities, appearances, continuous sessions, messages, native provider threads, and usage records.
 
 Data-root migration, backup procedures, and workspace isolation enforce strict ownership boundaries so user files and repositories are never silently deleted.
 

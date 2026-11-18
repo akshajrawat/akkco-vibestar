@@ -39,10 +39,6 @@ export class Engine extends EventEmitter {
 
   readonly vibers: ViberStore;
 
-  get flows(): ViberStore {
-    return this.vibers;
-  }
-
   readonly computers: Computers;
 
   private readonly runner: AgentRunner;

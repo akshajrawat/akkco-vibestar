@@ -2,14 +2,14 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { ViberChat } from "../../apps/desktop/features/flows/ViberChat";
+import { ViberChat } from "../../apps/desktop/features/vibers/ViberChat";
 import { viberProfile } from "../helpers/viber-fixtures";
 
-vi.mock("../../apps/desktop/features/flows/ViberSessionChat", () => ({
+vi.mock("../../apps/desktop/features/vibers/ViberSessionChat", () => ({
   ViberSessionChat: () => <p>Existing conversation view</p>,
 }));
 
-vi.mock("../../apps/desktop/features/flows/ViberModelPicker", () => ({
+vi.mock("../../apps/desktop/features/vibers/ViberModelPicker", () => ({
   ViberModelPicker: ({
     execution,
     change,
@@ -135,8 +135,8 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
     ),
   ).toBe(false);
 
-  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-  expect(screen.getByRole("button", { name: "Model fixture-model" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
+  expect(screen.queryByRole("combobox", { name: "Chat history" })).toBeNull();
 });
 
 it("defaults to isolated files and keeps repository attachment optional, searchable and removable", async () => {

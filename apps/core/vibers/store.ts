@@ -36,10 +36,6 @@ const threadConfiguration = (execution: AgentExecution, instructions: string) =>
     )
     .digest("hex");
 
-import { builtInProfiles } from "./appearance";
-
-export { builtInProfiles };
-
 /** Viber profiles and appearances store. */
 export class ViberStore {
   constructor(private readonly db: Database) {}
@@ -234,7 +230,7 @@ export class ViberSessionStore {
   session = (sessionId: string, profileId: string) => {
     ViberSessionScopeSchema.parse({ session_id: sessionId, profile_id: profileId });
 
-    const row = this.db.all<{ selection: string; thread: string | null }>(
+    const row = this.db.all<{ selection: string; thread: string | null; threads?: string | null }>(
       "SELECT * FROM viber_sessions WHERE id=? AND profile_id=?",
       sessionId,
       profileId,
@@ -244,10 +240,23 @@ export class ViberSessionStore {
       throw new AdeError("not_found", "Viber session not found for this profile.");
     }
 
+    const legacyThread = row.thread ? JSON.parse(row.thread) : null;
+    let threads: Record<string, z.infer<typeof ViberThreadSchema>> = {};
+    if (row.threads) {
+      try {
+        threads = JSON.parse(row.threads);
+      } catch {
+        threads = {};
+      }
+    } else if (legacyThread?.provider) {
+      threads[legacyThread.provider] = legacyThread;
+    }
+
     return ViberSessionSchema.parse({
       ...row,
       selection: JSON.parse(row.selection),
-      thread: row.thread ? JSON.parse(row.thread) : null,
+      thread: legacyThread,
+      threads,
     });
   };
 
@@ -298,6 +307,25 @@ export class ViberSessionStore {
         profileId,
       )
       .map(({ id }) => this.session(id, profileId));
+
+  continuousSession = (profileId: string, repositoryId?: string) => {
+    identity.parse(profileId);
+
+    const existing = this.db.all<{ id: string }>(
+      "SELECT id FROM viber_sessions WHERE profile_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 1",
+      profileId,
+    )[0];
+
+    if (existing) {
+      return this.session(existing.id, profileId);
+    }
+
+    return this.create({
+      request_id: randomUUID(),
+      profile_id: profileId,
+      repository_id: repositoryId,
+    });
+  };
 
   detail = (sessionId: string, profileId: string): ViberSessionDetail => {
     const session = this.session(sessionId, profileId);
@@ -406,10 +434,15 @@ export class ViberSessionStore {
       }
 
       const configuration = threadConfiguration(execution, profile.instructions);
+      const targetProvider = execution.provider;
+
+      const candidateThread =
+        session.threads?.[targetProvider] ||
+        (session.thread?.provider === targetProvider ? session.thread : null);
 
       const thread =
-        !input.new_thread && session.thread?.configuration === configuration
-          ? session.thread
+        !input.new_thread && candidateThread?.configuration === configuration
+          ? candidateThread
           : null;
 
       const conversation = thread ? { threadId: thread.thread_id } : {};
@@ -485,9 +518,19 @@ export class ViberSessionStore {
         session.id,
       );
 
-      if (!thread) {
-        this.db.run("UPDATE viber_sessions SET thread=NULL WHERE id=?", session.id);
+      const updatedThreads = { ...(session.threads || {}) };
+      if (thread) {
+        updatedThreads[targetProvider] = thread;
+      } else {
+        delete updatedThreads[targetProvider];
       }
+
+      this.db.run(
+        "UPDATE viber_sessions SET thread=?, threads=? WHERE id=?",
+        thread ? JSON.stringify(thread) : null,
+        JSON.stringify(updatedThreads),
+        session.id,
+      );
 
       return snapshot;
     });
@@ -520,13 +563,27 @@ export class ViberSessionStore {
   };
 
   assertThread = (sessionId: string, threadId: string, model: string) => {
-    const row = this.db.all<{ thread: string | null }>(
-      "SELECT thread FROM viber_sessions WHERE id=?",
+    const row = this.db.all<{ thread: string | null; threads: string | null }>(
+      "SELECT thread, threads FROM viber_sessions WHERE id=?",
       sessionId,
     )[0];
 
     const thread = row?.thread ? ViberThreadSchema.parse(JSON.parse(row.thread)) : null;
-    if (!thread || thread.thread_id !== threadId || thread.model !== model) {
+    let threads: Record<string, z.infer<typeof ViberThreadSchema>> = {};
+    if (row?.threads) {
+      try {
+        threads = JSON.parse(row.threads);
+      } catch {
+        threads = {};
+      }
+    }
+
+    const matchingThread =
+      thread && thread.thread_id === threadId
+        ? thread
+        : Object.values(threads).find((t) => t.thread_id === threadId);
+
+    if (!matchingThread || matchingThread.model !== model) {
       throw new AdeError(
         "recovery",
         "The native thread or default model changed. Start a new thread explicitly before sending this instruction.",
@@ -546,8 +603,13 @@ export class ViberSessionStore {
     }
 
     const snapshot = ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration));
-    const current = this.session(sessionId, snapshot.profile.id).thread;
-    const expected = snapshot.conversation.threadId || current?.thread_id;
+    const currentSession = this.session(sessionId, snapshot.profile.id);
+
+    const expected =
+      snapshot.conversation.threadId ||
+      currentSession.threads?.[snapshot.execution.provider]?.thread_id ||
+      currentSession.thread?.thread_id;
+
     if (expected && expected !== threadId) {
       throw new AdeError(
         "provider_failed",
@@ -579,7 +641,17 @@ export class ViberSessionStore {
       model,
     });
 
-    this.db.run("UPDATE viber_sessions SET thread=? WHERE id=?", JSON.stringify(thread), sessionId);
+    const threads = {
+      ...(currentSession.threads || {}),
+      [snapshot.execution.provider]: thread,
+    };
+
+    this.db.run(
+      "UPDATE viber_sessions SET thread=?, threads=? WHERE id=?",
+      JSON.stringify(thread),
+      JSON.stringify(threads),
+      sessionId,
+    );
   };
 
   finish = (
@@ -619,95 +691,74 @@ export class ViberSessionStore {
       this.db.run("UPDATE viber_sessions SET updated_at=? WHERE id=?", now(), row.session_id);
 
       if (status === "completed" || row.effects !== "none") {
+        const nextStatus = status === "completed" ? "ready" : "uncertain";
+
+        const sessionRow = this.db.all<{ thread: string | null; threads: string | null }>(
+          "SELECT thread, threads FROM viber_sessions WHERE id=?",
+          row.session_id,
+        )[0];
+
+        let threads: Record<string, z.infer<typeof ViberThreadSchema>> = {};
+        if (sessionRow?.threads) {
+          try {
+            threads = JSON.parse(sessionRow.threads);
+          } catch {
+            threads = {};
+          }
+        }
+
+        const activeThread = sessionRow?.thread ? JSON.parse(sessionRow.thread) : null;
+        if (activeThread) {
+          activeThread.status = nextStatus;
+          if (activeThread.provider) {
+            threads[activeThread.provider] = {
+              ...(threads[activeThread.provider] || activeThread),
+              status: nextStatus,
+            };
+          }
+        }
+
         this.db.run(
-          "UPDATE viber_sessions SET thread=json_set(thread,'$.status',?) WHERE id=? AND thread IS NOT NULL",
-          status === "completed" ? "ready" : "uncertain",
+          "UPDATE viber_sessions SET thread=?, threads=? WHERE id=?",
+          activeThread ? JSON.stringify(activeThread) : null,
+          JSON.stringify(threads),
           row.session_id,
         );
       }
     });
+
+  clearContext = (sessionId: string, profileId: string, requestId: string = randomUUID()) =>
+    this.db.transaction(() => {
+      this.session(sessionId, profileId);
+      const timestamp = now();
+
+      this.db.run(
+        "UPDATE viber_sessions SET thread=NULL, threads=NULL, updated_at=? WHERE id=?",
+        timestamp,
+        sessionId,
+      );
+
+      this.db.run(
+        "INSERT INTO viber_messages(id,session_id,role,content,status,created_at,effects) VALUES(?,?,'user',?,'completed',?,'none')",
+        requestId,
+        sessionId,
+        "/clear",
+        timestamp,
+      );
+
+      this.db.run(
+        "INSERT INTO viber_messages(id,session_id,role,content,status,created_at) VALUES(?,?,'assistant',?,'completed',?)",
+        randomUUID(),
+        sessionId,
+        "Conversation context reset. Saved history and workspace files have been preserved.",
+        timestamp,
+      );
+
+      const message = this.db.all("SELECT * FROM viber_messages WHERE id=?", requestId)[0];
+
+      return ViberMessageSchema.parse(message);
+    });
 }
 
-/** Seed default Viber profiles once; later application launches never overwrite edits. */
-export const initializeProfiles = (db: Database) => {
-  if (
-    Object.values(builtInProfiles).every(
-      (id) => db.all("SELECT id FROM agent_profiles WHERE id=?", id).length > 0,
-    )
-  ) {
-    return;
-  }
-
-  let settings;
-  try {
-    settings = db.settings();
-  } catch (error) {
-    if (error instanceof AdeError && error.kind === "corrupt_record") {
-      return;
-    }
-
-    throw error;
-  }
-
-  const store = new ViberStore(db);
-
-  const definitions = [
-    [
-      "planner",
-      "Planner",
-      settings.antigravity,
-      "antigravity",
-      "read-only",
-      "plan",
-      "Plan the requested work. Inspect files without modifying them.",
-    ],
-    [
-      "refiner",
-      "Refiner",
-      settings.codex_plan,
-      "codex",
-      "read-only",
-      "refinement",
-      "Refine the selected plan against the workspace. Remain read-only.",
-    ],
-    [
-      "implementer",
-      "Implementer",
-      settings.codex_implementation,
-      "codex",
-      "workspace-write",
-      "conversation",
-      "Work directly on the requested goal. Inspect, edit and run checks within the assigned workspace. Report observed outcomes honestly.",
-    ],
-    [
-      "reviewer",
-      "Reviewer",
-      settings.antigravity_review || settings.antigravity,
-      "antigravity",
-      "read-only",
-      "review",
-      "Independently review the selected changes and evidence. Remain read-only and distinguish missing checks from passing checks.",
-    ],
-  ] as const;
-
-  db.transaction(() => {
-    for (const [role, name, config, fallback, access, output, instructions] of definitions) {
-      const id = builtInProfiles[role];
-      if (db.all("SELECT id FROM agent_profiles WHERE id=?", id).length > 0) {
-        continue;
-      }
-
-      const profile: AgentProfile = {
-        id,
-        revision: 1,
-        name,
-        instructions,
-        supported_access:
-          access === "workspace-write" ? ["read-only", "workspace-write"] : ["read-only"],
-        execution: { ...config, provider: config.provider || fallback, access, output },
-      };
-
-      store.saveProfile(profile, null);
-    }
-  });
-};
+/** No built-in presets seeded; Viber creation requires only name and appearance. */
+export const initializeProfiles = (_db?: Database) => {};

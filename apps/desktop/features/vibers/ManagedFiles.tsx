@@ -47,7 +47,7 @@ export const ManagedFiles = ({
   }, [sessionId, profileId, selected, revision]);
 
   return (
-    <div className="flow-files">
+    <div className="viber-files">
       <aside>
         <p className="subtle">Workspace files</p>
         {value?.files.map((path) => (
