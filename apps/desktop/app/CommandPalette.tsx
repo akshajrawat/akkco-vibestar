@@ -77,7 +77,7 @@ export const CommandPalette = ({
           <input
             ref={input}
             aria-label="Search commands"
-            placeholder="Search commands or tasks…"
+            placeholder="Search commands or vibers…"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

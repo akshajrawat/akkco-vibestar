@@ -3,14 +3,8 @@ import type { Database } from "../../storage/database";
 import { object, type ProviderDetection } from "../providers/contracts";
 
 export interface UsageRecord {
-  watch_id?: string | null;
-  scan_id?: string | null;
-  repair_id?: string | null;
-  analysis_id?: string | null;
   id: string;
-  task_id: string | null;
-  job_id: string | null;
-  repository: string | null;
+  viber_session_id?: string | null;
   purpose: string;
   provider: string;
   model: string;
@@ -25,9 +19,9 @@ export interface UsageRecord {
   reasoning_tokens: number | null;
   total_tokens: number | null;
   error: string | null;
-  subscription_limits: string | null;
-  subscription_limits_after: string | null;
-  provider_session_id: string | null;
+  provider_session_id?: string | null;
+  subscription_limits?: string | null;
+  subscription_limits_after?: string | null;
 }
 
 export class Usage {
@@ -42,17 +36,12 @@ export class Usage {
 
   start = (
     id: string,
-    value: Pick<
-      UsageRecord,
-      "task_id" | "job_id" | "repository" | "purpose" | "provider" | "model" | "effort"
-    >,
+    value: Pick<UsageRecord, "viber_session_id" | "purpose" | "provider" | "model" | "effort">,
   ) =>
     this.db.run(
-      "INSERT INTO ai_usage(id,task_id,job_id,repository,purpose,provider,model,effort,started_at,status) VALUES(?,?,?,?,?,?,?,?,?,'running')",
+      "INSERT INTO ai_usage(id,viber_session_id,purpose,provider,model,effort,started_at,status) VALUES(?,?,?,?,?,?,?,'running')",
       id,
-      value.task_id,
-      value.job_id,
-      value.repository,
+      value.viber_session_id || null,
       value.purpose,
       value.provider,
       value.model,
@@ -201,11 +190,11 @@ export class Usage {
     );
   };
 
-  list = (taskId?: string, days?: number) =>
+  list = (sessionId?: string, days?: number) =>
     this.db.all<UsageRecord>(
-      `SELECT * FROM ai_usage WHERE (? IS NULL OR task_id=?) AND (? IS NULL OR started_at>=?) ORDER BY started_at DESC`,
-      taskId || null,
-      taskId || null,
+      `SELECT * FROM ai_usage WHERE (? IS NULL OR viber_session_id=?) AND (? IS NULL OR started_at>=?) ORDER BY started_at DESC`,
+      sessionId || null,
+      sessionId || null,
       days || null,
       days
         ? new Date(

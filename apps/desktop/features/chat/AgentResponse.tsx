@@ -1,7 +1,7 @@
 import { memo } from "react";
 
 import { MarkdownContent } from "../../components/ui/MarkdownContent";
-import { VerificationCheckSchema } from "../../../core/execution/verification/verification";
+import { VerificationCheckSchema } from "../../../core/execution/providers/contracts";
 import { streamingSummary } from "./output/response";
 
 const resultValue = (value: unknown): React.ReactNode => {

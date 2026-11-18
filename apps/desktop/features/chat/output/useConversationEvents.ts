@@ -6,7 +6,7 @@ import { rpc, errorMessage } from "../../../lib/api";
 /** Preserve actual message deltas across bounded snapshots, and read missing history after refresh or a gap. */
 export const useConversationEvents = (
   id: string,
-  owner: "task" | "repair",
+  owner: "viber",
   events: AgentEvent[],
   onError: (message: string) => void,
 ) => {

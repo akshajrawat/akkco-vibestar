@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Bot, X } from "lucide-react";
 
-import { defaultAppearance, randomAppearance } from "../../../core/flows/appearance";
-import { AgentProfileSchema, type AgentProfile } from "../../../core/flows/contracts";
+import { defaultAppearance, randomAppearance } from "../../../core/vibers/appearance";
+import { AgentProfileSchema, type AgentProfile } from "../../../core/vibers/contracts";
 import { Button } from "../../components/ui/button";
-import { rpc, errorMessage } from "../../lib/api";
+import { rpc, computerRpc, errorMessage } from "../../lib/api";
 import { WorkspaceOverlay } from "../../components/ui/WorkspaceOverlay";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { AvatarBuilder } from "./AvatarBuilder";
@@ -27,6 +27,7 @@ export const ProfileEditor = ({
   const [customColor, setCustomColor] = useState(appearance.color);
 
   const [confirmClose, setConfirmClose] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const requestClose = () => {
     if (busy) {
@@ -159,6 +160,16 @@ export const ProfileEditor = ({
           )}
         </div>
         <footer className="viber-editor-actions">
+          {!!profile.revision && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete Viber
+            </Button>
+          )}
           <Button type="button" disabled={busy} onClick={requestClose}>
             Cancel
           </Button>
@@ -168,6 +179,45 @@ export const ProfileEditor = ({
         </footer>
       </form>
       {confirmClose && <DiscardChangesDialog keep={() => setConfirmClose(false)} discard={close} />}
+      {confirmDelete && (
+        <WorkspaceOverlay
+          label="Delete Viber"
+          onClose={() => setConfirmDelete(false)}
+          className="computer-confirmation"
+        >
+          <h2>Delete {profile.name}?</h2>
+          <p>
+            This permanently deletes this Viber's computer storage, installed dependencies, account
+            sessions, conversations, and all workspace files, including unsaved or unpublished work.
+            Stop active turns and close its terminal first.
+          </p>
+          <footer>
+            <Button disabled={busy} onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                setError("");
+
+                void computerRpc("profile.delete", { profile_id: profile.id, confirmed: true })
+                  .then(() => {
+                    saved();
+                    close();
+                  })
+                  .catch((reason) => {
+                    setError(errorMessage(reason));
+                    setConfirmDelete(false);
+                  })
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Delete permanently
+            </Button>
+          </footer>
+        </WorkspaceOverlay>
+      )}
     </WorkspaceOverlay>
   );
 };

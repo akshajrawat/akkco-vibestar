@@ -1,4 +1,4 @@
-import { capture, checked } from "../runtime/process";
+import { capture, checked, type ProcessTransform } from "../runtime/process";
 import {
   object,
   verifyFlags,
@@ -12,6 +12,8 @@ import { codexSchema, codexResult } from "./codex-schema";
 import { codexConversation, codexSessionEvent } from "./codex-conversation";
 
 export class CodexProvider implements AgentProvider {
+  constructor(private readonly transform?: ProcessTransform) {}
+
   readonly name = "codex";
 
   outputSchema = codexSchema;
@@ -31,11 +33,11 @@ export class CodexProvider implements AgentProvider {
     };
 
     try {
-      d.version = await checked("codex", ["--version"], cwd, signal);
+      d.version = await checked("codex", ["--version"], cwd, signal, this.transform);
       d.installed = true;
-      const rootHelp = await checked("codex", ["--help"], cwd, signal);
+      const rootHelp = await checked("codex", ["--help"], cwd, signal, this.transform);
       verifyFlags(rootHelp, ["--no-daemon"]);
-      const help = await checked("codex", ["exec", "--help"], cwd, signal);
+      const help = await checked("codex", ["exec", "--help"], cwd, signal, this.transform);
 
       verifyFlags(help, [
         "--json",
@@ -58,7 +60,7 @@ export class CodexProvider implements AgentProvider {
         d.capabilities.push("native-conversations");
       }
 
-      const login = await capture("codex", ["login", "status"], cwd, signal);
+      const login = await capture("codex", ["login", "status"], cwd, signal, this.transform);
       const output = login.stdout + login.stderr;
       d.connected = login.code === 0 && output.includes("ChatGPT");
       d.accountLabel = d.connected ? "ChatGPT subscription" : undefined;
@@ -67,7 +69,7 @@ export class CodexProvider implements AgentProvider {
       }
 
       if (d.connected) {
-        Object.assign(d, await discoverCodexModels(cwd, signal));
+        Object.assign(d, await discoverCodexModels(cwd, signal, this.transform));
         d.efforts = d.models.find((m) => m.isDefault)?.supportedEfforts || [];
       }
     } catch (e) {

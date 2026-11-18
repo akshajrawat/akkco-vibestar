@@ -110,30 +110,3 @@
   width: auto;
   accent-color: var(--text-secondary);
 }
-
-.task-configuration {
-  padding: 7px 0;
-}
-
-.task-composer .config-block {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.65fr) 130px;
-  gap: 12px;
-  border: 0;
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 20px 0;
-}
-
-.task-composer .config-block h3 {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-
-.task-composer .config-block label {
-  margin: 3px 0;
-  font-size: 11px;
-}
-
-.task-composer .config-block input {
-  width: 100%;
-}

@@ -1,14 +1,25 @@
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 
-import { cleanEnvironment, terminateGroup } from "../runtime/process";
+import { cleanEnvironment, terminateGroup, type ProcessTransform } from "../runtime/process";
 import { OutputBudget } from "../output/bounded-output";
 import { object, type ProviderDetection } from "./contracts";
 
 // Official app-server model/list is discovery only: no thread or model turn is started.
-export const discoverCodexModels = (cwd: string, signal?: AbortSignal) =>
+export const discoverCodexModels = (
+  cwd: string,
+  signal?: AbortSignal,
+  transform?: ProcessTransform,
+) =>
   new Promise<Pick<ProviderDetection, "models" | "subscriptionLimits">>((resolve, reject) => {
-    const child = spawn("codex", ["--no-daemon", "app-server", "-c", "analytics.enabled=false"], {
+    const invocation = {
+      program: "codex",
+      args: ["--no-daemon", "app-server", "-c", "analytics.enabled=false"],
+    };
+
+    const command = transform ? transform(invocation) : invocation;
+
+    const child = spawn(command.program, command.args, {
       cwd,
       env: cleanEnvironment(),
       stdio: "pipe",

@@ -1,15 +1,18 @@
 import { z } from "zod";
 
 import {
+  AgentProfileSchema,
   ViberSessionCreateSchema,
   ViberSessionScopeSchema,
   ViberSessionSendSchema,
 } from "../vibers/contracts";
 import type { RpcServices } from "./services";
 import { AdeError } from "../domain";
-import { managedFiles } from "../flows/files";
+import { managedFiles } from "../workspace/managed-files";
 
 export const viberSessionMethods = [
+  "profile.list",
+  "profile.save",
   "viber.session.create",
   "viber.session.list",
   "viber.session.detail",
@@ -25,6 +28,25 @@ export const callViberSessions = async (
 ) => {
   const sessions = engine.viberSessions;
   switch (method) {
+    case "profile.list":
+      return engine.vibers.listProfiles();
+
+    case "profile.save": {
+      engine.assertAvailable();
+
+      const p = z
+        .object({
+          profile: AgentProfileSchema,
+          expected_revision: z.number().int().positive().nullable(),
+        })
+        .strict()
+        .parse(raw);
+
+      const saved = engine.vibers.saveProfile(p.profile, p.expected_revision);
+      engine.changed();
+      return saved;
+    }
+
     case "viber.session.create": {
       engine.assertAvailable();
       const session = sessions.store.create(ViberSessionCreateSchema.parse(raw));
@@ -36,6 +58,7 @@ export const callViberSessions = async (
       return sessions.store.list(
         z.object({ profile_id: z.string().uuid() }).strict().parse(raw).profile_id,
       );
+
     case "viber.session.detail": {
       const input = ViberSessionScopeSchema.parse(raw);
       return sessions.detail(input.session_id, input.profile_id);
@@ -43,6 +66,7 @@ export const callViberSessions = async (
 
     case "viber.session.send":
       return sessions.send(ViberSessionSendSchema.parse(raw));
+
     case "viber.session.inspect": {
       const input = ViberSessionScopeSchema.extend({ path: z.string().min(1).max(2000).optional() })
         .strict()

@@ -176,7 +176,11 @@ export const callRepositories = async (
       const o = await capture("du", ["-sh", r.path], e.root);
       return {
         disk_usage: o.stdout.split("\t")[0],
-        active_worktrees: e.db.tasks().filter((t) => t.repo_id === r.id && t.worktree_path).length,
+        active_worktrees:
+          e.db.all<{ count: number }>(
+            "SELECT count(*) as count FROM viber_sessions WHERE repository_id=? AND workspace IS NOT NULL AND json_extract(workspace, '$.worktree_path') IS NOT NULL",
+            r.id,
+          )[0]?.count ?? 0,
       };
     }
 

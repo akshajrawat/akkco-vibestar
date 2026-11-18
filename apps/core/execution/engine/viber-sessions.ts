@@ -15,7 +15,10 @@ export class ViberSessions {
   readonly store: ViberSessionStore;
 
   constructor(
-    private readonly host: Pick<Engine, "db" | "root" | "git" | "changed" | "assertAvailable">,
+    private readonly host: Pick<
+      Engine,
+      "db" | "root" | "git" | "changed" | "assertAvailable" | "computers" | "publish"
+    >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
     private readonly operations: Pick<
@@ -25,6 +28,31 @@ export class ViberSessions {
   ) {
     this.store = new ViberSessionStore(host.db);
   }
+
+  prepareWorkspace = async (sessionId: string, profileId: string, signal?: AbortSignal) => {
+    this.store.session(sessionId, profileId);
+    let assignment = this.store.workspace(sessionId);
+    if (assignment.repo_id) {
+      const repo = this.host.db.repository(assignment.repo_id);
+      if (repo.connected === false || repo.clone_status === "cloning") {
+        throw new AdeError(
+          "repository_missing",
+          "Reconnect this session's repository before executing.",
+        );
+      }
+
+      if (!assignment.worktree_path || assignment.workspace_checkpoint?.state !== "ready") {
+        await this.host.git.prepare(repo, assignment, signal, (value) =>
+          this.store.saveWorkspace(sessionId, value),
+        );
+      }
+    } else {
+      assignment = await prepareManagedWorkspace(this.host.root, assignment);
+    }
+
+    this.store.saveWorkspace(sessionId, assignment);
+    return this.host.git.assertOwnedTask(assignment);
+  };
 
   send = (raw: z.input<typeof ViberSessionSendSchema>) => {
     const parsed = ViberSessionSendSchema.parse(raw);
@@ -37,7 +65,18 @@ export class ViberSessions {
 
     const key = `viber:${input.session_id}`;
     this.operations.assertExecutionSlot(key);
-    const snapshot = this.store.capture(input);
+
+    const release = this.host.computers.acquire(input, "agent", () =>
+      this.cancel(input.session_id, input.profile_id).then(() => {}),
+    );
+
+    let snapshot: ReturnType<ViberSessionStore["capture"]>;
+    try {
+      snapshot = this.store.capture(input);
+    } catch (error) {
+      release();
+      throw error;
+    }
 
     const completed = this.operations.withExecutionSlot(
       key,
@@ -45,27 +84,15 @@ export class ViberSessions {
       this.state.repositoryController.signal,
       async (signal) => {
         try {
-          let assignment = this.store.workspace(input.session_id);
-          if (assignment.repo_id) {
-            const repo = this.host.db.repository(assignment.repo_id);
-            if (repo.connected === false || repo.clone_status === "cloning") {
-              throw new AdeError(
-                "repository_missing",
-                "Reconnect this session's repository before executing.",
-              );
-            }
+          const workspace = await this.prepareWorkspace(input.session_id, input.profile_id, signal);
 
-            if (!assignment.worktree_path || assignment.workspace_checkpoint?.state !== "ready") {
-              await this.host.git.prepare(repo, assignment, signal, (value) =>
-                this.store.saveWorkspace(input.session_id, value),
-              );
-            }
-          } else {
-            assignment = await prepareManagedWorkspace(this.host.root, assignment);
-          }
+          await this.host.computers.ensure(
+            input,
+            workspace,
+            snapshot.execution.access === "read-only",
+            signal,
+          );
 
-          this.store.saveWorkspace(input.session_id, assignment);
-          const workspace = await this.host.git.assertOwnedTask(assignment);
           signal.throwIfAborted();
 
           const output = await this.runner.runConfigured(
@@ -81,6 +108,7 @@ export class ViberSessions {
             },
           );
 
+          await this.host.computers.finish(input.profile_id);
           this.store.finish(input.request_id, "completed", output);
         } catch (error) {
           this.store.finish(
@@ -90,6 +118,14 @@ export class ViberSessions {
             String(error),
           );
         } finally {
+          try {
+            await this.host.computers.finish(input.profile_id);
+          } catch (error) {
+            this.host.publish({ event: "computer.unavailable", text: redact(String(error)) });
+          } finally {
+            release();
+          }
+
           this.host.changed();
         }
       },
@@ -97,6 +133,7 @@ export class ViberSessions {
 
     // Admission is checked synchronously before the captured turn is persisted.
     void completed.catch((error) => {
+      release();
       this.store.finish(input.request_id, "failed", undefined, String(error));
       this.host.changed();
     });

@@ -2,9 +2,7 @@ import { z } from "zod";
 
 import { AdeError } from "../domain";
 import { capture, checked } from "../execution/runtime/process";
-import { TaskDisposalSchema } from "../storage/disposal";
 import type { RpcServices } from "./services";
-import { idInput } from "./validation";
 
 export const storageMethods = [
   "storage.info",
@@ -16,16 +14,11 @@ export const storageMethods = [
   "storage.removeUnused",
   "storage.resetPreview",
   "storage.reset",
-  "task.cleanup",
-  "task.archive",
-  "task.disposal.preview",
-  "task.disposal.discard",
-  "task.disposal.preserve",
 ] as const;
 
 /** Validates and dispatches storage requests through their existing domain services. */
 export const callStorage = async (
-  services: Pick<RpcServices, "engine" | "storage" | "terminals">,
+  services: Pick<RpcServices, "engine" | "storage">,
   method: string,
   input: unknown,
 ) => {
@@ -35,31 +28,34 @@ export const callStorage = async (
       return services.storage.info();
 
     case "storage.blockers": {
-      const p = z.object({ task_id: z.string().uuid().optional() }).parse(input);
-      return e.cleanupBlockers(p.task_id);
+      const p = z
+        .object({
+          session_id: z.string().uuid().optional(),
+          task_id: z.string().uuid().optional(),
+        })
+        .parse(input);
+
+      return e.cleanupBlockers(p.session_id || p.task_id);
     }
 
     case "storage.stopBlockers": {
       const p = z
         .object({
+          session_id: z.string().uuid().optional(),
           task_id: z.string().uuid().optional(),
           ids: z.array(z.string()).max(100),
         })
         .parse(input);
 
+      const targetId = p.session_id || p.task_id;
+
       const blockers = e
-        .cleanupBlockers(p.task_id)
+        .cleanupBlockers(targetId)
         .filter((b) => b.stoppable && p.ids.includes(b.id));
 
-      await Promise.all(
-        blockers.map((b) =>
-          b.kind === "terminal" && b.task_id
-            ? services.terminals.close(b.task_id)
-            : e.stopActivity(b.id),
-        ),
-      );
+      await Promise.all(blockers.map((b) => e.stopActivity(b.id)));
 
-      return e.cleanupBlockers(p.task_id);
+      return e.cleanupBlockers(targetId);
     }
 
     case "storage.open": {
@@ -116,56 +112,6 @@ export const callStorage = async (
       }
 
       return services.storage.reset(p.preview_token);
-    }
-
-    case "task.cleanup": {
-      const p = idInput
-        .extend({
-          confirmed: z.literal(true),
-          worktree: z.boolean(),
-          logs: z.boolean(),
-          artifacts: z.boolean(),
-          history: z.boolean(),
-        })
-        .parse(input);
-
-      return services.storage.cleanupTask(p.id, p);
-    }
-
-    case "task.archive": {
-      e.assertAvailable();
-      const p = idInput.extend({ archived: z.boolean() }).parse(input);
-      if (!p.archived && e.db.task(p.id).status === "preserved") {
-        throw new AdeError(
-          "invalid_state",
-          "This retained worktree keeps its ownership record, but its conversation history has been removed.",
-        );
-      }
-
-      if (e.cleanupBlockers(p.id).length || e.db.task(p.id).status === "queued") {
-        throw new AdeError("busy", "Stop this task before archiving it.");
-      }
-
-      e.db.saveTask({ ...e.db.task(p.id), archived: p.archived });
-      e.changed(p.id);
-      return null;
-    }
-
-    case "task.disposal.preview":
-      return services.storage.previewTaskDisposal(idInput.strict().parse(input).id);
-
-    case "task.disposal.discard": {
-      const p = TaskDisposalSchema.parse(input);
-      return services.storage.discardTask(p.id, p.fingerprint, p.acknowledge_unpublished);
-    }
-
-    case "task.disposal.preserve": {
-      const p = idInput
-        .extend({ confirmed: z.literal(true) })
-        .strict()
-        .parse(input);
-
-      return services.storage.preserveTaskWork(p.id);
     }
 
     default:

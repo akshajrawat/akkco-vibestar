@@ -198,7 +198,7 @@ const main = async () => {
         title: "Restart execution environment?",
         message: "Save these environment changes and restart the backend?",
         detail:
-          "Running tasks and terminals must finish first. Your selected WSL distribution will only change if you chose a different one here.",
+          "Running Viber sessions and terminals must finish first. Your selected WSL distribution will only change if you chose a different one here.",
         buttons: ["Cancel", "Save and restart"],
         defaultId: 0,
         cancelId: 0,

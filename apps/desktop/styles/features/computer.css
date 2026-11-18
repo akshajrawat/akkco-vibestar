@@ -1,0 +1,140 @@
+.computer-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.computer-workspace > .viber-chat-page {
+  flex: 1;
+  min-width: 260px;
+}
+
+.computer-panel-size {
+  flex-shrink: 0;
+  max-width: calc(100% - 265px);
+  min-width: 280px;
+}
+
+.computer-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--background-panel);
+  border-left: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.computer-panel-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.computer-status {
+  margin-left: auto;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.computer-status.ready,
+.computer-status.running {
+  color: var(--accent-green);
+}
+
+.computer-status.starting {
+  color: var(--accent-amber);
+}
+.computer-status.error,
+.computer-error {
+  color: var(--accent-red);
+}
+
+.computer-error,
+.computer-notice {
+  padding: 8px 12px;
+  overflow-wrap: anywhere;
+}
+.computer-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 5px;
+}
+.computer-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.computer-tabs > button {
+  padding: 9px 14px;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+}
+.computer-tabs > button[aria-selected="true"] {
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+}
+.computer-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+.computer-terminal {
+  flex: 1;
+  min-height: 150px;
+  overflow: hidden;
+  padding: 4px;
+  background: #0b1220;
+}
+.computer-terminal .xterm {
+  height: 100%;
+}
+.computer-setup {
+  padding: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.computer-setup p {
+  margin-block: 8px;
+  line-height: 1.6;
+}
+.computer-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.computer-file:hover {
+  background: var(--background-hover);
+}
+.computer-file-path {
+  padding: 6px 12px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.computer-file-preview {
+  padding: 12px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre;
+}
+.computer-confirmation {
+  max-width: 480px;
+  padding: 24px;
+}
+.computer-confirmation p {
+  margin-block: 16px;
+  line-height: 1.6;
+}
+.computer-confirmation footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

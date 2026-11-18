@@ -1,4 +1,4 @@
-import type { ViberAppearance } from "../../../core/flows/appearance";
+import type { ViberAppearance } from "../../../core/vibers/appearance";
 
 export const AvatarShape = ({ shape, color }: Pick<ViberAppearance, "shape" | "color">) => {
   const props = {

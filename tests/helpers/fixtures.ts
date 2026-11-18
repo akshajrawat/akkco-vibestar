@@ -2,12 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
+import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
 import { checked } from "../../apps/core/execution/runtime/process";
-import { now, type Repository, type Task } from "../../apps/core/domain";
-import { initializeProfiles } from "../../apps/core/flows/defaults";
+import { now, type Repository, type WorkspaceAssignment } from "../../apps/core/domain";
+import { ViberStore } from "../../apps/core/vibers/store";
 import { Engine } from "../../apps/core/execution/engine";
-import { AgentProfileSchema, type AgentProfile } from "../../apps/core/flows/contracts";
-import type { FlowRun } from "../../apps/core/flows/run-contracts";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import type {
   AgentRunRequest,
@@ -28,7 +27,40 @@ export const createFixtureEngine = async (
   transport = fixtureTransport,
 ) => {
   const engine = await Engine.create(root, providers, transport);
-  initializeProfiles(engine.db);
+  new ViberStore(engine.db).initialize();
+
+  // Inert provider fixtures retain real filesystem isolation without requiring a Docker daemon.
+  const readOnly = new Map<string, boolean>();
+
+  engine.computers.ensure = async (scope, _cwd, readonly) => {
+    readOnly.set(scope.profile_id, !!readonly);
+  };
+
+  engine.computers.finish = async () => {};
+
+  engine.computers.transform = async (scope) => {
+    engine.computers.authorize(scope);
+    const workspace = engine.viberSessions.store.workspace(scope.session_id!);
+
+    const invocation = await sandboxInvocation(
+      engine.root,
+      engine.db,
+      workspace,
+      { program: process.execPath, args: [] },
+      !!readOnly.get(scope.profile_id),
+      undefined,
+      undefined,
+      workspace.worktree_path,
+      [],
+      scope.session_id,
+    );
+
+    return (command) => ({
+      program: invocation.program,
+      args: [...invocation.args.slice(0, -1), command.program, ...command.args],
+    });
+  };
+
   return engine;
 };
 
@@ -64,125 +96,57 @@ export const fixtureRepository = async (engine: Engine, dir: string) => {
   return { repo, upstream };
 };
 
-/** Stored historical/ownership data only: no dispatch, model discovery or provider execution. */
-export const historicalTaskFixture = (
-  engine: Engine,
-  repo: Repository,
-  input: {
-    id?: string;
-    issue_number?: number;
-    scope?: string;
-    status?: Task["status"];
-    stage?: number;
-  } = {},
-) => {
-  const timestamp = now();
-  const issue = input.issue_number ?? 1;
-
-  const task: Task = {
-    id: input.id || randomUUID(),
-    repo_id: repo.id,
-    issue_number: issue,
-    issue_url: `https://github.com/${repo.owner}/${repo.name}/issues/${issue}`,
-    claimed_scope: input.scope || "Task A",
-    notes: "",
-    issue: {},
-    branch_name: "",
-    base_branch: repo.base_branch,
-    base_commit_sha: "",
-    worktree_path: "",
-    stage: input.stage ?? 0,
-    status: input.status || "not_started",
-    error: null,
-    created_at: timestamp,
-    updated_at: timestamp,
-  };
-
-  engine.db.saveTask(task);
-  return task;
-};
-
 export const plan1 = {
   summary: "Fixture plan",
-  understanding: "One file only",
+  understanding: "Safe mock test implementation",
   relevantFiles: ["source.txt"],
-  existingPatterns: ["text"],
-  implementationSteps: ["edit source"],
-  tests: ["git diff --check"],
-  risks: [],
+  existingPatterns: ["Linear code"],
+  implementationSteps: ["Modify file"],
+  tests: ["npm test"],
+  risks: ["None"],
   openQuestions: [],
 };
 
 export const plan2 = {
-  goal: "Change source",
-  scope: "source.txt",
+  goal: "Execute fixture implementation",
+  scope: "Single file",
   filesToModify: ["source.txt"],
   filesToAdd: [],
   filesToDelete: [],
-  implementationSteps: ["edit"],
-  validationSteps: ["git diff --check"],
-  riskAnalysis: [],
-  explicitNonGoals: ["remote writes"],
+  implementationSteps: ["Write content"],
+  validationSteps: ["Verify file"],
+  riskAnalysis: ["None"],
 };
 
 export class FixtureProvider extends CodexProvider {
-  constructor(private readonly gate?: () => Promise<void>) {
+  constructor(
+    private readonly fields?: {
+      approval?: boolean;
+      output?: (prompt: string, stage: number) => unknown;
+      verificationCode?: number;
+      verificationOutput?: string;
+    },
+  ) {
     super();
   }
 
-  detect = async (): Promise<ProviderDetection> => {
-    await this.gate?.();
-    return {
-      provider: "test-fixture",
-      installed: true,
-      version: "TEST ONLY",
-      connected: true,
-      accountLabel: "ChatGPT subscription",
-      models: [{ id: "next-model", supportedEfforts: ["low", "high"] }],
-      efforts: ["low", "medium", "high"],
-      capabilities: ["test-fixture"],
-      error: null,
-    };
-  };
+  detect = async (_cwd?: string): Promise<ProviderDetection> => ({
+    provider: "codex",
+    installed: true,
+    version: "codex-test-fixture",
+    connected: true,
+    models: [
+      { id: "gpt-6.1-sol", label: "GPT-6.1-Sol", supportedEfforts: ["low", "xhigh"] },
+      { id: "next-model", label: "Next Model", supportedEfforts: ["low", "high"] },
+    ],
+    efforts: ["low", "high", "xhigh"],
+    capabilities: ["exec", "models", "native-conversations"],
+    error: null,
+  });
 
   invocation = (r: AgentRunRequest) => {
-    const fields = r.schema.properties as Record<string, unknown>;
-
-    const result = fields?.manualActionRequired
-      ? {
-          manualActionRequired: true,
-          severity: "action_required",
-          conversationState: "waiting_for_me",
-          outstandingRequests: [],
-          alreadyAddressed: [],
-          summary: "Add test",
-          reason: "Review feedback",
-          newActivity: ["Add coverage"],
-          recommendedNextAction: "Add coverage",
-          affectedFiles: ["source.txt"],
-        }
-      : fields?.understanding
-        ? plan1
-        : fields?.filesToModify
-          ? { ...plan2, scope: /(?:^|\n)Scope: ([^\n]+)/.exec(r.prompt)?.[1] || plan2.scope }
-          : fields?.approval
-            ? {
-                approval: "approved",
-                summary: "Fixture final review",
-                findings: [],
-                testsRun: ["fixture inspection"],
-                testsNotRun: ["remote CI"],
-              }
-            : fields?.filesChanged
-              ? {
-                  summary: "Implemented by TEST fixture",
-                  filesChanged: ["source.txt"],
-                  testsPassed: [],
-                  testsFailed: [],
-                  testsSkipped: [],
-                  remainingRisks: [],
-                }
-              : { summary: "Fixture response" };
+    const fields = this.fields;
+    const result = fields?.output?.(r.prompt, r.stage) || (r.stage === 1 ? plan1 : plan2);
 
     let action = "";
     if (r.access === "workspace-write") {
@@ -212,127 +176,23 @@ export class FixtureProvider extends CodexProvider {
   };
 }
 
-/** A current task with explicit settings; creating it never starts a provider. */
-export const fixtureFlowTask = (
-  engine: Engine,
-  repo: Repository | null,
-  goal = "Task A",
-  execution: Partial<AgentProfile["execution"]> = {},
-) => {
-  const profile = AgentProfileSchema.parse({
-    id: randomUUID(),
-    revision: 1,
-    name: "Fixture Viber",
-    instructions: "Use the selected task goal.",
-    supported_access: ["read-only", "workspace-write"],
-    execution: {
-      provider: "codex",
-      model: "next-model",
-      effort: "low",
-      timeout_secs: 30,
-      access: "workspace-write",
-      output: "implementation",
-      ...execution,
-    },
-  });
-
-  engine.flows.saveProfile(profile, null);
-  return engine.createGeneralTask({
-    request_id: randomUUID(),
-    goal,
-    ...(repo ? { repository_id: repo.id } : {}),
-    profile_id: profile.id,
-  });
-};
-
-export const startFixtureFlow = (engine: Engine, task: Task) => {
-  if (!task.flow_id || !task.goal) {
-    throw new Error("Fixture requires a current task and flow.");
-  }
-
-  return engine.startFlow({
-    task_id: task.id,
-    flow_id: task.flow_id,
-    revision: engine.flows.definition(task.flow_id).revision,
-    request_id: randomUUID(),
-    goal: task.goal,
-  });
-};
-
-export const waitForFixtureFlow = (
-  engine: Engine,
-  run: FlowRun,
-  status: FlowRun["status"] = "completed",
-) =>
-  new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      engine.off("event", check);
-      const latest = engine.flowRuns.run(run.id);
-
-      reject(
-        new Error(`Flow transition deadline: ${latest.status}: ${latest.error || "no diagnostic"}`),
-      );
-    }, 30000);
-
-    const check = () => {
-      const latest = engine.flowRuns.run(run.id);
-      if (
-        !engine.isExecuting(run.task_id) &&
-        latest.status !== status &&
-        ["completed", "failed", "cancelled", "interrupted"].includes(latest.status)
-      ) {
-        clearTimeout(timer);
-        engine.off("event", check);
-
-        reject(
-          new Error(
-            `Expected flow ${status}; got ${latest.status}: ${latest.error || "no diagnostic"}`,
-          ),
-        );
-
-        return;
-      }
-
-      if (latest.status === status && !engine.isExecuting(run.task_id)) {
-        clearTimeout(timer);
-        engine.off("event", check);
-        resolve();
-      }
-    };
-
-    engine.on("event", check);
-    check();
-  });
-
 export const prepareFixtureTask = async (
   engine: Engine,
   repo: Repository,
   id: string,
-  issue = 1,
-) => {
-  const task = historicalTaskFixture(engine, repo, {
+  _issue = 1,
+): Promise<WorkspaceAssignment> => {
+  const assignment: WorkspaceAssignment = {
     id,
-    issue_number: issue,
-    scope: id,
-    stage: 1,
-    status: "cancelled",
-  });
+    repo_id: repo.id,
+    branch_name: "",
+    base_commit_sha: "",
+    worktree_path: "",
+    base_branch: repo.base_branch,
+    kind: "general",
+    goal: "fixture-workspace",
+  };
 
-  await engine.git.prepare(
-    repo,
-    task,
-    undefined,
-    (value) => engine.db.saveTask(value),
-    async (record) => {
-      engine.db.run(
-        "INSERT INTO task_activity(task_id,kind,data,timestamp) VALUES(?,'preparation',?,?)",
-        task.id,
-        JSON.stringify(record),
-        now(),
-      );
-    },
-  );
-
-  engine.db.saveTask(task);
-  return task;
+  await engine.git.prepare(repo, assignment);
+  return assignment;
 };

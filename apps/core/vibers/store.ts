@@ -1,14 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { z } from "zod";
+import { z } from "zod";
 
-import { AdeError, now, type Task } from "../domain";
+import { AdeError, now, type WorkspaceAssignment } from "../domain";
 import type { Database } from "../storage/database";
-import { TaskRecordSchema } from "../storage/contracts";
-import { FlowStore } from "../flows/store";
-import { ConversationSelectionSchema, agentPrompt } from "../flows/run-contracts";
 import { redact } from "../execution/runtime/process";
 import { ConversationOutputSchema, type AgentExecution } from "../execution/contracts";
 import {
+  AgentProfileSchema,
+  ConversationSelectionSchema,
   ViberMessageSchema,
   ViberMessageSnapshotSchema,
   ViberSessionCreateSchema,
@@ -16,8 +15,14 @@ import {
   ViberSessionScopeSchema,
   ViberSessionSendSchema,
   ViberThreadSchema,
+  ViberWorkspaceSchema,
+  agentPrompt,
+  type AgentProfile,
   type ViberSessionDetail,
+  type ViberWorkspace,
 } from "./contracts";
+
+const identity = z.string().uuid();
 
 const threadConfiguration = (execution: AgentExecution, instructions: string) =>
   createHash("sha256")
@@ -31,9 +36,122 @@ const threadConfiguration = (execution: AgentExecution, instructions: string) =>
     )
     .digest("hex");
 
+import { builtInProfiles } from "./appearance";
+
+export { builtInProfiles };
+
+/** Viber profiles and appearances store. */
+export class ViberStore {
+  constructor(private readonly db: Database) {}
+
+  initialize = () => initializeProfiles(this.db);
+
+  saveProfile = (input: AgentProfile, expectedRevision: number | null) => {
+    const profile = AgentProfileSchema.parse(input);
+    if (profile.revision !== (expectedRevision || 0) + 1) {
+      throw new AdeError("invalid_input", "Profile revisions must advance by one.");
+    }
+
+    return this.db.transaction(() => {
+      this.assertProfileRevision(profile.id, expectedRevision);
+      const timestamp = now();
+
+      this.db.run(
+        "INSERT INTO agent_profiles VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET current_revision=excluded.current_revision,updated_at=excluded.updated_at",
+        profile.id,
+        profile.revision,
+        timestamp,
+        timestamp,
+      );
+
+      this.db.run(
+        "INSERT INTO agent_profile_revisions VALUES(?,?,?,?)",
+        profile.id,
+        profile.revision,
+        JSON.stringify(profile),
+        timestamp,
+      );
+
+      return profile;
+    });
+  };
+
+  profile = (id: string, revision?: number) => {
+    identity.parse(id);
+
+    const row = this.db.all<{ revision: number; data: string }>(
+      "SELECT r.revision,r.data FROM agent_profile_revisions r JOIN agent_profiles p ON p.id=r.profile_id WHERE p.id=? AND r.revision=COALESCE(?,p.current_revision)",
+      id,
+      revision ?? null,
+    )[0];
+
+    if (!row) {
+      throw new AdeError("not_found", "Agent profile revision not found.");
+    }
+
+    return this.db.records.decode(
+      {
+        table: "agent_profile_revisions",
+        id: `${id}:${row.revision}`,
+        column: "data",
+        source: row.data,
+      },
+      (value) => {
+        const profile = AgentProfileSchema.parse(value);
+        if (profile.id !== id || profile.revision !== row.revision) {
+          throw new Error("Profile identity mismatch.");
+        }
+
+        return profile;
+      },
+    );
+  };
+
+  listProfiles = () =>
+    this.db
+      .all<{ id: string }>(
+        "SELECT id FROM agent_profiles WHERE id NOT IN (SELECT profile_id FROM retired_viber_profiles) ORDER BY created_at,id",
+      )
+      .flatMap(({ id }) => {
+        try {
+          return [this.profile(id)];
+        } catch (error) {
+          if (error instanceof AdeError && error.kind === "corrupt_record") {
+            return [];
+          }
+
+          throw error;
+        }
+      });
+
+  private assertProfileRevision = (id: string, expected: number | null) => {
+    if (expected !== null) {
+      z.number().int().positive().parse(expected);
+    }
+
+    const row = this.db.all<{ current_revision: number }>(
+      "SELECT current_revision FROM agent_profiles WHERE id=?",
+      id,
+    )[0];
+
+    if ((row?.current_revision ?? null) !== expected) {
+      throw new AdeError(
+        "stale_configuration",
+        "The saved configuration changed. Reload it before applying your edits.",
+      );
+    }
+
+    return row;
+  };
+}
+
 /** Session ownership and captured turns are independent of Tasks and Flow revisions. */
 export class ViberSessionStore {
-  constructor(private readonly db: Database) {}
+  readonly profiles: ViberStore;
+
+  constructor(private readonly db: Database) {
+    this.profiles = new ViberStore(db);
+  }
 
   create = (raw: z.input<typeof ViberSessionCreateSchema>) => {
     const input = ViberSessionCreateSchema.parse(raw);
@@ -63,7 +181,7 @@ export class ViberSessionStore {
         throw new AdeError("invalid_state", "Select an active Viber profile for a new session.");
       }
 
-      const profile = new FlowStore(this.db).profile(input.profile_id);
+      const profile = this.profiles.profile(input.profile_id);
 
       const selection = ConversationSelectionSchema.parse(
         input.selection || {
@@ -79,16 +197,11 @@ export class ViberSessionStore {
         throw new AdeError("repository_missing", "Select a connected, ready repository.");
       }
 
-      const workspace: Task = {
+      const workspace: ViberWorkspace = {
         id: randomUUID(),
         repo_id: repo?.id ?? null,
         kind: "general",
         goal: "Viber session",
-        issue_number: null,
-        issue_url: null,
-        issue: {},
-        claimed_scope: "",
-        notes: "",
         branch_name: "",
         base_branch: repo?.base_branch || "",
         base_commit_sha: "",
@@ -138,7 +251,7 @@ export class ViberSessionStore {
     });
   };
 
-  workspace = (sessionId: string) => {
+  workspace = (sessionId: string): ViberWorkspace => {
     const row = this.db.all<{ repository_id: string | null; workspace: string | null }>(
       "SELECT repository_id,workspace FROM viber_sessions WHERE id=?",
       sessionId,
@@ -151,7 +264,7 @@ export class ViberSessionStore {
       );
     }
 
-    const workspace = TaskRecordSchema.parse(JSON.parse(row.workspace));
+    const workspace = ViberWorkspaceSchema.parse(JSON.parse(row.workspace));
     if (
       workspace.kind !== "general" ||
       workspace.repo_id !== row.repository_id ||
@@ -165,7 +278,7 @@ export class ViberSessionStore {
     return workspace;
   };
 
-  saveWorkspace = (sessionId: string, workspace: Task) => {
+  saveWorkspace = (sessionId: string, workspace: ViberWorkspace | WorkspaceAssignment) => {
     const previous = this.workspace(sessionId);
     if (workspace.id !== previous.id || workspace.repo_id !== previous.repo_id) {
       throw new AdeError("ownership", "Viber workspace ownership changed.");
@@ -173,7 +286,7 @@ export class ViberSessionStore {
 
     this.db.run(
       "UPDATE viber_sessions SET workspace=? WHERE id=?",
-      JSON.stringify(TaskRecordSchema.parse(workspace)),
+      JSON.stringify(ViberWorkspaceSchema.parse({ ...previous, ...workspace })),
       sessionId,
     );
   };
@@ -223,7 +336,6 @@ export class ViberSessionStore {
   };
 
   markInvocation = (messageId: string) => {
-    // Persist uncertainty before starting the process, including across a core crash.
     this.db.run(
       "UPDATE viber_messages SET effects='possible' WHERE id=? AND status='pending'",
       messageId,
@@ -262,6 +374,15 @@ export class ViberSessionStore {
       const session = this.session(input.session_id, input.profile_id);
       if (
         this.db.all(
+          "SELECT profile_id FROM retired_viber_profiles WHERE profile_id=?",
+          input.profile_id,
+        ).length
+      ) {
+        throw new AdeError("not_found", "This Viber was deleted.");
+      }
+
+      if (
+        this.db.all(
           "SELECT id FROM viber_messages WHERE session_id=? AND status='pending'",
           session.id,
         ).length
@@ -272,7 +393,7 @@ export class ViberSessionStore {
         );
       }
 
-      const profile = new FlowStore(this.db).profile(session.profile_id);
+      const profile = this.profiles.profile(session.profile_id);
       const selection = input.selection || session.selection;
       const execution = { ...profile.execution, ...selection, output: "conversation" as const };
       this.workspace(session.id);
@@ -506,3 +627,87 @@ export class ViberSessionStore {
       }
     });
 }
+
+/** Seed default Viber profiles once; later application launches never overwrite edits. */
+export const initializeProfiles = (db: Database) => {
+  if (
+    Object.values(builtInProfiles).every(
+      (id) => db.all("SELECT id FROM agent_profiles WHERE id=?", id).length > 0,
+    )
+  ) {
+    return;
+  }
+
+  let settings;
+  try {
+    settings = db.settings();
+  } catch (error) {
+    if (error instanceof AdeError && error.kind === "corrupt_record") {
+      return;
+    }
+
+    throw error;
+  }
+
+  const store = new ViberStore(db);
+
+  const definitions = [
+    [
+      "planner",
+      "Planner",
+      settings.antigravity,
+      "antigravity",
+      "read-only",
+      "plan",
+      "Plan the requested work. Inspect files without modifying them.",
+    ],
+    [
+      "refiner",
+      "Refiner",
+      settings.codex_plan,
+      "codex",
+      "read-only",
+      "refinement",
+      "Refine the selected plan against the workspace. Remain read-only.",
+    ],
+    [
+      "implementer",
+      "Implementer",
+      settings.codex_implementation,
+      "codex",
+      "workspace-write",
+      "conversation",
+      "Work directly on the requested goal. Inspect, edit and run checks within the assigned workspace. Report observed outcomes honestly.",
+    ],
+    [
+      "reviewer",
+      "Reviewer",
+      settings.antigravity_review || settings.antigravity,
+      "antigravity",
+      "read-only",
+      "review",
+      "Independently review the selected changes and evidence. Remain read-only and distinguish missing checks from passing checks.",
+    ],
+  ] as const;
+
+  db.transaction(() => {
+    for (const [role, name, config, fallback, access, output, instructions] of definitions) {
+      const id = builtInProfiles[role];
+      if (db.all("SELECT id FROM agent_profiles WHERE id=?", id).length > 0) {
+        continue;
+      }
+
+      const profile: AgentProfile = {
+        id,
+        revision: 1,
+        name,
+        instructions,
+        supported_access:
+          access === "workspace-write" ? ["read-only", "workspace-write"] : ["read-only"],
+        execution: { ...config, provider: config.provider || fallback, access, output },
+      };
+
+      store.saveProfile(profile, null);
+    }
+  });
+};

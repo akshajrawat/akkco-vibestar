@@ -2,7 +2,6 @@ import { it, expect } from "vitest";
 
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
-import { verifyFlags, validatePlan } from "../../apps/core/execution/providers/contracts";
 
 const codex = new CodexProvider();
 const agy = new AntigravityProvider();
@@ -208,11 +207,6 @@ it("retains exact tool arguments and distinguishes provider aggregates from sepa
       output_source: "provider",
     },
   });
-});
-
-it("rejects missing flags and malformed plans", () => {
-  expect(() => verifyFlags("--json", ["--json", "--sandbox"])).toThrow();
-  expect(() => validatePlan(1, { summary: "missing fields" })).toThrow();
 });
 
 it("resumes only the explicit Antigravity conversation identity supplied by the owned chat", () => {

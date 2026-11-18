@@ -1,7 +1,7 @@
 import { realpath, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-import { AdeError, now, type Repository, type Task } from "../domain";
+import { AdeError, now, type Repository, type WorkspaceAssignment } from "../domain";
 import { gitCapture, gitChecked } from "./git-command";
 import { exists } from "./paths";
 import { readWorktreeOwner, writeWorktreeOwner } from "./ownership";
@@ -59,11 +59,11 @@ export const sourceCheckout = async (repo: Repository, base: string, reusableOwn
 
 export const prepareSourceCheckout = async (
   source: NonNullable<Awaited<ReturnType<typeof sourceCheckout>>>,
-  task: Task,
+  task: WorkspaceAssignment,
   branch: string,
   base: string,
   command: (argv: string[]) => Promise<unknown>,
-  checkpoint?: (task: Task) => void,
+  checkpoint?: (task: WorkspaceAssignment) => void,
 ) => {
   task.workspace_mode = "source";
   task.worktree_path = source.cwd;

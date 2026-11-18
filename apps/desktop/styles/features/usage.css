@@ -356,3 +356,35 @@ progress::-webkit-progress-value {
   font-weight: 500;
   overflow-wrap: anywhere;
 }
+
+.token-channel-track {
+  height: 6px;
+  margin: 10px 0;
+  background: var(--background-hover);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.token-channel-track span {
+  display: block;
+  height: 100%;
+  background: var(--accent-blue);
+  border-radius: inherit;
+}
+
+.token-channel-track.unavailable {
+  border: 1px dashed var(--border-strong);
+}
+
+.usage-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.usage-pagination small {
+  color: var(--text-secondary);
+}

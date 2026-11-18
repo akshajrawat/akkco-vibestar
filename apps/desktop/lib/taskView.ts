@@ -1,11 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 export const workspaceSections = {
-  pipeline: "Workflow",
-  plans: "Plans",
   changes: "Changes",
   tests: "Checks",
-  "final-review": "Final review",
   usage: "Usage",
   "run-details": "Run details",
   logs: "Raw logs",
@@ -14,14 +11,12 @@ export const workspaceSections = {
 export type SecondarySection = keyof typeof workspaceSections;
 
 export const flowWorkspaceSections = {
-  canvas: "Flow",
   chat: "Chat",
   files: "Files",
   checks: "Checks",
   usage: "Usage",
   logs: "Logs",
   history: "History",
-  activity: "Node activity",
 } as const;
 
 export type FlowWorkspaceSection = keyof typeof flowWorkspaceSections;
@@ -44,7 +39,6 @@ interface TaskView {
   secondaryPrevious: SecondarySection | null;
   secondaryWidth: number;
   secondaryScroll: Partial<Record<SecondarySection, number>>;
-  planStage: 1 | 2;
   expandedTool: boolean;
   terminalDock: boolean;
   terminalFocus: number;
@@ -53,12 +47,11 @@ interface TaskView {
   bottomHeight: number;
   chatScroll: number;
   chatFollow: boolean;
-  approvalCompact: boolean;
   shownApproval: string | null;
   diffMode: "unified" | "side";
   diffTree: "tree" | "flat";
-  diffLayer: "original" | "upstream" | "repair";
-  diffLayerPaths: Partial<Record<"original" | "upstream" | "repair", string>>;
+  diffLayer: "original" | "upstream";
+  diffLayerPaths: Partial<Record<"original" | "upstream", string>>;
   diffPath: string;
   diffSelections: Record<string, { start: number; end: number; side: "base" | "working" }>;
   diffReview: boolean;
@@ -98,11 +91,9 @@ const section = (value: unknown): SecondarySection | null =>
     : null;
 
 const legacySections: Record<string, SecondarySection> = {
-  Plan: "plans",
   Usage: "usage",
   Changes: "changes",
   Tests: "tests",
-  "Final review": "final-review",
   Logs: "logs",
   "Agent Output": "logs",
 };
@@ -128,7 +119,7 @@ const savedLayout = (id: string): Partial<TaskView> => {
         typeof saved.flowSection === "string" &&
         Object.hasOwn(flowWorkspaceSections, saved.flowSection)
           ? (saved.flowSection as FlowWorkspaceSection)
-          : "canvas",
+          : "chat",
       flowNode:
         typeof saved.flowNode === "string" && saved.flowNode.length <= 100 ? saved.flowNode : "",
       savedInstruction:
@@ -168,7 +159,7 @@ const savedLayout = (id: string): Partial<TaskView> => {
           : raw
             ? !!(migrated || saved.contextPane === "pipeline")
             : window.innerWidth >= 1400,
-      secondarySection: section(saved.secondarySection) || migrated || "pipeline",
+      secondarySection: section(saved.secondarySection) || migrated || "changes",
       secondaryPrevious: section(saved.secondaryPrevious),
       secondaryScroll: Object.fromEntries(
         Object.keys(workspaceSections).flatMap((key) => {
@@ -184,7 +175,6 @@ const savedLayout = (id: string): Partial<TaskView> => {
             : [];
         }),
       ),
-      planStage: saved.planStage === 2 ? (2 as const) : (1 as const),
       secondaryWidth: bounded(
         saved.secondaryWidth,
         bounded(Number(read("vibestar.contextWidth")) || 380, 380, 300, 640),
@@ -205,7 +195,6 @@ const savedLayout = (id: string): Partial<TaskView> => {
       ),
       chatScroll: bounded(saved.chatScroll, 0, 0, Number.MAX_SAFE_INTEGER),
       chatFollow: saved.chatFollow !== false,
-      approvalCompact: saved.approvalCompact === true,
       shownApproval:
         typeof saved.shownApproval === "string" && saved.shownApproval.length <= 200
           ? saved.shownApproval
@@ -213,12 +202,9 @@ const savedLayout = (id: string): Partial<TaskView> => {
       diffPath: typeof saved.diffPath === "string" ? saved.diffPath : "",
       diffMode: saved.diffMode === "unified" ? ("unified" as const) : ("side" as const),
       diffTree: saved.diffTree === "flat" ? ("flat" as const) : ("tree" as const),
-      diffLayer:
-        saved.diffLayer === "original" || saved.diffLayer === "upstream"
-          ? saved.diffLayer
-          : ("repair" as const),
+      diffLayer: saved.diffLayer === "original" ? ("original" as const) : ("upstream" as const),
       diffLayerPaths: Object.fromEntries(
-        ["original", "upstream", "repair"].flatMap((key) => {
+        ["original", "upstream"].flatMap((key) => {
           const paths = saved.diffLayerPaths;
 
           const value =
@@ -255,22 +241,21 @@ const savedLayout = (id: string): Partial<TaskView> => {
   }
 };
 
-const state = (id: string) => {
+const state = (id: string): TaskView => {
   let value = views.get(id);
   if (!value) {
     value = {
-      flowSection: "canvas",
+      flowSection: "chat",
       flowNode: "",
       draft: read(`vibestar.draft.${id}`) || "",
       draftContext: [],
       messageRequest: null,
       savedInstruction: null,
       secondaryOpen: false,
-      secondarySection: "pipeline",
+      secondarySection: "changes",
       secondaryPrevious: null,
       secondaryWidth: 380,
       secondaryScroll: {},
-      planStage: 1,
       expandedTool: false,
       terminalDock: false,
       terminalFocus: 0,
@@ -279,11 +264,10 @@ const state = (id: string) => {
       bottomHeight: 260,
       chatScroll: 0,
       chatFollow: true,
-      approvalCompact: false,
       shownApproval: null,
       diffMode: "side",
       diffTree: "tree",
-      diffLayer: "repair",
+      diffLayer: "upstream",
       diffLayerPaths: {},
       diffPath: "",
       diffSelections: {},

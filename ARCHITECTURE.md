@@ -37,19 +37,19 @@ permissions after workspace ownership checks. See the [security guide](docs/secu
 
 ## Module ownership
 
-| Area                                                               | Responsibility                                                                    |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `apps/electron/`                                                   | Desktop lifecycle, isolated preload, stdio bridge and platform contracts          |
-| `apps/desktop/app/`                                                | Navigation, desktop composition and global actions                                |
-| `apps/desktop/features/`                                           | Feature-owned UI, local state and renderer workflows                              |
-| `apps/desktop/components/` and `apps/desktop/hooks/`               | Reusable controls and hooks shared across features                                |
-| `apps/core/rpc/`                                                   | Validated domain requests; `apps/core/rpc.ts` composes services and dispatch      |
-| `apps/core/flows/`                                                 | Viber profiles, graph contracts, run persistence, context and history projections |
-| `apps/core/execution/`                                             | Shared scheduling, providers, sandbox, output, terminals and verification         |
-| `apps/core/workspace/`                                             | Git operations, path ownership, worktrees and runtime mounts                      |
-| `apps/core/storage/`                                               | SQLite lifecycle, migrations, recovery, inspection and conservative cleanup       |
-| `apps/core/review/`, `apps/core/github/`, `apps/core/issue-watch/` | Pull-request, GitHub and issue-discovery services                                 |
-| `tests/`                                                           | Unit, domain, integration, security, terminal and opt-in desktop/live coverage    |
+| Area                                                 | Responsibility                                                               |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `apps/electron/`                                     | Desktop lifecycle, isolated preload, stdio bridge and platform contracts     |
+| `apps/desktop/app/`                                  | Navigation, desktop composition and global actions                           |
+| `apps/desktop/features/`                             | Feature-owned UI: Vibers, Sessions, Computer, Settings, Usage                |
+| `apps/desktop/components/` and `apps/desktop/hooks/` | Reusable controls and hooks shared across features                           |
+| `apps/core/rpc/`                                     | Validated domain requests; `apps/core/rpc.ts` composes services and dispatch |
+| `apps/core/vibers/`                                  | Viber profiles, appearance, sessions, message store and continuity           |
+| `apps/core/computers/`                               | Isolated Viber execution environments, containers and home volumes           |
+| `apps/core/execution/`                               | Agent runner, providers (Codex, Antigravity), sandbox, output and usage      |
+| `apps/core/workspace/`                               | Git operations, path ownership, worktrees and runtime mounts                 |
+| `apps/core/storage/`                                 | SQLite lifecycle, migrations, recovery, inspection and cleanups              |
+| `tests/`                                             | Unit, domain, integration, security, terminal and live coverage              |
 
 Feature-specific code belongs with its owner. Shared renderer primitives stay under `apps/desktop/components`
 and ordered CSS chapters under `apps/desktop/styles/`. Detailed folder and check ownership is documented in
@@ -87,56 +87,25 @@ next settings save; reads preserve original saved bytes. Historical analysis con
 configuration. Existing PR controls select a provider/model per operation and default to the provider
 CLI; they no longer read a global model setting. No historical run is rewritten or replayed.
 
-## Viber and graph execution
+## Viber architecture and sessions
 
-Vibers are reusable profiles. Each task graph captures its own Viber instances, settings and
-selected input bindings. A graph is a validated DAG of agent, command and approval nodes. Connections
-describe dependencies; explicit bindings select the context delivered to a node. Layout is stored
-separately from the executable graph revision.
+Vibestar is built entirely around persistent AI employees called **Vibers**:
 
-An explicit start captures a saved revision. The engine schedules eligible nodes using shared task
-slots, cancellation and maintenance state. Node attempts retain their input and execution snapshots
-and link to the existing command, event, usage and verification records. Conversations capture one
-selected Viber instance and cannot complete graph nodes. Approval and continuation actions validate
-the captured settings and current workspace evidence. Restart marks unfinished runs interrupted; it
-does not replay provider calls. See the [workflow contracts](docs/architecture/workflows.md).
-
-Legacy task readers and migrations preserve older records for inspection and safe recovery. Missing
-historical settings, inputs or approvals remain unknown; current defaults do not fill those gaps.
-Existing migration and compatibility code is part of the saved-data boundary.
-
-Sidebar grouping uses saved execution summaries. Current Viber names and recorded execution
-intervals come from the existing read-only task and flow projections, with bounded, cached reads.
-Display timers never poll the core or start execution; task, flow and conversation completion remain
-separate facts.
-
-Standalone Viber sessions own their workspace and provider thread independently of Tasks and graphs.
-An optional connected repository is captured at chat creation; execution prepares a dedicated owned
-Git worktree through the shared workspace service. Repository-free chats use owned managed files.
-Turns use AgentRunner and the existing sandbox, events and usage records. Saved native Codex
-app-server and Antigravity conversation identities survive restarts; resumed turns send only the new
-message. Provider/model or instruction/access changes start fresh context without replaying history.
-Failed, cancelled and interrupted turns require explicit recovery confirmation unless durable evidence
-proves provider execution never began; invalid native threads never trigger an automatic fallback. Legacy chats without owned
-workspace evidence remain readable and require a new chat for execution. Data-root relocation refuses
-prepared Viber workspaces to preserve native path bindings; use the old location instead.
+- **Viber identities & profiles**: Each Viber possesses a name, appearance avatar, description, default system instructions, and execution defaults. Built-in profiles and custom user-created Vibers are stored in `agent_profiles`.
+- **Sessions & workspaces**: A Viber owns multiple independent sessions. Each session has its own workspace (either an isolated Git worktree or managed scratch workspace) and native conversation continuity.
+- **Dedicated Computers**: A Viber can have an associated persistent Computer environment (`viber_computers`) with dedicated container isolation, sandboxed tool execution, and private home volume persistence.
+- **Provider threads & BYOS**: Native thread continuity is maintained per session across application restarts with official Codex or Antigravity providers. Dynamic per-turn model and reasoning effort selection allow flexible execution.
 
 ## Persistence, verification and recovery
 
-SQLite migrations are additive and run with a private backup before upgrade. Recovery retains
-corrupt record bytes and diagnostics. Data-root migration, task cleanup and workspace reuse validate
-canonical paths and ownership; unknown or dirty work is preserved. See the
-[storage and migration contracts](docs/architecture/workflows.md#storage-reset-and-task-disposal).
+SQLite migrations (migration 42) safely pruned all obsolete Task, Graph Workflow, Issue Watch, and PR Watch tables and indices while preserving all Viber identities, appearances, sessions, messages, native threads, and usage records.
 
-Verification keeps observed command outcomes, provider-reported results and missing environmental
-prerequisites separate. A successful process does not prove tests passed, and a missing check does
-not become a pass. Logs and output are bounded and redacted before persistence or display.
+Data-root migration, backup procedures, and workspace isolation enforce strict ownership boundaries so user files and repositories are never silently deleted.
 
 ## Maintainer guides
 
 - [Security boundaries](docs/security.md)
 - [Development and platform setup](docs/development.md)
-- [Test suites and desktop fixtures](docs/testing.md)
-- [Viber, graph, repair and Issue Watch contracts](docs/architecture/workflows.md)
+- [Testing Guide](docs/testing.md)
 - [Contributing](CONTRIBUTING.md)
 - [Third-party notices](docs/third-party-notices.md)

@@ -1,11 +1,15 @@
 import { useEffect, useState, useRef, type Ref } from "react";
-import { Minus, Square, Copy, X, PanelLeftOpen, Search } from "lucide-react";
+import { Minus, Square, Copy, X, PanelLeftOpen, PanelRight, Search } from "lucide-react";
 
 export const TitleBar = ({
   onPalette,
   onSidebar,
   toggleRef,
+  onComputer,
+  computerOpen,
 }: {
+  onComputer?: () => void;
+  computerOpen?: boolean;
   onPalette?: () => void;
   onSidebar?: () => void;
   toggleRef?: Ref<HTMLButtonElement>;
@@ -131,6 +135,17 @@ export const TitleBar = ({
         </span>
       )}
 
+      {onComputer && (
+        <button
+          className="titlebar-action"
+          aria-label="Toggle computer panel"
+          aria-expanded={computerOpen}
+          title="Toggle computer panel"
+          onClick={onComputer}
+        >
+          <PanelRight size={15} aria-hidden="true" />
+        </button>
+      )}
       <div className="window-controls" aria-label="Window controls">
         <button
           aria-label="Minimize window"

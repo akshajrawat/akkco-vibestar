@@ -53,17 +53,14 @@ export const discoverEditors = async () => {
 };
 
 export class Editors {
-  constructor(
-    private readonly engine: Engine,
-    private readonly repairPath?: (id: string) => Promise<string>,
-  ) {}
+  constructor(private readonly engine: Engine) {}
 
   list = async () => ({
     editors: await discoverEditors(),
     default: this.engine.db.settings().default_editor,
   });
 
-  open = async (id: string, kind: "task" | "repository" | "repair", editor: string) => {
+  open = async (id: string, kind: "repository" | "session", editor: string) => {
     this.engine.assertAvailable();
     const available = await discoverEditors();
     const selected = available.find((e) => e.id === editor);
@@ -75,11 +72,9 @@ export class Editors {
     }
 
     const path =
-      kind === "repair" && this.repairPath
-        ? await this.repairPath(id)
-        : kind === "task"
-          ? await this.engine.git.assertTask(this.engine.db.task(id))
-          : await realpath(this.engine.db.repository(id).path);
+      kind === "session"
+        ? await this.engine.git.assertOwnedTask(this.engine.viberSessions.store.workspace(id))
+        : await realpath(this.engine.db.repository(id).path);
 
     if (selected.windowsLauncher) {
       // The installed VS Code CLI exposes --folder-uri. Opening its native

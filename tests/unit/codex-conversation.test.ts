@@ -235,9 +235,7 @@ it("counts only this turn's reported usage when a resumed thread has older total
     const usage = new Usage(db);
 
     usage.start("run", {
-      task_id: null,
-      job_id: null,
-      repository: null,
+      viber_session_id: null,
       purpose: "chat",
       provider: "codex",
       model: "fixture",

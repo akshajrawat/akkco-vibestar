@@ -1,4 +1,3 @@
-import { gitChecked } from "../workspace/git-command";
 import { cp, mkdir, readFile, writeFile, rename, readdir, rm, realpath } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -7,8 +6,6 @@ import lockfile from "proper-lockfile";
 import { Database } from "./database";
 import { AdeError } from "../domain";
 import { createLayout, exists, inside, managedPath } from "../workspace/paths";
-import { RepairStore } from "../review/repair/store";
-import { assertManagedWorkspace } from "../workspace/managed";
 
 const legacyPromotedDirectories = ["state", "repos", "worktrees", "logs", "artifacts", "telemetry"];
 const promotedDirectories = [...legacyPromotedDirectories, "workspaces"];
@@ -60,94 +57,83 @@ const recoverMigration = async (source: string, target: string) => {
 export const migrateDataRoot = async (source: string, target: string) => {
   source = await realpath(source);
   target = await createLayout(target);
+  if (source === target || inside(source, target) || inside(target, source)) {
+    throw new AdeError(
+      "migration",
+      "The target data directory must be outside the current location.",
+    );
+  }
+
   for (const directory of [...promotedDirectories, "cache", "runtime"]) {
     await managedPath(source, directory);
   }
 
   await managedPath(source, join("state", "vibestar.sqlite"));
-  if (source === target || inside(source, target) || inside(target, source)) {
-    throw new AdeError(
-      "migration",
-      "Migration roots must be separate directories. Original data was preserved.",
-    );
+
+  await recoverMigration(source, target);
+  for (const dir of promotedDirectories) {
+    await managedPath(target, dir);
+    if ((await exists(join(target, dir))) && (await readdir(join(target, dir))).length) {
+      throw new AdeError(
+        "migration",
+        `Target directory ${dir} exists and is not empty. Clean it before migration.`,
+      );
+    }
   }
 
-  const lock = join(source, "state", "core.lock");
-  await managedPath(source, lock);
-  await writeFile(lock, "", { flag: "a", mode: 0o600 });
-  const release = await lockfile.lock(lock, { stale: 10000, retries: 0 });
-  try {
-    await recoverMigration(source, target);
-  } catch (error) {
-    await release();
-    throw error;
-  }
+  const sourceLock = join(source, "state", "core.lock");
+  const targetLock = join(target, "state", "core.lock");
+  await mkdir(join(source, "state"), { recursive: true, mode: 0o700 });
+  await mkdir(join(target, "state"), { recursive: true, mode: 0o700 });
+  await writeFile(sourceLock, "", { flag: "a", mode: 0o600 });
+  await writeFile(targetLock, "", { flag: "a", mode: 0o600 });
 
-  if (await exists(join(target, "state", "vibestar.sqlite"))) {
-    await release();
-    throw new AdeError(
-      "migration",
-      "The destination already contains a database. Existing data was preserved.",
-    );
-  }
-
+  let releaseSource: (() => Promise<void>) | undefined;
+  let releaseTarget: (() => Promise<void>) | undefined;
   const staging = join(target, "cache", `migration-${randomUUID()}`);
-  await managedPath(target, staging);
+  await mkdir(staging, { recursive: true, mode: 0o700 });
+
   const promoted: string[] = [];
-  let db: Database | undefined;
   try {
-    await createLayout(staging);
-
-    const stagedPath = async (original: string) => {
-      await managedPath(source, original);
-      return managedPath(staging, relative(source, original));
-    };
-
-    const original = new BetterSqlite3(join(source, "state", "vibestar.sqlite"), {
-      readonly: true,
-      fileMustExist: true,
+    releaseSource = await lockfile.lock(sourceLock, {
+      stale: 10000,
+      update: 5000,
+      retries: 0,
     });
 
-    try {
-      await original.backup(join(staging, "state", "vibestar.sqlite"));
-    } finally {
-      original.close();
-    }
+    releaseTarget = await lockfile.lock(targetLock, {
+      stale: 10000,
+      update: 5000,
+      retries: 0,
+    });
 
-    for (const dir of [
-      "repos",
-      "worktrees",
-      "workspaces",
-      "logs",
-      "artifacts",
-      "cache",
-      "telemetry",
-    ]) {
-      if (await exists(join(source, dir))) {
-        await cp(join(source, dir), join(staging, dir), {
-          recursive: true,
-          dereference: false,
-        });
+    for (const dir of promotedDirectories) {
+      const src = join(source, dir);
+      if (!(await exists(src))) {
+        await mkdir(join(staging, dir), { recursive: true, mode: 0o700 });
+        continue;
       }
-    }
 
-    const runtime = (await exists(join(source, "runtime")))
-      ? join(source, "runtime")
-      : join(source, "state", "runtime");
-
-    if (await exists(runtime)) {
-      await cp(runtime, join(staging, "runtime"), {
+      await cp(src, join(staging, dir), {
         recursive: true,
-        dereference: false,
+        verbatimSymlinks: true,
       });
     }
 
-    db = await Database.open(join(staging, "state", "vibestar.sqlite"));
-    db.assertOwnershipRecords();
+    const stagedDbPath = join(staging, "state", "vibestar.sqlite");
+    if (!(await exists(stagedDbPath))) {
+      throw new AdeError(
+        "migration",
+        "Source database not found. Choose Use old location to start afresh at the current path.",
+      );
+    }
+
+    let db: Database | undefined = await Database.open(stagedDbPath);
     if (
       db.all(
         "SELECT id FROM viber_sessions WHERE workspace IS NOT NULL AND json_extract(workspace,'$.worktree_path')<>''",
-      ).length
+      ).length ||
+      db.all("SELECT profile_id FROM viber_computers").length
     ) {
       throw new AdeError(
         "migration",
@@ -158,31 +144,8 @@ export const migrateDataRoot = async (source: string, target: string) => {
     const translated = (path: string) =>
       inside(source, path) ? join(target, relative(source, path)) : path;
 
-    const repairs = new RepairStore(db);
-    if (repairs.list().length !== db.all("SELECT id FROM pr_repairs").length) {
-      throw new AdeError(
-        "corrupt_record",
-        "Repair ownership records could not be decoded. Original data was preserved; inspect persistence diagnostics before migration.",
-      );
-    }
-
     for (const repo of db.repositories()) {
       if (repo.source === "imported") {
-        if (
-          db.tasks().some((t) => t.repo_id === repo.id && t.worktree_path) ||
-          repairs
-            .list()
-            .some(
-              (session) =>
-                session.repo_id === repo.id && session.workspace.preparation !== "removed",
-            )
-        ) {
-          throw new AdeError(
-            "migration",
-            "Imported task worktrees require keeping the old location. Choose Use old location to preserve them safely.",
-          );
-        }
-
         continue;
       }
 
@@ -193,118 +156,30 @@ export const migrateDataRoot = async (source: string, target: string) => {
       db.saveRepository({ ...repo, path: translated(repo.path) });
     }
 
-    for (const task of db.tasks()) {
-      if (!task.worktree_path) {
-        continue;
-      }
+    const viberSessions = db.all<{ id: string; workspace: string }>(
+      "SELECT id, workspace FROM viber_sessions WHERE workspace IS NOT NULL",
+    );
 
-      if (task.workspace_kind === "managed") {
-        await assertManagedWorkspace(source, task);
-
-        await assertManagedWorkspace(staging, {
-          ...task,
-          worktree_path: await stagedPath(task.worktree_path),
-        });
-
-        db.saveTask({ ...task, worktree_path: translated(task.worktree_path) });
-        continue;
-      }
-
-      if (task.workspace_mode === "source") {
-        const repository = db.repository(task.repo_id);
-        if (repository.path !== translated(task.worktree_path)) {
-          throw new AdeError("migration", "Source task no longer matches its registered checkout.");
+    for (const session of viberSessions) {
+      try {
+        const ws = JSON.parse(session.workspace);
+        if (ws.worktree_path) {
+          ws.worktree_path = translated(ws.worktree_path);
         }
 
-        db.saveTask({
-          ...task,
-          worktree_path: translated(task.worktree_path),
-          workspace_checkpoint: task.workspace_checkpoint
-            ? {
-                ...task.workspace_checkpoint,
-                git_common_dir: translated(task.workspace_checkpoint.git_common_dir),
-              }
-            : undefined,
-        });
-
-        continue;
-      }
-
-      if (!inside(join(source, "worktrees"), task.worktree_path)) {
-        throw new AdeError("migration", "Task path is outside the old managed root");
-      }
-
-      const copy = await stagedPath(task.worktree_path);
-      const gitfilePath = await managedPath(staging, join(copy, ".git"));
-      const gitfile = await readFile(gitfilePath, "utf8");
-      const oldGitdir = gitfile.trim().replace(/^gitdir: /, "");
-      if (!gitfile.startsWith("gitdir: ") || !inside(join(source, "repos"), oldGitdir)) {
-        throw new AdeError("migration", "Unsafe worktree metadata. Original data was preserved.");
-      }
-
-      const newGitdir = translated(oldGitdir);
-      await writeFile(gitfilePath, `gitdir: ${newGitdir}\n`);
-
-      await writeFile(
-        await managedPath(staging, join(await stagedPath(oldGitdir), "gitdir")),
-        `${translated(task.worktree_path)}/.git\n`,
-      );
-
-      db.saveTask({
-        ...task,
-        worktree_path: translated(task.worktree_path),
-        ...(task.workspace_checkpoint
-          ? {
-              workspace_checkpoint: {
-                ...task.workspace_checkpoint,
-                git_common_dir: translated(task.workspace_checkpoint.git_common_dir),
-              },
-            }
-          : {}),
-      });
-    }
-
-    for (const session of repairs.list()) {
-      const workspace = session.workspace;
-      if (
-        workspace.preparation !== "removed" &&
-        (await exists(join(staging, relative(source, workspace.worktree_path))))
-      ) {
-        if (
-          !inside(join(source, "worktrees"), workspace.worktree_path) ||
-          !inside(join(source, "repos"), workspace.git_common_dir)
-        ) {
-          throw new AdeError(
-            "migration",
-            "Repair worktree metadata is outside the old managed root. Use the old location to preserve it.",
+        if (ws.workspace_checkpoint?.git_common_dir) {
+          ws.workspace_checkpoint.git_common_dir = translated(
+            ws.workspace_checkpoint.git_common_dir,
           );
         }
 
-        const copy = await stagedPath(workspace.worktree_path);
-        const gitfilePath = await managedPath(staging, join(copy, ".git"));
-        const gitfile = await readFile(gitfilePath, "utf8");
-        const gitdir = gitfile.trim().replace(/^gitdir: /, "");
-        if (!gitfile.startsWith("gitdir: ") || !inside(workspace.git_common_dir, gitdir)) {
-          throw new AdeError(
-            "migration",
-            "Repair Git metadata is unsafe. Original data was preserved.",
-          );
-        }
-
-        await writeFile(gitfilePath, `gitdir: ${translated(gitdir)}\n`);
-
-        await writeFile(
-          await managedPath(staging, join(await stagedPath(gitdir), "gitdir")),
-          `${translated(workspace.worktree_path)}/.git\n`,
-        );
+        db.run("UPDATE viber_sessions SET workspace=? WHERE id=?", JSON.stringify(ws), session.id);
+      } catch {
+        // ignore malformed session workspace JSON
       }
-
-      workspace.worktree_path = translated(workspace.worktree_path);
-      workspace.git_common_dir = translated(workspace.git_common_dir);
-      repairs.save(session);
     }
 
-    // Rewrite every copied worktree registration, including those not linked to current tasks.
+    // Rewrite every copied worktree registration
     for (const repo of db.repositories().filter((r) => r.source !== "imported")) {
       const admin = join(staging, relative(target, repo.path), ".git", "worktrees");
       await managedPath(staging, admin);
@@ -362,78 +237,32 @@ export const migrateDataRoot = async (source: string, target: string) => {
 
     const verify = await Database.open(join(target, "state", "vibestar.sqlite"));
     try {
-      for (const task of verify
-        .tasks()
-        .filter((entry) => entry.workspace_kind === "managed" && entry.worktree_path)) {
-        await assertManagedWorkspace(target, task);
+      const sqlite = new BetterSqlite3(join(source, "state", "vibestar.sqlite"));
+      try {
+        sqlite
+          .prepare(
+            "INSERT INTO settings VALUES('migrated_to',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          )
+          .run(target);
+      } finally {
+        sqlite.close();
       }
 
-      const repairAssignments = new RepairStore(verify)
-        .list()
-        .filter((session) => session.workspace.preparation !== "removed")
-        .map((session) => ({
-          repo_id: session.repo_id,
-          worktree_path: session.workspace.worktree_path,
-        }));
-
-      for (const task of [
-        ...verify.tasks().filter((entry) => entry.workspace_kind !== "managed"),
-        ...repairAssignments,
-      ].filter((t) => t.worktree_path)) {
-        if (!(await exists(task.worktree_path))) {
-          continue;
-        }
-
-        const common = await gitChecked(
-          ["rev-parse", "--path-format=absolute", "--git-common-dir"],
-          task.worktree_path,
-        );
-
-        if (!inside(join(target, "repos"), common)) {
-          throw new AdeError(
-            "migration",
-            "Migrated Git metadata did not resolve inside the new root",
-          );
-        }
-
-        await gitChecked(
-          ["worktree", "repair", "--", task.worktree_path],
-          verify.repository(task.repo_id).path,
-        );
-      }
+      await rm(journalPath(target));
+      await rm(staging, { recursive: true, force: true });
     } finally {
       verify.close();
     }
-
-    await cp(join(staging, "cache"), join(target, "cache"), {
-      recursive: true,
-      dereference: false,
-    });
-
-    for (const name of await readdir(join(staging, "runtime"))) {
-      const destination = join(target, "runtime", name);
-      if (name !== "migration-pending.json" && !(await exists(destination))) {
-        await cp(join(staging, "runtime", name), destination, {
-          recursive: true,
-          dereference: false,
-        });
-      }
-    }
-
-    await rm(journalPath(target));
-    await rm(staging, { recursive: true, force: true });
-    return target;
   } catch (error) {
-    db?.close();
-    for (const dir of promoted.reverse()) {
-      await rename(join(target, dir), join(staging, dir));
-      await mkdir(join(target, dir), { recursive: true, mode: 0o700 });
+    for (const dir of promoted) {
+      await rm(join(target, dir), { recursive: true, force: true }).catch(() => {});
     }
 
-    await rm(journalPath(target), { force: true });
-    await rm(staging, { recursive: true, force: true });
+    await rm(staging, { recursive: true, force: true }).catch(() => {});
+    await rm(journalPath(target)).catch(() => {});
     throw error;
   } finally {
-    await release();
+    await releaseTarget?.().catch(() => {});
+    await releaseSource?.().catch(() => {});
   }
 };

@@ -1,17 +1,13 @@
 import { realpath } from "node:fs/promises";
 import { join } from "node:path";
-
 import { z } from "zod";
 
 import { AdeError, SettingsSchema } from "../domain";
 import { capture, checked } from "../execution/runtime/process";
 import { Usage } from "../execution/output/usage";
-import { GitHubClient } from "../github/client";
-import { reviewActionState } from "../review/pr/inbox";
 import { Editors } from "../workspace/editors";
 import type { RpcServices } from "./services";
 import { idInput } from "./validation";
-import { taskFlowSummaries } from "../flows/workspace";
 
 export const systemMethods = [
   "editors.list",
@@ -30,10 +26,7 @@ export const systemMethods = [
 
 /** Validates and dispatches system requests through their existing domain services. */
 export const callSystem = async (
-  services: Pick<
-    RpcServices,
-    "engine" | "repairs" | "scheduler" | "prBatches" | "prWatch" | "github" | "auth"
-  >,
+  services: Pick<RpcServices, "engine" | "auth">,
   method: string,
   input: unknown,
 ) => {
@@ -45,27 +38,22 @@ export const callSystem = async (
     case "editors.open": {
       const p = idInput
         .extend({
-          kind: z.enum(["task", "repository", "repair"]),
+          kind: z.enum(["repository", "session"]),
           editor: z.enum(["code", "cursor", "windsurf", "codium"]),
         })
         .strict()
         .parse(input);
 
-      return new Editors(e, services.repairs.openPath).open(p.id, p.kind, p.editor);
+      return new Editors(e).open(p.id, p.kind, p.editor);
     }
 
     case "usage.info":
       return {
         root: e.root,
         capabilities: {
-          agent_flows: 1,
-          flow_continuations: 1,
           viber_conversations: 1,
           viber_sessions: 2,
-          manual_issue_watch: true,
-          issue_watch_contract: 1,
-          issue_watch_batches: 1,
-          pr_quick_watch: true,
+          viber_computers: 1,
         },
         database: join(e.root, "state", "vibestar.sqlite"),
         schema: e.db.all("SELECT max(version) version FROM schema_migrations")[0],
@@ -75,73 +63,17 @@ export const callSystem = async (
     case "snapshot": {
       const snapshot = {
         repositories: e.db.repositories(),
-        tasks: e.db.tasks(),
-        flow_states: taskFlowSummaries(e),
         settings: e.db.displaySettings(),
         root: e.root,
         capabilities: {
-          agent_flows: 1,
-          flow_continuations: 1,
           viber_conversations: 1,
           viber_sessions: 2,
-          manual_issue_watch: true,
-          issue_watch_contract: 1,
-          issue_watch_batches: 1,
-          pr_quick_watch: true,
+          viber_computers: 1,
         },
         execution_environment: {
           distro: process.env.WSL_DISTRO_NAME || "Linux",
         },
         repository_index: e.repositoryIndex.snapshot(),
-        active_tasks: e.db
-          .tasks()
-          .filter((t) => e.isActive(t.id))
-          .map((t) => t.id),
-        scheduled: services.scheduler.jobs(),
-        pr_batches: services.prBatches.list(),
-        pr_watch: services.prWatch.snapshot(),
-        repairs: services.repairs.store.list(),
-        pr_reports: services.scheduler.jobs().map((job) => {
-          const history = services.scheduler.analysis.history(job.id);
-          const analysis = history.find((record) => record.report);
-          const latest = history[0];
-
-          const actions =
-            analysis?.report?.actions.filter(
-              (action) =>
-                ["required_change", "suggested_change", "question"].includes(
-                  action.classification,
-                ) && action.responseState !== "answered",
-            ) || [];
-
-          return {
-            job_id: job.id,
-            phase: latest?.phase,
-            started_at: latest?.started_at,
-            action_state:
-              latest &&
-              !latest.report &&
-              ["partial", "failed", "cancelled", "interrupted"].includes(latest.status)
-                ? "Analysis incomplete"
-                : analysis &&
-                    latest?.snapshot &&
-                    !services.scheduler.analysis.canReuse(job.id, latest.snapshot)
-                  ? "Analysis stale"
-                  : reviewActionState(
-                      analysis,
-                      services.github
-                        .prs()
-                        .find((pr) => pr.url.toLowerCase() === job.url.toLowerCase()),
-                    ),
-            analyzed_head: analysis?.snapshot?.headRefOid || null,
-            analyzed_at: analysis?.ended_at || null,
-            outstanding: actions.length,
-            unanswered_questions: actions.filter((action) => action.classification === "question")
-              .length,
-          };
-        }),
-        attention: services.scheduler.attention(),
-        github: services.github.snapshot(),
       };
 
       const persistence = e.db.records.diagnostics();
@@ -162,55 +94,27 @@ export const callSystem = async (
     case "usage.list": {
       const p = z
         .object({
-          task_id: z.string().uuid().optional(),
-          job_id: z.string().uuid().optional(),
-          watch_id: z.string().uuid().optional(),
-          scan_id: z.string().uuid().optional(),
+          session_id: z.string().uuid().optional(),
           days: z.number().int().min(1).max(3650).optional(),
         })
         .parse(input);
 
       return new Usage(e.db)
-        .list(p.task_id, p.days)
-        .filter(
-          (r) =>
-            (!p.job_id || r.job_id === p.job_id) &&
-            (!p.watch_id || r.watch_id === p.watch_id) &&
-            (!p.scan_id || r.scan_id === p.scan_id),
-        );
+        .list(undefined, p.days)
+        .filter((r) => !p.session_id || r.viber_session_id === p.session_id);
     }
 
     case "settings.save":
       e.db.saveSettings(SettingsSchema.parse(input));
-      e.start();
       e.changed();
       return e.db.settings();
 
-    case "providers.detect": {
-      const [agents, github] = await Promise.all([
-        e.providers(),
-        new GitHubClient(e.root).detect(),
-      ]);
-
-      return [
-        ...agents,
-        {
-          provider: "github",
-          installed: github.installed,
-          version: github.version,
-          connected: github.connected,
-          accountLabel: github.username ? `@${github.username}` : undefined,
-          models: [],
-          efforts: [],
-          capabilities: github.installed ? ["repository-discovery", "pr-watch"] : [],
-          error: github.error,
-        },
-      ];
-    }
+    case "providers.detect":
+      return e.providers();
 
     case "auth.connect":
       return services.auth.connect(
-        z.object({ provider: z.enum(["codex", "antigravity", "github"]) }).parse(input).provider,
+        z.object({ provider: z.enum(["codex", "antigravity"]) }).parse(input).provider,
       );
 
     case "auth.input": {
@@ -224,14 +128,12 @@ export const callSystem = async (
       return null;
 
     case "open.directory": {
-      const p = idInput.extend({ kind: z.enum(["task", "repository", "repair"]) }).parse(input);
+      const p = idInput.extend({ kind: z.enum(["repository", "session"]) }).parse(input);
 
       const path =
-        p.kind === "repair"
-          ? await services.repairs.openPath(p.id)
-          : p.kind === "task"
-            ? await e.git.assertTask(e.db.task(p.id))
-            : await realpath(e.db.repository(p.id).path);
+        p.kind === "session"
+          ? await e.git.assertOwnedTask(e.viberSessions.store.workspace(p.id))
+          : await realpath(e.db.repository(p.id).path);
 
       if (process.env.WSL_DISTRO_NAME) {
         const windows = await checked("wslpath", ["-w", path], e.root);

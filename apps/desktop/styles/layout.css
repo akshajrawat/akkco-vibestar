@@ -93,39 +93,6 @@
   overflow: hidden;
 }
 
-.task-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.task-dot.preparing,
-.task-dot.implementing,
-.task-dot.planning_antigravity,
-.task-dot.planning_codex,
-.task-dot.reviewing_antigravity,
-.task-dot.validating {
-  background: var(--accent-blue);
-}
-
-.task-dot.ready_for_review,
-.task-dot.completed {
-  background: var(--accent-green);
-}
-
-.task-dot.failed {
-  background: var(--accent-red);
-}
-
-.task-dot.interrupted,
-.task-dot.awaiting_approval,
-.task-dot.cancelled {
-  background: var(--accent-amber);
-}
-
 .resize-handle {
   width: 3px;
   flex: 0 0 3px;
@@ -150,6 +117,87 @@
 .main-area {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.helper-warning {
+  color: var(--accent-amber);
+  background: var(--background-warning);
+  padding: 8px 16px;
+  margin: 0;
+  border-bottom: 1px solid var(--border-default);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.workspace {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-header {
+  background: var(--background-sidebar);
+  border-bottom: 1px solid var(--border-default);
+  padding: 7px 13px;
+}
+
+.workspace-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.workspace-tabs,
+.dock-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 34px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+  background: var(--background-sidebar);
+}
+
+.workspace-tabs > button,
+.dock-tabs > button {
+  border: 0;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color var(--motion-fast),
+    background-color var(--motion-fast);
+}
+
+.workspace-tabs > button:hover,
+.dock-tabs > button:hover {
+  color: var(--text-primary);
+  background: var(--background-hover);
+}
+
+.workspace-tabs > button.selected,
+.dock-tabs > button.selected,
+.workspace-tabs > button[aria-selected="true"],
+.dock-tabs > button[aria-selected="true"] {
+  color: var(--text-primary);
+  background: var(--background-selected);
+  border-radius: 6px;
+}
+
+.workspace-content {
+  display: flex;
   flex: 1;
   min-width: 0;
   min-height: 0;

@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 
-/** Keep large workflow briefs readable without burying the response below them. */
+/** Keep large prompt messages readable without burying the response below them. */
 export const UserMessageBody = ({ children }: { children: React.ReactNode }) => {
   const id = useId();
   const body = useRef<HTMLDivElement>(null);

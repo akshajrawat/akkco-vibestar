@@ -47,25 +47,21 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
   };
 
   return (
-    <div className="modal-backdrop">
+    <div className="dialog-scrim" onKeyDown={(event) => containDialogFocus(event)}>
       <section
-        ref={dialog}
-        className="modal verification-recovery-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Reset Local Test Workspace"
-        onKeyDown={(event) => {
-          containDialogFocus(event);
-          if (event.key === "Escape" && !busy) {
-            event.stopPropagation();
-            close();
-          }
-        }}
+        aria-labelledby="storage-reset-title"
+        className="dialog-card storage-reset"
+        ref={dialog}
       >
-        <h2>Reset Local Test Workspace</h2>
-        <p>
-          Review the exact task data selected for removal. A validated SQLite backup and metadata
-          copy are created before cleanup.
+        <header>
+          <h2 id="storage-reset-title">Reset Local Data</h2>
+        </header>
+
+        <p className="warning">
+          Resetting creates an SQLite backup before clearing temporary caches, logs, and unowned
+          workspaces. Viber profiles, source repositories, and configurations remain preserved.
         </p>
 
         {error && (
@@ -76,23 +72,11 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
 
         {result ? (
           <>
-            <p>
-              {result.removed.length} tasks removed. {result.preserved.length} tasks preserved.
-            </p>
-
+            <p>Data reset complete.</p>
             <p>
               Recoverable backup: <code>{result.backup}</code>
             </p>
-
-            {result.preserved.map((task) => (
-              <p className="warning" key={task.id}>
-                {task.id}: {task.reason}
-              </p>
-            ))}
-
-            <p>
-              Provider connections and source repositories remain available. No agent was started.
-            </p>
+            <p>Provider connections, Viber profiles, and source repositories remain available.</p>
           </>
         ) : preview ? (
           <>
@@ -100,33 +84,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
               Data root: <code>{preview.root}</code>
             </p>
 
-            <p>
-              {preview.tasks.filter((task) => task.eligible).length} eligible tasks ·{" "}
-              {preview.tasks.filter((task) => !task.eligible).length} protected tasks ·{" "}
-              {preview.repairs.length} retained repair sessions · {preview.finalizations.length}{" "}
-              retained Git records
-            </p>
-
-            {preview.tasks.map((task) => (
-              <details key={task.id} open={!task.eligible}>
-                <summary>
-                  {task.eligible ? "Remove" : "Preserve"}: {task.title}
-                  {task.archived ? " (archived)" : ""}
-                </summary>
-
-                {!task.eligible ? (
-                  <p className="warning">{task.reason}</p>
-                ) : (
-                  <ul>
-                    {task.remove.map((path) => (
-                      <li key={path}>
-                        <code>{path}</code>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </details>
-            ))}
+            <p>{preview.sessions.length} active Viber conversations recorded.</p>
 
             <details>
               <summary>Preserved resources and connections</summary>
@@ -139,7 +97,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
 
             {preview.blockers.length > 0 && (
               <>
-                <p className="warning">Stop active agents and terminals before resetting.</p>
+                <p className="warning">Stop active agents before resetting.</p>
                 <ul>
                   {preview.blockers.map((blocker) => (
                     <li key={blocker.id}>{blocker.label}</li>
@@ -160,16 +118,9 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                     })
                   }
                 >
-                  Stop listed agents and terminals
+                  Stop listed agents
                 </Button>
               </>
-            )}
-
-            {preview.sensitive.length > 0 && (
-              <p className="warning">
-                Resolve pending sensitive Git operations before reset:{" "}
-                {preview.sensitive.map((operation) => operation.id).join(", ")}
-              </p>
             )}
 
             <label>
@@ -183,11 +134,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
             <Button
               variant="destructive"
               disabled={
-                busy ||
-                confirmation !== "RESET LOCAL TEST WORKSPACE" ||
-                !!preview.blockers.length ||
-                !!preview.sensitive.length ||
-                !preview.tasks.some((task) => task.eligible)
+                busy || confirmation !== "RESET LOCAL TEST WORKSPACE" || !!preview.blockers.length
               }
               onClick={() =>
                 void act(async () => {
@@ -202,7 +149,7 @@ export const StorageReset = ({ close, done }: { close: () => void; done: () => P
                 })
               }
             >
-              Back up & reset eligible task data
+              Back up & reset temporary data
             </Button>
 
             <Button

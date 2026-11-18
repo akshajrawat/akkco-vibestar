@@ -11,7 +11,7 @@ export const OpenInEditor = ({
   disabled = false,
 }: {
   id: string;
-  kind: "task" | "repository" | "repair";
+  kind: "repository" | "session";
   path: string;
   disabled?: boolean;
 }) => {
@@ -42,7 +42,7 @@ export const OpenInEditor = ({
         size="sm"
         variant={kind !== "repository" ? "default" : "secondary"}
         disabled={disabled || busy}
-        title={kind !== "repository" ? "Open task workspace" : "Open source checkout"}
+        title={kind !== "repository" ? "Open Viber workspace" : "Open source checkout"}
         onClick={async () => {
           setBusy(true);
           setError("");
@@ -71,7 +71,7 @@ export const OpenInEditor = ({
           size="sm"
           variant="ghost"
           disabled={disabled || busy}
-          aria-label={kind === "repair" ? "Choose repair editor" : "Choose task editor"}
+          aria-label="Choose Viber editor"
           onClick={async () => {
             setBusy(true);
             setError("");
@@ -97,13 +97,7 @@ export const OpenInEditor = ({
             aria-label="Open in Editor"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2>
-              {kind === "repository"
-                ? "Open source checkout"
-                : kind === "repair"
-                  ? "Open PR repair worktree"
-                  : "Open task worktree"}
-            </h2>
+            <h2>{kind === "repository" ? "Open source checkout" : "Open Viber worktree"}</h2>
             <code className="repository-path">{path}</code>
             {busy && (
               <p className="subtle" role="status">

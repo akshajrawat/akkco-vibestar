@@ -1,5 +1,5 @@
-import type { AgentProfile } from "../../../core/flows/contracts";
-import { defaultAppearance, type ViberAppearance } from "../../../core/flows/appearance";
+import type { AgentProfile } from "../../../core/vibers/contracts";
+import { defaultAppearance, type ViberAppearance } from "../../../core/vibers/appearance";
 import {
   AvatarShape,
   AvatarEyes,

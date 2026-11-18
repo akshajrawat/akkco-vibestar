@@ -7,7 +7,6 @@ import { exists, taskRoot, inside, managedPath } from "../../workspace/paths";
 import type { Database } from "../../storage/database";
 import { checked, cleanEnvironment } from "./process";
 import { taskRuntime } from "../../workspace/runtime";
-import type { VerificationEnvironment } from "../verification/browser/contracts";
 import type { ProcessInputProtocol } from "./process";
 import { assertManagedWorkspace } from "../../workspace/managed";
 import { ViberSessionStore } from "../../vibers/store";
@@ -23,7 +22,7 @@ export const sandboxInvocation = async (
     input?: string;
     inputProtocol?: ProcessInputProtocol;
     isolateProviderConfig?: boolean;
-    verificationEnvironment?: VerificationEnvironment;
+    verificationEnvironment?: string;
   },
   readOnly: boolean,
   schemaPath?: string,

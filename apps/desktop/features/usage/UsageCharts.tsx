@@ -7,7 +7,7 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
   const [focused, setFocused] = useState({ tokens: "", runs: "" });
   const days = new Map<string, { runs: number; tokens: number; reported: number }>();
   const models = new Map<string, number>();
-  const tasks = new Map<string, number>();
+  const sessions = new Map<string, number>();
   for (const row of rows) {
     const day = row.started_at.slice(0, 10);
     const value = days.get(day) || { runs: 0, tokens: 0, reported: 0 };
@@ -20,8 +20,12 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
 
     const model = `${row.provider} · ${row.model || "CLI default"}`;
     models.set(model, (models.get(model) || 0) + usageRuntime(row));
-    const task = row.task_id || (row.repair_id ? `Repair ${row.repair_id}` : "Unlinked runs");
-    tasks.set(task, (tasks.get(task) || 0) + usageRuntime(row));
+
+    const sessionKey = row.viber_session_id
+      ? `Session ${row.viber_session_id.slice(0, 8)}`
+      : "Direct runs";
+
+    sessions.set(sessionKey, (sessions.get(sessionKey) || 0) + usageRuntime(row));
   }
 
   const daily = [...days].sort(([a], [b]) => a.localeCompare(b)).slice(-30);
@@ -86,7 +90,7 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
       {(
         [
           ["Runtime by provider / model", models],
-          ["Task runtime distribution", tasks],
+          ["Session runtime distribution", sessions],
         ] as const
       ).map(([label, values]) => {
         const sorted = [...values].sort((a, b) => b[1] - a[1]).slice(0, 8);

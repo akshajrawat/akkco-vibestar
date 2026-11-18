@@ -15,7 +15,7 @@ import {
   avatarColors,
   ViberAppearanceSchema,
   type ViberAppearance,
-} from "../../../core/flows/appearance";
+} from "../../../core/vibers/appearance";
 import { Button } from "../../components/ui/button";
 import { ViberFace } from "./ViberFace";
 

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { useState } from "react";
 
 import { ViberModelPicker } from "../../apps/desktop/features/flows/ViberModelPicker";
-import { viberProfile } from "../workspace/flow-fixtures";
+import { viberProfile } from "../helpers/viber-fixtures";
 
 vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
   useProviders: () => ({

@@ -239,6 +239,7 @@ it("keeps changed files with implementation when a later conversation starts", (
           status: "M",
           staged: false,
           unstaged: true,
+          untracked: false,
           binary: false,
         },
       ]}
@@ -397,8 +398,8 @@ it.each([1, 2])("keeps stage %s structured plans folded in the conversation", (s
   );
 });
 
-const StreamedConversation = ({ id = "task", events }: { id?: string; events: AgentEvent[] }) => {
-  const complete = useConversationEvents(id, "task", events, vi.fn());
+const StreamedConversation = ({ id = "viber", events }: { id?: string; events: AgentEvent[] }) => {
+  const complete = useConversationEvents(id, "viber", events, vi.fn());
   return <AgentTimeline runs={[run]} events={complete} />;
 };
 
@@ -451,7 +452,7 @@ it("recovers a long streaming prefix after refresh through existing owner-checke
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
   render(<StreamedConversation events={records.slice(-2000)} />);
   expect(await screen.findByText(`First${"x".repeat(2999)}`)).toBeTruthy();
-  expect(rpc).toHaveBeenCalledWith("task.events", { id: "task", run_id: run.id, after: 0 });
+  expect(rpc).toHaveBeenCalledWith("viber.events", { id: "viber", run_id: run.id, after: 0 });
   expect(rpc).toHaveBeenCalledTimes(6);
   expect(screen.getAllByText(`First${"x".repeat(2999)}`)).toHaveLength(1);
 });

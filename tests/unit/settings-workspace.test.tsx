@@ -9,7 +9,7 @@ import { notifications } from "../../apps/desktop/lib/notifications";
 import toast from "react-hot-toast";
 import { ConnectLocalRepository } from "../../apps/desktop/features/repositories/ConnectLocalRepository";
 import { ProfileEditor } from "../../apps/desktop/features/flows/ProfileEditor";
-import { viberProfile } from "../workspace/flow-fixtures";
+import { viberProfile } from "../helpers/viber-fixtures";
 import { selectValue } from "../helpers/select";
 import { mockDialog } from "../helpers/dialog";
 

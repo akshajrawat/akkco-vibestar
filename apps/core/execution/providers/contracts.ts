@@ -1,9 +1,21 @@
 import { z } from "zod";
 
 import type { NormalizedEvent, StageConfig } from "../../domain";
-import { VerificationCheckSchema } from "../verification/verification";
 import type { ProcessInputProtocol } from "../runtime/process";
 import type { WorkspaceAccess } from "../contracts";
+
+export const VerificationCheckSchema = z
+  .object({
+    name: z.string().min(1).max(1000),
+    command: z.string().max(16000).nullable(),
+    kind: z.enum(["check", "setup"]),
+    outcome: z.enum(["passed", "failed", "blocked", "interrupted", "not_run", "unknown"]),
+    required: z.boolean(),
+    detail: z.string().max(16000),
+    prerequisite: z.string().max(1000).nullable(),
+    scope: z.enum(["repository", "issue", "manual", "discovery"]).optional(),
+  })
+  .strict();
 
 export interface ProviderDetection {
   provider: string;
@@ -61,6 +73,7 @@ export interface AgentRunRequest {
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
   conversation?: { threadId?: string };
+  isolatedComputer?: boolean;
 }
 
 export interface AgentProvider {
@@ -146,9 +159,6 @@ export const planSchemas = {
     })
     .strict(),
 };
-
-export const validatePlan = (stage: number, value: unknown) =>
-  planSchemas[stage as keyof typeof planSchemas].parse(value);
 
 export const verifyFlags = (help: string, flags: string[]) => {
   for (const flag of flags) {

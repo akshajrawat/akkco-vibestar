@@ -95,6 +95,8 @@ export class CoreBridge extends EventEmitter {
 
   private viberSessionsAvailable = false;
 
+  private computersAvailable = false;
+
   private pending = new Map<
     string,
     {
@@ -125,6 +127,7 @@ export class CoreBridge extends EventEmitter {
     this.flowContinuationsAvailable = false;
     this.viberConversationsAvailable = false;
     this.viberSessionsAvailable = false;
+    this.computersAvailable = false;
     this.manualPrAvailable = false;
     this.prReviewControlsAvailable = false;
     this.bulkPrMetadataAvailable = false;
@@ -318,7 +321,7 @@ export class CoreBridge extends EventEmitter {
 
     child.on("close", () => {
       this.rejectAll(
-        "Execution core stopped. Configure WSL, install the helper, or restart to recover tasks.",
+        "Execution core stopped. Configure WSL, install the helper, or restart to recover.",
       );
 
       this.child = null;
@@ -339,6 +342,7 @@ export class CoreBridge extends EventEmitter {
         flow_continuations?: number;
         viber_conversations?: number;
         viber_sessions?: number;
+        viber_computers?: number;
         independent_final_review?: boolean;
         browser_verification_environment?: boolean;
         manual_user_terminal?: number;
@@ -365,6 +369,7 @@ export class CoreBridge extends EventEmitter {
           this.agentFlowsAvailable && info.viber_conversations === 1;
 
         this.viberSessionsAvailable = info.viber_sessions === 2;
+        this.computersAvailable = info.viber_computers === 1;
         this.finalReviewSettingsAvailable = info.independent_final_review === true;
         this.browserVerificationAvailable = info.browser_verification_environment === true;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
@@ -423,7 +428,16 @@ export class CoreBridge extends EventEmitter {
 
     await this.checking;
     if (retiredTaskMethods.has(method)) {
-      throw new Error("This task control is retired. Use Viber profiles and flows.");
+      throw new Error("This task control is retired. Use Viber profiles and sessions.");
+    }
+
+    if (
+      !this.computersAvailable &&
+      (method.startsWith("computer.") ||
+        method === "profile.delete" ||
+        method === "viber.session.send")
+    ) {
+      throw new Error("Update the execution helper before using dedicated Viber computers.");
     }
 
     if (!this.viberSessionsAvailable && method.startsWith("viber.session.")) {
@@ -596,6 +610,7 @@ export class CoreBridge extends EventEmitter {
             ...(this.flowContinuationsAvailable ? { flow_continuations: 1 } : {}),
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
             ...(this.viberSessionsAvailable ? { viber_sessions: 2 } : {}),
+            ...(this.computersAvailable ? { viber_computers: 1 } : {}),
             manual_issue_watch: this.issueWatchAvailable,
             issue_watch_contract: this.issueWatchAvailable ? 1 : null,
             issue_watch_batches: this.issueWatchBatchesAvailable ? 1 : null,

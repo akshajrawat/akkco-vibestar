@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AgentProfile } from "../../../core/flows/contracts";
+import type { AgentProfile } from "../../../core/vibers/contracts";
 import type { ViberSessionDetail } from "../../../core/vibers/contracts";
 import type { AgentEvent, Run } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
@@ -35,7 +35,7 @@ const SessionChat = ({
 }) => {
   const id = `viber-session:${sessionId}`;
   const view = useTaskView(id);
-  const { providers } = useProviders();
+  const { providers } = useProviders(profile.id);
   const [data, setData] = useState<SessionDetail>();
   const [error, setError] = useState<{ message: string; requestId?: string }>();
   const [busy, setBusy] = useState(false);
@@ -294,6 +294,7 @@ const SessionChat = ({
             stop={active ? () => void stop() : undefined}
             model={
               <ViberModelPicker
+                profileId={profile.id}
                 execution={{ ...profile.execution, ...selection }}
                 disabled={busy || active}
                 change={(execution) =>

@@ -85,18 +85,7 @@ it("adds standalone session storage to version 37 without rewriting Task, Flow, 
       )
       .run(utilityId, timestamp);
 
-    const tables = [
-      "tasks",
-      "flow_definitions",
-      "flow_revisions",
-      "flow_runs",
-      "agent_profiles",
-      "agent_profile_revisions",
-      "task_messages",
-      "agent_runs",
-      "agent_events",
-      "viber_session_settings",
-    ];
+    const tables = ["agent_profiles", "agent_profile_revisions"];
 
     const before = tables.map((table) => old.prepare(`SELECT * FROM ${table}`).all());
     old.close();

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { AgentProfile } from "../../../core/flows/contracts";
-import { isCustomViber } from "../../../core/flows/templates";
+import type { AgentProfile } from "../../../core/vibers/contracts";
 import { rpc, errorMessage } from "../../lib/api";
 
 export const useProfiles = (revision: number) => {
@@ -19,7 +18,7 @@ export const useProfiles = (revision: number) => {
           return;
         }
 
-        setProfiles(profiles.filter(isCustomViber));
+        setProfiles(profiles);
         setError("");
       })
       .catch((reason) => {

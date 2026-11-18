@@ -17,14 +17,7 @@ import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import lockfile from "proper-lockfile";
-import {
-  AdeError,
-  branchName,
-  now,
-  type Repository,
-  type Task,
-  type WorkspaceAssignment,
-} from "../domain";
+import { AdeError, branchName, now, type Repository, type WorkspaceAssignment } from "../domain";
 import {
   exists,
   inside,
@@ -190,9 +183,9 @@ export class GitWorkspace {
 
   prepare = async (
     repo: Repository,
-    t: Task,
+    t: WorkspaceAssignment,
     signal?: AbortSignal,
-    checkpoint?: (t: Task) => void,
+    checkpoint?: (t: WorkspaceAssignment) => void,
     trace?: (record: unknown) => Promise<void>,
     source?: { reusableOwners: string[] },
   ) =>
@@ -216,12 +209,13 @@ export class GitWorkspace {
       const command = (args: string[]) =>
         this.taskOperation(repo, t, args, signal, checkpoint, trace);
 
-      await command(this.fetchArgs(repo, t.base_branch));
+      const baseBranch = t.base_branch || repo.base_branch;
+      await command(this.fetchArgs(repo, baseBranch));
       repo.last_fetched = now();
-      await gitChecked(["check-ref-format", "--branch", t.base_branch], repo.path, signal);
+      await gitChecked(["check-ref-format", "--branch", baseBranch], repo.path, signal);
 
       const base = await gitChecked(
-        ["rev-parse", "--verify", `${this.baseRef(repo, t.base_branch)}^{commit}`],
+        ["rev-parse", "--verify", `${this.baseRef(repo, baseBranch)}^{commit}`],
         repo.path,
         signal,
       );
@@ -237,7 +231,7 @@ export class GitWorkspace {
           ? t.goal || "task"
           : t.scope_mode === "whole_issue"
             ? "whole-issue"
-            : t.claimed_scope;
+            : t.claimed_scope || t.goal || "task";
 
       for (let suffix = 0; suffix < 10000; suffix++) {
         const branch = branchName(t.issue_number ?? `task-${t.id}`, scope, suffix);
@@ -307,10 +301,10 @@ export class GitWorkspace {
 
   private taskOperation = async (
     repo: Repository,
-    task: Task,
+    task: WorkspaceAssignment,
     args: string[],
     signal?: AbortSignal,
-    checkpoint?: (task: Task) => void,
+    checkpoint?: (task: WorkspaceAssignment) => void,
     trace?: (record: unknown) => Promise<void>,
   ) => {
     const started = now();
@@ -359,13 +353,16 @@ export class GitWorkspace {
     return o.stdout.trim();
   };
 
-  recoverTaskPreparation = (repo: Repository, task: Task, checkpoint?: (task: Task) => void) =>
-    this.withLock(repo.id, () => this.reconcileTaskPreparation(repo, task, checkpoint));
+  recoverTaskPreparation = (
+    repo: Repository,
+    task: WorkspaceAssignment,
+    checkpoint?: (task: WorkspaceAssignment) => void,
+  ) => this.withLock(repo.id, () => this.reconcileTaskPreparation(repo, task, checkpoint));
 
   private reconcileTaskPreparation = async (
     repo: Repository,
-    task: Task,
-    checkpoint?: (task: Task) => void,
+    task: WorkspaceAssignment,
+    checkpoint?: (task: WorkspaceAssignment) => void,
   ) => {
     if (["removing", "removed"].includes(task.workspace_checkpoint?.state || "")) {
       throw new AdeError(
@@ -598,8 +595,8 @@ export class GitWorkspace {
     return cwd;
   };
 
-  /** New task flows require positive ownership, including the Git metadata behind the worktree. */
-  assertOwnedTask = async (task: Task) => {
+  /** Worktrees require positive ownership, including the Git metadata behind the worktree. */
+  assertOwnedTask = async (task: WorkspaceAssignment) => {
     const cwd = await this.assertTask(task);
     if (task.workspace_kind === "managed" || task.workspace_mode === "source") {
       return cwd;
@@ -631,6 +628,8 @@ export class GitWorkspace {
 
     return cwd;
   };
+
+  assertOwnedWorkspace = this.assertOwnedTask;
 
   fingerprint = async (t: WorkspaceAssignment) =>
     t.workspace_kind === "managed"
@@ -1044,7 +1043,7 @@ export class GitWorkspace {
     };
   };
 
-  discard = async (t: Task, path?: string) => {
+  discard = async (t: WorkspaceAssignment, path?: string) => {
     const cwd = await this.assertTask(t);
     for (const f of (await this.diff(t)).files.filter((f) => !path || f.path === path)) {
       const file = await safeFile(cwd, f.path);

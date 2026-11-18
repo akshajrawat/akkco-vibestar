@@ -1,3 +1,5 @@
+import type { ComputerRpc } from "../../core/computers/contracts";
+
 import type { CoreEvent } from "./types";
 
 export const rpc = <T>(method: string, params: unknown = {}): Promise<T> =>
@@ -11,3 +13,8 @@ export const errorMessage = (error: unknown) =>
     .replace(/^Error invoking remote method ['"][^'"]+['"]:\s*/, "")
     .replace(/(?:AdeError:\s*)+/g, "")
     .replace(/^(?:Error:\s*)+/, "");
+
+export const computerRpc = <M extends keyof ComputerRpc>(
+  method: M,
+  params: ComputerRpc[M]["input"],
+): Promise<ComputerRpc[M]["output"]> => rpc(method, params);

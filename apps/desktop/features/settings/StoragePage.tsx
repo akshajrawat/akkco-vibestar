@@ -100,8 +100,8 @@ export const StoragePage = ({
           [
             ["Database", info.database],
             ["Repositories", info.sizes.repos],
-            ["Task worktrees", info.sizes.worktrees],
-            ["Managed task files", info.sizes.workspaces],
+            ["Viber worktrees", info.sizes.worktrees],
+            ["Managed Viber files", info.sizes.workspaces],
             ["Logs", info.sizes.logs],
             ["Artifacts / cache", info.sizes.artifacts + info.sizes.cache],
             [
@@ -152,7 +152,7 @@ export const StoragePage = ({
                 await rpc("storage.removeUnused", { confirmed: true });
               },
               description:
-                "Clear cache, logs, completed task worktrees, and unused managed repositories.",
+                "Clear cache, logs, completed session worktrees, and unused managed repositories.",
             });
           }}
         >

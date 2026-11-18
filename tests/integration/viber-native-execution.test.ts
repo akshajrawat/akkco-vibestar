@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 
 import type { CoreEvent } from "../../apps/core/domain";
 import { Rpc } from "../../apps/core/rpc";
-import { builtInProfiles } from "../../apps/core/flows/templates";
+import { builtInProfiles } from "../../apps/core/vibers/appearance";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
@@ -30,7 +30,7 @@ it.each(["codex", "antigravity"] as const)(
       return {
         ...adapter,
         detect: async () => {
-          const detection = await new FixtureProvider().detect();
+          const detection = await new FixtureProvider().detect(directory);
           detection.models.push({ id: "other-model", supportedEfforts: ["low", "high"] });
           return detection;
         },
@@ -115,7 +115,7 @@ it.each(["codex", "antigravity"] as const)(
       const { repo } = await fixtureRepository(engine, directory);
       sourcePath = join(repo.path, "source.txt");
       const profileId = builtInProfiles.implementer;
-      const profile = engine.flows.profile(profileId);
+      const profile = engine.vibers.profile(profileId);
       const selection = { provider: providerName, model: "next-model", effort: "high" };
 
       const create = async () =>
@@ -161,7 +161,6 @@ it.each(["codex", "antigravity"] as const)(
       };
 
       engine.on("event", onEvent);
-      expect(engine.db.tasks()).toEqual([]);
       expect(requests).toEqual([]);
       await send();
       const first = await settled();
@@ -197,8 +196,7 @@ it.each(["codex", "antigravity"] as const)(
         status: "ready",
       });
 
-      expect(engine.db.all("SELECT * FROM flow_runs")).toEqual([]);
-      expect(engine.flows.profile(profileId)).toEqual(profile);
+      expect(engine.vibers.profile(profileId)).toEqual(profile);
 
       engine.off("event", onEvent);
       await rpc.close();
@@ -358,7 +356,7 @@ it.each(["codex", "antigravity"] as const)(
       await send({ selection });
       await settled();
       expect(requests.at(-1)?.conversation).toEqual({});
-      expect(engine.flows.profile(profileId)).toEqual(profile);
+      expect(engine.vibers.profile(profileId)).toEqual(profile);
       expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
 
       await expect(rpc.call("repository.remove", { id: repo.id, confirmed: true })).rejects.toThrow(

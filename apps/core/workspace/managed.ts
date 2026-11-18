@@ -3,7 +3,7 @@ import { lstat, mkdir, open, readdir, realpath } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
 
-import { AdeError, type Task, type WorkspaceAssignment } from "../domain";
+import { AdeError, type WorkspaceAssignment } from "../domain";
 import { managedPath } from "./paths";
 import { readWorktreeOwner, writeWorktreeOwner } from "./ownership";
 
@@ -28,7 +28,10 @@ const location = async (root: string, task: WorkspaceAssignment) => {
 };
 
 /** The owner marker stays outside the directory mounted writable for the agent. */
-export const prepareManagedWorkspace = async (root: string, task: Task) => {
+export const prepareManagedWorkspace = async <T extends WorkspaceAssignment>(
+  root: string,
+  task: T,
+): Promise<T> => {
   const { owner, files } = await location(root, task);
   await managedPath(root, "workspaces");
   await mkdir(join(root, "workspaces"), { recursive: true, mode: 0o700 });

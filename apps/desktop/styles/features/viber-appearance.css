@@ -18,35 +18,8 @@
   text-overflow: ellipsis;
 }
 
-.sidebar-modes {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.sidebar-mode {
-  display: grid;
-  place-items: center;
-  width: 29px;
-  height: 29px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-}
-
-.sidebar-mode:hover {
-  background: var(--background-hover);
-}
-
-.sidebar-mode[aria-pressed="true"] {
-  background: var(--sidebar-active);
-}
-
 .sidebar-header,
-.sidebar-vibers,
-.sidebar-tasks {
+.sidebar-vibers {
   background: var(--sidebar-active);
 }
 

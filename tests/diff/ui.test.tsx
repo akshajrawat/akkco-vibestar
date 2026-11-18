@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { DiffView } from "../../apps/desktop/components/diff/DiffView";
-import { ChangesView } from "../../apps/desktop/components/shared/ChangesView";
 import type { FileDiff } from "../../apps/desktop/lib/types";
 
 afterEach(() => {
@@ -106,87 +105,4 @@ it("keeps binary, oversized, unmappable and metadata-only states explicit", () =
   );
 
   expect(screen.getByText(/File identity or permissions may have changed/)).toBeTruthy();
-});
-
-it("persists diff presentation and sends content-bound issue review marks, invalidating changed contents on refresh", async () => {
-  const id = "diff-issue-marks";
-  let hash = "a".repeat(64);
-  let marked = false;
-
-  const rpc = vi.fn(async (method: string) =>
-    method === "task.file"
-      ? file
-      : method === "review.files"
-        ? [{ path: "src/example.ts", hash, reviewed: marked, notes: 2 }]
-        : null,
-  );
-
-  Object.defineProperty(window, "vibestar", {
-    configurable: true,
-    value: { rpc },
-  });
-
-  const props = {
-    task: { id, base_commit_sha: "base-sha" },
-    diff: {
-      files: [
-        {
-          path: "src/example.ts",
-          old_path: "src/old-name.ts",
-          status: "R",
-          staged: false,
-          unstaged: true,
-          insertions: 1,
-          deletions: 1,
-          binary: false,
-        },
-      ],
-      insertions: 1,
-      deletions: 1,
-      base: "base-sha",
-    },
-    revision: 0,
-    onError: vi.fn(),
-  };
-
-  const ui = render(<ChangesView {...props} />);
-  const checkbox = await screen.findByLabelText("Mark task file reviewed");
-  await vi.waitFor(() => expect(checkbox.hasAttribute("disabled")).toBe(false));
-  fireEvent.click(checkbox);
-
-  await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith("review.reviewed", {
-      id,
-      path: "src/example.ts",
-      old_path: "src/old-name.ts",
-      expected_hash: "a".repeat(64),
-      reviewed: true,
-    }),
-  );
-
-  fireEvent.click(screen.getByRole("button", { name: "Unified diff" }));
-  fireEvent.click(screen.getByRole("button", { name: "Show flat file list" }));
-
-  expect(JSON.parse(localStorage.getItem(`vibestar.layout.${id}`)!)).toMatchObject({
-    diffMode: "unified",
-    diffTree: "flat",
-  });
-
-  fireEvent.change(screen.getByLabelText("Filter changed files"), {
-    target: { value: "old-name" },
-  });
-
-  expect(screen.getByRole("button", { name: /src\/example.ts · Renamed/ })).toBeTruthy();
-  hash = "b".repeat(64);
-  marked = false;
-  ui.rerender(<ChangesView {...props} revision={1} />);
-  await vi.waitFor(() => expect((checkbox as HTMLInputElement).checked).toBe(false));
-  fireEvent.click(checkbox);
-
-  await vi.waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith(
-      "review.reviewed",
-      expect.objectContaining({ expected_hash: "b".repeat(64) }),
-    ),
-  );
 });

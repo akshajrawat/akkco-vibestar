@@ -431,4 +431,132 @@ CREATE TRIGGER viber_workspace_owner_immutable BEFORE UPDATE OF workspace ON vib
     version: 40,
     sql: `ALTER TABLE viber_messages ADD COLUMN effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible'));`,
   },
+  {
+    version: 41,
+    sql: `CREATE TABLE viber_computers(profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id));`,
+  },
+  {
+    version: 42,
+    foreign_keys_off: true,
+    sql: `
+DROP TABLE IF EXISTS flow_run_invalidations;
+DROP TABLE IF EXISTS flow_task_migrations;
+DROP TABLE IF EXISTS flow_migration_sources;
+DROP TABLE IF EXISTS flow_continuations;
+DROP TABLE IF EXISTS flow_result_invalidations;
+DROP TABLE IF EXISTS flow_result_links;
+DROP TABLE IF EXISTS flow_dispatches;
+DROP TABLE IF EXISTS flow_transitions;
+DROP TABLE IF EXISTS flow_approval_decisions;
+DROP TABLE IF EXISTS flow_node_attempts;
+DROP TABLE IF EXISTS flow_runs;
+DROP TABLE IF EXISTS flow_canvas_layouts;
+DROP TABLE IF EXISTS flow_revisions;
+DROP TABLE IF EXISTS flow_definitions;
+DROP TABLE IF EXISTS viber_session_settings;
+DROP TABLE IF EXISTS retired_viber_conversations;
+DROP TABLE IF EXISTS task_git_presets;
+DROP TABLE IF EXISTS git_operation_events;
+DROP TABLE IF EXISTS git_finalizations;
+DROP TABLE IF EXISTS issue_watch_http_cache;
+DROP TABLE IF EXISTS issue_watch_results;
+DROP TABLE IF EXISTS issue_watch_candidates;
+DROP TABLE IF EXISTS issue_watch_sources;
+DROP TABLE IF EXISTS issue_watch_scans;
+DROP TABLE IF EXISTS issue_watch_revisions;
+DROP TABLE IF EXISTS issue_watches;
+DROP TABLE IF EXISTS task_requests;
+DROP TABLE IF EXISTS repair_reviewed_files;
+DROP TABLE IF EXISTS repair_publications;
+DROP TABLE IF EXISTS repair_activity;
+DROP TABLE IF EXISTS repair_messages;
+DROP TABLE IF EXISTS pr_repairs;
+DROP TABLE IF EXISTS pr_action_assessments;
+DROP TABLE IF EXISTS pr_review_actions;
+DROP TABLE IF EXISTS pr_analyses;
+DROP TABLE IF EXISTS pr_analysis_batches;
+DROP TABLE IF EXISTS code_questions;
+DROP TABLE IF EXISTS task_reviewed_files;
+DROP TABLE IF EXISTS scheduled_agent_runs;
+DROP TABLE IF EXISTS github_pull_requests;
+DROP TABLE IF EXISTS github_repositories;
+DROP TABLE IF EXISTS task_activity;
+DROP TABLE IF EXISTS task_review_notes;
+DROP TABLE IF EXISTS scheduled_attention;
+DROP TABLE IF EXISTS scheduled_jobs;
+DROP TABLE IF EXISTS terminal_sessions;
+DROP TABLE IF EXISTS test_runs;
+DROP TABLE IF EXISTS task_artifacts;
+DROP TABLE IF EXISTS task_messages;
+DROP TABLE IF EXISTS agent_events;
+DROP TABLE IF EXISTS agent_runs;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS issues;
+CREATE TABLE IF NOT EXISTS ai_usage_viber(
+  id TEXT PRIMARY KEY,
+  viber_session_id TEXT REFERENCES viber_sessions(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  effort TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  duration_ms INTEGER,
+  status TEXT NOT NULL,
+  input_tokens INTEGER,
+  cached_input_tokens INTEGER,
+  output_tokens INTEGER,
+  reasoning_tokens INTEGER,
+  total_tokens INTEGER,
+  error TEXT,
+  provider_session_id TEXT,
+  subscription_limits TEXT,
+  subscription_limits_after TEXT
+);
+INSERT OR IGNORE INTO ai_usage_viber SELECT id,viber_session_id,purpose,provider,model,effort,started_at,ended_at,duration_ms,status,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens,error,provider_session_id,subscription_limits,subscription_limits_after FROM ai_usage;
+DROP TABLE ai_usage;
+ALTER TABLE ai_usage_viber RENAME TO ai_usage;
+CREATE INDEX IF NOT EXISTS viber_usage ON ai_usage(viber_session_id,started_at);
+
+CREATE TABLE utility_runs_viber(
+  id TEXT PRIMARY KEY,
+  stage INTEGER NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  effort TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  exit_code INTEGER,
+  pid INTEGER,
+  process_identity TEXT,
+  conversation_id TEXT,
+  output TEXT,
+  error TEXT,
+  purpose TEXT NOT NULL,
+  execution TEXT CHECK(execution IS NULL OR json_valid(execution)),
+  viber_session_id TEXT REFERENCES viber_sessions(id) ON DELETE CASCADE,
+  viber_message_id TEXT REFERENCES viber_messages(id) ON DELETE CASCADE
+);
+INSERT OR IGNORE INTO utility_runs_viber SELECT id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,pid,process_identity,conversation_id,output,error,purpose,execution,viber_session_id,viber_message_id FROM utility_runs;
+DROP TABLE utility_runs;
+ALTER TABLE utility_runs_viber RENAME TO utility_runs;
+CREATE UNIQUE INDEX viber_message_run ON utility_runs(viber_message_id);
+CREATE INDEX viber_session_runs ON utility_runs(viber_session_id,started_at);
+
+CREATE TABLE utility_events_viber(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL REFERENCES utility_runs(id) ON DELETE CASCADE,
+  timestamp TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  data TEXT NOT NULL CHECK(json_valid(data)),
+  raw TEXT NOT NULL,
+  stream TEXT NOT NULL
+);
+INSERT OR IGNORE INTO utility_events_viber SELECT id,run_id,timestamp,kind,data,raw,stream FROM utility_events;
+DROP TABLE utility_events;
+ALTER TABLE utility_events_viber RENAME TO utility_events;
+`,
+  },
 ];

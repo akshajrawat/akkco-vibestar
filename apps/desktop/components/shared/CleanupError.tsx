@@ -108,7 +108,7 @@ export const CleanupError = ({
           {stopped
             ? canRetry
               ? "Blockers stopped. Try again to finish cleanup."
-              : "Blockers stopped. Preview the current task contents before continuing."
+              : "Blockers stopped. Preview the current session contents before continuing."
             : errorMessage(error)}
         </p>
       )}

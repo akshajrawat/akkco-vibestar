@@ -30,8 +30,6 @@ const main = async () => {
       engine = await Engine.create(root);
       rpc = new Rpc(engine);
       engine.on("event", (event) => process.stdout.write(`${JSON.stringify(event)}\n`));
-      engine.start();
-      rpc.scheduler.start();
     })().finally(() => {
       initializing = undefined;
     });
@@ -83,22 +81,10 @@ const main = async () => {
           result = {
             build,
             protocol: 3,
-            agent_flows: 1,
-            flow_continuations: 1,
             viber_conversations: 1,
             viber_sessions: 2,
-            independent_final_review: true,
-            browser_verification_environment: true,
+            viber_computers: 1,
             manual_user_terminal: 1,
-            pipeline_stage_providers: 1,
-            pr_review_controls: 1,
-            bulk_pr_metadata: 1,
-            pr_quick_watch: 1,
-            manual_pr_analysis: true,
-            pr_repair: true,
-            manual_issue_watch: true,
-            issue_watch_contract: 1,
-            issue_watch_batches: 1,
             runtime_restart: 1,
             notification_preferences: 1,
           };
@@ -112,7 +98,7 @@ const main = async () => {
         } else if (!rpc && request.method === "snapshot") {
           result = {
             repositories: [],
-            tasks: [],
+            vibers: [],
             settings: defaultSettings,
             root: bootstrap.root,
             migration: bootstrap.migration,
@@ -128,7 +114,7 @@ const main = async () => {
 
           choosing = true;
           try {
-            const root = await chooseDataRoot(bootstrap.migration, choice);
+            const root = (await chooseDataRoot(bootstrap.migration, choice)) || bootstrap.root;
             await start(root);
             result = { root };
           } finally {

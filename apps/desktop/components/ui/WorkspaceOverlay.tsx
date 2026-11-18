@@ -51,7 +51,7 @@ export const WorkspaceOverlay = ({
         }
       }}
       onKeyDown={(event) => {
-        // Workspace shortcuts must not change the task beneath the modal.
+        // Workspace shortcuts must not change the view beneath the modal.
         event.stopPropagation();
       }}
     >

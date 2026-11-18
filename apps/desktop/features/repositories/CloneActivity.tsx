@@ -4,13 +4,7 @@ import type { CloneActivity as Activity } from "../../../core/github/service";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 
-export const CloneActivity = ({
-  activity,
-  createTask,
-}: {
-  activity: Activity;
-  createTask?: () => void;
-}) => {
+export const CloneActivity = ({ activity }: { activity: Activity }) => {
   const [logs, setLogs] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState("");
@@ -100,12 +94,6 @@ export const CloneActivity = ({
             >
               Open repository
             </Button>
-
-            {createTask && (
-              <Button size="sm" onClick={createTask}>
-                Create task
-              </Button>
-            )}
           </>
         )}
       </div>

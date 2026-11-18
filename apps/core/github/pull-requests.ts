@@ -1,8 +1,7 @@
 import { z } from "zod";
 
 import { AdeError } from "../domain";
-import { parsePullRequest } from "../scheduled/contracts";
-import type { GitHubPullRequest } from "./contracts";
+import { parsePullRequest, type GitHubPullRequest } from "./contracts";
 
 const fields = `url number title state isDraft updatedAt headRefName headRefOid
   headRepository { nameWithOwner } repository { nameWithOwner }`;

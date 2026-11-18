@@ -17,16 +17,12 @@ const OutputBody = ({
   events,
   preparation,
   owner,
-  watchId,
-  scanId,
 }: {
   taskId: string;
   run?: Run;
   events: AgentEvent[];
   preparation: boolean;
-  owner: "task" | "repair" | "issueWatch";
-  watchId?: string;
-  scanId?: string;
+  owner: "viber";
 }) => {
   const view = useTaskView(taskId);
   const raw = view.outputView === "raw";
@@ -40,8 +36,6 @@ const OutputBody = ({
     search: view.outputSearch,
     preparation,
     owner,
-    watchId,
-    scanId,
   });
 
   const scroll = useRef<HTMLDivElement>(null);
@@ -248,22 +242,18 @@ export const LogView = ({
   runs,
   events,
   selectedRun,
-  owner = "task",
-  watchId,
-  scanId,
+  owner = "viber",
 }: {
   taskId: string;
   runs: Run[];
   events: AgentEvent[];
   selectedRun?: string;
   liveOutput?: boolean;
-  owner?: "task" | "repair" | "issueWatch";
-  watchId?: string;
-  scanId?: string;
+  owner?: "viber";
 }) => {
   const view = useTaskView(taskId);
   const selection = view.outputRun || selectedRun || "";
-  const preparation = owner !== "issueWatch" && selection === "preparation";
+  const preparation = selection === "preparation";
 
   const run =
     runs.find((r) => r.id === selection) ||
@@ -289,9 +279,7 @@ export const LogView = ({
           onChange={(outputRun) => updateTaskView(taskId, { outputRun })}
           options={[
             { value: "", label: "Current / latest run" },
-            ...(owner !== "issueWatch"
-              ? [{ value: "preparation", label: "Repository preparation" }]
-              : []),
+            { value: "preparation", label: "Repository preparation" },
             ...runs.map((r) => ({
               value: r.id,
               label: `${r.provider} · ${r.purpose || `stage ${r.stage}`} · ${r.status}`,
@@ -353,8 +341,6 @@ export const LogView = ({
         run={run}
         preparation={preparation}
         owner={owner}
-        watchId={watchId}
-        scanId={scanId}
         events={events}
       />
     </section>

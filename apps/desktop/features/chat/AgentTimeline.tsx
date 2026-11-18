@@ -639,7 +639,7 @@ export const AgentTimeline = ({
 
     const activity = compact ? visible.filter((row) => row !== finalMessage) : visible;
 
-    const workflowPrompt =
+    const initialPrompt =
       showPrompts &&
       run.prompt &&
       [
@@ -654,7 +654,7 @@ export const AgentTimeline = ({
       ].includes(run.purpose || "pipeline");
 
     let structuredPrompt = false;
-    if (workflowPrompt && run.stage === 3) {
+    if (initialPrompt && run.stage === 3) {
       try {
         structuredPrompt = !!JSON.parse(run.prompt);
       } catch {
@@ -667,8 +667,8 @@ export const AgentTimeline = ({
       key: run.id || "ungrouped",
       content: (
         <>
-          {workflowPrompt && (
-            <article className="user-message workflow-message" data-run-id={run.id}>
+          {initialPrompt && (
+            <article className="user-message initial-prompt-message" data-run-id={run.id}>
               <UserMessageBody>
                 {structuredPrompt ? (
                   <AgentResponse inline text={run.prompt} />

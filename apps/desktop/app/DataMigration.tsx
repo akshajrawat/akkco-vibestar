@@ -36,8 +36,8 @@ export const DataMigration = ({
         <h2>Existing Vibestar data found</h2>
         <code>{migration.old_root}</code>
         <p>
-          Migrate your tasks, settings, PR watches and logs to <code>{migration.new_root}</code>.
-          The old data stays intact. Managed worktree metadata is repaired and checked before use.
+          Migrate your vibers, settings, and logs to <code>{migration.new_root}</code>. The old data
+          stays intact. Managed worktree metadata is repaired and checked before use.
         </p>
         {error && <p className="error-box">{error}</p>}
         <div className="actions">

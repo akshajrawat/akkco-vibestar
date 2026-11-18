@@ -15,7 +15,6 @@ export const UsageView = ({
   taskId,
   records,
   runId,
-  openRun,
 }: {
   taskId?: string;
   records?: UsageRecord[];
@@ -63,7 +62,7 @@ export const UsageView = ({
 
       fetching = true;
       setRefreshing(true);
-      return rpc<UsageRecord[]>("usage.list", { task_id: taskId })
+      return rpc<UsageRecord[]>("usage.list", { session_id: taskId })
         .then((r) => {
           if (alive) {
             setRows(r);
@@ -92,7 +91,7 @@ export const UsageView = ({
     const subscription = subscribe((e) => {
       if (
         ["usage.changed", "changed"].includes(e.event) &&
-        (!taskId || !e.task_id || e.task_id === taskId) &&
+        (!taskId || !e.session_id || e.session_id === taskId) &&
         !refreshTimer
       ) {
         refreshTimer = setTimeout(() => {
@@ -135,7 +134,7 @@ export const UsageView = ({
       Date.parse(r.started_at) >= cutoff &&
       (!selectedRun || r.id === selectedRun) &&
       (!query ||
-        [r.provider, r.model, r.purpose, r.repository, r.task_id, r.status]
+        [r.provider, r.model, r.purpose, r.viber_session_id, r.status]
           .join(" ")
           .toLowerCase()
           .includes(query.toLowerCase())) &&
@@ -198,7 +197,7 @@ export const UsageView = ({
   return (
     <div className={`usage-panel ${!scoped ? "page usage-dashboard" : ""}`}>
       <PageHeader
-        title={taskId ? "Task usage" : "Local AI usage"}
+        title={taskId ? "Session usage" : "Local AI usage"}
         description="Observed runtime, provider-reported tokens and official subscription snapshots."
         actions={
           <Button
@@ -232,7 +231,7 @@ export const UsageView = ({
                 searchable
                 onChange={setSelectedRun}
                 options={[
-                  { value: "", label: "All task runs" },
+                  { value: "", label: "All session runs" },
                   ...rows.map((r) => ({
                     value: r.id,
                     label: `${r.purpose} · ${r.provider} · ${r.model || "CLI default"}`,
@@ -263,26 +262,24 @@ export const UsageView = ({
               </div>
 
               <div className="usage-filters">
-                {(["provider", "model", "purpose", "repository", "task_id", "status"] as const).map(
-                  (key) => (
-                    <label key={key}>
-                      {key === "task_id" ? "Task" : key}
-                      <Select
-                        label={`Usage ${key} filter`}
-                        value={filters[key] || ""}
-                        searchable
-                        onChange={(value) => setFilters({ ...filters, [key]: value })}
-                        options={[
-                          { value: "", label: "All" },
-                          ...[...new Set(rows.map((r) => String(r[key] || "")))]
-                            .filter(Boolean)
-                            .sort()
-                            .map((value) => ({ value, label: value })),
-                        ]}
-                      />
-                    </label>
-                  ),
-                )}
+                {(["provider", "model", "purpose", "status"] as const).map((key) => (
+                  <label key={key}>
+                    {key}
+                    <Select
+                      label={`Usage ${key} filter`}
+                      value={filters[key] || ""}
+                      searchable
+                      onChange={(value) => setFilters({ ...filters, [key]: value })}
+                      options={[
+                        { value: "", label: "All" },
+                        ...[...new Set(rows.map((r) => String(r[key] || "")))]
+                          .filter(Boolean)
+                          .sort()
+                          .map((value) => ({ value, label: value })),
+                      ]}
+                    />
+                  </label>
+                ))}
               </div>
             </>
           )}
@@ -415,14 +412,14 @@ export const UsageView = ({
             <details className="usage-additional">
               <summary>Additional breakdowns</summary>
               <div className="library-tabs">
-                {["provider", "model", "purpose", "repository", "task_id"].map((key) => (
+                {["provider", "model", "purpose"].map((key) => (
                   <button
                     type="button"
                     key={key}
                     className={group === key ? "selected" : ""}
                     onClick={() => setGroup(key)}
                   >
-                    {key === "task_id" ? "Task" : key}
+                    {key}
                   </button>
                 ))}
               </div>
@@ -462,8 +459,7 @@ export const UsageView = ({
                       {[
                         "Provider / model",
                         "Purpose",
-                        "Repository",
-                        "Task",
+                        "Session",
                         "Duration",
                         "Reported tokens",
                         "Result",
@@ -491,8 +487,9 @@ export const UsageView = ({
                           </button>
                         </td>
                         <td>{row.purpose}</td>
-                        <td>{row.repository || "Unlinked"}</td>
-                        <td>{row.task_id || (row.repair_id ? "PR repair" : "Unlinked")}</td>
+                        <td>
+                          {row.viber_session_id ? row.viber_session_id.slice(0, 8) : "Direct"}
+                        </td>
                         <td>{time(usageRuntime(row))}</td>
                         <td title={tokenUsage(row)}>
                           {row.total_tokens?.toLocaleString() ?? "Unavailable"}
@@ -562,12 +559,6 @@ export const UsageView = ({
                     </span>
                   </summary>
 
-                  {openRun && (row.task_id || row.repair_id) && (
-                    <Button size="sm" onClick={() => openRun(row)}>
-                      Open saved run
-                    </Button>
-                  )}
-
                   <dl className="repository-facts">
                     <dt>Started</dt>
                     <dd>{new Date(row.started_at).toLocaleString()}</dd>
@@ -581,16 +572,12 @@ export const UsageView = ({
                     </dd>
                     <dt>Purpose</dt>
                     <dd>{row.purpose}</dd>
-                    <dt>Repository</dt>
-                    <dd>{row.repository || "Unlinked"}</dd>
-                    <dt>Task</dt>
-                    <dd>{row.task_id || "Unlinked"}</dd>
+                    <dt>Session</dt>
+                    <dd>{row.viber_session_id || "Direct"}</dd>
                     <dt>Run ID</dt>
                     <dd>
                       <code>{row.id}</code>
                     </dd>
-                    <dt>Session</dt>
-                    <dd>{row.provider_session_id || "Not reported"}</dd>
                     <dt>Tokens</dt>
                     <dd>{tokenUsage(row)}</dd>
                   </dl>
@@ -655,7 +642,7 @@ export const UsageView = ({
           icon={<Activity size={26} />}
           title={
             taskId
-              ? "No AI usage recorded for this task yet."
+              ? "No AI usage recorded for this session yet."
               : rows.length
                 ? "No runs match these filters."
                 : "No AI usage recorded in this data root yet."

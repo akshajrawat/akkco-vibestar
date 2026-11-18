@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import { Rpc } from "../../apps/core/rpc";
-import { builtInProfiles } from "../../apps/core/flows/templates";
+import { builtInProfiles } from "../../apps/core/vibers/appearance";
 import type {
   ViberMessage,
   ViberSession,
@@ -115,14 +115,7 @@ it("creates profile-owned sessions idempotently without a Task, Flow, workspace 
 
   expect(await rpc.call("viber.session.list", { profile_id: profileId })).toEqual([session]);
   expect(provider.requests).toEqual([]);
-  for (const table of [
-    "tasks",
-    "flow_definitions",
-    "flow_runs",
-    "agent_runs",
-    "utility_runs",
-    "ai_usage",
-  ]) {
+  for (const table of ["utility_runs", "ai_usage"]) {
     expect(engine.db.all(`SELECT * FROM ${table}`)).toEqual([]);
   }
 
@@ -135,7 +128,7 @@ it("creates profile-owned sessions idempotently without a Task, Flow, workspace 
 });
 
 it("uses AgentRunner, persists messages, events, usage and files across restart and preserves session selection", async () => {
-  const profile = engine.flows.profile(profileId);
+  const profile = engine.vibers.profile(profileId);
   const session = await create();
   const input = { request_id: randomUUID(), content: "Write the first answer" };
   const pending = await send(session, input);
@@ -157,13 +150,11 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
   expect(provider.requests[0].cwd).toBe(cwd);
   expect(await readFile(join(cwd, "answer.txt"), "utf8")).toBe("Session file");
 
-  expect(engine.db.all("SELECT viber_session_id,task_id FROM ai_usage")).toEqual([
-    { viber_session_id: session.id, task_id: null },
+  expect(engine.db.all("SELECT viber_session_id FROM ai_usage")).toEqual([
+    { viber_session_id: session.id },
   ]);
 
-  expect(engine.flows.profile(profileId)).toEqual(profile);
-  expect(engine.db.tasks()).toEqual([]);
-  expect(engine.db.all("SELECT * FROM flow_runs")).toEqual([]);
+  expect(engine.vibers.profile(profileId)).toEqual(profile);
   const retained = await send(session, input);
   expect(retained.id).toBe(pending.id);
   expect(provider.requests).toHaveLength(1);
@@ -223,9 +214,9 @@ it("isolates profile ownership, same-profile histories, request identities, outp
 it("captures the shared profile revision per turn while keeping provider/model/effort scoped to the session", async () => {
   const one = await create();
   const two = await create();
-  const profile = engine.flows.profile(profileId);
+  const profile = engine.vibers.profile(profileId);
 
-  engine.flows.saveProfile(
+  engine.vibers.saveProfile(
     {
       ...profile,
       revision: profile.revision + 1,
@@ -252,7 +243,7 @@ it("captures the shared profile revision per turn while keeping provider/model/e
   expect((await detail(one)).session.selection).toEqual(changedSelection);
   expect((await detail(two)).session.selection).toEqual(selection);
 
-  expect(engine.flows.profile(profileId).execution).toEqual({
+  expect(engine.vibers.profile(profileId).execution).toEqual({
     ...profile.execution,
     model: "next-model",
     effort: "low",
@@ -461,7 +452,7 @@ it("keeps outcomes uncertain after invocation even without reported tools, and e
 });
 
 it("creates an isolated conversation from profile defaults without requiring a repository or selection", async () => {
-  const profile = engine.flows.profile(profileId);
+  const profile = engine.vibers.profile(profileId);
 
   const session = (await rpc.call("viber.session.create", {
     request_id: randomUUID(),

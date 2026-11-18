@@ -1,6 +1,5 @@
 import type { AgentEvent, Run } from "../../../lib/types";
 import { eventData } from "./events";
-import { commandVerification } from "../../../../core/execution/verification/verification";
 
 const terminalStatus = (value: unknown) =>
   [
@@ -120,26 +119,6 @@ export const toolState = (event: AgentEvent, data: Record<string, unknown>, run?
 
   if (status === "blocked") {
     return "blocked";
-  }
-
-  if (
-    event.kind.startsWith("command") &&
-    (typeof data.exit_code === "number" || ["failed", "error"].includes(status))
-  ) {
-    const verification = commandVerification({
-      id: String(event.id),
-      command: Array.isArray(data.command)
-        ? JSON.stringify(data.command)
-        : String(data.command || ""),
-      status: status === "error" ? "failed" : status,
-      exit_code: typeof data.exit_code === "number" ? data.exit_code : null,
-      stdout: typeof data.stdout === "string" ? data.stdout : "",
-      stderr: typeof data.stderr === "string" ? data.stderr : "",
-    });
-
-    if (["blocked", "interrupted"].includes(verification.outcome)) {
-      return verification.outcome === "blocked" ? "blocked" : "interrupted";
-    }
   }
 
   if (

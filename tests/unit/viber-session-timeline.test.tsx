@@ -38,7 +38,7 @@ afterEach(cleanup);
 
 it("shows animated work and tool subheadings during streaming, then collapses the completed activity", () => {
   const view = render(<AgentTimeline runs={[run]} events={[event]} compact standalone />);
-  expect(screen.getByRole("status").className).toBe("working-shimmer");
+  expect(screen.getByRole("status").textContent).toBe("Working…");
   expect(screen.getByText("Running command")).toBeTruthy();
   expect(document.querySelector(".work-log")?.hasAttribute("open")).toBe(true);
 

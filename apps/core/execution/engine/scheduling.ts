@@ -1,18 +1,12 @@
 import { AdeError, type ActivityBlocker } from "../../domain";
 import type { Engine } from "../engine";
 import type { ExecutionState } from "./state";
-import type { FlowExecution } from "./flows";
 
 /** Owns shared execution slots and maintenance leases; every writer observes the same state. */
 export class EngineScheduling {
   constructor(
     private readonly host: Pick<Engine, "changed" | "db" | "isActive" | "publish">,
     private readonly state: ExecutionState,
-    private readonly operations: {
-      drainFlows?: FlowExecution["drain"];
-      queuedFlows?: FlowExecution["queuedTasks"];
-      cancelFlow?: FlowExecution["cancel"];
-    },
   ) {}
 
   repositoryOperation = <T>(
@@ -50,69 +44,29 @@ export class EngineScheduling {
     }
   };
 
-  cleanupBlockers = (taskId?: string): ActivityBlocker[] => {
-    const tasks = this.host.db.tasks();
-
-    const label = (id: string) => {
-      const task = tasks.find((t) => t.id === id);
-      return task
-        ? task.goal?.slice(0, 80) || (task.issue_number ? `Task #${task.issue_number}` : "Task")
-        : "Utility AI";
-    };
-
+  cleanupBlockers = (idFilter?: string): ActivityBlocker[] => {
     const blockers: ActivityBlocker[] = [];
+
     for (const [id, activity] of this.state.active) {
-      if (activity.taskId && this.state.activities.has(`git:${activity.taskId}`)) {
-        continue;
-      }
-
-      if (
-        id.startsWith("utility:") &&
-        (this.state.activities.has(`pr-watch:${id.slice(8)}`) ||
-          this.state.activities.has(`issue-watch:${id.slice(8)}`))
-      ) {
-        continue;
-      }
-
       blockers.push({
         id: `run:${id}`,
-        kind: "task",
-        task_id: activity.taskId || (tasks.some((t) => t.id === id) ? id : undefined),
-        label: activity.purpose
-          ? `${activity.purpose}${activity.taskId ? ` for ${label(activity.taskId)}` : ""} is running`
-          : `${label(id)} is running`,
+        kind: "viber",
+        label: activity.purpose ? `${activity.purpose} is running` : `${id} is running`,
         stoppable: true,
       });
     }
 
     for (const [id, activity] of this.state.interactive) {
-      if (this.state.activities.has(`git:${id}`)) {
-        continue;
-      }
-
       blockers.push({
         id: `terminal:${id}`,
         kind: "terminal",
-        task_id: id,
-        label: `${label(id)} ${activity} is open`,
+        label: `${activity} is open`,
         stoppable: true,
       });
     }
 
     for (const { blocker } of this.state.activities.values()) {
       blockers.push(blocker);
-    }
-
-    for (const { run } of this.operations.queuedFlows?.() || []) {
-      if (!this.state.active.has(run.task_id)) {
-        blockers.push({
-          id: `flow:${run.id}`,
-          kind: "task",
-          task_id: run.task_id,
-          label: "Viber flow is queued",
-          stoppable: true,
-        });
-      }
     }
 
     if (this.state.maintenance) {
@@ -128,13 +82,12 @@ export class EngineScheduling {
       blockers.push({
         id: `cleanup:${id}`,
         kind: "maintenance",
-        task_id: id,
-        label: `${label(id)} · ${activity}`,
+        label: activity,
         stoppable: false,
       });
     }
 
-    if (!taskId) {
+    if (!idFilter) {
       for (const [index, description] of [...this.state.repositoryOperations.values()].entries()) {
         blockers.push({
           id: `repository-operation:${index}`,
@@ -146,15 +99,19 @@ export class EngineScheduling {
     }
 
     return blockers.filter(
-      (b) => !taskId || b.task_id === taskId || b.id === "storage-maintenance",
+      (b) =>
+        !idFilter ||
+        b.id === idFilter ||
+        b.id === `run:${idFilter}` ||
+        b.id === "storage-maintenance",
     );
   };
 
   trackActivity = (blocker: ActivityBlocker, stop: () => Promise<void>) => {
     this.assertAvailable();
-    if (blocker.task_id && this.state.taskMaintenance.has(blocker.task_id)) {
-      throw new AdeError("busy", "Task data cleanup is running", {
-        blockers: this.cleanupBlockers(blocker.task_id),
+    if (blocker.session_id && this.state.taskMaintenance.has(blocker.session_id)) {
+      throw new AdeError("busy", "Data cleanup is running", {
+        blockers: this.cleanupBlockers(blocker.session_id),
       });
     }
 
@@ -167,11 +124,6 @@ export class EngineScheduling {
   };
 
   stopActivity = async (id: string) => {
-    if (id.startsWith("flow:")) {
-      await this.operations.cancelFlow?.(id.slice(5));
-      return;
-    }
-
     if (id.startsWith("run:")) {
       const key = id.slice(4);
       const active = this.state.active.get(key);
@@ -192,11 +144,9 @@ export class EngineScheduling {
     this.assertAvailable();
     const blockers = this.cleanupBlockers(id);
     if (blockers.length) {
-      throw new AdeError(
-        "busy",
-        "Task data cleanup is waiting for this task's active operations to finish.",
-        { blockers },
-      );
+      throw new AdeError("busy", "Data cleanup is waiting for active operations to finish.", {
+        blockers,
+      });
     }
 
     this.state.taskMaintenance.set(id, activity);
@@ -218,12 +168,12 @@ export class EngineScheduling {
     }
   };
 
-  assertExecutionSlot = (key: string, taskId?: string) => {
+  assertExecutionSlot = (key: string) => {
     this.assertAvailable();
     if (
       this.state.active.has(key) ||
-      this.state.interactive.has(taskId || key) ||
-      this.state.taskMaintenance.has(taskId || key) ||
+      this.state.interactive.has(key) ||
+      this.state.taskMaintenance.has(key) ||
       this.state.active.size >= this.host.db.settings().concurrency
     ) {
       throw new AdeError(
@@ -238,9 +188,8 @@ export class EngineScheduling {
     purpose: string,
     signal: AbortSignal,
     run: (signal: AbortSignal) => Promise<T>,
-    taskId?: string,
   ) => {
-    this.assertExecutionSlot(key, taskId);
+    this.assertExecutionSlot(key);
     const controller = new AbortController();
     const result = Promise.resolve().then(() => run(AbortSignal.any([signal, controller.signal])));
 
@@ -251,11 +200,11 @@ export class EngineScheduling {
       )
       .finally(() => {
         this.state.active.delete(key);
-        this.host.changed(taskId);
+        this.host.changed();
         void this.drain();
       });
 
-    this.state.active.set(key, { controller, promise, purpose, taskId });
+    this.state.active.set(key, { controller, promise, purpose });
     try {
       return await result;
     } finally {
@@ -263,14 +212,10 @@ export class EngineScheduling {
     }
   };
 
-  acquireTaskWorkspace = (id: string, label: string) => {
+  acquireTerminal = (id: string, label = "terminal session") => {
     this.assertAvailable();
     if (this.state.taskMaintenance.has(id)) {
-      throw new AdeError("busy", "Task data cleanup is running");
-    }
-
-    if (this.host.isActive(id)) {
-      throw new AdeError("busy", "Wait for task execution to finish before opening its terminal");
+      throw new AdeError("busy", "Data cleanup is running");
     }
 
     this.state.interactive.set(id, label);
@@ -282,24 +227,5 @@ export class EngineScheduling {
     };
   };
 
-  acquireTerminal = (id: string) => this.acquireTaskWorkspace(id, "terminal session");
-
-  drain = async () => {
-    if (this.state.draining || this.state.closed || this.state.maintenance) {
-      return;
-    }
-
-    this.state.draining = true;
-    try {
-      this.operations.drainFlows?.();
-    } catch (error) {
-      if (!(error instanceof AdeError && error.kind === "corrupt_record")) {
-        throw error;
-      }
-
-      this.host.publish({ event: "core.error", text: error.message });
-    } finally {
-      this.state.draining = false;
-    }
-  };
+  drain = async () => {};
 }

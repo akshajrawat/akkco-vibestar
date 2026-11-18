@@ -1,4 +1,31 @@
 import { z } from "zod";
+import { AdeError } from "../domain";
+
+export const parsePullRequest = (value: string) => {
+  const u = new URL(value);
+  const match = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/);
+  if (
+    u.protocol !== "https:" ||
+    u.hostname !== "github.com" ||
+    u.username ||
+    u.password ||
+    u.port ||
+    u.search ||
+    u.hash ||
+    !match ||
+    match.slice(1, 3).some((part) => part === "." || part === "..") ||
+    !Number.isSafeInteger(Number(match[3]))
+  ) {
+    throw new AdeError("invalid_input", "Use an HTTPS github.com/owner/repository/pull/number URL");
+  }
+
+  return {
+    owner: match[1],
+    repo: match[2],
+    number: Number(match[3]),
+    url: `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}`,
+  };
+};
 
 export const GitHubRepositorySchema = z
   .object({

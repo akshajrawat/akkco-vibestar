@@ -1,23 +1,13 @@
 import { z } from "zod";
 
-import type {
-  VerificationEnvironment,
-  BrowserEnvironmentReport,
-} from "./execution/verification/browser/contracts";
+export type VerificationEnvironment = unknown;
+export type BrowserEnvironmentReport = unknown;
 
 export interface ActivityBlocker {
   id: string;
-  kind:
-    | "task"
-    | "terminal"
-    | "pr_watch"
-    | "github_sync"
-    | "repository_scan"
-    | "repository"
-    | "issue_watch"
-    | "maintenance";
+  kind: "viber" | "terminal" | "github_sync" | "repository_scan" | "repository" | "maintenance";
   label: string;
-  task_id?: string;
+  session_id?: string;
   stoppable: boolean;
 }
 
@@ -73,15 +63,6 @@ export const pipelineStages = [
   { stage: 5, key: "antigravity_review", label: "Review", provider: "antigravity" },
 ] as const;
 
-export const PipelineStageSettingsSchema = z
-  .object({
-    1: PipelineStageConfigSchema.optional(),
-    2: PipelineStageConfigSchema.optional(),
-    3: PipelineStageConfigSchema.optional(),
-    5: PipelineStageConfigSchema.optional(),
-  })
-  .strict();
-
 export const SettingsSchema = z
   .object({
     concurrency: z.number().int().min(1).max(4),
@@ -124,23 +105,6 @@ export const SettingsSchema = z
 export type Settings = z.infer<typeof SettingsSchema>;
 export type StageConfig = z.infer<typeof StageConfigSchema>;
 
-/** Resolves legacy provider defaults without changing saved settings or completed runs. */
-export const pipelineConfiguration = (
-  settings: Settings,
-  stage: number,
-  overrides?: z.infer<typeof PipelineStageSettingsSchema>,
-) => {
-  const role = pipelineStages.find((entry) => entry.stage === stage);
-  if (!role) {
-    throw new AdeError("invalid_stage", "Unknown agent pipeline stage.");
-  }
-
-  const configured = settings[role.key];
-  const saved = overrides?.[role.stage] || configured;
-  const config = saved || settings.antigravity;
-  return { ...config, provider: saved?.provider || configured?.provider || role.provider };
-};
-
 export const defaultSettings: Settings = {
   concurrency: 2,
   default_editor: "",
@@ -154,28 +118,6 @@ export const defaultSettings: Settings = {
     scan_home: false,
   },
 };
-
-export const taskStatuses = [
-  "not_started",
-  "preserved",
-  "queued",
-  "preparing",
-  "planning_antigravity",
-  "planning_codex",
-  "implementing",
-  "validating",
-  "reviewing_antigravity",
-  "awaiting_approval",
-  "ready_for_review",
-  "reviewed_with_gaps",
-  "failed",
-  "verification_blocked",
-  "cancelled",
-  "interrupted",
-  "completed",
-] as const;
-
-export type TaskStatus = (typeof taskStatuses)[number];
 
 export interface IssueRef {
   owner: string;
@@ -205,50 +147,25 @@ export interface Repository {
   origin_remote?: string | null;
 }
 
-export interface Task {
-  disposal_authorization?: {
-    fingerprint: string;
-    acknowledge_unpublished: boolean;
-    authorized_at: string;
-  };
-  workflow_version?: 1;
-  workflow_start?: {
-    request_id: string;
-    digest: string;
-    started_at: string;
-    message_ids: string[];
-    summary: string;
-  };
-  verification_environment?: VerificationEnvironment;
-  browser_environment_report?: BrowserEnvironmentReport;
-  runtime?: {
-    python: string | null;
-    dependencies: string[];
-    warnings: string[];
-  };
-  preparation_timing?: { started_at: string; ended_at: string | null };
-  verification_policy?: "repository" | "extended_browser";
+export interface WorkspaceAssignment {
   id: string;
   repo_id: string | null;
-  issue_number: number | null;
-  issue_url: string | null;
-  kind?: "general" | "issue";
-  goal?: string;
-  flow_id?: string;
-  workspace_kind?: "managed";
-  claimed_scope: string;
-  scope_mode?: "whole_issue" | "partial";
-  followup_config?: { provider: "codex" | "antigravity"; config: StageConfig };
-  notes: string;
-  issue: Record<string, unknown>;
-  execution_settings?: Settings;
-  stage_settings?: z.infer<typeof PipelineStageSettingsSchema>;
   branch_name: string;
+  base_branch?: string;
+  base_commit_sha: string;
+  worktree_path: string;
   branch_owned?: boolean;
+  workspace_mode?: "source";
+  workspace_kind?: "managed";
+  kind?: string;
+  goal?: string;
+  issue_number?: number | null;
+  claimed_scope?: string;
+  scope_mode?: string;
   workspace_checkpoint?: {
     state: "fetching" | "creating" | "ready" | "removing" | "removed";
     git_common_dir: string;
-    started_at: string;
+    started_at?: string;
     cleanup_head?: string;
     operation?: {
       kind: string;
@@ -257,50 +174,14 @@ export interface Task {
       started_at: string;
     } | null;
   };
-  base_branch: string;
-  base_commit_sha: string;
-  worktree_path: string;
-  workspace_mode?: "source";
-  created_at: string;
-  updated_at: string;
-  status: TaskStatus;
-  stage: number;
-  error: string | null;
-  archived?: boolean;
-  continuation?: "pipeline" | "planning" | "implementation";
-  final_review_hash?: string;
-  final_review_verdict?: "verified" | "code_approved_incomplete" | "changes_requested" | "blocked";
-  review_gap_acknowledgment?: {
-    fingerprint: string;
-    evidence_hash: string;
-    acknowledged_at: string;
-  };
-  approval_gate?: "antigravity_plan" | "codex_plan" | "implementation" | "final_review";
 }
-
-// Shared physical assignment; repair workflows do not become issue tasks.
-export type WorkspaceAssignment = Pick<
-  Task,
-  | "id"
-  | "repo_id"
-  | "branch_name"
-  | "worktree_path"
-  | "base_commit_sha"
-  | "workspace_mode"
-  | "workspace_checkpoint"
-  | "workspace_kind"
->;
 
 export interface CoreEvent {
   event: string;
-  task_id?: string;
-  repair_id?: string;
-  watch_id?: string;
-  scan_id?: string;
+  session_id?: string;
   run_id?: string;
   kind?: string;
   data?: unknown;
-  session_id?: string;
   text?: string;
   stream?: string;
 }

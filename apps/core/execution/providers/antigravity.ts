@@ -1,4 +1,4 @@
-import { capture, checked } from "../runtime/process";
+import { capture, checked, type ProcessTransform } from "../runtime/process";
 import {
   object,
   verifyFlags,
@@ -13,6 +13,8 @@ import type { NormalizedEvent } from "../../domain";
 const automaticModels = new Set(["claude-sonnet-4-6", "claude-opus-4-6-thinking"]);
 
 export class AntigravityProvider implements AgentProvider {
+  constructor(private readonly transform?: ProcessTransform) {}
+
   readonly name = "antigravity";
 
   detect = async (cwd: string, signal?: AbortSignal): Promise<ProviderDetection> => {
@@ -28,9 +30,9 @@ export class AntigravityProvider implements AgentProvider {
     };
 
     try {
-      d.version = await checked("agy", ["--version"], cwd, signal);
+      d.version = await checked("agy", ["--version"], cwd, signal, this.transform);
       d.installed = true;
-      const help = await capture("agy", ["--help"], cwd, signal);
+      const help = await capture("agy", ["--help"], cwd, signal, this.transform);
 
       verifyFlags(help.stdout + help.stderr, [
         "--mode",
@@ -41,7 +43,7 @@ export class AntigravityProvider implements AgentProvider {
         "--json-schema",
       ]);
 
-      const models = await capture("agy", ["models"], cwd, signal);
+      const models = await capture("agy", ["models"], cwd, signal, this.transform);
       if (models.code === 0) {
         d.models = models.stdout
           .split("\n")

@@ -1,4 +1,4 @@
-import { activeStatuses } from "../../lib/types";
+const activeStatuses = ["preparing", "running", "pausing"];
 
 export const Status = ({ status }: { status: string }) => {
   const running = [

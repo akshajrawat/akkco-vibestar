@@ -30,7 +30,7 @@ it("refreshes active session output on scoped utility events and releases its su
   const hook = renderHook(() => useWorkspace());
   await act(async () => {});
   expect(rpc).toHaveBeenCalledTimes(1);
-  act(() => event({ event: "utility.event", watch_id: "unrelated-watch", kind: "message" }));
+  act(() => event({ event: "utility.event", kind: "message" }));
   await act(async () => vi.runOnlyPendingTimers());
   expect(rpc).toHaveBeenCalledTimes(1);
   act(() => event({ event: "utility.event", session_id: "active-session", kind: "message" }));

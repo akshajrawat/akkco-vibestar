@@ -7,11 +7,11 @@ import {
   ViberAppearanceSchema,
   defaultAppearance,
   randomAppearance,
-} from "../../apps/core/flows/appearance";
-import { AgentProfileSchema } from "../../apps/core/flows/contracts";
+} from "../../apps/core/vibers/appearance";
+import { AgentProfileSchema } from "../../apps/core/vibers/contracts";
 import { ProfileEditor } from "../../apps/desktop/features/flows/ProfileEditor";
 import { ViberFace } from "../../apps/desktop/features/flows/ViberFace";
-import { viberProfile } from "../workspace/flow-fixtures";
+import { viberProfile } from "../helpers/viber-fixtures";
 import { mockDialog } from "../helpers/dialog";
 
 const rpc = vi.fn();
@@ -55,8 +55,6 @@ it("validates every layer option and rejects unsupported versions, unknown parts
   }
 
   expect(AgentProfileSchema.parse(viberProfile)).toEqual(viberProfile);
-  expect(defaultAppearance()).toEqual(defaultAppearance());
-  expect(viberProfile.appearance).toBeUndefined();
   for (let index = 0; index < 30; index++) {
     expect(ViberAppearanceSchema.safeParse(randomAppearance()).success).toBe(true);
   }

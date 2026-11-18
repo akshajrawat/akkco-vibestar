@@ -138,3 +138,37 @@
   color: var(--text-muted);
   padding: 15px 0 6px;
 }
+
+.clone-activity {
+  padding: 14px 16px;
+  border: 1px solid var(--border-default);
+  border-left: 2px solid var(--accent-blue);
+  margin: 10px 0;
+  background: var(--background-panel);
+  border-radius: var(--radius);
+}
+
+.clone-activity p {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+
+.clone-activity progress {
+  width: 100%;
+  height: 6px;
+  margin: 8px 0;
+}
+
+.clone-activity > small {
+  display: block;
+  margin-top: 6px;
+}
+
+.clone-activity .raw-log {
+  max-height: 220px;
+  white-space: pre-wrap;
+}
+
+.clone-activity details {
+  margin-top: 10px;
+}

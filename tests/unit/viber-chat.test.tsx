@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { ViberChat } from "../../apps/desktop/features/flows/ViberChat";
-import { viberProfile } from "../workspace/flow-fixtures";
+import { viberProfile } from "../helpers/viber-fixtures";
 
 vi.mock("../../apps/desktop/features/flows/ViberSessionChat", () => ({
   ViberSessionChat: () => <p>Existing conversation view</p>,
@@ -60,10 +60,6 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
       return [];
     }
 
-    if (method === "viber.instances") {
-      return [];
-    }
-
     if (method === "viber.session.list") {
       return [];
     }
@@ -82,12 +78,15 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
 
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
   const edit = vi.fn();
-  render(<ViberChat profile={viberProfile} revision={0} edit={edit} openTask={vi.fn()} />);
+  render(<ViberChat profile={viberProfile} revision={0} edit={edit} />);
 
   expect(screen.getByRole("heading", { name: "Ready when you are." })).toBeTruthy();
 
-  await waitFor(() => expect(rpc).toHaveBeenCalledWith("viber.instances", {}));
-  expect(rpc.mock.calls.filter(([method]) => method !== "providers.detect")).toHaveLength(3);
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith("viber.session.list", { profile_id: viberProfile.id }),
+  );
+
+  expect(rpc.mock.calls.filter(([method]) => method !== "providers.detect")).toHaveLength(2);
   expect(document.querySelector(".flow-editor")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Edit Viber" }));
   expect(edit).toHaveBeenCalledOnce();
@@ -148,7 +147,7 @@ it("defaults to isolated files and keeps repository attachment optional, searcha
   );
 
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
-  render(<ViberChat profile={viberProfile} revision={0} edit={vi.fn()} openTask={vi.fn()} />);
+  render(<ViberChat profile={viberProfile} revision={0} edit={vi.fn()} />);
   expect(screen.queryByRole("combobox", { name: "Repository workspace" })).toBeNull();
   fireEvent.click(screen.getByRole("combobox", { name: "Attach repository" }));
   await screen.findByRole("option", { name: "owned/repo" });

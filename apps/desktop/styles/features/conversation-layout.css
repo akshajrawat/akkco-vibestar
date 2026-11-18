@@ -12,10 +12,6 @@
   padding: 9px 16px;
 }
 
-.chat-workspace .task-title {
-  font-size: 13px;
-}
-
 .chat-workspace .chat-main {
   --chat-reading-width: 800px;
   --chat-gutter: clamp(20px, 3vw, 40px);
@@ -130,7 +126,7 @@
   text-transform: capitalize;
 }
 
-.workflow-message {
+.initial-prompt-message {
   max-width: 80%;
 }
 

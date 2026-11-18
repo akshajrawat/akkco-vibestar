@@ -70,7 +70,7 @@ export const RunError = ({
         ? "Codex"
         : stage === 0
           ? "Repository"
-          : "Task";
+          : "Viber";
 
   const stageName =
     run?.purpose === "Read-only conversation"

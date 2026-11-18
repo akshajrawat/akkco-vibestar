@@ -278,17 +278,6 @@
   color: var(--text-muted);
 }
 
-.task-metadata {
-  padding: 12px 0;
-  font-size: 11px;
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-
-.task-metadata code {
-  font-size: 11px;
-}
-
 .workspace-status {
   display: flex;
   align-items: center;

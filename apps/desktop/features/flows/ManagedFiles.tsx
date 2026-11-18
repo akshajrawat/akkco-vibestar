@@ -1,18 +1,31 @@
 import { useEffect, useState } from "react";
 
-import type { managedFiles } from "../../../core/flows/files";
 import { rpc, errorMessage } from "../../lib/api";
 
-export const ManagedFiles = ({ taskId, revision }: { taskId: string; revision: number }) => {
-  const [value, setValue] = useState<Awaited<ReturnType<typeof managedFiles>>>();
+export const ManagedFiles = ({
+  sessionId,
+  profileId,
+  revision,
+}: {
+  sessionId: string;
+  profileId: string;
+  revision: number;
+}) => {
+  const [value, setValue] = useState<{
+    files: string[];
+    path: string | null;
+    text: string | null;
+  }>();
+
   const [selected, setSelected] = useState<string>();
   const [error, setError] = useState("");
 
   useEffect(() => {
     let alive = true;
 
-    void rpc<NonNullable<typeof value>>("flow.files", {
-      task_id: taskId,
+    void rpc<NonNullable<typeof value>>("viber.session.files", {
+      session_id: sessionId,
+      profile_id: profileId,
       ...(selected ? { path: selected } : {}),
     })
       .then((next) => {
@@ -31,12 +44,12 @@ export const ManagedFiles = ({ taskId, revision }: { taskId: string; revision: n
     return () => {
       alive = false;
     };
-  }, [taskId, selected, revision]);
+  }, [sessionId, profileId, selected, revision]);
 
   return (
     <div className="flow-files">
       <aside>
-        <p className="subtle">Managed files · no Git baseline</p>
+        <p className="subtle">Workspace files</p>
         {value?.files.map((path) => (
           <button
             key={path}
@@ -54,9 +67,7 @@ export const ManagedFiles = ({ taskId, revision }: { taskId: string; revision: n
           <pre>{value.text}</pre>
         ) : (
           <p className="empty-row">
-            {value?.files.length
-              ? "Select a file to inspect."
-              : "No files yet. Start a Viber or open the terminal."}
+            {value?.files.length ? "Select a file to inspect." : "No workspace files yet."}
           </p>
         )}
       </div>

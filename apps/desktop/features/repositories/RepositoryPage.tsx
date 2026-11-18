@@ -13,11 +13,9 @@ import { remoteIdentity } from "../../../core/domain";
 export const RepositoryPage = ({
   snapshot,
   refresh,
-  createTask,
 }: {
   snapshot: Snapshot;
   refresh: () => Promise<void>;
-  createTask?: (repositoryId?: string) => void;
 }) => {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState("");
@@ -178,7 +176,7 @@ export const RepositoryPage = ({
         <section aria-label="Managed clone activity">
           <h2 className="repository-section-title">Managed clones</h2>
           {snapshot.github.clones.map((activity) => (
-            <CloneActivity key={activity.id} activity={activity} createTask={createTask} />
+            <CloneActivity key={activity.id} activity={activity} />
           ))}
         </section>
       )}
@@ -310,7 +308,7 @@ export const RepositoryPage = ({
                               r.owner +
                               "/" +
                               r.name +
-                              "? It will leave the active list. Source files, branches, task history and existing worktrees will be kept. Reconnect this checkout to create new tasks.",
+                              "? It will leave the active list. Source files, branches, conversation history and existing worktrees will be kept. Reconnect this checkout to use with Vibers.",
                           )
                         ) {
                           void action("repository.disconnect", { id: r.id, confirmed: true }, r.id);
@@ -416,10 +414,10 @@ export const RepositoryPage = ({
                 <div className="spacer" />
                 <Button
                   size="sm"
-                  disabled={!!busy || cloning}
+                  disabled={!!busy || cloning || !!connected}
                   onClick={() =>
                     connected
-                      ? createTask?.(connected.id)
+                      ? undefined
                       : managed?.connected === false
                         ? void action("repository.reconnectManaged", { id: managed.id }, managed.id)
                         : void find(r.full_name)
@@ -430,7 +428,7 @@ export const RepositoryPage = ({
                     : busy === r.full_name
                       ? "Finding…"
                       : connected
-                        ? "Select connected repository"
+                        ? "Connected"
                         : managed?.connected === false
                           ? "Reconnect managed clone"
                           : "Use repository"}
@@ -454,7 +452,6 @@ export const RepositoryPage = ({
           distro={snapshot.execution_environment?.distro || "Configured WSL distribution"}
           initialPath={connection.path}
           repositories={snapshot.repositories}
-          selectRepository={createTask}
           close={() => setConnection(undefined)}
           connected={refresh}
         />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 
-import type { AgentProfile } from "../../../core/flows/contracts";
+import type { AgentProfile } from "../../../core/vibers/contracts";
 import {
   supportedEfforts,
   type ProviderDetection,
@@ -75,12 +75,14 @@ export const ViberModelPicker = ({
   execution,
   change,
   disabled = false,
+  profileId,
 }: {
   execution: AgentProfile["execution"];
   change: (execution: AgentProfile["execution"]) => void;
   disabled?: boolean;
+  profileId?: string;
 }) => {
-  const { providers } = useProviders();
+  const { providers } = useProviders(profileId);
   const [browsingProvider, setBrowsingProvider] = useState(execution.provider);
   const [draft, setDraft] = useState<AgentProfile["execution"] | null>(null);
   const current = draft || execution;

@@ -1,27 +1,19 @@
 import { z } from "zod";
-import { CommandExecutions } from "../verification/command-executions";
 import { Usage } from "../output/usage";
 import { discoverCodexModels } from "../providers/codex-models";
 import { sandboxInvocation } from "../runtime/sandbox";
 import { mkdir, open, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import {
-  AdeError,
-  now,
-  type Task,
-  type CoreEvent,
-  type WorkspaceAssignment,
-  type NormalizedEvent,
-} from "../../domain";
+import { AdeError, now, type CoreEvent, type NormalizedEvent } from "../../domain";
 import type { Database } from "../../storage/database";
 import type { GitWorkspace } from "../../workspace/git";
-import { execute, redact } from "../runtime/process";
+import type { Computers } from "../../computers/service";
+import { execute, redact, type ProcessTransform } from "../runtime/process";
 import { BoundedWriter } from "../output/bounded-output";
 import { AgentExecutionSchema, type AgentExecution } from "../contracts";
 import { executionSchema } from "./execution-output";
 import { ViberSessionStore } from "../../vibers/store";
-import { FlowRunStore } from "../../flows/run-store";
 import {
   object,
   type AgentProvider,
@@ -29,23 +21,13 @@ import {
   type ProviderDetection,
 } from "../providers/contracts";
 
-interface AgentRunOptions {
+export interface AgentRunOptions {
   prompt: string;
   purpose: string;
   workspace?: string;
   schema?: z.ZodType;
-  jobId?: string;
-  analysisId?: string;
-  watchId?: string;
-  scanId?: string;
-  telemetryTaskId?: string;
-  telemetryRepository?: string;
-  questionId?: string;
-  repair?: WorkspaceAssignment;
-  repairStage?: 3 | 5;
   contextPaths?: string[];
   conversation?: { threadId?: string };
-  nodeAttemptId?: string;
   viberSession?: { sessionId: string; messageId: string };
 }
 
@@ -60,7 +42,9 @@ export class AgentRunner {
     private readonly providers: (
       stage: number,
       provider?: "codex" | "antigravity",
+      transform?: ProcessTransform,
     ) => AgentProvider,
+    private readonly computers?: Computers,
   ) {}
 
   clearProviderDetection = () => this.detections.clear();
@@ -87,16 +71,15 @@ export class AgentRunner {
     return value;
   };
 
-  /** All callers provide resolved settings; saved repair stages are telemetry only. */
   runConfigured = (
-    owner: Task | { id: string },
+    owner: { id: string },
     signal: AbortSignal,
     execution: AgentExecution,
     options: AgentRunOptions,
   ) => this.execute(owner, signal, execution, options);
 
   private execute = async (
-    t: Task | { id: string },
+    t: { id: string },
     signal: AbortSignal,
     settings: AgentExecution,
     options: AgentRunOptions,
@@ -109,36 +92,8 @@ export class AgentRunner {
       throw new AdeError("invalid_state", "Provider threads require conversation output.");
     }
 
-    if (options.repairStage !== undefined && !options.repair) {
-      throw new AdeError("isolation", "Recorded repair stages require a repair assignment.");
-    }
-
-    const stage = options.repairStage ?? 0;
-    const task = "repo_id" in t ? t : null;
-    if (options.nodeAttemptId) {
-      if (!task || options.repair || options.conversation?.threadId) {
-        throw new AdeError("isolation", "Flow nodes require their own task execution snapshot.");
-      }
-
-      new FlowRunStore(this.db).assertAgentExecution(
-        options.nodeAttemptId,
-        task.id,
-        execution,
-        options.prompt,
-      );
-    }
-
     if (options.viberSession) {
-      if (
-        task ||
-        options.repair ||
-        options.jobId ||
-        options.scanId ||
-        options.watchId ||
-        options.nodeAttemptId ||
-        !conversation ||
-        t.id !== options.viberSession.sessionId
-      ) {
+      if (!conversation || t.id !== options.viberSession.sessionId) {
         throw new AdeError(
           "isolation",
           "Standalone Viber turns require their own captured session workspace.",
@@ -154,9 +109,6 @@ export class AgentRunner {
       );
     }
 
-    const repair = options?.repair;
-    const owner = task || repair || null;
-
     const viberWorkspace = options.viberSession
       ? new ViberSessionStore(this.db).workspace(options.viberSession.sessionId)
       : null;
@@ -168,91 +120,58 @@ export class AgentRunner {
       );
     }
 
-    const assignment = owner || viberWorkspace;
-    const fingerprint = repair ? this.git.repairFingerprint : this.git.fingerprint;
+    const assignment = viberWorkspace;
     if (!assignment && !options?.workspace) {
-      throw new AdeError("invalid_state", "Detached analysis requires a managed PR workspace");
+      throw new AdeError("invalid_state", "No workspace path specified for execution");
     }
 
-    const table = owner
-      ? "agent_runs"
-      : options?.jobId || options?.purpose === "scheduled"
-        ? "scheduled_agent_runs"
-        : "utility_runs";
+    const table = "utility_runs";
 
-    const provider = this.providers(stage, execution.provider);
+    const computerScope =
+      options.viberSession && this.computers
+        ? {
+            profile_id: this.db.all<{ profile_id: string }>(
+              "SELECT profile_id FROM viber_sessions WHERE id=?",
+              options.viberSession.sessionId,
+            )[0]?.profile_id,
+            session_id: options.viberSession.sessionId,
+          }
+        : null;
+
+    const transform = computerScope ? await this.computers!.transform(computerScope) : undefined;
+    const provider = this.providers(0, execution.provider, transform);
     const config = execution;
 
     const id = randomUUID();
-    if (options?.scanId || options?.watchId) {
-      if (
-        table !== "utility_runs" ||
-        !options.scanId ||
-        !options.watchId ||
-        !this.db.all(
-          "SELECT id FROM issue_watch_scans WHERE id=? AND watch_id=? AND status='running' AND semantic_attempts=1 AND utility_run_id IS NULL",
-          options.scanId,
-          options.watchId,
-        ).length
-      ) {
-        throw new AdeError(
-          "isolation",
-          "Issue Watch utility execution needs its one reserved, unconsumed scan invocation slot.",
-        );
-      }
-    }
-
     const started = Date.now();
     const prompt = options.prompt;
     const usage = new Usage(this.db);
-
-    const repositoryId =
-      assignment?.repo_id ||
-      (options.telemetryTaskId ? this.db.task(options.telemetryTaskId).repo_id : null);
-
-    const repo = repositoryId ? this.db.repository(repositoryId) : null;
-
     const purpose = options.purpose;
 
     usage.start(id, {
-      task_id: task?.id || options?.telemetryTaskId || null,
-      job_id: options?.jobId || (!task && options?.purpose === "scheduled" ? t.id : null),
-      repository: repo ? `${repo.owner}/${repo.name}` : options?.telemetryRepository || null,
+      viber_session_id: options.viberSession?.sessionId || null,
       purpose,
       provider: provider.name,
       model: config.model,
       effort: config.effort,
     });
 
-    if (repair) {
-      this.db.run("UPDATE ai_usage SET repair_id=? WHERE id=?", repair.id, id);
-    }
-
     this.emit({
       event: "usage.changed",
-      task_id: task?.id || options?.telemetryTaskId,
-      repair_id: repair?.id,
+      session_id: options.viberSession?.sessionId,
     });
 
-    const parent = repair
-      ? "repair_id"
-      : task
-        ? "task_id"
-        : table === "scheduled_agent_runs"
-          ? "job_id"
-          : null;
-
     this.db.run(
-      `INSERT INTO ${table}(id,${parent ? `${parent},` : ""}stage,provider,model,effort,prompt,status,started_at,purpose) VALUES(?${parent ? ",?" : ""},?,?,?,?,?,'running',?,?)`,
+      `INSERT INTO ${table}(id,stage,provider,model,effort,prompt,status,started_at,purpose,viber_session_id,viber_message_id) VALUES(?,0,?,?,?,?,'running',?,?,?,?)`,
       id,
-      ...(parent ? [assignment?.id || options?.jobId || t.id] : []),
-      stage,
       provider.name,
       config.model,
       config.effort,
       redact(prompt),
       now(),
       purpose,
+      options.viberSession?.sessionId || null,
+      options.viberSession?.messageId || null,
     );
 
     this.db.run(
@@ -284,34 +203,8 @@ export class AgentRunner {
       });
     }
 
-    if (options?.scanId) {
-      this.db.transaction(() => {
-        this.db.run(
-          "UPDATE utility_runs SET watch_id=?,scan_id=? WHERE id=?",
-          options.watchId!,
-          options.scanId!,
-          id,
-        );
-
-        this.db.run(
-          "UPDATE ai_usage SET watch_id=?,scan_id=? WHERE id=?",
-          options.watchId!,
-          options.scanId!,
-          id,
-        );
-
-        this.db.run(
-          "UPDATE issue_watch_scans SET utility_run_id=?,data=json_set(data,'$.utility_run_id',?) WHERE id=? AND watch_id=?",
-          id,
-          id,
-          options.scanId!,
-          options.watchId!,
-        );
-      });
-    }
-
     const utilityEvent = (event: NormalizedEvent, raw = "", stream = "stdout") => {
-      if (!options?.scanId && !options.viberSession) {
+      if (!options.viberSession) {
         return;
       }
 
@@ -328,49 +221,15 @@ export class AgentRunner {
       this.emit({
         event: "utility.event",
         session_id: options.viberSession?.sessionId,
-        watch_id: options.watchId,
-        scan_id: options.scanId,
         run_id: id,
         ...event,
       });
     };
 
-    if (options?.analysisId && table === "scheduled_agent_runs") {
-      this.db.run(
-        "UPDATE scheduled_agent_runs SET analysis_id=? WHERE id=?",
-        options.analysisId,
-        id,
-      );
-
-      this.db.run("UPDATE ai_usage SET analysis_id=? WHERE id=?", options.analysisId, id);
-    }
-
-    if (task && options?.questionId) {
-      this.db.run(
-        "UPDATE code_questions SET run_id=? WHERE id=? AND task_id=?",
-        id,
-        options.questionId,
-        task.id,
-      );
-
-      this.db.run(
-        "UPDATE task_messages SET run_id=? WHERE id=? AND task_id=?",
-        id,
-        options.questionId,
-        task.id,
-      );
-    }
-
     const dir = join(
       this.root,
       "logs",
-      task || repair
-        ? t.id
-        : options.viberSession
-          ? `viber-${options.viberSession.sessionId}`
-          : options?.scanId
-            ? `issue-watch-${options.scanId}`
-            : `pr-watch-${t.id}`,
+      options.viberSession ? `viber-${options.viberSession.sessionId}` : id,
     );
 
     let cwd = "";
@@ -385,7 +244,6 @@ export class AgentRunner {
       outputAbort.abort();
     });
 
-    const commands = new CommandExecutions(this.db);
     let final: unknown;
     const conversationMessages = new Map<string, string>();
     let failure: unknown;
@@ -396,17 +254,12 @@ export class AgentRunner {
     let nativeThreadId: string | null = null;
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
-      if (options.nodeAttemptId) {
-        new FlowRunStore(this.db).attachExecution(options.nodeAttemptId, id, "agent");
-      }
+      cwd = viberWorkspace ? await this.git.assertOwnedTask(viberWorkspace) : options!.workspace!;
 
-      cwd = viberWorkspace
-        ? await this.git.assertOwnedTask(viberWorkspace)
-        : assignment
-          ? await this.git.assertTask(assignment)
-          : options!.workspace!;
+      const detection = computerScope
+        ? await provider.detect(cwd, signal)
+        : await this.detect(provider, signal);
 
-      const detection = await this.detect(provider, signal);
       if (signal.aborted) {
         throw new AdeError("cancelled", "Run cancelled");
       }
@@ -423,7 +276,9 @@ export class AgentRunner {
       if (!detection.connected) {
         throw new AdeError(
           "authentication",
-          `Connect ${provider.name} on the Providers page using the official CLI.`,
+          computerScope
+            ? `Open this Viber's Computer panel and sign in with the official ${provider.name} CLI.`
+            : `Connect ${provider.name} on the Providers page using the official CLI.`,
         );
       }
 
@@ -480,58 +335,49 @@ export class AgentRunner {
       await mkdir(dir, { recursive: true });
 
       const outputSchema = provider.outputSchema?.(schema) || schema;
-
       if (!conversation) {
-        await writeFile(schemaPath, JSON.stringify(outputSchema), {
-          mode: 0o600,
-        });
+        await writeFile(schemaPath, JSON.stringify(outputSchema, null, 2));
       }
 
-      const contextPaths = options.contextPaths || [];
+      const contextPaths = options.contextPaths?.length ? options.contextPaths : undefined;
 
       const directInvocation = provider.invocation({
         runId: id,
         cwd,
-        stage,
+        stage: 0,
         access: execution.access,
         config: selectedConfig,
         prompt,
         schemaPath,
         schema: outputSchema,
-        workspaceType: assignment?.repo_id ? "task" : "utility",
+        workspaceType: "utility",
+        ...(computerScope ? { isolatedComputer: true } : {}),
         ...(conversation ? { conversation: options.conversation || {} } : {}),
       });
 
-      const invocation = await sandboxInvocation(
-        this.root,
-        this.db,
-        assignment,
-        directInvocation,
-        execution.access === "read-only",
-        conversation ? undefined : schemaPath,
-        (detection.provider === "codex" && directInvocation.program === "codex") ||
-          (detection.provider === "antigravity" && directInvocation.program === "agy")
-          ? detection.provider
-          : undefined,
-        options?.workspace,
-        contextPaths,
-        options.viberSession?.sessionId,
-      );
+      const invocation = transform
+        ? { ...directInvocation, ...transform(directInvocation) }
+        : await sandboxInvocation(
+            this.root,
+            this.db,
+            assignment,
+            directInvocation,
+            execution.access === "read-only",
+            conversation ? undefined : schemaPath,
+            (detection.provider === "codex" && directInvocation.program === "codex") ||
+              (detection.provider === "antigravity" && directInvocation.program === "agy")
+              ? detection.provider
+              : undefined,
+            options?.workspace,
+            contextPaths,
+            options.viberSession?.sessionId,
+          );
 
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
-      const before = assignment ? await fingerprint(assignment) : null;
-      if (
-        options.nodeAttemptId &&
-        before !== new FlowRunStore(this.db).attempt(options.nodeAttemptId).workspace_fingerprint
-      ) {
-        throw new AdeError(
-          "stale_context",
-          "The workspace changed after node inputs were captured. Retry explicitly with fresh context.",
-        );
-      }
+      const before = assignment && !computerScope ? await this.git.fingerprint(assignment) : null;
 
-      this.emit({ event: "changed", task_id: task?.id, repair_id: repair?.id });
+      this.emit({ event: "changed", session_id: options.viberSession?.sessionId });
       signal.throwIfAborted();
       if (options.viberSession) {
         new ViberSessionStore(this.db).markInvocation(options.viberSession.messageId);
@@ -585,8 +431,7 @@ export class AgentRunner {
 
           this.emit({
             event: "usage.changed",
-            task_id: task?.id || options?.telemetryTaskId,
-            repair_id: repair?.id,
+            session_id: options.viberSession?.sessionId,
           });
 
           if (conversationId) {
@@ -633,32 +478,7 @@ export class AgentRunner {
               completedTurn = true;
             }
 
-            if (!task && !repair) {
-              utilityEvent(event, line, stream);
-              continue;
-            }
-
-            commands.observe(task?.id || null, id, event, now(), repair?.id || null);
-
-            this.db.run(
-              "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream,repair_id) VALUES(?,?,?,?,?,?,?,?)",
-              id,
-              task?.id || null,
-              now(),
-              event.kind,
-              JSON.stringify(event.data),
-              line,
-              stream,
-              repair?.id || null,
-            );
-
-            this.emit({
-              event: "agent.event",
-              task_id: task?.id,
-              repair_id: repair?.id,
-              run_id: id,
-              ...event,
-            });
+            utilityEvent(event, line, stream);
           }
         },
       });
@@ -673,7 +493,7 @@ export class AgentRunner {
         throw new AdeError(
           "provider_failed",
           `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
-          { provider: provider.name, stage, code },
+          { provider: provider.name, stage: 0, code },
         );
       }
 
@@ -684,7 +504,6 @@ export class AgentRunner {
         );
       }
 
-      // Workflow stages require schemas; conversation turns use the provider's ordinary prose.
       if (conversation && !resultSchema.safeParse(final).success) {
         const summary = [...conversationMessages.values()].reverse().find((text) => text.trim());
 
@@ -702,48 +521,18 @@ export class AgentRunner {
 
       if (
         assignment &&
+        !computerScope &&
         execution.access === "read-only" &&
-        before !== (await fingerprint(assignment))
+        before !== (await this.git.fingerprint(assignment))
       ) {
         throw new AdeError(
           "planning_violation",
-          "A read-only planning or review run modified the worktree. Pipeline stopped. Review the changes before retrying.",
+          "A read-only planning or review run modified the worktree. Review the changes before retrying.",
         );
       }
 
       if (signal.aborted) {
         throw new AdeError("cancelled", "Run cancelled");
-      }
-
-      if (task && execution.output === "implementation") {
-        const implementation = object(result);
-        for (const [field, status] of [
-          ["testsPassed", "passed"],
-          ["testsFailed", "failed"],
-          ["testsSkipped", "skipped"],
-        ]) {
-          const tests = implementation[field];
-          for (const text of Array.isArray(tests) ? tests : []) {
-            const data = { status, text, source: "provider-reported" };
-
-            this.db.run(
-              "INSERT INTO agent_events(run_id,task_id,timestamp,kind,data,raw,stream) VALUES(?,?,?,'test.result',?,?, 'stdout')",
-              id,
-              t.id,
-              now(),
-              JSON.stringify(data),
-              JSON.stringify({ event: "vibestar.test.result", data }),
-            );
-
-            this.emit({
-              event: "agent.event",
-              task_id: t.id,
-              run_id: id,
-              kind: "test.result",
-              data,
-            });
-          }
-        }
       }
 
       await writes.drain();
@@ -783,18 +572,8 @@ export class AgentRunner {
         id,
       );
 
-      this.emit({
-        event: "agent.event",
-        task_id: task?.id,
-        repair_id: repair?.id,
-        run_id: id,
-        kind: signal.aborted ? "run.cancelled" : "run.failed",
-        data: { message: String(e) },
-      });
-
       throw e;
     } finally {
-      commands.finish(id);
       try {
         await writes.drain().catch(() => {});
       } finally {
@@ -804,7 +583,6 @@ export class AgentRunner {
           await unlink(schemaPath).catch(() => {});
         }
 
-        // Discovery reads official allowance only; it never starts a model turn.
         if (invoked && officialCodex && !signal.aborted && !conversation) {
           const after = await discoverCodexModels(
             this.root,
@@ -816,8 +594,7 @@ export class AgentRunner {
 
         this.emit({
           event: "usage.changed",
-          task_id: task?.id || options?.telemetryTaskId,
-          repair_id: repair?.id,
+          session_id: options.viberSession?.sessionId,
         });
       }
     }

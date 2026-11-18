@@ -1,35 +1,35 @@
 :root {
   color-scheme: dark;
-  --background-app: #141a26;
-  --background-sidebar: #171e2b;
-  --background-panel: #171d2a;
-  --background-elevated: #202837;
-  --background-input: #121925;
-  --background-hover: #263249;
-  --background-selected: #1b2c49;
-  --background-success: #22352a;
-  --background-warning: #362e22;
-  --background-error: #3d2528;
-  --background-info: #262e36;
-  --border-default: #303b50;
-  --border-strong: #52647e;
-  --border-subtle: #232d40;
-  --focus-ring: #3984ff;
-  --text-primary: #edf2fc;
-  --text-secondary: #b7c4d9;
-  --text-muted: #8c9eb9;
-  --text-disabled: #6b6b6b;
-  --accent-blue: #3984ff;
-  --accent-green: #8fc59b;
-  --accent-amber: #dab56b;
-  --accent-red: #e88b87;
-  --accent-purple: #b7a0e8;
-  --button-primary: #2478ff;
-  --button-primary-hover: #3988ff;
-  --button-primary-active: #1663de;
-  --text-on-accent: #ffffff;
-  --overlay: #0008;
-  --shadow: #0005;
+  --background-app: #090a0d;
+  --background-sidebar: #0d0f12;
+  --background-panel: #111317;
+  --background-elevated: #16181e;
+  --background-input: #13151a;
+  --background-hover: #1c1e26;
+  --background-selected: #222530;
+  --background-success: #14231a;
+  --background-warning: #292013;
+  --background-error: #2b1416;
+  --background-info: #141b24;
+  --border-default: #1e222b;
+  --border-strong: #2d3340;
+  --border-subtle: #171a21;
+  --focus-ring: #4b5563;
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-disabled: #4b5563;
+  --accent-blue: #60a5fa;
+  --accent-green: #4ade80;
+  --accent-amber: #f59e0b;
+  --accent-red: #f87171;
+  --accent-purple: #c084fc;
+  --button-primary: #f3f4f6;
+  --button-primary-hover: #ffffff;
+  --button-primary-active: #e5e7eb;
+  --text-on-accent: #090a0d;
+  --overlay: rgba(0, 0, 0, 0.7);
+  --shadow: rgba(0, 0, 0, 0.4);
   --background: var(--background-app);
   --foreground: var(--text-primary);
   --panel: var(--background-panel);
@@ -46,11 +46,17 @@
   --radius: 8px;
   --radius-input: 10px;
   --radius-panel: 12px;
-  --radius-composer: 18px;
-  --font-mono: "Geist Mono", Consolas, monospace;
+  --radius-composer: 20px;
+  --font-mono: "Geist Mono", "JetBrains Mono", Consolas, monospace;
   --motion-fast: 140ms;
   --motion-enter: 180ms;
-  font-family: "Geist Sans", system-ui, sans-serif;
+  font-family:
+    "Geist Sans",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   font-size: 13px;
   line-height: 1.5;
   font-synthesis: style;

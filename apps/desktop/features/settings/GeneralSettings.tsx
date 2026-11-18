@@ -12,12 +12,12 @@ export const GeneralSettings = ({
 }) => (
   <>
     <section className="settings-section settings-general-section">
-      <h2>Task</h2>
+      <h2>Viber Workspaces</h2>
       <div className="settings-card">
         <label className="settings-row">
           <span>
             Default editor
-            <small>Choose the editor used to open task worktrees and repository checkouts.</small>
+            <small>Choose the editor used to open Viber worktrees and repository checkouts.</small>
           </span>
           <Select
             label="Default editor"
@@ -38,7 +38,9 @@ export const GeneralSettings = ({
         <label className="settings-row">
           <span>
             Concurrency
-            <small>Set how many tasks can run at the same time across your workspace.</small>
+            <small>
+              Set how many concurrent runs can execute at the same time across your workspace.
+            </small>
           </span>
           <Select
             label="Concurrency"

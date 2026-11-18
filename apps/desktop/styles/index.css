@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "@xyflow/react/dist/style.css";
 @import "./typography.css";
 @import "./tokens.css";
 @import "./base.css";
@@ -7,11 +6,9 @@
 @import "./components/select.css";
 @import "./layout.css";
 @import "./components/pages.css";
-@import "./features/workflow.css";
 @import "./features/chat.css";
 @import "./features/changes.css";
 @import "./features/output.css";
-@import "./features/verification.css";
 @import "./components/dialogs.css";
 @import "./components/workspace-overlay.css";
 @import "./features/providers.css";
@@ -19,17 +16,12 @@
 @import "./features/settings.css";
 @import "./responsive.css";
 @import "./components/surfaces.css";
-@import "./features/pull-requests.css";
 @import "./features/repository-connections.css";
-@import "./features/current-run.css";
 @import "./features/usage.css";
-@import "./features/review.css";
-@import "./features/issue-watch.css";
-@import "./features/issue-watch-results.css";
 @import "./features/conversation-layout.css";
 @import "./features/recovery.css";
-@import "./features/task-navigation.css";
-@import "./features/flows.css";
 @import "./features/settings-workspace.css";
+@import "./features/sidebar.css";
 @import "./features/viber-appearance.css";
 @import "./components/notifications.css";
+@import "./features/computer.css";

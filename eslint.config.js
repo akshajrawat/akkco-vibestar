@@ -24,6 +24,14 @@ export default tseslint.config(
     rules: {
       "no-control-regex": "off",
       "@typescript-eslint/consistent-type-imports": ["error", { disallowTypeAnnotations: false }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
   {

@@ -1,85 +1,29 @@
-import type { Task as CoreTask } from "../../core/domain";
-import type { DiffFile as CoreDiffFile } from "../../core/workspace/git";
-import type { Repository, Settings } from "../../core/domain";
-import type { taskFlowSummaries } from "../../core/flows/workspace";
+import type { Repository, Settings, StageConfig } from "../../core/domain";
+import type { AgentProfile } from "../../core/vibers/contracts";
 
-export type { Repository, Settings, StageConfig } from "../../core/domain";
+export type { Repository, Settings, StageConfig, AgentProfile };
 export type Detection = import("../../core/execution/providers/contracts").ProviderDetection;
 
-/** Renderer projection retains sparse historical records and uses canonical task field contracts. */
-export interface Task
-  extends
-    Pick<
-      CoreTask,
-      | "id"
-      | "repo_id"
-      | "issue_number"
-      | "issue_url"
-      | "claimed_scope"
-      | "notes"
-      | "branch_name"
-      | "base_branch"
-      | "base_commit_sha"
-      | "worktree_path"
-      | "created_at"
-      | "updated_at"
-      | "stage"
-      | "error"
-    >,
-    Partial<
-      Pick<
-        CoreTask,
-        | "workflow_start"
-        | "kind"
-        | "goal"
-        | "flow_id"
-        | "workspace_kind"
-        | "verification_environment"
-        | "browser_environment_report"
-        | "runtime"
-        | "preparation_timing"
-        | "verification_policy"
-        | "scope_mode"
-        | "execution_settings"
-        | "stage_settings"
-        | "archived"
-        | "approval_gate"
-        | "final_review_verdict"
-      >
-    > {
-  issue: { title?: string; body?: string };
-  status: string;
+export interface AgentEvent {
+  id: number;
+  run_id: string;
+  task_id?: string | null;
+  session_id?: string | null;
+  timestamp: string;
+  kind: string;
+  data: string;
+  raw: string;
+  stream: string;
 }
 
 export interface Snapshot {
-  flow_states?: ReturnType<typeof taskFlowSummaries>;
-  pr_batches?: import("../../core/review/pr/batches").PRBatch[];
-  pr_watch?: import("../../core/review/pr/watch-contracts").PRWatchState | null;
+  warning?: string;
   capabilities?: {
-    agent_flows?: number;
-    flow_continuations?: number;
     viber_conversations?: number;
     viber_sessions?: number;
-    pr_quick_watch?: boolean;
-    manual_issue_watch: boolean;
-    issue_watch_contract: number | null;
-    issue_watch_batches?: number | null;
   };
   persistence?: import("../../core/storage/records").PersistenceDiagnostic[];
-  repairs?: import("../../core/review/repair/contracts").RepairSession[];
-  pr_reports?: {
-    job_id: string;
-    phase?: string;
-    started_at?: string;
-    action_state?: string;
-    analyzed_head?: string | null;
-    analyzed_at?: string | null;
-    outstanding: number;
-    unanswered_questions: number;
-  }[];
-  warning?: string;
   repositories: Repository[];
-  tasks: Task[];
   settings: Settings;
   root: string;
   execution_environment?: { distro: string };
@@ -95,8 +39,6 @@ export interface Snapshot {
     repositories: import("../../core/github/contracts").GitHubRepository[];
     pull_requests: import("../../core/github/contracts").GitHubPullRequest[];
   };
-  scheduled?: import("../../core/scheduled/contracts").ScheduleJob[];
-  attention?: import("../../core/scheduled/contracts").ScheduleAttention[];
 }
 
 export interface Run {
@@ -117,75 +59,14 @@ export interface Run {
   error: string | null;
 }
 
-export interface AgentEvent {
-  id: number;
-  run_id: string;
-  task_id: string | null;
-  repair_id?: string | null;
-  timestamp: string;
-  kind: string;
-  data: string;
-  raw: string;
-  stream: string;
-}
-
 export interface Message {
-  flow_node_id?: string | null;
-  viber_profile_id?: string | null;
-  purpose?: "instruction" | "chat";
-  status?: string;
-  run_id?: string | null;
   id: string;
   role: string;
   content: string;
   created_at: string;
-}
-
-export interface Artifact {
-  id: string;
-  stage: number;
-  kind: string;
-  content: string;
-  created_at: string;
-}
-
-export interface TestRun {
+  status?: string;
+  purpose?: string;
   run_id?: string | null;
-  call_id?: string | null;
-  output_truncated?: number;
-  id: string;
-  command: string;
-  status: string;
-  started_at: string;
-  ended_at: string | null;
-  exit_code: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-export interface Detail {
-  validation?: ReturnType<
-    typeof import("../../core/execution/verification/verification").verificationSummary
-  >;
-  active?: boolean;
-  executing?: boolean;
-  task: Task;
-  runs: Run[];
-  events: AgentEvent[];
-  messages: Message[];
-  artifacts: Artifact[];
-  tests: TestRun[];
-  usage?: import("../../core/execution/output/usage").UsageRecord[];
-  activity?: { id: number; kind: string; data: string; timestamp: string }[];
-}
-
-export type DiffFile = Omit<CoreDiffFile, "untracked"> & Partial<Pick<CoreDiffFile, "untracked">>;
-
-export interface Diff {
-  files: DiffFile[];
-  insertions: number;
-  deletions: number;
-  base: string;
 }
 
 export interface FileDiff {
@@ -195,23 +76,8 @@ export interface FileDiff {
   unified: string;
 }
 
+export type { DiffFile } from "../../core/workspace/git";
+
 export type { CoreEvent } from "../../core/domain";
 
-export type Page =
-  | "Scheduled"
-  | "Tasks"
-  | "Vibers"
-  | "Issue Watch"
-  | "Repositories"
-  | "Providers"
-  | "Usage"
-  | "Settings";
-
-export const activeStatuses = [
-  "preparing",
-  "planning_antigravity",
-  "planning_codex",
-  "implementing",
-  "validating",
-  "reviewing_antigravity",
-];
+export type Page = "Vibers" | "Repositories" | "Providers" | "Usage" | "Settings";

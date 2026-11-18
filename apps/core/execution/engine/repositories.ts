@@ -24,7 +24,6 @@ export class RepositoryOperations {
       | "git"
       | "isActive"
       | "cleanupBlockers"
-      | "acquireTaskWorkspace"
     >,
     private readonly operation: <T>(operation: () => Promise<T>, label?: string) => Promise<T>,
     private readonly signal: AbortSignal,
@@ -143,11 +142,11 @@ export class RepositoryOperations {
         if (r.clone_status === "cloning" && (await exists(r.path))) {
           if (
             !inside(join(this.host.root, "repos"), r.path) ||
-            this.host.db.tasks().some((t) => t.repo_id === r.id)
+            this.host.db.all("SELECT id FROM viber_sessions WHERE repository_id=?", r.id).length
           ) {
             throw new AdeError(
               "isolation",
-              "Cannot remove an incomplete clone with task history or external ownership.",
+              "Cannot remove an incomplete clone with session history or external ownership.",
             );
           }
 
@@ -176,10 +175,15 @@ export class RepositoryOperations {
             );
           }
 
-          if (this.host.db.tasks().some((t) => t.repo_id === r.id && t.worktree_path)) {
+          if (
+            this.host.db.all(
+              "SELECT id FROM viber_sessions WHERE repository_id=? AND workspace IS NOT NULL AND json_extract(workspace, '$.worktree_path') IS NOT NULL",
+              r.id,
+            ).length
+          ) {
             throw new AdeError(
               "isolation",
-              "This repository has existing task worktrees. Restore its original managed clone before continuing.",
+              "This repository has existing session worktrees. Restore its original managed clone before continuing.",
             );
           }
 
@@ -307,17 +311,9 @@ export class RepositoryOperations {
             `${r.owner}/${r.name}`.toLowerCase() === `${owner}/${name}`.toLowerCase(),
         );
 
-      if (
-        existing &&
-        this.host.db
-          .tasks()
-          .some(
-            (t) =>
-              t.repo_id === existing.id &&
-              (this.host.isActive(t.id) || (t.status === "queued" && !t.archived)),
-          )
-      ) {
-        throw new AdeError("busy", "Stop this repository's tasks before reconnecting.");
+      const blockers = this.host.cleanupBlockers();
+      if (blockers.length) {
+        throw new AdeError("busy", "Wait for active operations before reconnecting.");
       }
 
       const repo: Repository = {
@@ -350,21 +346,11 @@ export class RepositoryOperations {
     this.operation(async () => {
       const repo = this.host.db.repository(id);
 
-      const taskIds = this.host.db
-        .tasks()
-        .filter((t) => t.repo_id === id)
-        .map((t) => t.id);
-
-      const blockers = this.host
-        .cleanupBlockers()
-        .filter((blocker) => blocker.task_id && taskIds.includes(blocker.task_id));
-
+      const blockers = this.host.cleanupBlockers();
       if (blockers.length) {
-        throw new AdeError(
-          "busy",
-          "Stop this repository's active tasks and terminals before disconnecting.",
-          { blockers },
-        );
+        throw new AdeError("busy", "Stop active operations before disconnecting this repository.", {
+          blockers,
+        });
       }
 
       this.host.db.saveRepository({ ...repo, connected: false });
@@ -444,18 +430,11 @@ export class RepositoryOperations {
       this.signal,
     );
 
-    if (
-      this.host.db
-        .tasks()
-        .some(
-          (t) =>
-            t.repo_id === id &&
-            (this.host.isActive(t.id) || (t.status === "queued" && !t.archived)),
-        )
-    ) {
+    const blockers = this.host.cleanupBlockers();
+    if (blockers.length) {
       throw new AdeError(
         "busy",
-        "Wait for this repository's active tasks before changing its remotes",
+        "Wait for active operations on this repository before changing its remotes",
       );
     }
 
@@ -467,47 +446,34 @@ export class RepositoryOperations {
         : {}),
     };
 
-    const releases: (() => void)[] = [];
-    try {
-      for (const task of this.host.db.tasks().filter((task) => task.repo_id === id)) {
-        releases.push(
-          this.host.acquireTaskWorkspace(task.id, "Repository destination configuration"),
+    await this.host.git.withLock(id, async () => {
+      if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
+        await gitChecked(
+          ["remote", "set-url", "upstream", updated.upstream_url],
+          r.path,
+          this.signal,
         );
-      }
 
-      await this.host.git.withLock(id, async () => {
-        if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
+        const remotes = (await gitChecked(["remote"], r.path, this.signal)).split("\n");
+        if (updated.origin_url) {
           await gitChecked(
-            ["remote", "set-url", "upstream", updated.upstream_url],
+            [
+              "remote",
+              remotes.includes("origin") ? "set-url" : "add",
+              "origin",
+              updated.origin_url,
+            ],
             r.path,
             this.signal,
           );
-
-          const remotes = (await gitChecked(["remote"], r.path, this.signal)).split("\n");
-          if (updated.origin_url) {
-            await gitChecked(
-              [
-                "remote",
-                remotes.includes("origin") ? "set-url" : "add",
-                "origin",
-                updated.origin_url,
-              ],
-              r.path,
-              this.signal,
-            );
-          } else if (remotes.includes("origin")) {
-            await gitChecked(["remote", "remove", "origin"], r.path, this.signal);
-          }
+        } else if (remotes.includes("origin")) {
+          await gitChecked(["remote", "remove", "origin"], r.path, this.signal);
         }
-
-        this.signal.throwIfAborted();
-        this.host.db.saveRepository(updated);
-      });
-    } finally {
-      for (const release of releases.reverse()) {
-        release();
       }
-    }
+
+      this.signal.throwIfAborted();
+      this.host.db.saveRepository(updated);
+    });
 
     this.host.changed();
     return updated;
