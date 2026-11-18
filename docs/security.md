@@ -70,7 +70,7 @@ sandboxed. The application no longer stages, commits or publishes through dedica
 
 Explicit user-operated terminals are normal Linux/WSL shells with the user's own
 permissions, environment, Git configuration and authentication. They start only after
-worktree ownership validation and acquiring the task or repair lease. They are not an
+worktree ownership validation and acquiring the workspace or repair lease. They are not an
 agent execution path and are not constrained by the agent sandbox. Opening the terminal
 dock starts and focuses the shell; hiding it does not close the session. For a managed
 clone only, startup adds a missing `origin` alias from its registered fork or repository
@@ -90,17 +90,15 @@ and unresolved application failures survive repairs. Approvals bind captured nod
 configuration, selected inputs and workspace evidence; acceptance cannot turn missing
 or failed checks into a pass.
 
-Task/profile/graph creation and layout edits are idle. Flow startup, node retry,
-approval, Viber conversation turns, detailed PR analysis, Issue Watch scans and repair
-continuation require explicit requests. Messages and drafts are task/node/profile
-scoped; selected context is bounded before inference. Chat writes invalidate shared
-graph evidence. Retired task mutations are not registered and cannot be forwarded
-to old helpers. Historical conversion preserves unknown authority and raw source
-bytes without using current defaults as missing execution settings. The lightweight
-PR watch runs once per app launch and on explicit recheck, using bounded read-only conversation
-context and the existing sandbox/slots. Core startup requests are deduplicated; interrupted,
-cancelled or failed operations are not replayed. Filtering or refreshing metadata does not
-start inference. Incomplete/cancelled
+Viber profile creation and appearance edits are idle. Viber conversation turns,
+detailed PR analysis and repair continuation require explicit requests. Messages are
+Viber session scoped; selected context is bounded before inference. Retired entity
+mutations are not registered and cannot be forwarded to old helpers. Historical conversion
+preserves unknown authority and raw source bytes without using current defaults as
+missing execution settings. The lightweight PR watch runs once per app launch and on explicit
+recheck, using bounded read-only conversation context and the existing sandbox/slots. Core startup
+requests are deduplicated; interrupted, cancelled or failed operations are not replayed.
+Filtering or refreshing metadata does not start inference. Incomplete/cancelled
 attempts preserve evidence without inventing a completed baseline.
 
 ## Verification and reports

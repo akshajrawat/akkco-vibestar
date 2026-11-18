@@ -118,10 +118,10 @@ it.each(["codex", "antigravity"] as const)(
       const profile = engine.vibers.profile(profileId);
       const selection = { provider: providerName, model: "next-model", effort: "high" };
 
-      const create = async () =>
+      const create = async (pId: string = profileId) =>
         (await rpc.call("viber.session.create", {
           request_id: randomUUID(),
-          profile_id: profileId,
+          profile_id: pId,
           repository_id: repo.id,
           selection,
         })) as ViberSession;
@@ -220,11 +220,22 @@ it.each(["codex", "antigravity"] as const)(
       expect(requests[1].prompt).toBe("Continue with one new instruction");
       expect(requests[1].cwd).toBe(workspace.worktree_path);
 
-      const sibling = await create();
+      const siblingProfileId = randomUUID();
+
+      engine.vibers.saveProfile(
+        {
+          ...profile,
+          id: siblingProfileId,
+          name: "Sibling Implementer",
+        },
+        null,
+      );
+
+      const sibling = await create(siblingProfileId);
 
       engine.viberSessions.send({
         session_id: sibling.id,
-        profile_id: profileId,
+        profile_id: siblingProfileId,
         request_id: randomUUID(),
         content: "Sibling edit",
         history_ids: [],
@@ -232,7 +243,8 @@ it.each(["codex", "antigravity"] as const)(
 
       await expect
         .poll(
-          () => engine.viberSessions.store.detail(sibling.id, profileId).messages.at(-1)?.status,
+          () =>
+            engine.viberSessions.store.detail(sibling.id, siblingProfileId).messages.at(-1)?.status,
         )
         .toBe("completed");
 

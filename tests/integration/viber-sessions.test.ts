@@ -32,7 +32,7 @@ class SessionProvider extends FixtureProvider {
           : this.mode === "failure"
             ? "process.exit(2)"
             : `
-        require('node:fs').writeFileSync('answer.txt','Session file');
+        ${request.access === "read-only" ? "" : "require('node:fs').writeFileSync('answer.txt','Session file');"}
         console.log(JSON.stringify({type:'thread.started',thread_id:${JSON.stringify(request.conversation?.threadId || request.runId)}}));
         console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Saved session answer.'}}));
         console.log(JSON.stringify({type:'turn.completed'}));
@@ -62,7 +62,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const create = async (profile_id = profileId) =>
+const create = async (profile_id: string = profileId) =>
   (await rpc.call("viber.session.create", {
     request_id: randomUUID(),
     profile_id,
@@ -179,9 +179,10 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
   expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
 });
 
-it("isolates profile ownership, same-profile histories, request identities, output and workspaces", async () => {
+it("isolates profile ownership, duplicate session rejection, request identities, output and workspaces", async () => {
   const one = await create();
-  const two = await create();
+  await expect(create()).rejects.toThrow("Each Viber owns exactly one continuous conversation");
+  const two = await create(builtInProfiles.reviewer);
   await send(one, { content: "Private first session" });
   const first = await settled(one);
   const scope = { session_id: one.id, profile_id: builtInProfiles.planner };
@@ -212,8 +213,8 @@ it("isolates profile ownership, same-profile histories, request identities, outp
 });
 
 it("captures the shared profile revision per turn while keeping provider/model/effort scoped to the session", async () => {
-  const one = await create();
-  const two = await create();
+  const one = await create(profileId);
+  const two = await create(builtInProfiles.reviewer);
   const profile = engine.vibers.profile(profileId);
 
   engine.vibers.saveProfile(
@@ -257,8 +258,8 @@ it("captures the shared profile revision per turn while keeping provider/model/e
 it("enforces shared execution capacity, serializes one session, supports cancellation, and does not replay failed turns", async () => {
   provider.mode = "wait";
   engine.db.saveSettings({ ...engine.db.settings(), concurrency: 1 });
-  const one = await create();
-  const two = await create();
+  const one = await create(profileId);
+  const two = await create(builtInProfiles.reviewer);
   const input = { request_id: randomUUID() };
   const pending = await send(one, input);
   expect(await send(one, input)).toEqual(pending);
@@ -308,11 +309,11 @@ it("marks shutdown and recovered pending turns interrupted without automatically
   engine = await createFixtureEngine(join(dir, "data"), () => provider);
   rpc = new Rpc(engine);
   expect((await detail(session)).messages[0].status).toBe("interrupted");
-  const crashed = await create();
+  const crashed = await create(builtInProfiles.reviewer);
 
   engine.viberSessions.store.capture({
     session_id: crashed.id,
-    profile_id: profileId,
+    profile_id: builtInProfiles.reviewer,
     request_id: randomUUID(),
     content: "Crash before invocation",
     history_ids: [],
@@ -333,8 +334,8 @@ it("marks shutdown and recovered pending turns interrupted without automatically
 });
 
 it("rejects symlinked session workspaces and mismatched runner snapshots before invocation", async () => {
-  const one = await create();
-  const two = await create();
+  const one = await create(profileId);
+  const two = await create(builtInProfiles.reviewer);
   await send(one);
   await settled(one);
 

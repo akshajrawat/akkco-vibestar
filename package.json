@@ -23,7 +23,7 @@
     "verify": "npm run check && npm run test:integration && npm run test:security && npm run build",
     "prepare": "node scripts/install-hooks.mjs",
     "hooks:install": "node scripts/install-hooks.mjs",
-    "prepush": "npm run check && npm run test:security"
+    "prepush": "npm run verify"
   },
   "devDependencies": {
     "@electron/get": "^5.1.0",

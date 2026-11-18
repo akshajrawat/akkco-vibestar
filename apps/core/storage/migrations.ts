@@ -564,4 +564,65 @@ ALTER TABLE utility_events_viber RENAME TO utility_events;
     version: 43,
     sql: "ALTER TABLE viber_sessions ADD COLUMN threads TEXT CHECK(threads IS NULL OR json_valid(threads));",
   },
+
+  {
+    version: 44,
+    sql: `
+DROP TRIGGER IF EXISTS viber_message_snapshot_immutable;
+
+UPDATE viber_messages
+SET session_id = (
+  SELECT s1.id FROM viber_sessions s1
+  WHERE s1.profile_id = (SELECT s2.profile_id FROM viber_sessions s2 WHERE s2.id = viber_messages.session_id)
+  ORDER BY s1.updated_at DESC, s1.rowid DESC
+  LIMIT 1
+)
+WHERE session_id NOT IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
+    FROM viber_sessions
+  ) WHERE rn = 1
+);
+
+UPDATE utility_runs
+SET viber_session_id = (
+  SELECT s1.id FROM viber_sessions s1
+  WHERE s1.profile_id = (SELECT s2.profile_id FROM viber_sessions s2 WHERE s2.id = utility_runs.viber_session_id)
+  ORDER BY s1.updated_at DESC, s1.rowid DESC
+  LIMIT 1
+)
+WHERE viber_session_id IS NOT NULL AND viber_session_id NOT IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
+    FROM viber_sessions
+  ) WHERE rn = 1
+);
+
+UPDATE ai_usage
+SET viber_session_id = (
+  SELECT s1.id FROM viber_sessions s1
+  WHERE s1.profile_id = (SELECT s2.profile_id FROM viber_sessions s2 WHERE s2.id = ai_usage.viber_session_id)
+  ORDER BY s1.updated_at DESC, s1.rowid DESC
+  LIMIT 1
+)
+WHERE viber_session_id IS NOT NULL AND viber_session_id NOT IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
+    FROM viber_sessions
+  ) WHERE rn = 1
+);
+
+DELETE FROM viber_sessions
+WHERE id NOT IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
+    FROM viber_sessions
+  ) WHERE rn = 1
+);
+
+CREATE TRIGGER viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;
+
+CREATE UNIQUE INDEX IF NOT EXISTS viber_profile_single_session ON viber_sessions(profile_id);
+`,
+  },
 ];

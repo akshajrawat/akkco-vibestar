@@ -26,10 +26,19 @@ vi.mock("node:fs/promises", async (original) => {
   const fs = await original<typeof import("node:fs/promises")>();
   return {
     ...fs,
-    lstat: (path: string) =>
-      path.endsWith("docker.sock") && mocks.socket
-        ? Promise.resolve({ isSocket: () => true })
-        : fs.lstat(path),
+    lstat: (path: import("node:fs").PathLike, ...rest: [import("node:fs").StatOptions?]) => {
+      if (typeof path === "string" && path.endsWith("docker.sock")) {
+        if (mocks.socket) {
+          return Promise.resolve({ isSocket: () => true } as unknown as import("node:fs").Stats);
+        }
+
+        const error = new Error(`ENOENT: no such file or directory, lstat '${path}'`);
+        Object.assign(error, { code: "ENOENT", path });
+        return Promise.reject(error);
+      }
+
+      return fs.lstat(path, ...rest);
+    },
   };
 });
 

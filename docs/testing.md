@@ -14,10 +14,10 @@ or write to GitHub. Existing live tests retain explicit environment opt-ins.
 | `npm test`                 | Unit and feature regressions, excluding separate projects    |
 | `npm run test:integration` | Integration tests and contributor-hook lifecycle             |
 | `npm run test:security`    | Deterministic sandbox, ownership, persistence and Git safety |
-| `npm run test:tui`         | Authentication/task-terminal PTY behavior                    |
+| `npm run test:tui`         | Authentication/terminal PTY behavior                         |
 | `npm run test:regression`  | All four deterministic test projects in one invocation       |
 | `npm run check`            | Formatting, lint, typecheck and regular regressions          |
-| `npm run prepush`          | `check` plus security tests                                  |
+| `npm run prepush`          | Complete verification suite (`npm run verify`)               |
 | `npm run verify`           | `check`, integration, security, PTY and production build     |
 
 `vitest.config.ts` declares mutually exclusive named projects. Domain directories
@@ -29,10 +29,9 @@ The worker limit is two to keep native/renderer fixtures practical on developer 
 Run a relevant file during iteration without selecting an unrelated whole suite:
 
 ```bash
-npm exec -- vitest run tests/unit/frontend.test.tsx
-npm exec -- vitest run tests/integration/flow-engine.test.ts
-npm exec -- vitest run tests/integration/legacy-flow-migration.test.ts
-npm exec -- vitest run tests/security/task-ownership.test.ts
+npm exec -- vitest run tests/unit/domain.test.ts
+npm exec -- vitest run tests/integration/viber-sessions.test.ts
+npm exec -- vitest run tests/security/workspace.test.ts
 ```
 
 `npm exec -- vitest list --json` inspects discovered active cases. Skipped opt-in files
@@ -70,7 +69,7 @@ It blocks live CLIs and routes RPC to an isolated fixture engine. It checks moda
 focus restoration, shortcut isolation, category search/navigation, shared/local draft retention,
 autosave failure rollback and resubmission, notification preference persistence across desktop/database
 restarts, cancelled environment restart confirmation, embedded Providers/Repositories, Storage dialogs
-and mounted task/graph preservation. It compares the notification dropdown's computed border,
+and mounted conversation preservation. It compares the notification dropdown's computed border,
 background, padding and typography against Concurrency, and verifies the repository search stays
 transparent in normal/hover/focus states. Runtime events exercise one bottom-right progress card.
 Captures cover 1280×720, 1440×900, 800×540 and 390×640, reduced motion and a custom accent token.
@@ -84,10 +83,10 @@ aliases. The runtime security fixture verifies atomic admission closure and refu
 Native Windows launch, Node discovery, installation prerequisites and WSL process shutdown still
 require native platform acceptance.
 
-The sidebar fixture uses saved fixture tasks and captured run evidence without starting providers.
-It checks flat task rows, both collapse controls, dynamic Working height, long-list scrolling,
-archived tasks, local search across both task areas, Escape clearing and empty results, context menus,
-keyboard/pointer resizing, neutral selection/hover, custom theme tokens, reduced motion and Settings
+The sidebar fixture uses saved fixture Vibers and captured run evidence without starting providers.
+It checks flat Viber rows, continuous chat view, long-list scrolling,
+local search, Escape clearing and empty results, context menus,
+neutral selection/hover, custom theme tokens, reduced motion and Settings
 access to embedded Repositories and Providers. `VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots.
 
 The flow, output, PR and Issue Watch fixtures exercise the built renderer/IPC with
@@ -142,21 +141,16 @@ movement, a real approval pause, solo chat writes, managed-file inspection and r
 motion at 1280×720 and 1440×900. Screenshots are retained in its temporary evidence
 directory. Native Windows checks still require their separate environment.
 
-The same fixture also pauses a waiting flow, edits a future Viber, previews reuse
-and applies the saved revision while proving that the planner is not invoked again.
-It selects a running Viber and inspects an actual fixture command before completion.
-It also opens an imported approval checkpoint, inspects its complete historical graph,
-confirms that past decisions remain unknown, and explicitly captures then rejects a
-new approval attempt without invoking another provider. Solo submission exercises
-Shift+Enter and Enter in the built renderer.
-Connected Viber chat is exercised at a waiting gate, proving that the graph revision,
-attempts and approval remain unchanged after a read-only turn. The fixture returns
-to that exact task/node conversation through the reusable Vibers library.
-Command-palette task usage navigation and Ctrl+backtick/Ctrl+J are also exercised;
+The fixture exercises Viber selection, continuous conversation turns, and inspects
+an actual fixture command before completion. Solo submission exercises Shift+Enter and Enter
+in the built renderer.
+Connected Viber chat is exercised with prompt inputs, proving that provider selection
+and continuous conversation context are preserved.
+Command-palette usage navigation and Ctrl+backtick/Ctrl+J are also exercised;
 the fixture opens a real PTY with an isolated HOME and confirms that hide/reopen
 retains its session without starting another agent.
 
-Three workflows expose independent status checks:
+Three CI workflows expose independent status checks:
 
 | Workflow      | Checks                                                   |
 | ------------- | -------------------------------------------------------- |
@@ -174,5 +168,5 @@ Maintainers can later require all eight named statuses in branch protection. No
 repository settings are changed by this work. YAML and local commands can be validated
 locally; actual GitHub-hosted status execution requires a separately authorized push.
 
-[Workflow contracts](architecture/workflows.md) describe current execution
+The [Architecture guide](../ARCHITECTURE.md) describes current execution
 behavior; this guide defines how the test suites exercise it.

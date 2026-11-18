@@ -19,7 +19,7 @@ flowchart LR
 ```
 
 On Linux, Electron and the Node core run on the host. On Windows, Electron presents the desktop and
-starts the core inside a selected WSL distribution. Git, provider tools, SQLite and task data remain
+starts the core inside a selected WSL distribution. Git, provider tools, SQLite and session data remain
 in Linux. The application uses a narrow stdio bridge rather than an application HTTP server.
 
 ## Runtime boundaries
@@ -58,7 +58,7 @@ the [contributor guide](CONTRIBUTING.md) and [testing guide](docs/testing.md).
 ## Workspace overlays
 
 Settings opens independently of page navigation in the shared `WorkspaceOverlay`. The native modal
-keeps the current task/workflow mounted and makes the underlying interface inert, contains keyboard
+keeps the current conversation and view mounted and makes the underlying interface inert, contains keyboard
 focus and restores the opener on close. Select popovers use the modal's portal target so they remain
 interactive in its top layer. Workspace shortcuts cannot run through the overlay.
 

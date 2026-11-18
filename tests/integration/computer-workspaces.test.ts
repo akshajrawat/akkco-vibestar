@@ -20,10 +20,19 @@ it("keeps each session's owned workspace and deletes every workspace and compute
 
     const profile_id = builtInProfiles.implementer;
     const managed = await create(profile_id);
-    const repository = await create(profile_id, repo.id);
+
+    await expect(create(profile_id)).rejects.toThrow(
+      "Each Viber owns exactly one continuous conversation",
+    );
+
+    const repository = await create(builtInProfiles.planner, repo.id);
     const sibling = await create(builtInProfiles.reviewer);
     const files = await engine.viberSessions.prepareWorkspace(managed.id, profile_id);
-    const worktree = await engine.viberSessions.prepareWorkspace(repository.id, profile_id);
+
+    const worktree = await engine.viberSessions.prepareWorkspace(
+      repository.id,
+      builtInProfiles.planner,
+    );
 
     const siblingFiles = await engine.viberSessions.prepareWorkspace(
       sibling.id,
@@ -41,7 +50,10 @@ it("keeps each session's owned workspace and deletes every workspace and compute
     ).rejects.toThrow("not found");
 
     expect(
-      await rpc.call("computer.files", { profile_id, session_id: repository.id }),
+      await rpc.call("computer.files", {
+        profile_id: builtInProfiles.planner,
+        session_id: repository.id,
+      }),
     ).toMatchObject({
       entries: expect.arrayContaining([{ name: "source.txt", directory: false }]),
     });
@@ -60,6 +72,7 @@ it("keeps each session's owned workspace and deletes every workspace and compute
     await expect(rpc.call("profile.delete", { profile_id })).rejects.toThrow();
     await rpc.call("profile.delete", { profile_id, confirmed: true });
     await expect(stat(files)).rejects.toThrow();
+    await rpc.call("profile.delete", { profile_id: builtInProfiles.planner, confirmed: true });
     await expect(stat(worktree)).rejects.toThrow();
     expect(await readFile(join(siblingFiles, "retained.txt"), "utf8")).toBe("another Viber");
 

@@ -69,7 +69,7 @@ keeps its small desktop configuration/profile locally; execution state remains i
 Startup progress appears at the bottom-right. Essential installation progress and failures appear even
 with Necessary only notifications. Retry rechecks the runtime and installs only when needed. Settings
 → Execution → Runtime troubleshooting → Repair Runtime remains available for an explicit reinstall.
-Finish active tasks, terminals and background work before changing or repairing the environment.
+Finish active Viber runs, terminals and background work before changing or repairing the environment.
 A selected custom helper path remains user-managed: update it yourself or clear that path to use the
 bundled runtime. Node and the system build prerequisites must already be available in the distro.
 
