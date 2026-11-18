@@ -121,10 +121,6 @@
   text-align: center;
 }
 
-.logs-toolbar > .select-trigger,
-.output-controls > .select-trigger,
-.command-filters > .select-trigger,
-.command-log-heading > .select-trigger,
 .list-filters > .select-trigger {
   width: auto;
   min-width: 120px;

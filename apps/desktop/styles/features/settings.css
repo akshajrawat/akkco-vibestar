@@ -20,40 +20,6 @@
   max-width: 900px;
 }
 
-.config-block {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.65fr) 130px;
-  align-items: end;
-  gap: 14px;
-  padding: 16px 0;
-}
-
-.config-block.pipeline-config {
-  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.4fr) minmax(120px, 0.8fr) 130px;
-}
-
-.config-block > h3,
-.config-block > p {
-  grid-column: 1 / -1;
-}
-
-.config-block h3 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-primary);
-  margin: 0 0 4px;
-}
-
-.config-block label {
-  font-size: 12px;
-  min-width: 0;
-  margin: 0;
-}
-
-.config-block input,
-.config-block .select-trigger,
 .settings-fields input,
 .settings-fields .select-trigger {
   min-height: 38px;

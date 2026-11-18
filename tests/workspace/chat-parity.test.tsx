@@ -380,7 +380,7 @@ it("does not repeat a final answer when the provider emits prose and a separate 
 it.each([1, 2])("keeps stage %s structured plans folded in the conversation", (stage) => {
   const output = JSON.stringify({
     summary: "A concise plan",
-    implementationSteps: ["Inspect the full plan in Workflow"],
+    implementationSteps: ["Inspect the full plan"],
   });
 
   const ui = render(
@@ -479,7 +479,7 @@ it("holds the visible answer while recovering a burst that outruns the detail wi
   expect(ui.container.querySelector(".message-event")).toBe(row);
 });
 
-it("shows workflow briefs as user messages and keeps the complete plan in the reply", () => {
+it("shows plan briefs as user messages and keeps the complete plan in the reply", () => {
   const output = JSON.stringify({
     summary: "A complete plan",
     implementationSteps: ["Reuse the existing helper", "Run the required regression"],

@@ -7,8 +7,6 @@
 @import "./layout.css";
 @import "./components/pages.css";
 @import "./features/chat.css";
-@import "./features/changes.css";
-@import "./features/output.css";
 @import "./components/dialogs.css";
 @import "./components/workspace-overlay.css";
 @import "./features/providers.css";
@@ -19,7 +17,6 @@
 @import "./features/repository-connections.css";
 @import "./features/usage.css";
 @import "./features/conversation-layout.css";
-@import "./features/recovery.css";
 @import "./features/settings-workspace.css";
 @import "./features/sidebar.css";
 @import "./features/viber-appearance.css";

@@ -74,8 +74,8 @@ A selected custom helper path remains user-managed: update it yourself or clear 
 bundled runtime. Node and the system build prerequisites must already be available in the distro.
 
 The retired Utility AI and Review AI global settings are ignored on read and removed by the next
-settings save. Historical runs retain their captured models. New PR checks use the existing local
-model picker, initially the provider CLI default; select a model there to override it for that operation.
+settings save. Historical runs retain their captured models. Viber model and reasoning effort selection
+happens dynamically per turn in the composer, initially defaulting to the official provider CLI default.
 
 ## Build and packaging
 
@@ -108,7 +108,7 @@ linked worktrees and source archives without a Git directory. It preserves an ex
 
 Pre-commit formats/lints staged files via lint-staged; its default backup and partial
 staging protection remain enabled. Pre-push runs formatting, lint, types, regular
-regressions and security checks. `npm run verify` adds integration, PTY and build.
+regressions and security checks. `npm run verify` adds integration and production build.
 
 See [Husky's documentation](https://typicode.github.io/husky/how-to.html) and
 [lint-staged's documentation](https://github.com/lint-staged/lint-staged#readme)

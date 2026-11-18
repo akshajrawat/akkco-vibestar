@@ -1,68 +1,18 @@
 import { useSyncExternalStore } from "react";
 
-export const workspaceSections = {
-  changes: "Changes",
-  tests: "Checks",
-  usage: "Usage",
-  "run-details": "Run details",
-  logs: "Raw logs",
-} as const;
-
-export type SecondarySection = keyof typeof workspaceSections;
-
-export const flowWorkspaceSections = {
-  chat: "Chat",
-  files: "Files",
-  checks: "Checks",
-  usage: "Usage",
-  logs: "Logs",
-  history: "History",
-} as const;
-
-export type FlowWorkspaceSection = keyof typeof flowWorkspaceSections;
-
 export interface ContextAttachment {
   id: string;
   label: string;
   text: string;
 }
 
-interface TaskView {
-  flowSection: FlowWorkspaceSection;
-  flowNode: string;
+export interface TaskView {
   draft: string;
   draftContext: ContextAttachment[];
   messageRequest: { id: string; signature: string } | null;
-  savedInstruction: { id: string; content: string } | null;
-  secondaryOpen: boolean;
-  secondarySection: SecondarySection;
-  secondaryPrevious: SecondarySection | null;
-  secondaryWidth: number;
-  secondaryScroll: Partial<Record<SecondarySection, number>>;
-  expandedTool: boolean;
-  terminalDock: boolean;
-  terminalFocus: number;
-  dockMaximized: boolean;
-  dockTab: "Terminal" | "Problems";
-  bottomHeight: number;
   chatScroll: number;
   chatFollow: boolean;
-  shownApproval: string | null;
-  diffMode: "unified" | "side";
-  diffTree: "tree" | "flat";
-  diffLayer: "original" | "upstream";
-  diffLayerPaths: Partial<Record<"original" | "upstream", string>>;
-  diffPath: string;
-  diffSelections: Record<string, { start: number; end: number; side: "base" | "working" }>;
-  diffReview: boolean;
-  fullContext: boolean;
-  openFile: boolean;
-  outputRun: string;
-  outputView: "readable" | "raw" | "prompt";
-  outputStream: "stdout" | "stderr" | "events";
-  outputFilter: string;
-  outputSearch: string;
-  outputFollow: boolean;
+  expandedTool: boolean;
   followupProvider: "codex" | "antigravity" | null;
   followupModel: string | null;
   followupEffort: string | null;
@@ -85,22 +35,6 @@ const bounded = (value: unknown, fallback: number, min: number, max: number) =>
     ? Math.max(min, Math.min(max, value))
     : fallback;
 
-const section = (value: unknown): SecondarySection | null =>
-  typeof value === "string" && Object.hasOwn(workspaceSections, value)
-    ? (value as SecondarySection)
-    : null;
-
-const legacySections: Record<string, SecondarySection> = {
-  Usage: "usage",
-  Changes: "changes",
-  Tests: "tests",
-  Logs: "logs",
-  "Agent Output": "logs",
-};
-
-const legacySection = (value: unknown) =>
-  typeof value === "string" && Object.hasOwn(legacySections, value) ? legacySections[value] : null;
-
 const savedLayout = (id: string): Partial<TaskView> => {
   try {
     const raw = read(`vibestar.layout.${id}`);
@@ -111,25 +45,7 @@ const savedLayout = (id: string): Partial<TaskView> => {
         ? (value as Record<string, unknown>)
         : {};
 
-    const migrated =
-      legacySection(saved.tab) || (saved.terminalDock ? legacySection(saved.dockTab) : null);
-
     return {
-      flowSection:
-        typeof saved.flowSection === "string" &&
-        Object.hasOwn(flowWorkspaceSections, saved.flowSection)
-          ? (saved.flowSection as FlowWorkspaceSection)
-          : "chat",
-      flowNode:
-        typeof saved.flowNode === "string" && saved.flowNode.length <= 100 ? saved.flowNode : "",
-      savedInstruction:
-        saved.savedInstruction &&
-        typeof saved.savedInstruction === "object" &&
-        typeof (saved.savedInstruction as Record<string, unknown>).id === "string" &&
-        typeof (saved.savedInstruction as Record<string, unknown>).content === "string" &&
-        String((saved.savedInstruction as Record<string, unknown>).content).length <= 32000
-          ? (saved.savedInstruction as TaskView["savedInstruction"])
-          : null,
       draftContext: Array.isArray(saved.draftContext)
         ? saved.draftContext
             .filter(
@@ -153,82 +69,9 @@ const savedLayout = (id: string): Partial<TaskView> => {
         String((saved.messageRequest as Record<string, unknown>).signature).length <= 50000
           ? (saved.messageRequest as TaskView["messageRequest"])
           : null,
-      secondaryOpen:
-        typeof saved.secondaryOpen === "boolean"
-          ? saved.secondaryOpen
-          : raw
-            ? !!(migrated || saved.contextPane === "pipeline")
-            : window.innerWidth >= 1400,
-      secondarySection: section(saved.secondarySection) || migrated || "changes",
-      secondaryPrevious: section(saved.secondaryPrevious),
-      secondaryScroll: Object.fromEntries(
-        Object.keys(workspaceSections).flatMap((key) => {
-          const positions = saved.secondaryScroll;
-
-          const position =
-            positions && typeof positions === "object"
-              ? (positions as Record<string, unknown>)[key]
-              : null;
-
-          return typeof position === "number" && Number.isFinite(position) && position >= 0
-            ? [[key, Math.min(position, Number.MAX_SAFE_INTEGER)]]
-            : [];
-        }),
-      ),
-      secondaryWidth: bounded(
-        saved.secondaryWidth,
-        bounded(Number(read("vibestar.contextWidth")) || 380, 380, 300, 640),
-        300,
-        640,
-      ),
       expandedTool: saved.expandedTool === true,
-      terminalDock:
-        saved.terminalDock === true && ["Terminal", "Problems"].includes(String(saved.dockTab)),
-      dockTab: saved.dockTab === "Problems" ? ("Problems" as const) : ("Terminal" as const),
-      dockMaximized:
-        saved.dockMaximized === true && ["Terminal", "Problems"].includes(String(saved.dockTab)),
-      bottomHeight: bounded(
-        saved.bottomHeight,
-        bounded(Number(read("vibestar.dockHeight")) || 260, 260, 140, 700),
-        140,
-        700,
-      ),
       chatScroll: bounded(saved.chatScroll, 0, 0, Number.MAX_SAFE_INTEGER),
       chatFollow: saved.chatFollow !== false,
-      shownApproval:
-        typeof saved.shownApproval === "string" && saved.shownApproval.length <= 200
-          ? saved.shownApproval
-          : null,
-      diffPath: typeof saved.diffPath === "string" ? saved.diffPath : "",
-      diffMode: saved.diffMode === "unified" ? ("unified" as const) : ("side" as const),
-      diffTree: saved.diffTree === "flat" ? ("flat" as const) : ("tree" as const),
-      diffLayer: saved.diffLayer === "original" ? ("original" as const) : ("upstream" as const),
-      diffLayerPaths: Object.fromEntries(
-        ["original", "upstream"].flatMap((key) => {
-          const paths = saved.diffLayerPaths;
-
-          const value =
-            paths && typeof paths === "object"
-              ? (paths as Record<string, unknown>)[key]
-              : undefined;
-
-          return typeof value === "string" && value.length < 4000 ? [[key, value]] : [];
-        }),
-      ),
-      outputRun: typeof saved.outputRun === "string" ? saved.outputRun : "",
-      outputView: ["readable", "raw", "prompt"].includes(String(saved.outputView))
-        ? (saved.outputView as TaskView["outputView"])
-        : ("readable" as const),
-      outputStream: ["stdout", "stderr", "events"].includes(String(saved.outputStream))
-        ? (saved.outputStream as TaskView["outputStream"])
-        : ("stdout" as const),
-      outputFilter: ["all", "messages", "commands", "files", "tests", "errors"].includes(
-        String(saved.outputFilter),
-      )
-        ? String(saved.outputFilter)
-        : "all",
-      outputSearch: typeof saved.outputSearch === "string" ? saved.outputSearch.slice(0, 256) : "",
-      outputFollow: saved.outputFollow !== false,
       followupProvider:
         saved.followupProvider === "antigravity" || saved.followupProvider === "codex"
           ? saved.followupProvider
@@ -245,41 +88,12 @@ const state = (id: string): TaskView => {
   let value = views.get(id);
   if (!value) {
     value = {
-      flowSection: "chat",
-      flowNode: "",
       draft: read(`vibestar.draft.${id}`) || "",
       draftContext: [],
       messageRequest: null,
-      savedInstruction: null,
-      secondaryOpen: false,
-      secondarySection: "changes",
-      secondaryPrevious: null,
-      secondaryWidth: 380,
-      secondaryScroll: {},
       expandedTool: false,
-      terminalDock: false,
-      terminalFocus: 0,
-      dockMaximized: false,
-      dockTab: "Terminal",
-      bottomHeight: 260,
       chatScroll: 0,
       chatFollow: true,
-      shownApproval: null,
-      diffMode: "side",
-      diffTree: "tree",
-      diffLayer: "upstream",
-      diffLayerPaths: {},
-      diffPath: "",
-      diffSelections: {},
-      diffReview: false,
-      fullContext: false,
-      openFile: false,
-      outputRun: "",
-      outputView: "readable",
-      outputStream: "stdout",
-      outputFilter: "all",
-      outputSearch: "",
-      outputFollow: true,
       followupProvider: null,
       followupModel: null,
       followupEffort: null,
@@ -298,14 +112,9 @@ export const getTaskView = (id: string) => state(id);
 export const updateTaskView = (id: string, update: Partial<TaskView>) => {
   const previous = state(id);
 
-  const focusTerminal =
-    (update.terminalDock === true && (update.dockTab || previous.dockTab) === "Terminal") ||
-    (update.dockTab === "Terminal" && (update.terminalDock ?? previous.terminalDock));
-
-  const value = {
+  const value: TaskView = {
     ...previous,
     ...update,
-    terminalFocus: previous.terminalFocus + (focusTerminal ? 1 : 0),
     persistenceError: null as string | null,
   };
 
@@ -322,8 +131,6 @@ export const updateTaskView = (id: string, update: Partial<TaskView>) => {
       ...value,
       draft: undefined,
       persistenceError: undefined,
-      diffSelections: undefined,
-      terminalFocus: undefined,
     };
 
     localStorage.setItem(`vibestar.layout.${id}`, JSON.stringify({ version: 2, ...layout }));
@@ -336,23 +143,6 @@ export const updateTaskView = (id: string, update: Partial<TaskView>) => {
   for (const listener of listeners) {
     listener();
   }
-};
-
-export const openWorkspaceTool = (id: string, selected: SecondarySection) => {
-  const current = state(id);
-
-  updateTaskView(id, {
-    ...(selected === "logs" &&
-    current.secondarySection !== "logs" &&
-    current.outputView === "readable"
-      ? { outputView: "raw" }
-      : {}),
-    secondaryOpen: true,
-    secondarySection: selected,
-    ...(selected !== current.secondarySection
-      ? { secondaryPrevious: current.secondarySection }
-      : {}),
-  });
 };
 
 export const useTaskView = (id: string) =>

@@ -47,7 +47,7 @@ npm run verify
 ```
 
 The first command runs formatting, lint, types and regular regressions. The second
-adds integration, security, PTY and production build checks. Run targeted test files
+adds integration, security and production build checks. Run targeted test files
 while iterating, then broaden for the change's actual risk. See [testing](docs/testing.md).
 
 `npm ci` installs Husky hooks only when no existing policy would be overwritten.

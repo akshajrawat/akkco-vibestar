@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { AdeError } from "../domain";
 
-type OwnerFile = "vibestar-task-owner" | "vibestar-repair-owner" | "vibestar-finalization-owner";
+type OwnerFile = "vibestar-task-owner";
 
 export const readWorktreeOwner = async (directory: string, name: OwnerFile) => {
   const handle = await open(join(directory, name), constants.O_RDONLY | constants.O_NOFOLLOW).catch(

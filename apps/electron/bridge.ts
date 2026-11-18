@@ -41,27 +41,7 @@ export class CoreBridge extends EventEmitter {
 
   private warning: string | undefined;
 
-  private finalReviewSettingsAvailable = false;
-
-  private browserVerificationAvailable = false;
-
   private manualTerminalAvailable = false;
-
-  private pipelineProvidersAvailable = false;
-
-  private manualPrAvailable = false;
-
-  private prReviewControlsAvailable = false;
-
-  private bulkPrMetadataAvailable = false;
-
-  private quickPrWatchAvailable = false;
-
-  private repairAvailable = false;
-
-  private issueWatchAvailable = false;
-
-  private issueWatchBatchesAvailable = false;
 
   private stopping = false;
 
@@ -86,10 +66,6 @@ export class CoreBridge extends EventEmitter {
 
     this.emit("event", this.runtimeStatus);
   };
-
-  private agentFlowsAvailable = false;
-
-  private flowContinuationsAvailable = false;
 
   private viberConversationsAvailable = false;
 
@@ -123,22 +99,10 @@ export class CoreBridge extends EventEmitter {
     this.startup = new AbortController();
     this.runtimeRestartAvailable = false;
     this.notificationPreferencesAvailable = false;
-    this.agentFlowsAvailable = false;
-    this.flowContinuationsAvailable = false;
     this.viberConversationsAvailable = false;
     this.viberSessionsAvailable = false;
     this.computersAvailable = false;
-    this.manualPrAvailable = false;
-    this.prReviewControlsAvailable = false;
-    this.bulkPrMetadataAvailable = false;
-    this.quickPrWatchAvailable = false;
-    this.repairAvailable = false;
-    this.issueWatchAvailable = false;
-    this.issueWatchBatchesAvailable = false;
-    this.finalReviewSettingsAvailable = false;
-    this.browserVerificationAvailable = false;
     this.manualTerminalAvailable = false;
-    this.pipelineProvidersAvailable = false;
 
     this.checking = this.launch()
       .catch((error) => {
@@ -338,23 +302,10 @@ export class CoreBridge extends EventEmitter {
       Promise.resolve(bundle),
       this.sendRequest<{
         build: string;
-        agent_flows?: number;
-        flow_continuations?: number;
         viber_conversations?: number;
         viber_sessions?: number;
         viber_computers?: number;
-        independent_final_review?: boolean;
-        browser_verification_environment?: boolean;
         manual_user_terminal?: number;
-        pipeline_stage_providers?: number;
-        manual_pr_analysis?: boolean;
-        pr_review_controls?: number;
-        bulk_pr_metadata?: number;
-        pr_quick_watch?: number;
-        pr_repair?: boolean;
-        manual_issue_watch?: boolean;
-        issue_watch_contract?: number;
-        issue_watch_batches?: number;
         runtime_restart?: number;
         notification_preferences?: number;
       }>("core.info", {}, 15000),
@@ -362,33 +313,14 @@ export class CoreBridge extends EventEmitter {
       .then(([bundle, info]) => {
         this.runtimeRestartAvailable = info.runtime_restart === 1;
         this.notificationPreferencesAvailable = info.notification_preferences === 1;
-        this.agentFlowsAvailable = info.agent_flows === 1;
-        this.flowContinuationsAvailable = info.flow_continuations === 1;
-
-        this.viberConversationsAvailable =
-          this.agentFlowsAvailable && info.viber_conversations === 1;
-
+        this.viberConversationsAvailable = info.viber_conversations === 1;
         this.viberSessionsAvailable = info.viber_sessions === 2;
         this.computersAvailable = info.viber_computers === 1;
-        this.finalReviewSettingsAvailable = info.independent_final_review === true;
-        this.browserVerificationAvailable = info.browser_verification_environment === true;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
-        this.pipelineProvidersAvailable = info.pipeline_stage_providers === 1;
-        this.manualPrAvailable = info.manual_pr_analysis === true;
-        this.prReviewControlsAvailable = info.pr_review_controls === 1;
-        this.bulkPrMetadataAvailable = info.bulk_pr_metadata === 1;
-        this.quickPrWatchAvailable = info.pr_quick_watch === 1;
-        this.repairAvailable = info.pr_repair === true;
 
-        this.issueWatchAvailable =
-          info.manual_issue_watch === true && info.issue_watch_contract === 1;
-
-        this.issueWatchBatchesAvailable = info.issue_watch_batches === 1;
-
-        this.warning = !this.agentFlowsAvailable
-          ? "The running core cannot run Viber profiles and flows. Update the WSL helper in Settings → Execution, then restart."
-          : !this.manualPrAvailable
-            ? "The helper cannot enforce manual-only PR analysis. Install / update WSL helper before using PR actions."
+        this.warning =
+          !this.viberSessionsAvailable || !this.computersAvailable
+            ? "The running core is missing required Viber functionality. Update the WSL helper in Settings → Execution, then restart."
             : createHash("sha256").update(bundle).digest("hex") === info.build
               ? undefined
               : "The WSL helper differs from this desktop build. Settings → Execution → Install / update WSL helper, then restart. Usage and newer features may be incomplete until updated.";
@@ -408,7 +340,7 @@ export class CoreBridge extends EventEmitter {
         }
 
         this.warning =
-          "The execution helper could not confirm its build. Update the WSL helper in Settings → Execution and restart to ensure telemetry and review features are current.";
+          "The execution helper could not confirm its build. Update the WSL helper in Settings → Execution and restart to ensure Viber features are current.";
       });
   };
 
@@ -452,62 +384,12 @@ export class CoreBridge extends EventEmitter {
       throw new Error("Update the execution helper before chatting with individual Vibers.");
     }
 
-    if (!this.flowContinuationsAvailable && method.startsWith("flow.continuation.")) {
-      throw new Error(
-        "Update the execution helper before applying saved revisions with verified result reuse.",
-      );
-    }
-
-    if (
-      !this.agentFlowsAvailable &&
-      (method.startsWith("flow.") ||
-        method.startsWith("profile.") ||
-        ["task.createGeneral", "task.createIssue", "task.lifecycle"].includes(method))
-    ) {
-      throw new Error("Update the execution helper before using Viber profiles and flows.");
-    }
-
-    if (
-      this.issueWatchAvailable &&
-      ["issueWatch.scan", "issueWatch.retry", "issueWatch.continue"].includes(method) &&
-      !this.issueWatchBatchesAvailable
-    ) {
-      throw new Error("Update the execution helper to scan Issue Watch in batches of 10.");
-    }
-
-    if (!this.pipelineProvidersAvailable && ["repair.create", "repair.start"].includes(method)) {
-      throw new Error(
-        this.warning || "Update the execution helper before using per-stage pipeline providers.",
-      );
-    }
-
-    if (
-      method.startsWith("git.") ||
-      [
-        "repository.configureDestination",
-        "repair.approve",
-        "repair.approveLocal",
-        "repair.commit",
-        "repair.preparePublication",
-        "repair.publish",
-        "repair.reconcilePublication",
-        "repair.keepLocal",
-      ].includes(method)
-    ) {
+    if (method.startsWith("git.")) {
       throw new Error("Use the built-in terminal to run Git commands manually.");
     }
 
-    if (
-      !this.manualTerminalAvailable &&
-      ["terminal.open", "repair.terminal.open"].includes(method)
-    ) {
+    if (!this.manualTerminalAvailable && method === "terminal.open") {
       throw new Error("Update the execution helper before opening a manual user terminal.");
-    }
-
-    if (!this.browserVerificationAvailable && method.startsWith("task.browser.")) {
-      throw new Error(
-        "Update the execution helper before selecting or inspecting browser verification environments.",
-      );
     }
 
     const settings =
@@ -516,79 +398,6 @@ export class CoreBridge extends EventEmitter {
         : params && typeof params === "object" && "settings" in params
           ? params.settings
           : undefined;
-
-    if (
-      !this.pipelineProvidersAvailable &&
-      settings &&
-      typeof settings === "object" &&
-      ["antigravity", "codex_plan", "codex_implementation", "antigravity_review"].some((key) => {
-        const config = (settings as Record<string, unknown>)[key];
-        return config && typeof config === "object" && "provider" in config;
-      })
-    ) {
-      throw new Error("Update the execution helper before saving per-stage pipeline providers.");
-    }
-
-    if (
-      !this.finalReviewSettingsAvailable &&
-      settings &&
-      typeof settings === "object" &&
-      "antigravity_review" in settings &&
-      settings.antigravity_review !== undefined
-    ) {
-      throw new Error(
-        "Update the execution helper before saving independent final review settings.",
-      );
-    }
-
-    if (!this.issueWatchAvailable && method.startsWith("issueWatch.")) {
-      throw new Error("Update the execution helper before using manual Issue Watch.");
-    }
-
-    if (
-      !this.repairAvailable &&
-      method.startsWith("repair.") &&
-      !["repair.list", "repair.detail", "repair.logs", "repair.events", "repair.cancel"].includes(
-        method,
-      )
-    ) {
-      throw new Error("Update the execution helper before using PR repair.");
-    }
-
-    if (
-      !this.manualPrAvailable &&
-      [
-        "github.sync",
-        "github.pullRequests.refresh",
-        "github.configure",
-        "scheduled.add",
-        "scheduled.run",
-        "scheduled.analyze",
-        "scheduled.enabled",
-        "scheduled.fix",
-      ].includes(method)
-    ) {
-      throw new Error(
-        this.warning || "Update the execution helper before using manual PR actions.",
-      );
-    }
-
-    if (
-      !this.prReviewControlsAvailable &&
-      ["scheduled.analyze", "scheduled.batch.start"].includes(method)
-    ) {
-      throw new Error(
-        "Update the execution helper before checking PRs with the selected review model.",
-      );
-    }
-
-    if (!this.bulkPrMetadataAvailable && method === "github.pullRequests.refresh") {
-      throw new Error("Update the execution helper before using bulk PR metadata refresh.");
-    }
-
-    if (!this.quickPrWatchAvailable && method === "pr.watch.start") {
-      throw new Error("Update the execution helper before using automatic quick PR checks.");
-    }
 
     if (
       method === "settings.save" &&
@@ -606,15 +415,9 @@ export class CoreBridge extends EventEmitter {
         return {
           ...result,
           capabilities: {
-            ...(this.agentFlowsAvailable ? { agent_flows: 1 } : {}),
-            ...(this.flowContinuationsAvailable ? { flow_continuations: 1 } : {}),
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
             ...(this.viberSessionsAvailable ? { viber_sessions: 2 } : {}),
             ...(this.computersAvailable ? { viber_computers: 1 } : {}),
-            manual_issue_watch: this.issueWatchAvailable,
-            issue_watch_contract: this.issueWatchAvailable ? 1 : null,
-            issue_watch_batches: this.issueWatchBatchesAvailable ? 1 : null,
-            ...(this.quickPrWatchAvailable ? { pr_quick_watch: true } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };

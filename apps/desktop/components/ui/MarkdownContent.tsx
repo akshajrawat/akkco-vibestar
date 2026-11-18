@@ -3,7 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy, Check } from "lucide-react";
 
-import { highlightCode } from "../../lib/diff/highlight";
+import { highlightCode } from "../../lib/highlight";
 import { Button } from "./button";
 
 const CodeBlock = ({ children }: ComponentProps<"pre">) => {

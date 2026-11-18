@@ -82,10 +82,8 @@ ownership lock and refuses runtime aliases. Custom helper paths remain user-mana
 again; explicit Repair Runtime can reinstall. Linux launches bypass this WSL setup path.
 
 Retired global Utility AI and Review AI fields are stripped when reading settings and disappear on the
-next settings save; reads preserve original saved bytes. Historical analysis configurations and
-`utility_ai` method labels remain readable. Current utility execution requires an operation-owned
-configuration. Existing PR controls select a provider/model per operation and default to the provider
-CLI; they no longer read a global model setting. No historical run is rewritten or replayed.
+next settings save; reads preserve original saved bytes. Model, provider, and reasoning effort are selected
+dynamically per turn in the Viber composer rather than from global model settings. No historical run is rewritten or replayed.
 
 ## Viber architecture and continuous conversations
 

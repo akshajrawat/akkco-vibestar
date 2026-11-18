@@ -385,8 +385,6 @@ export class GitHubService {
     );
   };
 
-  refreshPullRequests = () => this.sync(false);
-
   sync = async (includeCatalog = true): Promise<ReturnType<GitHubService["snapshot"]>> => {
     if (this.running) {
       const catalogIncluded = this.syncingCatalog;
@@ -402,7 +400,7 @@ export class GitHubService {
       {
         id: "github-sync",
         kind: "github_sync",
-        label: "GitHub PR watch sync is running",
+        label: "GitHub sync is running",
         stoppable: true,
       },
       this.stopSync,

@@ -24,14 +24,12 @@ chunks before events, snapshots and logs; redaction remains best effort.
 Bubblewrap starts from an empty root and an explicit mount manifest. Only the assigned
 worktree, permitted system/toolchain/runtime paths, managed artifacts and selected
 provider state are exposed. Each invocation captures explicit read-only or
-workspace-write access; names, provider identity and numeric stages grant no access.
-Planning/review templates and repair review keep source and Git mounts read-only.
+Read-only operations keep source and Git mounts read-only.
 Codex implementation commands can use the network for test servers inside this
 filesystem boundary. Dependency installation and auto-download are prohibited by agent
 instructions; npm defaults to offline/no-confirm operation and pip uses no index.
 Existing ignored dependency directories, including nested packages, are mounted read-only
-only at canonical, untracked, empty worktree destinations. Planning/review keep their read-only
-provider restrictions; missing check evidence remains unverified at final acceptance.
+only at canonical, untracked, empty worktree destinations.
 Implementation and PTYs have their assigned worktree access. Missing isolation fails
 closed. Dependency reuse is read-only and requires safe ignored/untracked ownership.
 
@@ -70,7 +68,7 @@ sandboxed. The application no longer stages, commits or publishes through dedica
 
 Explicit user-operated terminals are normal Linux/WSL shells with the user's own
 permissions, environment, Git configuration and authentication. They start only after
-worktree ownership validation and acquiring the workspace or repair lease. They are not an
+worktree ownership validation and acquiring the workspace lease. They are not an
 agent execution path and are not constrained by the agent sandbox. Opening the terminal
 dock starts and focuses the shell; hiding it does not close the session. For a managed
 clone only, startup adds a missing `origin` alias from its registered fork or repository
@@ -86,17 +84,13 @@ remain optional user quality checks and their installer preserves private hook p
 
 Observed command exits, model-reported tests and environmental prerequisites remain
 separate. Missing/skipped/unknown evidence is not a pass. Required historical checks
-and unresolved application failures survive repairs. Approvals bind captured node
-configuration, selected inputs and workspace evidence; acceptance cannot turn missing
-or failed checks into a pass.
+and unresolved application failures survive restarts.
 
-Viber profile creation and appearance edits are idle. Viber conversation turns,
-detailed PR analysis and repair continuation require explicit requests. Messages are
+Viber profile creation and appearance edits are idle. Viber conversation turns require explicit requests. Messages are
 Viber session scoped; selected context is bounded before inference. Retired entity
 mutations are not registered and cannot be forwarded to old helpers. Historical conversion
 preserves unknown authority and raw source bytes without using current defaults as
-missing execution settings. The lightweight PR watch runs once per app launch and on explicit
-recheck, using bounded read-only conversation context and the existing sandbox/slots. Core startup
+missing execution settings. Core startup
 requests are deduplicated; interrupted, cancelled or failed operations are not replayed.
 Filtering or refreshing metadata does not start inference. Incomplete/cancelled
 attempts preserve evidence without inventing a completed baseline.

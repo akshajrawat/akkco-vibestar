@@ -636,9 +636,6 @@ export class GitWorkspace {
       ? managedWorkspaceFingerprint(this.root, t)
       : `issue-v2:${await this.workspaceFingerprint(t, true, true)}`;
 
-  repairFingerprint = (t: WorkspaceAssignment, includeHistory = true) =>
-    this.workspaceFingerprint(t, includeHistory);
-
   contentFingerprint = (t: WorkspaceAssignment) => this.workspaceFingerprint(t, false, true);
 
   disposalFingerprint = (t: WorkspaceAssignment) =>

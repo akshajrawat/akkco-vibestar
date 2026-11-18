@@ -1,32 +1,32 @@
 # Testing
 
-Routine tests use disposable data roots, local Git repositories and inert constructor-
-injected providers. They must not read normal application state, spend model allowance
-or write to GitHub. Existing live tests retain explicit environment opt-ins.
+Routine tests use disposable data roots, local Git repositories and inert constructor-injected providers. They must not read normal application state, spend model allowance or write to GitHub.
 
 ## Commands and suite ownership
 
-| Command                    | Scope                                                        |
-| -------------------------- | ------------------------------------------------------------ |
-| `npm run format:check`     | All maintained source/config/docs, including YAML and MJS    |
-| `npm run lint`             | ESLint, type-only imports and React hook rules               |
-| `npm run typecheck`        | Renderer, backend, Electron, tests and build/test config     |
-| `npm test`                 | Unit and feature regressions, excluding separate projects    |
-| `npm run test:integration` | Integration tests and contributor-hook lifecycle             |
-| `npm run test:security`    | Deterministic sandbox, ownership, persistence and Git safety |
-| `npm run test:tui`         | Authentication/terminal PTY behavior                         |
-| `npm run test:regression`  | All four deterministic test projects in one invocation       |
-| `npm run check`            | Formatting, lint, typecheck and regular regressions          |
-| `npm run prepush`          | Complete verification suite (`npm run verify`)               |
-| `npm run verify`           | `check`, integration, security, PTY and production build     |
+| Command                    | Scope                                                         |
+| -------------------------- | ------------------------------------------------------------- |
+| `npm run format:check`     | Check formatting across maintained source, config, and docs   |
+| `npm run format`           | Automatically format source code with Prettier                |
+| `npm run lint`             | ESLint, type-only imports and React hook rules                |
+| `npm run typecheck`        | TypeScript typechecking (`tsc --noEmit`)                      |
+| `npm test`                 | Unit and component regressions (`unit` project)               |
+| `npm run test:integration` | Integration tests for Viber sessions, computers, and runtime  |
+| `npm run test:security`    | Deterministic sandbox, ownership, persistence and Git safety  |
+| `npm run test:regression`  | All deterministic test projects (unit, integration, security) |
+| `npm run check`            | Formatting, lint, typecheck and unit tests                    |
+| `npm run prepush`          | Complete verification suite (`npm run verify`)                |
+| `npm run verify`           | `check`, integration, security, and production build          |
 
-`vitest.config.ts` declares mutually exclusive named projects. Domain directories
-such as `tests/verification`, `tests/workspace`, `tests/pr-repair` and
-`tests/diff` belong to regular regression coverage. Separate integration,
-security, terminal, desktop and live directories are excluded from that project.
+`vitest.config.ts` declares three named test projects:
+
+- `unit`: Unit and feature tests under `tests/unit/` and `tests/workspace/`.
+- `integration`: Multi-component and container/workspace integration tests under `tests/integration/`.
+- `security`: Filesystem isolation, sandbox manifests, redaction, and Git safety tests under `tests/security/`.
+
 The worker limit is two to keep native/renderer fixtures practical on developer machines.
 
-Run a relevant file during iteration without selecting an unrelated whole suite:
+Run a relevant test file during iteration without selecting an entire suite:
 
 ```bash
 npm exec -- vitest run tests/unit/domain.test.ts
@@ -34,139 +34,21 @@ npm exec -- vitest run tests/integration/viber-sessions.test.ts
 npm exec -- vitest run tests/security/workspace.test.ts
 ```
 
-`npm exec -- vitest list --json` inspects discovered active cases. Skipped opt-in files
-remain in the source inventory; list output is not proof that their runtime assertions ran.
-Do not use a passing narrow test to claim a broad workflow or migration is verified.
-
 ## What different changes require
 
-- Display helpers/components: affected unit/UI tests, types, lint and formatting.
-- Flows/approvals/recovery: captured inputs, scoped conversations, node retries and continuation regressions plus integration.
-- Git, ownership, sandbox or cleanup: affected security/integration refusal and success paths.
-- SQLite: upgrade/reopen, corrupt-record and foreign-key fixtures; preserve old migrations.
-- Terminal interactions: PTY suite in addition to affected tests and quality checks.
-- CSS/shared renderer structure: production build, applicable built Electron fixtures and
-  representative size/keyboard/reduced-motion checks. Compare screenshots on the same host.
-- Broad restructuring: the complete deterministic matrix and relevant desktop acceptance.
+- Display helpers and UI components: affected unit/UI tests, types, lint and formatting.
+- Viber lifecycle, continuity, and session handling: affected unit and integration tests.
+- Git, ownership, sandbox or storage cleanup: affected security and integration tests.
+- SQLite persistence: migration fixtures, foreign-key consistency, and recovery tests. Old migrations must be preserved.
 
-## Built desktop fixtures
+## CI Workflows
 
-Build first. On a headless Linux host, use Xvfb with enough virtual screen area for the 1920-wide fixture captures:
+Three GitHub Actions CI workflows expose independent status checks:
 
-```bash
-npm run build
-xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop
-xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:sidebar
-xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:pr
-xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:repair
-xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:output
-xvfb-run -a -s "-screen 0 2560x1440x24" npm run test:desktop:watch
-```
+| Workflow      | Checks                                        |
+| ------------- | --------------------------------------------- |
+| `quality.yml` | Formatting, ESLint, Typecheck                 |
+| `tests.yml`   | Unit tests, Integration tests, Security tests |
+| `build.yml`   | Production build                              |
 
-The Settings workspace fixture runs with `VIBESTAR_SETTINGS_DESKTOP_TEST=1 npm exec -- vitest run
- tests/desktop/desktop-settings.test.ts` after building (use the same Xvfb wrapper on headless Linux).
-It blocks live CLIs and routes RPC to an isolated fixture engine. It checks modal focus containment,
-focus restoration, shortcut isolation, category search/navigation, shared/local draft retention,
-autosave failure rollback and resubmission, notification preference persistence across desktop/database
-restarts, cancelled environment restart confirmation, embedded Providers/Repositories, Storage dialogs
-and mounted conversation preservation. It compares the notification dropdown's computed border,
-background, padding and typography against Concurrency, and verifies the repository search stays
-transparent in normal/hover/focus states. Runtime events exercise one bottom-right progress card.
-Captures cover 1280×720, 1440×900, 800×540 and 390×640, reduced motion and a custom accent token.
-`VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots; copy intended deliverables and remove the temporary
-fixture afterward. This does not exercise live sign-in or native Windows WSL setup.
-
-`tests/integration/runtime-recovery.test.ts` runs the actual WSL probe and installer scripts through
-inert local WSL/npm executables. It covers missing/stale helpers, dependency-manifest and native-ABI
-changes, failed installation/retry, healthy-helper reuse and refusal of owned directories/runtime
-aliases. The runtime security fixture verifies atomic admission closure and refusal of active work.
-Native Windows launch, Node discovery, installation prerequisites and WSL process shutdown still
-require native platform acceptance.
-
-The sidebar fixture uses saved fixture Vibers and captured run evidence without starting providers.
-It checks flat Viber rows, continuous chat view, long-list scrolling,
-local search, Escape clearing and empty results, context menus,
-neutral selection/hover, custom theme tokens, reduced motion and Settings
-access to embedded Repositories and Providers. `VIBESTAR_KEEP_EVIDENCE=1` retains its screenshots.
-
-The flow, output, PR and Issue Watch fixtures exercise the built renderer/IPC with
-isolated roots and blocked real CLIs. Historical fixed-stage workspace, approval and
-verification and general/milestone/product pipeline fixtures have been retired.
-Their current flow, output, PR and ownership coverage uses isolated fixtures.
-Native window assertions moved to `desktop-window.test.ts`, enabled with
-`VIBESTAR_WINDOW_DESKTOP_TEST=1`; this fixture blocks live CLIs and requires a window
-manager. The separate Windows harness retains native Windows input/DPI checks.
-Selected fixtures route RPC to test-owned services; production has no fixture-provider selector.
-`npm run test:desktop` now aliases the isolated Viber flow fixture.
-`VIBESTAR_KEEP_EVIDENCE=1` retains supported temporary evidence. Flow, output and repair
-fixtures print their temporary screenshot directories, preserving curated docs images.
-
-`npm run test:browser:environment` explicitly exercises installed browser/toolchain
-capability without downloading dependencies or using a model. Its result proves the
-fixture environment only. `VIBESTAR_PACKAGED_TEST=1 npm exec -- vitest run
- tests/desktop/packaged.test.ts` requires locally packaged Linux/Windows directories. Set `VIBESTAR_PACKAGE_DIR` to
-an isolated packaging output root to avoid replacing existing local artifacts.
-
-`npm run test:windows` needs the WSL-launched native Windows development host and Vite.
-It checks real native input, monitor DPI, maximize/restore and fullscreen. Xvfb does
-not substitute for those checks or for NSIS installation/update testing.
-
-## Live opt-ins
-
-`npm run test:live` uses real authenticated provider subscriptions and costs allowance.
-The GitHub-write fixture in `tests/live/github-live.test.ts` requires
-`VIBESTAR_GITHUB_WATCH_TEST=1`, refuses an unexpected destination and mutates a controlled
-real test repository. Do not run either without explicit authorization. They are
-excluded from `verify`, hooks and hosted CI. Historical success does not authorize a rerun.
-
-## Hook acceptance
-
-`tests/integration/contributor-hooks.test.ts` installs the actual hooks in disposable
-repositories. It proves staged formatting, retained unstaged hunks/unrelated files,
-failed-commit rollback, successful local push, failed quality/security push rejection
-and preservation of private hook configuration. Test pushes target local bare remotes.
-
-Terminal tests commit and push only to disposable local remotes. They verify inherited
-Git configuration, session lifecycle, redaction and workspace execution exclusion.
-Removed publication endpoints must fail dispatch; legacy migration and storage fixtures
-preserve old journals without allowing operations to replay.
-
-## CI
-
-The Viber canvas has a built Electron fixture: build first, then run
-`xvfb-run -a npm run test:desktop:flows` on Linux without a display. It blocks real
-provider/GitHub CLIs and uses isolated fixture engines and data roots. It exercises
-creation without inference, template editing, duplication/deletion, persisted keyboard
-movement, a real approval pause, solo chat writes, managed-file inspection and reduced
-motion at 1280×720 and 1440×900. Screenshots are retained in its temporary evidence
-directory. Native Windows checks still require their separate environment.
-
-The fixture exercises Viber selection, continuous conversation turns, and inspects
-an actual fixture command before completion. Solo submission exercises Shift+Enter and Enter
-in the built renderer.
-Connected Viber chat is exercised with prompt inputs, proving that provider selection
-and continuous conversation context are preserved.
-Command-palette usage navigation and Ctrl+backtick/Ctrl+J are also exercised;
-the fixture opens a real PTY with an isolated HOME and confirms that hide/reopen
-retains its session without starting another agent.
-
-Three CI workflows expose independent status checks:
-
-| Workflow      | Checks                                                   |
-| ------------- | -------------------------------------------------------- |
-| `quality.yml` | Formatting, ESLint, Typecheck                            |
-| `tests.yml`   | Unit tests, Integration tests, PTY tests, Security tests |
-| `build.yml`   | Production build                                         |
-
-Each job uses pinned actions, read-only contents permission, credential-free checkout,
-Node 22, npm caching/`npm ci`, explicit timeout and superseded-run cancellation.
-No secrets, live inference or GitHub writes are needed for fork pull requests.
-Integration, PTY and security suites are not repeated by the unit job. Packaging is
-not required for each basic PR; local platform builds remain explicit commands.
-
-Maintainers can later require all eight named statuses in branch protection. No
-repository settings are changed by this work. YAML and local commands can be validated
-locally; actual GitHub-hosted status execution requires a separately authorized push.
-
-The [Architecture guide](../ARCHITECTURE.md) describes current execution
-behavior; this guide defines how the test suites exercise it.
+Each job uses pinned actions, read-only contents permission, credential-free checkout, Node 22, npm caching (`npm ci`), explicit timeout and superseded-run cancellation.

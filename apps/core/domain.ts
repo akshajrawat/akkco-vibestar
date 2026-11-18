@@ -1,8 +1,5 @@
 import { z } from "zod";
 
-export type VerificationEnvironment = unknown;
-export type BrowserEnvironmentReport = unknown;
-
 export interface ActivityBlocker {
   id: string;
   kind: "viber" | "terminal" | "github_sync" | "repository_scan" | "repository" | "maintenance";

@@ -69,13 +69,6 @@ export interface Message {
   run_id?: string | null;
 }
 
-export interface FileDiff {
-  original: string;
-  modified: string;
-  binary: boolean;
-  unified: string;
-}
-
 export type { DiffFile } from "../../core/workspace/git";
 
 export type { CoreEvent } from "../../core/domain";

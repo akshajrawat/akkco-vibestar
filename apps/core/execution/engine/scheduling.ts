@@ -78,7 +78,7 @@ export class EngineScheduling {
       });
     }
 
-    for (const [id, activity] of this.state.taskMaintenance) {
+    for (const [id, activity] of this.state.sessionMaintenance) {
       blockers.push({
         id: `cleanup:${id}`,
         kind: "maintenance",
@@ -109,7 +109,7 @@ export class EngineScheduling {
 
   trackActivity = (blocker: ActivityBlocker, stop: () => Promise<void>) => {
     this.assertAvailable();
-    if (blocker.session_id && this.state.taskMaintenance.has(blocker.session_id)) {
+    if (blocker.session_id && this.state.sessionMaintenance.has(blocker.session_id)) {
       throw new AdeError("busy", "Data cleanup is running", {
         blockers: this.cleanupBlockers(blocker.session_id),
       });
@@ -136,7 +136,7 @@ export class EngineScheduling {
     }
   };
 
-  withTaskMaintenance = async <T>(
+  withSessionMaintenance = async <T>(
     id: string,
     operation: () => Promise<T>,
     activity = "Data cleanup is running",
@@ -149,11 +149,11 @@ export class EngineScheduling {
       });
     }
 
-    this.state.taskMaintenance.set(id, activity);
+    this.state.sessionMaintenance.set(id, activity);
     try {
       return await operation();
     } finally {
-      this.state.taskMaintenance.delete(id);
+      this.state.sessionMaintenance.delete(id);
       this.host.changed(id);
       void this.drain();
     }
@@ -173,7 +173,7 @@ export class EngineScheduling {
     if (
       this.state.active.has(key) ||
       this.state.interactive.has(key) ||
-      this.state.taskMaintenance.has(key) ||
+      this.state.sessionMaintenance.has(key) ||
       this.state.active.size >= this.host.db.settings().concurrency
     ) {
       throw new AdeError(
@@ -214,7 +214,7 @@ export class EngineScheduling {
 
   acquireTerminal = (id: string, label = "terminal session") => {
     this.assertAvailable();
-    if (this.state.taskMaintenance.has(id)) {
+    if (this.state.sessionMaintenance.has(id)) {
       throw new AdeError("busy", "Data cleanup is running");
     }
 

@@ -7,7 +7,7 @@ export class ExecutionState {
     {
       controller: AbortController;
       promise: Promise<void>;
-      taskId?: string;
+      sessionId?: string;
       purpose?: string;
     }
   >();
@@ -20,7 +20,7 @@ export class ExecutionState {
 
   maintenance = false;
 
-  readonly taskMaintenance = new Map<string, string>();
+  readonly sessionMaintenance = new Map<string, string>();
 
   readonly activities = new Map<string, { blocker: ActivityBlocker; stop: () => Promise<void> }>();
 
