@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { rpc, errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { CleanupError } from "../../components/shared/CleanupError";
-import type { StorageService } from "../../../core/storage/service";
+import type { StorageInfo } from "../../../core/storage/contracts";
 
 const bytes = (value: number) =>
   value >= 1024 ** 3
@@ -19,7 +19,7 @@ export const StoragePage = ({
   refresh: () => Promise<void>;
   refreshKey?: number;
 }) => {
-  const [info, setInfo] = useState<Awaited<ReturnType<StorageService["info"]>>>();
+  const [info, setInfo] = useState<StorageInfo>();
   const [error, setError] = useState("");
   const [cleanupError, setCleanupError] = useState<unknown>();
   const [busy, setBusy] = useState(false);
@@ -74,12 +74,12 @@ export const StoragePage = ({
   };
 
   return (
-    <section className="settings-section storage-page">
-      <div className="settings-section-header">
+    <section className="settings-section p-[8px_0_24px] storage-page">
+      <div className="settings-section-header flex items-center justify-between m-[28px_0_14px_20px]">
         <h2>Storage</h2>
         <button
           type="button"
-          className="ghost-action-button"
+          className="ghost-action-button inline-flex items-center gap-1.5 [border:0] px-2.5 py-1.5 text-[12px] font-medium [transition:background_var(--motion-fast),_color_var(--motion-fast)] disabled:opacity-50 focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[2px]"
           disabled={busy}
           onClick={() => setRevision((v) => v + 1)}
           aria-label="Refresh sizes"
@@ -88,13 +88,23 @@ export const StoragePage = ({
           <span>Refresh sizes</span>
         </button>
       </div>
-      {error && <p className="error-box">{error}</p>}
-      {notice && <p className="notice">{notice}</p>}
+      {error && (
+        <p className="error-box px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="notice px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere">
+          {notice}
+        </p>
+      )}
 
-      <div className="settings-card storage-card">
-        <div className="storage-row">
-          <span className="storage-label">Data root</span>
-          <code className="storage-value">{info?.root || "Measuring…"}</code>
+      <div className="settings-card storage-card px-4 py-0 border border-border-subtle mb-5">
+        <div className="storage-row flex items-center justify-between gap-4 px-0 py-3.5 text-[13px] text-foreground">
+          <span className="storage-label text-ink-secondary">Data root</span>
+          <code className="storage-value [font-variant-numeric:tabular-nums] font-medium">
+            {info?.root || "Measuring…"}
+          </code>
         </div>
         {info &&
           [
@@ -112,15 +122,20 @@ export const StoragePage = ({
           ].map(([label, value]) => {
             const isTotal = label === "Total";
             return (
-              <div key={label} className={`storage-row${isTotal ? " storage-total-row" : ""}`}>
-                <span className="storage-label">{label}</span>
-                <span className="storage-value">{bytes(Number(value))}</span>
+              <div
+                key={label}
+                className={`storage-row flex items-center justify-between gap-4 px-0 py-3.5 text-[13px] text-foreground${isTotal ? " storage-total-row font-semibold" : ""}`}
+              >
+                <span className="storage-label text-ink-secondary">{label}</span>
+                <span className="storage-value [font-variant-numeric:tabular-nums] font-medium">
+                  {bytes(Number(value))}
+                </span>
               </div>
             );
           })}
       </div>
 
-      <div className="storage-actions">
+      <div className="storage-actions max-w-[700px]">
         <Button
           disabled={busy}
           variant="secondary"
@@ -161,9 +176,9 @@ export const StoragePage = ({
       </div>
 
       {confirmation && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop fixed inset-[var(--titlebar-height)_0_0] flex items-center justify-center z-[50]">
           <section
-            className="modal compact-dialog"
+            className="modal border border-border-strong p-6 max-w-[94vw] max-h-[90%] overflow-auto [box-shadow:0_12px_45px_var(--overlay)] animate-[surface-enter_var(--motion-enter)_ease-out] compact-dialog"
             role="dialog"
             aria-modal="true"
             aria-label="Confirm storage cleanup"
@@ -179,7 +194,7 @@ export const StoragePage = ({
               />
             )}
 
-            <div className="actions">
+            <div className="actions flex gap-1.5">
               <Button disabled={busy} onClick={() => setConfirmation(null)}>
                 Cancel
               </Button>

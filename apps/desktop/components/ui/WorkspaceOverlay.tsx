@@ -40,7 +40,7 @@ export const WorkspaceOverlay = ({
   return (
     <dialog
       ref={dialog}
-      className={`workspace-overlay ${className}`}
+      className={`workspace-overlay fixed inset-0 max-w-[1600px] m-auto p-0 text-foreground [box-shadow:0_24px_100px_var(--shadow)] [&.viber-editor-overlay]:flex-col ${className}`}
       aria-label={label}
       aria-modal="true"
       onCancel={(event) => {

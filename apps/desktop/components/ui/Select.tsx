@@ -32,8 +32,11 @@ export const Select = ({
   navigation,
   details,
   popoverClassName = "",
+  triggerAppearance = "default",
   selectedLabel,
   selectedIcon,
+  listNotice,
+  emptyMessage = "No matches found",
   closeOnSelect = true,
   onOpenChange,
 }: {
@@ -48,8 +51,11 @@ export const Select = ({
   navigation?: ReactNode;
   details?: ReactNode;
   popoverClassName?: string;
+  triggerAppearance?: "default" | "chip";
   selectedLabel?: ReactNode;
   selectedIcon?: ReactNode;
+  listNotice?: ReactNode;
+  emptyMessage?: string;
   closeOnSelect?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) => {
@@ -110,7 +116,7 @@ export const Select = ({
         return;
       }
 
-      const width = Math.min(Math.max(rect.width, expanded ? 600 : 260), window.innerWidth - 24);
+      const width = Math.min(Math.max(rect.width, expanded ? 548 : 260), window.innerWidth - 24);
       const below = window.innerHeight - rect.bottom - 18;
       const above = rect.top - 18;
 
@@ -129,7 +135,10 @@ export const Select = ({
       const top = useBelow ? rect.bottom + 6 : Math.max(12, rect.top - maxHeight - 6);
 
       setPosition({
-        left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
+        left: Math.max(
+          12,
+          Math.min(expanded ? rect.right - width : rect.left, window.innerWidth - width - 12),
+        ),
         top,
         width,
         maxHeight,
@@ -189,7 +198,11 @@ export const Select = ({
         type="button"
         role="combobox"
         data-value={value}
-        className="select-trigger"
+        className={`select-trigger flex w-full min-w-0 items-center gap-2 rounded-input text-left text-foreground border-0 [transition:background_var(--motion-fast)] ${
+          triggerAppearance === "chip"
+            ? "select-trigger-chip"
+            : "bg-surface-hover px-[11px] py-[9px] [&:hover:not(:disabled)]:bg-surface-selected"
+        }`}
         aria-label={label}
         aria-haspopup="listbox"
         aria-controls={open ? listId : undefined}
@@ -211,17 +224,17 @@ export const Select = ({
         }}
       >
         {selectedIcon || selected?.icon}
-        <span className="select-value">
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5 [&>*]:truncate">
           <span>{selectedLabel || selected?.label || placeholder}</span>
           {!selectedLabel && selected?.description && <small>{selected.description}</small>}
         </span>
-        <ChevronDown size={14} aria-hidden="true" />
+        {triggerAppearance === "default" && <ChevronDown size={14} aria-hidden="true" />}
       </button>
       {open &&
         createPortal(
           <div
             ref={popup}
-            className={`select-popover ${popoverClassName}`}
+            className={`select-popover fixed z-[1500] flex flex-col overflow-hidden rounded-panel border-0 bg-surface-elevated p-[5px] [box-shadow:0_12px_40px_var(--shadow)] animate-[surface-enter_var(--motion-enter)_ease-out] ${popoverClassName}`}
             style={position}
             onMouseDown={(event) => event.stopPropagation()}
             onBlur={(event) => {
@@ -266,11 +279,12 @@ export const Select = ({
             }}
           >
             {navigation}
-            <div className="select-main">
+            <div className="flex flex-1 flex-col min-w-0 min-h-0">
               {searchable && (
-                <div className="select-search">
+                <div className="select-search flex items-center gap-2 p-[4px_9px_8px] text-muted">
                   <Search size={14} aria-hidden="true" />
                   <input
+                    className="rounded-none bg-transparent px-0 py-[5px] [border:0] [box-shadow:none] [outline:none] [&:hover]:bg-transparent"
                     ref={(element) => {
                       keyboard.current = element;
                     }}
@@ -280,12 +294,13 @@ export const Select = ({
                     aria-expanded="true"
                     aria-controls={listId}
                     aria-activedescendant={activeId}
-                    placeholder="Search…"
+                    placeholder={expanded ? "Search models…" : "Search…"}
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                   />
                 </div>
               )}
+              {listNotice}
               <div
                 id={listId}
                 ref={
@@ -299,7 +314,7 @@ export const Select = ({
                 aria-label={label}
                 tabIndex={searchable ? undefined : 0}
                 aria-activedescendant={searchable ? undefined : activeId}
-                className="select-options"
+                className="select-options min-h-0 overflow-auto overscroll-contain px-0 py-1 focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[-1px] focus-visible:rounded-control"
               >
                 {filtered.map((option) => (
                   <div
@@ -309,13 +324,13 @@ export const Select = ({
                     role="option"
                     aria-selected={option.value === value}
                     aria-disabled={option.disabled || undefined}
-                    className={`select-option${current === option ? " active" : ""}`}
+                    className={`select-option flex items-center rounded-control gap-[9px] p-[9px] mx-0 my-[1px] min-w-0 cursor-pointer aria-disabled:cursor-not-allowed aria-selected:font-[550] aria-disabled:text-ink-disabled ${current === option ? "bg-surface-hover" : ""}`}
                     onPointerMove={() => !option.disabled && setActive(option.value)}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => choose(option)}
                   >
                     {option.icon}
-                    <span className="select-value">
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5 [&>*]:truncate">
                       <span>{option.label}</span>
                       {option.description && <small>{option.description}</small>}
                     </span>
@@ -323,8 +338,8 @@ export const Select = ({
                   </div>
                 ))}
                 {!filtered.length && (
-                  <p className="select-empty" role="status">
-                    No matches found
+                  <p className="p-4 text-muted text-center" role="status">
+                    {options.length ? "No matches found" : emptyMessage}
                   </p>
                 )}
               </div>

@@ -7,7 +7,10 @@ const WorkDuration = ({ run }: { run: Run }) => {
   const running = run.status === "running";
   if (running) {
     return (
-      <span className="working-shimmer" role="status">
+      <span
+        className="working-shimmer inline-block text-ink-secondary animate-[working-shine_2s_linear_infinite] [@media(prefers-reduced-motion:reduce)]:animate-[none]"
+        role="status"
+      >
         Working…
       </span>
     );
@@ -30,12 +33,15 @@ export const WorkLog = ({
   hasActivity: boolean;
 }) => {
   return (
-    <details className="work-log" open={(run.status === "running" && hasActivity) || undefined}>
+    <details
+      className="work-log my-[24px_12px] text-ink-muted text-[14px]"
+      open={(run.status === "running" && hasActivity) || undefined}
+    >
       <summary>
         <WorkDuration run={run} />
         <ChevronRight size={14} />
       </summary>
-      <div className="work-log-entries">
+      <div className="work-log-entries mt-3">
         {hasActivity ? (
           children
         ) : (

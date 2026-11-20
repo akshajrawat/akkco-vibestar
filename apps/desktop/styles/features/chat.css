@@ -1,307 +1,153 @@
-.chat-main {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
-.event-timeline {
-  flex: 1;
-  overflow: auto;
-  padding: 24px clamp(18px, 4vw, 70px) 26px;
-}
-
-.context-message {
-  margin-bottom: 24px;
-}
-
-.context-message h2 {
-  font-size: 15px;
-  line-height: 1.5;
-  margin: 7px 0;
-  font-weight: 500;
-}
-
-.context-message p {
-  font-size: 13px;
-  white-space: pre-wrap;
-  margin: 4px 0;
-}
-
-.context-message > details {
-  margin-top: 8px;
-}
-
-.context-message details .agent-response {
-  margin: 10px 0;
-  color: var(--text-secondary);
-}
-
-.agent-turn {
-  margin: 12px 0 24px;
-}
-
 .agent-turn-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+  @apply text-[12px] mb-3;
 }
 
 .agent-turn-heading strong {
-  font-weight: 500;
+  @apply font-medium;
 }
 
 .agent-turn-heading small {
-  margin-left: auto;
-  font-size: 10px;
-}
-
-.message-event {
-  padding: 4px 0;
-}
-
-.agent-response {
-  font-size: 14px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
+  @apply ml-auto text-[10px];
 }
 
 .markdown p {
-  margin-bottom: 9px;
+  @apply mb-[9px];
 }
 
 .agent-response > :last-child {
-  margin-bottom: 0;
+  @apply mb-0;
 }
 
 .markdown ul,
 .markdown ol {
-  padding-left: 21px;
-  margin: 8px 0 12px;
+  @apply pl-[21px] m-[8px_0_12px];
 }
 
 .markdown li {
-  margin: 3px 0;
+  @apply mx-0 my-[3px];
 }
 
 .markdown h1,
 .markdown h2,
 .markdown h3 {
-  margin: 14px 0 7px;
-  font-size: 14px;
+  @apply m-[14px_0_7px] text-[14px];
 }
 
 .markdown pre {
-  padding: 10px 12px;
-  background: var(--background-app);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  margin: 8px 0 14px;
-  overflow: auto;
+  @apply px-3 py-2.5 bg-surface-app border border-border-default rounded-control m-[8px_0_14px] overflow-auto;
 }
 
 .markdown code {
-  color: var(--text-secondary);
-  font-size: 12px;
+  @apply text-ink-secondary text-[12px];
 }
 
 .markdown a {
-  color: var(--accent-blue);
-  text-decoration: underline;
+  @apply text-accent-blue underline;
 }
 
 .markdown table {
-  border-collapse: collapse;
+  @apply border-collapse;
 }
 
 .markdown td,
 .markdown th {
-  padding: 5px 9px;
-  border: 1px solid var(--border-default);
+  @apply px-[9px] py-[5px] border border-border-default;
 }
 
 .agent-response > details {
-  margin: 8px 0;
+  @apply mx-0 my-2;
 }
 
 .agent-response details section {
-  padding: 9px 0;
+  @apply px-0 py-[9px];
 }
 
 .agent-response details h3 {
-  color: var(--text-secondary);
-  text-transform: capitalize;
+  @apply text-ink-secondary capitalize;
 }
 
 .agent-response details ul {
-  font-size: 12px;
+  @apply text-[12px];
 }
 
 .tool-event {
-  position: relative;
-  margin: 0;
-  background: transparent;
+  @apply bg-transparent;
 }
 
 .tool-event summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  list-style: none;
-  padding: 5px 0;
-  color: var(--text-secondary);
+  @apply flex items-center gap-[7px] list-none px-0 py-[5px] text-ink-secondary;
 }
 
 .tool-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  flex-shrink: 0;
+  @apply w-6;
 }
 
 .tool-event summary > span {
-  white-space: nowrap;
+  @apply whitespace-nowrap;
 }
 
 .tool-event summary > code {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.tool-details {
-  margin: 3px 0 7px 18px;
-  border-left: 1px solid var(--border-default);
-  padding: 7px 11px;
-  max-height: 300px;
-  overflow: auto;
-  font-size: 12px;
+  @apply overflow-hidden text-ellipsis whitespace-nowrap flex-1 text-ink-muted text-[11px];
 }
 
 .tool-failed summary {
-  color: var(--accent-red);
+  @apply text-accent-red;
 }
 
 .tool-details pre {
-  color: var(--text-secondary);
-  font-size: 11px;
+  @apply text-ink-secondary text-[11px];
 }
 
 .tool-details > small {
-  display: block;
-  margin-top: 4px;
+  @apply block mt-1;
 }
 
 .edited-file {
-  display: flex;
-  align-items: center;
-  text-align: left;
-  gap: 8px;
-  width: 100%;
-  background: transparent;
-  border: 0;
-  padding: 5px 0;
+  @apply w-full bg-transparent [border:0];
 }
 
 .edited-file:hover code {
-  color: var(--text-primary);
-  text-decoration: underline;
+  @apply text-ink-primary underline;
 }
 
 .inline-diff-link {
-  border: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 11px;
-  margin-left: 18px;
-  padding: 1px 0 4px;
+  @apply bg-transparent text-ink-secondary;
 }
 
 .inline-diff-link:hover {
-  color: var(--text-primary);
-}
-
-.turn-outcome {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-muted);
-  font-size: 11px;
-  margin-top: 10px;
+  @apply text-ink-primary;
 }
 
 /* User messages share the app palette; assistant prose stays unboxed. */
 .user-message {
-  position: relative;
-  width: fit-content;
-  max-width: 80%;
-  margin: 20px 0 12px auto;
-  padding: 9px 13px;
-  background: var(--background-elevated);
-  border-radius: var(--radius-panel);
+  @apply w-fit max-w-[80%] bg-surface-elevated rounded-panel;
 }
 
 .user-message p {
-  font-size: 14px;
-  line-height: 20px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  margin: 0;
+  @apply text-[14px] leading-[20px] whitespace-pre-wrap wrap-anywhere m-0;
 }
 
 .user-message .message-actions {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  height: 28px;
+  @apply absolute top-full;
+  @apply right-0 h-7;
 }
 
 .saved-assistant-message {
-  margin: 20px 0;
+  @apply mx-0 my-5;
 }
 
 .chat-input {
-  margin: 0 18px 15px;
-  padding: 9px 11px 7px;
-  background: var(--background-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  flex-shrink: 0;
+  @apply bg-surface-elevated [border:0] rounded-control;
 }
 
 .chat-input:has(textarea:focus) {
-  outline: none;
-  border-color: var(--focus-ring);
-  outline-offset: 2px;
+  @apply [outline:none] [border:0];
 }
 
 .chat-input textarea:focus {
-  outline: none;
-  box-shadow: none;
+  @apply [outline:none] [box-shadow:none];
 }
 
 .chat-input textarea {
-  display: block;
-  background: transparent;
-  border: 0;
-  padding: 4px 1px 9px;
-  resize: none;
-  min-height: 62px;
-  max-height: 180px;
-  font-size: 13px;
-}
-
-.composer-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
+  @apply block bg-transparent [border:0] p-[4px_1px_9px] resize-none min-h-15.5 max-h-[180px] text-[13px];
 }

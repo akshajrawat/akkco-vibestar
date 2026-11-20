@@ -1,59 +1,36 @@
 .vibestar-toast {
-  width: 360px;
-  font: inherit;
-  box-shadow: 0 8px 28px var(--shadow);
+  @apply w-[360px] [font:inherit] [box-shadow:0_8px_28px_var(--shadow)];
 }
 
 .vibestar-toast > div[role] {
-  margin: 0;
-  width: 100%;
+  @apply m-0 w-full;
 }
 
 .notification {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  width: 100%;
-  text-align: left;
-  line-height: 1.5;
+  @apply w-full;
 }
 
 .notification > svg {
-  flex-shrink: 0;
-  color: var(--accent);
+  @apply shrink-0 text-accent;
 }
 
 .notification-error > svg {
-  color: var(--accent-red);
+  @apply text-accent-red;
 }
 .notification-warning > svg {
-  color: var(--accent-amber);
+  @apply text-accent-amber;
 }
 .notification-success > svg {
-  color: var(--accent-green);
-}
-
-.notification-content {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
+  @apply text-accent-green;
 }
 
 .notification > .button {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
-  border: 0;
+  @apply shrink-0 w-6 h-6 min-h-6 [border:0];
 }
 
 @media (prefers-reduced-motion: reduce) {
   .vibestar-toast,
   .notification .spinning {
-    animation: none !important;
+    @apply animate-[none]!;
   }
 }

@@ -32,12 +32,12 @@ export class Database {
           .get();
 
         const version = table
-          ? (
+          ? ((
               source.prepare("SELECT max(version) version FROM schema_migrations").get() as {
                 version: number | null;
               }
-            ).version || 0
-          : 0;
+            ).version ?? -1)
+          : -1;
 
         if (version < migrations.at(-1)!.version) {
           const backup = `${path}.before-v${version}-${randomUUID()}.sqlite`;

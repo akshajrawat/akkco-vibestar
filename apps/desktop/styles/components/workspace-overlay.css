@@ -1,61 +1,55 @@
 .workspace-overlay {
-  position: fixed;
-  inset: 0;
-  width: 80vw;
-  height: 90dvh;
-  max-width: 1600px;
-  max-height: calc(100dvh - 40px);
-  margin: auto;
-  padding: 0;
-  overflow: visible;
-  color: var(--foreground);
-  background: var(--background-panel);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-panel);
-  box-shadow: 0 24px 100px var(--shadow);
+  @apply w-[80vw] h-[90dvh] max-h-[calc(100dvh_-_40px)] overflow-visible bg-surface-panel border border-border-default rounded-panel;
 }
 
 .workspace-overlay::backdrop {
-  background: color-mix(in srgb, var(--background-app) 62%, transparent);
-  backdrop-filter: blur(4px);
+  @apply bg-[color-mix(in_srgb,_var(--background-app)_62%,_transparent)] [backdrop-filter:blur(4px)];
+}
+
+.workspace-overlay.tool-overlay[open] {
+  --accent-blue: var(--text-primary);
+  @apply flex flex-col border-0 bg-surface-app [outline:none];
+}
+
+.tool-overlay.settings-workspace {
+  --background-app: #151515;
+  --background-sidebar: #1d1d1d;
+  --background-hover: #262626;
+  @apply rounded-[18px];
+}
+
+.tool-overlay .modal-backdrop {
+  @apply absolute;
 }
 
 .workspace-confirmation {
-  width: min(440px, calc(100vw - 32px));
-  height: fit-content;
-  padding: 24px;
+  @apply w-[min(440px,_calc(100vw_-_32px))] h-fit p-6;
 }
 
 .workspace-confirmation h2 {
-  font-size: 16px;
+  @apply text-[16px];
 }
 
 .workspace-confirmation p {
-  color: var(--text-muted);
-  margin: 12px 0 24px;
+  @apply text-ink-muted m-[12px_0_24px];
 }
 
 .workspace-confirmation .actions {
-  justify-content: flex-end;
+  @apply justify-end;
 }
 
 .workspace-overlay .modal-backdrop {
-  inset: 0;
-  border-radius: var(--radius-panel);
+  @apply inset-0 rounded-panel;
 }
 
 @media (max-width: 1100px) {
   .workspace-overlay:not(.workspace-confirmation) {
-    width: calc(100vw - 32px);
-    height: calc(100dvh - 32px);
-    max-height: calc(100dvh - 32px);
+    @apply w-[calc(100vw_-_32px)] h-[calc(100dvh_-_32px)] max-h-[calc(100dvh_-_32px)];
   }
 }
 
 @media (max-width: 600px) {
   .workspace-overlay:not(.workspace-confirmation) {
-    width: calc(100vw - 16px);
-    height: calc(100dvh - 16px);
-    max-height: calc(100dvh - 16px);
+    @apply w-[calc(100vw_-_16px)] h-[calc(100dvh_-_16px)] max-h-[calc(100dvh_-_16px)];
   }
 }

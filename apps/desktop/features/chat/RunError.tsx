@@ -95,10 +95,10 @@ export const RunError = ({
 
   return (
     <section
-      className={`run-error ${cancelled || blocked ? "run-error-cancelled" : "run-error-failed"}`}
+      className={`flex items-baseline flex-wrap gap-[8px_16px] flex-none px-5 py-2 border-b border-b-border text-[12px] wrap-anywhere ${cancelled || blocked ? "run-error-cancelled" : "run-error-failed"}`}
       aria-label={cancelled ? "Cancelled run" : "Run failure"}
     >
-      <div className="run-error-status">
+      <div className="flex items-baseline flex-wrap gap-2 min-w-0">
         <span className={cancelled || blocked ? "warning" : "failure"} aria-hidden="true">
           {cancelled || blocked ? "●" : "×"}
         </span>
@@ -130,7 +130,7 @@ export const RunError = ({
         </Button>
       )}
 
-      <details className="run-error-details">
+      <details className="run-error-details min-w-0 ml-auto [&[open]]:basis-full">
         <summary>Technical details</summary>
         <p>
           {validation ? (

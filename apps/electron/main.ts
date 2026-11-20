@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { createInterface } from "node:readline";
 import { z } from "zod";
 import { CoreBridge, readDesktopConfig, saveDesktopConfig } from "./bridge";
+import { configureWindowControls } from "./window-controls";
 
 const exec = promisify(execFile);
 const isWslg = process.platform === "linux" && !!process.env.WSL_DISTRO_NAME;
@@ -96,12 +97,16 @@ const main = async () => {
   startCore();
 
   const trusted = (event: Electron.IpcMainInvokeEvent) => {
+    const sender = window;
     if (
-      event.sender !== window?.webContents ||
-      event.senderFrame !== window?.webContents.mainFrame
+      !sender ||
+      event.sender !== sender.webContents ||
+      event.senderFrame !== sender.webContents.mainFrame
     ) {
       throw new Error("Untrusted IPC sender");
     }
+
+    return sender;
   };
 
   ipcMain.handle("core:rpc", async (event, input) => {
@@ -164,7 +169,7 @@ const main = async () => {
   });
 
   ipcMain.handle("desktop:save", async (event, input) => {
-    trusted(event);
+    const sender = trusted(event);
 
     const updated = z
       .object({
@@ -193,7 +198,7 @@ const main = async () => {
 
     changingRuntime = true;
     try {
-      const answer = await dialog.showMessageBox(window!, {
+      const answer = await dialog.showMessageBox(sender, {
         type: "question",
         title: "Restart execution environment?",
         message: "Save these environment changes and restart the backend?",
@@ -274,20 +279,17 @@ const main = async () => {
   const height = Math.max(540, Math.min(940, area.height - 80));
 
   window = new BrowserWindow({
-    title: "akkco vibestar",
-    icon: join(app.getAppPath(), "assets", "512x512.png"),
     width,
     height,
     x: area.x + Math.round((area.width - width) / 2),
     y: area.y + Math.round((area.height - height) / 2),
+    title: "akkco vibestar",
+    icon: join(app.getAppPath(), "assets", "512x512.png"),
     minWidth: 800,
     minHeight: 540,
-    maximizable: true,
-    fullscreenable: true,
     frame: false,
     autoHideMenuBar: true,
-    resizable: true,
-    backgroundColor: "#181818",
+    backgroundColor: "#0b0b0b",
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -296,199 +298,35 @@ const main = async () => {
     },
   });
 
+  const controls = configureWindowControls(window, isWslg);
+
+  const windowControls = (event: Electron.IpcMainInvokeEvent) => {
+    trusted(event);
+    return controls;
+  };
+
+  ipcMain.handle("window:minimize", (event) => windowControls(event).minimize());
+  ipcMain.handle("window:maximize", (event) => windowControls(event).maximize());
+  ipcMain.handle("window:fullscreen", (event) => windowControls(event).fullscreen());
+  ipcMain.handle("window:close", (event) => windowControls(event).close());
+  ipcMain.handle("window:get-state", (event) => windowControls(event).state());
+  ipcMain.handle("window:drag-start", (event, input) => windowControls(event).dragStart(input));
+  ipcMain.handle("window:drag", (event, input) => windowControls(event).drag(input));
+  ipcMain.handle("window:drag-end", (event) => windowControls(event).dragEnd());
+
   window.setMenu(null);
-  window.setMenuBarVisibility(false);
-
-  ipcMain.handle("window:minimize", (event) => {
-    trusted(event);
-    window?.minimize();
-  });
-
-  let restoreBounds: Electron.Rectangle | null = null;
-  let fallbackMaximized = false;
-  let boundsTimer: ReturnType<typeof setTimeout> | undefined;
-
-  const state = () => ({
-    maximized: !!window && (window.isMaximized() || fallbackMaximized),
-    fullscreen: window?.isFullScreen() ?? false,
-  });
-
-  let publishedState: ReturnType<typeof state> | null = null;
-
-  const publishState = () => {
-    const current = state();
-    if (
-      publishedState?.maximized === current.maximized &&
-      publishedState.fullscreen === current.fullscreen
-    ) {
-      return;
-    }
-
-    publishedState = current;
-    window?.webContents.send("window:state", current);
-  };
-
-  const setFullscreen = (fullscreen: boolean) => {
-    if (boundsTimer) {
-      clearTimeout(boundsTimer);
-    }
-
-    boundsTimer = undefined;
-    window?.setFullScreen(fullscreen);
-  };
-
-  const toggleMaximize = () => {
-    if (!window) {
-      return;
-    }
-
-    if (window.isFullScreen()) {
-      setFullscreen(false);
-      return;
-    }
-
-    if (boundsTimer) {
-      clearTimeout(boundsTimer);
-    }
-
-    if (state().maximized) {
-      window.unmaximize();
-      if (fallbackMaximized && restoreBounds) {
-        window.setBounds(restoreBounds);
-      }
-
-      fallbackMaximized = false;
-      publishState();
-      return;
-    }
-
-    restoreBounds = window.getBounds();
-    const workArea = screen.getDisplayMatching(restoreBounds).workArea;
-    window.maximize();
-    // WSLg may acknowledge maximize without resizing. Windows owns its native
-    // transition and DPI geometry; a timed setBounds would fight that transition.
-    if (!isWslg) {
-      return;
-    }
-
-    boundsTimer = setTimeout(() => {
-      if (!window || window.isFullScreen() || window.isMinimized()) {
-        return;
-      }
-
-      const bounds = window.getBounds();
-      if (
-        Math.abs(bounds.x - workArea.x) > 20 ||
-        Math.abs(bounds.y - workArea.y) > 20 ||
-        Math.abs(bounds.width - workArea.width) > 20 ||
-        Math.abs(bounds.height - workArea.height) > 20
-      ) {
-        window.unmaximize();
-        fallbackMaximized = true;
-        window.setBounds(workArea);
-      }
-
-      publishState();
-    }, 250);
-  };
-
-  ipcMain.handle("window:maximize", (event) => {
-    trusted(event);
-    toggleMaximize();
-  });
-
-  ipcMain.handle("window:fullscreen", (event) => {
-    trusted(event);
-    if (window) {
-      setFullscreen(!window.isFullScreen());
-    }
-  });
-
-  ipcMain.handle("window:close", (event) => {
-    trusted(event);
-    window?.close();
-  });
-
-  ipcMain.handle("window:is-maximized", (event) => {
-    trusted(event);
-    return state().maximized;
-  });
-
-  ipcMain.handle("window:get-state", (event) => {
-    trusted(event);
-    return state();
-  });
-
-  const pointSchema = z.object({
-    x: z.number().finite(),
-    y: z.number().finite(),
-  });
-
-  let dragOrigin: {
-    point: { x: number; y: number };
-    bounds: Electron.Rectangle;
-  } | null = null;
-
-  ipcMain.handle("window:drag-start", (event, input) => {
-    trusted(event);
-    const point = pointSchema.parse(input);
-
-    dragOrigin =
-      window && !state().maximized && !state().fullscreen
-        ? { point, bounds: window.getBounds() }
-        : null;
-  });
-
-  ipcMain.handle("window:drag", (event, input) => {
-    trusted(event);
-    const point = pointSchema.parse(input);
-    if (window && dragOrigin) {
-      window.setPosition(
-        Math.round(dragOrigin.bounds.x + point.x - dragOrigin.point.x),
-        Math.round(dragOrigin.bounds.y + point.y - dragOrigin.point.y),
-      );
-    }
-  });
-
-  ipcMain.handle("window:drag-end", (event) => {
-    trusted(event);
-    dragOrigin = null;
-  });
-
-  window.on("maximize", publishState);
-  window.on("unmaximize", publishState);
-  window.on("enter-full-screen", publishState);
-  window.on("leave-full-screen", publishState);
-  window.on("resize", publishState);
-
-  window.webContents.on("before-input-event", (event, input) => {
-    if (input.type === "keyDown" && input.key === "F11" && !input.isAutoRepeat) {
-      event.preventDefault();
-      if (window) {
-        setFullscreen(!window.isFullScreen());
-      }
-    }
-
-    if (input.type === "keyDown" && input.key === "Escape" && window?.isFullScreen()) {
-      event.preventDefault();
-      setFullscreen(false);
-    }
-  });
-
-  window.once("closed", () => {
-    if (boundsTimer) {
-      clearTimeout(boundsTimer);
-    }
-  });
-
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  window.webContents.on("will-navigate", (e) => e.preventDefault());
-  window.webContents.on("will-attach-webview", (e) => e.preventDefault());
+  window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.on("will-attach-webview", (event) => event.preventDefault());
   if (process.env.VIBESTAR_DEV_URL && !app.isPackaged) {
     await window.loadURL(process.env.VIBESTAR_DEV_URL);
   } else {
     await window.loadFile(join(app.getAppPath(), "out", "desktop", "index.html"));
   }
+
+  window.once("closed", () => {
+    window = null;
+  });
 
   if (
     !app.isPackaged &&
@@ -505,10 +343,6 @@ const main = async () => {
     );
   }
 
-  window.on("closed", () => {
-    window = null;
-  });
-
   app.on("second-instance", () => {
     window?.show();
     window?.focus();
@@ -516,20 +350,21 @@ const main = async () => {
 
   app.on("window-all-closed", () => app.quit());
 
-  app.on("before-quit", (event) => {
+  app.on("will-quit", (event) => {
     if (!quitting) {
       event.preventDefault();
       quitting = true;
-      void bridge?.stop().finally(() => app.quit());
+      void Promise.resolve(bridge?.stop()).finally(() => app.quit());
     }
   });
 
-  process.once("SIGTERM", () => app.quit());
-  process.once("SIGINT", () => app.quit());
+  const closeApp = () => (window ? window.close() : app.quit());
+  process.once("SIGTERM", closeApp);
+  process.once("SIGINT", closeApp);
   if (!app.isPackaged && process.env.VIBESTAR_DEV_URL) {
     createInterface({ input: process.stdin }).on("line", (line) => {
       if (line === "vibestar:quit") {
-        app.quit();
+        closeApp();
       }
     });
   }

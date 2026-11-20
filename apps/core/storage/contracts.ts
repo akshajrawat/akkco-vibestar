@@ -25,3 +25,23 @@ export const RepositoryRecordSchema = z
   })
   .loose()
   .transform((value) => value as Repository);
+
+export interface StorageInfo {
+  root: string;
+  sizes: {
+    repos: number;
+    worktrees: number;
+    workspaces: number;
+    logs: number;
+    artifacts: number;
+    cache: number;
+    runtime: number;
+    telemetry: number;
+    state: number;
+    [key: string]: number;
+  };
+  database: number;
+  total: number;
+  measured_at: string;
+  external_repositories: unknown[];
+}

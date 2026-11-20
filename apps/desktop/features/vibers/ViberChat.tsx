@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Pencil, Paperclip, X } from "lucide-react";
 import type { AgentProfile } from "../../../core/vibers/contracts";
 import type { ViberSession } from "../../../core/vibers/contracts";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
-import type { Snapshot, Repository } from "../../lib/types";
-import { Select } from "../../components/ui/Select";
-import { Button } from "../../components/ui/button";
 import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
@@ -22,19 +18,15 @@ import { configurationError } from "../../../core/execution/providers/contracts"
 export const ViberChat = ({
   profile,
   revision,
-  edit,
   computerOpen = false,
   hideComputer = () => {},
 }: {
   profile: AgentProfile;
   revision: number;
-  edit: (profile: AgentProfile) => void;
   computerOpen?: boolean;
   hideComputer?: () => void;
 }) => {
   const [sessionId, setSessionId] = useState<string>();
-  const [repositories, setRepositories] = useState<Repository[]>([]);
-  const [repositoryId, setRepositoryId] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const request = useRef({ signature: "", id: "", session: null as ViberSession | null });
@@ -58,26 +50,13 @@ export const ViberChat = ({
       : configurationError(provider, { ...profile.execution, ...selection })
     : null;
 
-  const repository = repositories.find((repository) => repository.id === repositoryId);
-
   useEffect(() => {
     let active = true;
 
-    void Promise.all([
-      rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id }),
-      rpc<Snapshot>("snapshot"),
-    ])
-      .then(([sessions, snapshot]) => {
-        if (active) {
-          if (sessions.length > 0 && !sessionId) {
-            setSessionId(sessions[0].id);
-          }
-
-          setRepositories(
-            snapshot.repositories.filter(
-              (repo) => repo.connected !== false && repo.clone_status !== "cloning",
-            ),
-          );
+    void rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id })
+      .then(([session]) => {
+        if (active && session) {
+          setSessionId(session.id);
         }
       })
       .catch((reason) => {
@@ -89,7 +68,7 @@ export const ViberChat = ({
     return () => {
       active = false;
     };
-  }, [profile.id, revision, sessionId]);
+  }, [profile.id, revision]);
 
   const start = async () => {
     if (starting.current || invalid) {
@@ -109,7 +88,8 @@ export const ViberChat = ({
         content,
         profile_id: profile.id,
         selection,
-        repositoryId,
+        // Preserve the request signature used by existing managed-workspace drafts.
+        repositoryId: "",
       });
 
       if (request.current.signature !== signature) {
@@ -130,7 +110,6 @@ export const ViberChat = ({
           request_id: request.current.id,
           profile_id: profile.id,
           selection,
-          ...(repositoryId ? { repository_id: repositoryId } : {}),
         }));
 
       request.current.session = session;
@@ -179,27 +158,11 @@ export const ViberChat = ({
   );
 
   return (
-    <div className="computer-workspace">
-      <section className="viber-chat-page chat-workspace" aria-label={`Chat with ${profile.name}`}>
-        <header className="viber-chat-page-header">
-          <ViberFace profile={profile} />
-          <div>
-            <strong>{profile.name}</strong>
-            <small title={profile.description}>
-              {profile.description ||
-                `${profile.execution.provider} · ${profile.execution.model || "CLI default"}`}
-            </small>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Edit Viber"
-            title="Edit Viber"
-            onClick={() => edit(profile)}
-          >
-            <Pencil size={14} />
-          </Button>
-        </header>
+    <div className="computer-workspace overflow-hidden flex flex-1 min-h-0 min-w-0">
+      <section
+        className="viber-chat-page flex flex-1 flex-col min-h-0 min-w-[260px] chat-workspace"
+        aria-label={`Chat with ${profile.name}`}
+      >
         {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
         {sessionId ? (
           <ViberSessionChat
@@ -215,68 +178,31 @@ export const ViberChat = ({
             empty
             activity={null}
             conversation={
-              <div className="chat-welcome viber-chat-welcome">
-                <ViberFace profile={profile} className="viber-idle" />
+              <div className="chat-welcome py-[0_24px] text-center viber-chat-welcome">
+                <ViberFace profile={profile} animated />
                 <h1>Ready when you are.</h1>
               </div>
             }
             composer={
-              <>
-                <div className="viber-repository-attachment">
-                  {repository ? (
-                    <span className="viber-repository-chip">
-                      {repository.owner}/{repository.name}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Remove repository"
-                        disabled={busy}
-                        onClick={() => setRepositoryId("")}
-                      >
-                        <X size={13} />
-                      </Button>
-                    </span>
-                  ) : (
-                    <Select
-                      label="Attach repository"
-                      selectedLabel={
-                        <>
-                          <Paperclip size={14} /> Attach repository
-                        </>
-                      }
-                      value={repositoryId}
-                      disabled={busy}
-                      onChange={setRepositoryId}
-                      searchable
-                      options={[
-                        ...repositories.map((repo) => ({
-                          value: repo.id,
-                          label: `${repo.owner}/${repo.name}`,
-                        })),
-                      ]}
-                    />
-                  )}
-                </div>
-                <Composer
-                  compact
-                  id={draftId}
-                  label={`Message ${profile.name}`}
-                  placeholder={`Ask ${profile.name} anything…`}
-                  sendLabel="Send message"
-                  onSend={() => void start()}
-                  context={[
-                    {
-                      label: "Text",
-                      input: "Context text",
-                      load: async (text) => ({ label: "Attached text", text }),
-                    },
-                  ]}
-                  busy={busy}
-                  disabled={!!invalid}
-                  model={modelControl}
-                  hint="Each chat owns a separate workspace. Repository chats use a dedicated Git worktree."
-                />
-              </>
+              <Composer
+                compact
+                id={draftId}
+                label={`Message ${profile.name}`}
+                placeholder={`Ask ${profile.name} anything…`}
+                sendLabel="Send message"
+                onSend={() => void start()}
+                context={[
+                  {
+                    label: "Text",
+                    input: "Context text",
+                    load: async (text) => ({ label: "Attached text", text }),
+                  },
+                ]}
+                busy={busy}
+                disabled={!!invalid}
+                model={modelControl}
+                hint="Each Viber uses its own workspace."
+              />
             }
           />
         )}
@@ -291,7 +217,11 @@ export const ViberChat = ({
           reverse
         />
       )}
-      <div className="computer-panel-size" hidden={!computerOpen} style={{ width: computerWidth }}>
+      <div
+        className="shrink-0 max-w-[calc(100%_-_265px)] min-w-[280px]"
+        hidden={!computerOpen}
+        style={{ width: computerWidth }}
+      >
         {computerOpen && (
           <ComputerPanel
             profileId={profile.id}

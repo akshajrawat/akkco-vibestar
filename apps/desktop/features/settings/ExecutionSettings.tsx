@@ -16,11 +16,11 @@ export const ExecutionSettings = ({
   busy?: boolean;
   installLog?: string;
   install?: () => Promise<void>;
-  flush?: () => Promise<void>;
+  flush?: () => Promise<boolean>;
 }) => (
-  <section className="settings-section execution-settings">
+  <section className="settings-section p-[8px_0_24px] execution-settings">
     <h2>Execution environment</h2>
-    <div className="settings-fields">
+    <div className="settings-fields grid grid-cols-[1fr_1fr] [@media(max-width:760px)]:grid-cols-[minmax(0,_1fr)] gap-[20px_24px] [align-items:start] max-w-[900px]">
       <label>
         WSL distribution
         <Select
@@ -91,7 +91,11 @@ export const ExecutionSettings = ({
         <Button disabled={busy} onClick={() => void install?.()}>
           Repair Runtime
         </Button>
-        {installLog && <pre className="install-log">{installLog}</pre>}
+        {installLog && (
+          <pre className="install-log p-3 max-h-[200px] overflow-auto text-[11px]">
+            {installLog}
+          </pre>
+        )}
       </details>
     )}
   </section>

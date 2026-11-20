@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 
-export const usePaneSize = (key: string, initial: number, min: number, max: number) => {
-  const [size, setSize] = useState(() =>
-    Math.max(min, Math.min(max, Number(localStorage.getItem(`vibestar.${key}`)) || initial)),
-  );
+export const usePaneSize = (
+  key: string,
+  initial: number | (() => number),
+  min: number,
+  max: number,
+) => {
+  const [size, setSize] = useState(() => {
+    const saved = Number(localStorage.getItem(`vibestar.${key}`));
+    const value = saved || (typeof initial === "function" ? initial() : initial);
+    return Math.max(min, Math.min(max, value));
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => localStorage.setItem(`vibestar.${key}`, String(size)), 200);

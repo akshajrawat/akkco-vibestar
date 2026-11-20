@@ -1,23 +1,27 @@
 import { useState } from "react";
-import { Bot, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import { defaultAppearance, randomAppearance } from "../../../core/vibers/appearance";
-import { AgentProfileSchema, type AgentProfile } from "../../../core/vibers/contracts";
+import {
+  AgentProfileSchema,
+  DEFAULT_VIBER_INSTRUCTIONS,
+  type AgentProfile,
+} from "../../../core/vibers/contracts";
 import { Button } from "../../components/ui/button";
-import { rpc, computerRpc, errorMessage } from "../../lib/api";
+import { rpc, errorMessage } from "../../lib/api";
 import { WorkspaceOverlay } from "../../components/ui/WorkspaceOverlay";
 import { AvatarBuilder } from "./AvatarBuilder";
 import { ViberFace } from "./ViberFace";
 import { DiscardChangesDialog } from "../../components/ui/DiscardChangesDialog";
 
-export const ProfileEditor = ({
+export const CreateViberDialog = ({
   profile,
   close,
   saved,
 }: {
   profile: AgentProfile;
   close: () => void;
-  saved: () => void;
+  saved: (profile: AgentProfile) => void;
 }) => {
   const [draft, setDraft] = useState(profile);
   const [error, setError] = useState("");
@@ -26,7 +30,6 @@ export const ProfileEditor = ({
   const [customColor, setCustomColor] = useState(appearance.color);
 
   const [confirmClose, setConfirmClose] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const requestClose = () => {
     if (busy) {
@@ -42,21 +45,36 @@ export const ProfileEditor = ({
 
   return (
     <WorkspaceOverlay
-      label={profile.revision ? "Edit Viber profile" : "Create Viber profile"}
-      className="viber-editor-overlay"
+      label="Create Viber profile"
+      className="viber-editor-overlay viber-create-overlay"
       onClose={requestClose}
     >
-      <header className="viber-editor-heading">
-        <Bot size={28} aria-hidden="true" />
-        <div>
-          <h2>{profile.revision ? "Edit Viber" : "Create Viber"}</h2>
-          <p>Design a Viber with its own name and appearance.</p>
-        </div>
+      <header className="viber-editor-heading flex items-center shrink-0 gap-3">
+        <button
+          className="viber-editor-mascot"
+          type="button"
+          aria-label="Animate Viber"
+          onClick={(event) => {
+            if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+              event.currentTarget.animate(
+                [
+                  { transform: "translateY(0) rotate(0)" },
+                  { transform: "translateY(-6px) rotate(-12deg)" },
+                  { transform: "translateY(0) rotate(0)" },
+                ],
+                { duration: 420, easing: "ease-in-out" },
+              );
+            }
+          }}
+        >
+          <ViberFace appearance={appearance} animated />
+        </button>
+        <h2>Create Viber</h2>
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Close Viber editor"
+          aria-label="Close create Viber dialog"
           disabled={busy}
           onClick={requestClose}
         >
@@ -64,7 +82,7 @@ export const ProfileEditor = ({
         </Button>
       </header>
       <form
-        className="viber-profile-editor"
+        className="viber-profile-editor flex flex-col min-h-0"
         onSubmit={async (event) => {
           event.preventDefault();
           if (!/^#[0-9a-fA-F]{6}$/.test(customColor)) {
@@ -77,16 +95,17 @@ export const ProfileEditor = ({
           try {
             const next = AgentProfileSchema.parse({
               ...draft,
+              instructions: draft.instructions?.trim() || DEFAULT_VIBER_INSTRUCTIONS,
               appearance,
-              revision: profile.revision + 1,
+              revision: 1,
             });
 
             await rpc("profile.save", {
               profile: next,
-              expected_revision: profile.revision || null,
+              expected_revision: null,
             });
 
-            saved();
+            saved(next);
             close();
           } catch (reason) {
             setError(errorMessage(reason));
@@ -95,13 +114,20 @@ export const ProfileEditor = ({
           }
         }}
       >
-        <div className="viber-editor-content">
-          <div className="viber-editor-main">
-            <div className="viber-identity-fields">
+        <div className="viber-editor-content min-h-0 px-6 py-1 [@media(max-width:700px)]:px-4">
+          <div className="viber-editor-main grid grid-cols-[minmax(0,_1.1fr)_minmax(220px,_1fr)] [@media(max-width:700px)]:grid-cols-[minmax(0,_1fr)] items-center">
+            <section
+              className="viber-live-preview grid place-items-center self-stretch"
+              aria-label="Live avatar preview"
+            >
+              <ViberFace appearance={appearance} animated />
+            </section>
+            <div className="viber-identity-fields grid gap-2.5 min-w-0">
               <label>
-                Name
+                <span className="sr-only">Name</span>
                 <input
                   placeholder="Name your Viber"
+                  autoFocus
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   required
@@ -109,9 +135,6 @@ export const ProfileEditor = ({
                 />
               </label>
             </div>
-            <section className="viber-live-preview" aria-label="Live avatar preview">
-              <ViberFace appearance={appearance} />
-            </section>
             <AvatarBuilder
               appearance={appearance}
               change={(appearance) => setDraft({ ...draft, appearance })}
@@ -130,65 +153,16 @@ export const ProfileEditor = ({
             </p>
           )}
         </div>
-        <footer className="viber-editor-actions">
-          {!!profile.revision && (
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setConfirmDelete(true)}
-            >
-              Delete Viber
-            </Button>
-          )}
+        <footer className="viber-editor-actions flex shrink-0 justify-end gap-2.5">
           <Button type="button" disabled={busy} onClick={requestClose}>
             Cancel
           </Button>
           <Button type="submit" disabled={busy || !draft.name.trim()} variant="default">
-            {busy ? "Saving…" : profile.revision ? "Save Viber" : "Create Viber"}
+            {busy ? "Saving…" : "Create Viber"}
           </Button>
         </footer>
       </form>
       {confirmClose && <DiscardChangesDialog keep={() => setConfirmClose(false)} discard={close} />}
-      {confirmDelete && (
-        <WorkspaceOverlay
-          label="Delete Viber"
-          onClose={() => setConfirmDelete(false)}
-          className="computer-confirmation"
-        >
-          <h2>Delete {profile.name}?</h2>
-          <p>
-            This permanently deletes this Viber's computer storage, installed dependencies, account
-            sessions, conversations, and all workspace files, including unsaved or unpublished work.
-            Stop active turns and close its terminal first.
-          </p>
-          <footer>
-            <Button disabled={busy} onClick={() => setConfirmDelete(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                setError("");
-
-                void computerRpc("profile.delete", { profile_id: profile.id, confirmed: true })
-                  .then(() => {
-                    saved();
-                    close();
-                  })
-                  .catch((reason) => {
-                    setError(errorMessage(reason));
-                    setConfirmDelete(false);
-                  })
-                  .finally(() => setBusy(false));
-              }}
-            >
-              Delete permanently
-            </Button>
-          </footer>
-        </WorkspaceOverlay>
-      )}
     </WorkspaceOverlay>
   );
 };

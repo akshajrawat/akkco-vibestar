@@ -8,7 +8,7 @@ import { GlobalNotifications } from "../../apps/desktop/app/GlobalNotifications"
 import { notifications } from "../../apps/desktop/lib/notifications";
 import toast from "react-hot-toast";
 import { ConnectLocalRepository } from "../../apps/desktop/features/repositories/ConnectLocalRepository";
-import { ProfileEditor } from "../../apps/desktop/features/vibers/ProfileEditor";
+import { CreateViberDialog } from "../../apps/desktop/features/vibers/CreateViberDialog";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { selectValue } from "../helpers/select";
 import { mockDialog } from "../helpers/dialog";
@@ -21,6 +21,7 @@ const rpc = vi.fn();
 const saveDesktop = vi.fn();
 const refresh = vi.fn();
 const close = vi.fn();
+const closeWindow = vi.fn();
 
 beforeEach(() => {
   mockDialog();
@@ -38,6 +39,12 @@ beforeEach(() => {
   );
 
   refresh.mockResolvedValue(undefined);
+
+  Object.defineProperty(window, "electronWindow", {
+    configurable: true,
+    value: { close: closeWindow },
+  });
+
   saveDesktop.mockResolvedValue(undefined);
 
   Object.defineProperty(window, "vibestar", {
@@ -87,7 +94,7 @@ it("filters category groups, clears search with Escape and excludes unsupported 
   await screen.findByLabelText("Concurrency");
 });
 
-it("saves setting changes automatically across categories and closes directly without confirmation", async () => {
+it("saves setting changes automatically across categories", async () => {
   open();
   await screen.findByLabelText("Concurrency");
   selectValue(screen.getByLabelText("Concurrency"), "4");
@@ -104,10 +111,6 @@ it("saves setting changes automatically across categories and closes directly wi
   fireEvent.click(screen.getByRole("button", { name: "Repositories" }));
 
   expect(screen.queryByText("Local repository discovery")).toBeNull();
-
-  fireEvent.click(screen.getByRole("button", { name: "Close Settings" }));
-  expect(screen.queryByRole("dialog", { name: "Discard unsaved changes?" })).toBeNull();
-  expect(close).toHaveBeenCalledOnce();
 });
 
 it("tracks desktop changes automatically and displays error if core save fails", async () => {
@@ -141,26 +144,82 @@ it("tracks desktop changes automatically and displays error if core save fails",
   await waitFor(() =>
     expect(screen.getByLabelText("Concurrency").getAttribute("data-value")).toBe("3"),
   );
-
-  fireEvent.click(screen.getByRole("button", { name: "Close Settings" }));
-  expect(close).toHaveBeenCalledOnce();
 });
 
-it("keeps dropdown portals within the modal and restores focus to the opener", async () => {
-  const opener = document.createElement("button");
-  document.body.append(opener);
-  opener.focus();
-  const ui = open();
-  await screen.findByLabelText("Concurrency");
-  fireEvent.click(screen.getByLabelText("Concurrency"));
+it("opens settings dropdowns in the overlay and restores focus when they close", async () => {
+  open();
+  const trigger = await screen.findByLabelText("Concurrency");
+  fireEvent.click(trigger);
+  const list = screen.getByRole("listbox");
 
-  expect(
-    screen.getByRole("dialog", { name: "Settings" }).contains(screen.getByRole("listbox")),
-  ).toBe(true);
+  expect(list.closest(".select-popover")?.parentElement).toBe(
+    screen.getByRole("dialog", { name: "Settings" }),
+  );
 
-  ui.unmount();
-  await waitFor(() => expect(document.activeElement).toBe(opener));
-  opener.remove();
+  fireEvent.keyDown(list, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+});
+
+it("waits for pending saves before closing the Settings overlay", async () => {
+  let finish!: () => void;
+
+  rpc.mockImplementation((method: string) => {
+    if (method === "settings.save") {
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    }
+
+    return Promise.resolve(method === "editors.list" ? { editors: [] } : {});
+  });
+
+  open();
+  selectValue(await screen.findByLabelText("Concurrency"), "4");
+  fireEvent.click(screen.getByRole("button", { name: "Execution" }));
+
+  fireEvent.change(await screen.findByPlaceholderText("Default: ~/.akkco-vibestar"), {
+    target: { value: "/changed/data" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Close Settings" }));
+  expect(close).not.toHaveBeenCalled();
+  expect(saveDesktop).not.toHaveBeenCalled();
+
+  await act(async () => finish());
+  expect(saveDesktop).toHaveBeenCalledWith(expect.objectContaining({ data_home: "/changed/data" }));
+  expect(close).toHaveBeenCalledOnce();
+  expect(closeWindow).not.toHaveBeenCalled();
+});
+
+it("keeps settings open and shows the error if a pending save fails during close", async () => {
+  let rejectSave!: (reason: Error) => void;
+
+  rpc.mockImplementation((method: string) => {
+    if (method === "settings.save") {
+      return new Promise((_resolve, reject) => {
+        rejectSave = reject;
+      });
+    }
+
+    return Promise.resolve(method === "editors.list" ? { editors: [] } : {});
+  });
+
+  open();
+  selectValue(await screen.findByLabelText("Concurrency"), "3");
+
+  fireEvent(
+    screen.getByRole("dialog", { name: "Settings" }),
+    new Event("cancel", { cancelable: true }),
+  );
+
+  await waitFor(() => expect(rejectSave).toBeTypeOf("function"));
+  await act(async () => rejectSave(new Error("Disk unavailable")));
+
+  await screen.findByText("Could not save settings: Disk unavailable");
+  expect(closeWindow).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Concurrency").getAttribute("data-value")).toBe("2");
 });
 
 it("continues newer saves after a failure without replaying a failed field", async () => {
@@ -309,19 +368,21 @@ it("announces success only after all rapid changes have persisted with All notif
     finish[1]();
   });
 
-  expect(screen.getAllByText("Settings saved")).toHaveLength(1);
+  expect(await screen.findAllByText("Settings saved")).toHaveLength(1);
   expect(screen.getByRole("status").textContent).toContain("Settings saved");
 });
 
-it("protects unsaved Viber profile edits on Escape and preserves them when continuing", () => {
-  render(<ProfileEditor profile={viberProfile} close={close} saved={vi.fn()} />);
+it("protects unsaved Viber creation drafts on Escape and preserves them when continuing", () => {
+  render(
+    <CreateViberDialog profile={{ ...viberProfile, revision: 0 }} close={close} saved={vi.fn()} />,
+  );
 
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "Unsaved name" },
   });
 
   fireEvent(
-    screen.getByRole("dialog", { name: "Edit Viber profile" }),
+    screen.getByRole("dialog", { name: "Create Viber profile" }),
     new Event("cancel", { cancelable: true }),
   );
 

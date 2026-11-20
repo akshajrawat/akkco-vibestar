@@ -6,6 +6,7 @@ export const ResizeHandle = ({
   onChange,
   min,
   max,
+  className = "",
   vertical = false,
   reverse = false,
 }: {
@@ -14,6 +15,7 @@ export const ResizeHandle = ({
   onChange: (value: number) => void;
   min: number;
   max: number;
+  className?: string;
   vertical?: boolean;
   reverse?: boolean;
 }) => {
@@ -21,7 +23,7 @@ export const ResizeHandle = ({
   const clamp = (next: number) => Math.max(min, Math.min(max, next));
   return (
     <div
-      className={`resize-handle ${vertical ? "vertical" : ""}`}
+      className={`resize-handle cursor-col-resize [&.vertical]:cursor-row-resize touch-none [outline:none] ${vertical ? "vertical" : ""} ${className}`}
       role="separator"
       aria-label={label}
       aria-orientation={vertical ? "horizontal" : "vertical"}

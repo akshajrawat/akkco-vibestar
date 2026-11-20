@@ -32,7 +32,7 @@ export const CommandPalette = ({
 
   return (
     <div
-      className="palette-backdrop"
+      className="palette-backdrop fixed inset-[var(--titlebar-height)_0_0] z-[100] flex justify-center pt-[55px] items-start"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {
           close();
@@ -44,7 +44,7 @@ export const CommandPalette = ({
         role="dialog"
         aria-label="Command palette"
         aria-modal="true"
-        className="command-palette"
+        className="command-palette max-w-[90vw] border border-border-strong [box-shadow:0_12px_40px_var(--overlay)] overflow-hidden"
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();
@@ -72,7 +72,7 @@ export const CommandPalette = ({
           }
         }}
       >
-        <div className="palette-search">
+        <div className="palette-search flex gap-[9px] items-center px-[13px] py-2.5 border-b border-b-border">
           <Search size={16} />
           <input
             ref={input}
@@ -101,7 +101,9 @@ export const CommandPalette = ({
               <small>{action.detail}</small>
             </button>
           ))}
-          {!filtered.length && <p className="empty-row">No matching commands</p>}
+          {!filtered.length && (
+            <p className="px-1.5 py-3 text-[12px] text-ink-muted">No matching commands</p>
+          )}
         </div>
       </section>
     </div>

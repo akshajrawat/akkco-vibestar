@@ -1,56 +1,69 @@
 import type { ViberAppearance } from "../../../core/vibers/appearance";
 
-export const AvatarShape = ({ shape, color }: Pick<ViberAppearance, "shape" | "color">) => {
-  const props = {
-    fill: color,
-    stroke: "#101c32",
-    strokeWidth: 3,
-    strokeLinejoin: "round" as const,
-  };
-
+export const AvatarShape = ({ shape, fill }: { shape: ViberAppearance["shape"]; fill: string }) => {
   switch (shape) {
     case "circle":
-      return <circle cx="80" cy="82" r="51" {...props} />;
+      return <ellipse cx="80" cy="82" rx="51" ry="53" fill={fill} />;
     case "rounded-square":
-      return <rect x="29" y="31" width="102" height="102" rx="25" {...props} />;
+      return (
+        <path
+          d="M29 67 Q29 29 66 29 H94 Q131 29 131 67 V99 Q131 136 94 136 H66 Q29 136 29 99Z"
+          fill={fill}
+        />
+      );
     case "triangle":
       return (
-        <path d="M72 30 Q80 17 88 30 L139 121 Q145 134 130 134 H30 Q15 134 21 121Z" {...props} />
+        <path
+          d="M64 39 C73 22 87 22 96 39 L136 113 C144 128 136 137 119 137 H41 C24 137 16 128 24 113Z"
+          fill={fill}
+        />
       );
     case "hexagon":
       return (
         <path
-          d="M55 31 H105 Q111 31 115 38 L138 77 Q141 82 138 88 L115 127 Q111 133 105 133 H55 Q49 133 45 127 L22 88 Q19 82 22 77 L45 38 Q49 31 55 31Z"
-          {...props}
+          d="M56 29 Q80 26 104 29 Q113 30 119 39 Q133 58 141 76 Q144 83 140 92 Q131 111 118 128 Q112 136 102 136 H58 Q48 136 42 128 Q29 111 20 92 Q16 83 19 76 Q27 58 41 39 Q47 30 56 29Z"
+          fill={fill}
         />
       );
     case "diamond":
       return (
         <path
-          d="M74 24 Q80 18 86 24 L140 76 Q146 82 140 88 L86 140 Q80 146 74 140 L20 88 Q14 82 20 76Z"
-          {...props}
+          d="M67 29 Q80 17 93 29 L131 65 Q149 82 131 99 L93 135 Q80 147 67 135 L29 99 Q11 82 29 65Z"
+          fill={fill}
         />
       );
     case "capsule":
-      return <rect x="16" y="48" width="128" height="72" rx="36" {...props} />;
+      return <rect x="16" y="46" width="128" height="78" rx="38" fill={fill} />;
     case "rectangle":
-      return <rect x="18" y="41" width="124" height="86" rx="15" {...props} />;
+      return <rect x="18" y="38" width="124" height="94" rx="27" fill={fill} />;
   }
 };
 
 const star = "M0 -8 2.5 -2.5 8 0 2.5 2.5 0 8 -2.5 2.5 -8 0 -2.5 -2.5Z";
 
 export const AvatarEyes = ({ eyes }: Pick<ViberAppearance, "eyes">) => (
-  <g fill="#f5f8ff" stroke="#f5f8ff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+  <g
+    className="viber-face-eyes"
+    fill="white"
+    stroke="white"
+    strokeWidth="4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     {[63, 97].map((x, index) => {
-      const transform = `translate(${x} 79)`;
+      const transform = `translate(${x} ${index ? 80 : 77})`;
       switch (eyes) {
         case "happy":
-          return <path key={x} transform={transform} d="M-6 3 Q0 -8 6 3" fill="none" />;
+          return <path key={x} transform={transform} d="M-6 3 Q0 -10 6 3" fill="none" />;
         case "focused":
           return <path key={x} transform={transform} d="M-6 -3 H6 M-5 -2 Q0 12 5 -2" fill="none" />;
         case "wide":
-          return <circle key={x} transform={transform} r="6" fill="#101c32" />;
+          return (
+            <g key={x} transform={transform}>
+              <ellipse rx="8" ry="9" stroke="none" />
+              <circle r="4" cy="1" fill="#171717" stroke="none" />
+            </g>
+          );
         case "sparkle":
           return <path key={x} transform={transform} d={star} strokeWidth="1" />;
         case "closed":
@@ -71,7 +84,7 @@ export const AvatarEyes = ({ eyes }: Pick<ViberAppearance, "eyes">) => (
           return index ? (
             <path key={x} transform={transform} d="M-5 -5 3 0 -5 5" fill="none" />
           ) : (
-            <ellipse key={x} transform={transform} rx="4" ry="7" strokeWidth="0" />
+            <ellipse key={x} transform={transform} rx="5" ry="8" strokeWidth="0" />
           );
         case "concerned":
           return (
@@ -83,13 +96,17 @@ export const AvatarEyes = ({ eyes }: Pick<ViberAppearance, "eyes">) => (
             />
           );
         default:
-          return <ellipse key={x} transform={transform} rx="4" ry="7" strokeWidth="0" />;
+          return <ellipse key={x} transform={transform} rx="5" ry="8" strokeWidth="0" />;
       }
     })}
   </g>
 );
 
 export const AvatarEyebrows = ({ eyebrows }: Pick<ViberAppearance, "eyebrows">) => {
+  if (eyebrows === "none") {
+    return null;
+  }
+
   const paths = {
     none: "",
     calm: "M56 62 Q63 64 70 62 M90 62 Q97 64 104 62",
@@ -102,7 +119,13 @@ export const AvatarEyebrows = ({ eyebrows }: Pick<ViberAppearance, "eyebrows">) 
   };
 
   return (
-    <path d={paths[eyebrows]} fill="none" stroke="#101c32" strokeWidth="4" strokeLinecap="round" />
+    <path
+      d={paths[eyebrows]}
+      fill="none"
+      stroke="#171717"
+      strokeWidth="4.5"
+      strokeLinecap="round"
+    />
   );
 };
 
@@ -114,7 +137,7 @@ export const AvatarGlasses = ({ glasses }: Pick<ViberAppearance, "glasses">) => 
   const round = glasses === "round" || glasses === "oval";
   const width = glasses === "oversized" ? 34 : 27;
   return (
-    <g fill="#0b142826" stroke="#101c32" strokeWidth="3.5">
+    <g fill="#0000001f" stroke="#171717" strokeWidth="4">
       <path d="M43 73 H49 M76 76 Q80 72 84 76 M111 73 H117" fill="none" />
       {[63, 97].map((x) =>
         round ? (
@@ -127,144 +150,204 @@ export const AvatarGlasses = ({ glasses }: Pick<ViberAppearance, "glasses">) => 
   );
 };
 
-export const AvatarAccessory = ({ accessory }: Pick<ViberAppearance, "accessory">) => {
-  const props = {
-    fill: "#26374f",
-    stroke: "#b4c4df",
-    strokeWidth: 2.5,
-    strokeLinejoin: "round" as const,
-  };
+const hatFit: Record<ViberAppearance["shape"], { seatY: number; scale: number }> = {
+  circle: { seatY: 36, scale: 0.72 },
+  "rounded-square": { seatY: 35, scale: 0.74 },
+  triangle: { seatY: 32, scale: 0.56 },
+  hexagon: { seatY: 34, scale: 0.72 },
+  diamond: { seatY: 29, scale: 0.54 },
+  capsule: { seatY: 52, scale: 0.84 },
+  rectangle: { seatY: 44, scale: 0.86 },
+};
+
+export const AvatarAccessory = ({
+  accessory,
+  shape,
+  material,
+  detail,
+}: Pick<ViberAppearance, "accessory" | "shape"> & { material: string; detail: string }) => {
+  const { seatY, scale } = hatFit[shape];
+  const hatPosition = `translate(80 ${seatY}) scale(${scale}) translate(-80 -50)`;
 
   switch (accessory) {
     case "none":
       return null;
-    case "headphones":
+    case "headphones": {
+      const widths: Partial<Record<ViberAppearance["shape"], number>> = {
+        circle: 51,
+        "rounded-square": 51,
+        triangle: 37,
+      };
+
+      const width = widths[shape] ?? 60;
+      // Set the midpoint of the cubic arch just above the crown.
+      const archControlY = (4 * (seatY - 11) - 72) / 3;
       return (
-        <g {...props}>
-          <path d="M25 85 V69 a55 55 0 0 1 110 0 V85" fill="none" strokeWidth="7" />
-          <rect x="19" y="70" width="16" height="34" rx="7" />
-          <rect x="125" y="70" width="16" height="34" rx="7" />
+        <g>
+          <path
+            d={`M${80 - width} 84 V72 C${80 - width} ${archControlY} ${80 + width} ${archControlY} ${80 + width} 72 V84`}
+            fill="none"
+            stroke={material}
+            strokeWidth="9"
+          />
+          <rect x={71 - width} y="67" width="21" height="37" rx="10" fill={material} />
+          <rect x={68 + width} y="67" width="21" height="37" rx="10" fill={material} />
+          <ellipse cx={80 - width} cy="85" rx="6" ry="12" fill={detail} />
+          <ellipse cx={80 + width} cy="85" rx="6" ry="12" fill={detail} />
         </g>
       );
+    }
+
     case "cap":
       return (
-        <g {...props}>
-          <path d="M40 42 Q44 9 79 14 Q108 15 117 42Z" />
-          <path d="M78 39 Q121 35 137 49 Q107 55 78 45Z" />
-          <path d="M79 15 Q65 23 68 40" fill="none" />
+        <g transform={hatPosition}>
+          <path d="M39 43 Q42 12 74 12 Q108 11 119 43Z" fill={material} />
+          <path d="M39 43 Q71 31 117 39 Q135 42 137 49 Q115 56 80 49 Q56 47 39 43Z" fill={detail} />
+          <circle cx="76" cy="12" r="3" fill={material} />
         </g>
       );
     case "beanie":
       return (
-        <g {...props}>
-          <circle cx="80" cy="13" r="8" />
-          <path d="M43 44 Q42 18 80 18 Q118 18 117 44Z" />
-          <rect x="39" y="38" width="82" height="13" rx="5" />
+        <g transform={hatPosition}>
+          <circle cx="78" cy="14" r="8" fill={detail} />
+          <path d="M41 44 Q42 17 78 17 Q113 17 119 44Z" fill={material} />
+          <rect x="38" y="37" width="84" height="14" rx="7" fill={detail} />
         </g>
       );
     case "crown":
       return (
-        <path
-          d="M45 43 37 16 64 28 80 8 96 28 123 16 115 43Z"
-          fill="#f6c84a"
-          stroke="#6a4c13"
-          strokeWidth="3"
-          strokeLinejoin="round"
-        />
+        <g transform={hatPosition}>
+          <path
+            d="M45 24 Q44 20 48 22 L64 30 L77 15 Q80 11 83 15 L96 30 L112 22 Q116 20 115 24 L110 45 Q109 49 105 49 H55 Q51 49 50 45Z"
+            fill={detail}
+          />
+          <circle cx="80" cy="35" r="4" fill={material} />
+        </g>
       );
     case "wizard-hat":
       return (
-        <g {...props}>
-          <path d="M51 39 76 3 91 15 108 39Z" fill="#57529a" />
-          <ellipse cx="80" cy="42" rx="48" ry="9" fill="#57529a" />
-          <path d={star} transform="translate(79 28) scale(.6)" fill="#f6c84a" stroke="none" />
+        <g transform={hatPosition}>
+          <ellipse cx="80" cy="44" rx="47" ry="8" fill={material} />
+          <path d="M47 43 L73 12 Q78 5 85 10 L98 18 L91 23 L111 43 Q80 52 47 43Z" fill={detail} />
+          <path d={star} transform="translate(79 34) scale(.7)" fill="#171717" />
         </g>
       );
     case "sparkle":
       return (
-        <g fill="#75b6ff">
-          <path d={star} transform="translate(130 29)" />
-          <path d={star} transform="translate(143 49) scale(.6)" />
+        <g fill={detail}>
+          <path d={star} transform="translate(131 29)" />
+          <path d={star} transform="translate(145 47) scale(.6)" />
         </g>
       );
     case "badge":
       return (
-        <g>
-          <path d="M116 100 133 106 131 124 116 134 101 124 99 106Z" {...props} />
-          <path d={star} transform="translate(116 116) scale(.8)" fill="#f6c84a" />
+        <g transform="translate(-64 -12)">
+          <circle cx="116" cy="116" r="10" fill={material} />
+          <path d={star} transform="translate(116 116) scale(.8)" fill={detail} />
         </g>
       );
   }
 };
 
-export const AvatarDevice = ({ device }: Pick<ViberAppearance, "device">) => {
-  if (device === "none") {
-    return null;
+export const AvatarDevice = ({
+  device,
+  surface,
+}: Pick<ViberAppearance, "device"> & { surface: string }) => {
+  const edge = "#262626";
+
+  switch (device) {
+    case "none":
+      return null;
+    case "phone":
+      return (
+        <g transform="rotate(-13 126 122)">
+          <rect x="116" y="101" width="25" height="43" rx="7" fill={edge} />
+          <rect x="113" y="101" width="25" height="43" rx="7" fill={surface} />
+          <rect x="117" y="105" width="10" height="11" rx="3" fill={edge} />
+          <circle cx="121" cy="109" r="2" fill="#e5e5e5" />
+        </g>
+      );
+    case "tablet":
+      return (
+        <g transform="rotate(-9 124 126)">
+          <rect x="103" y="104" width="42" height="40" rx="6" fill={edge} />
+          <rect x="100" y="104" width="42" height="40" rx="6" fill={surface} />
+          <circle cx="106" cy="110" r="2" fill="#e5e5e5" />
+        </g>
+      );
+    case "laptop":
+      return (
+        <g>
+          <path d="M94 136 H144 L151 139 Q153 143 146 144 H87Z" fill={edge} />
+          <path
+            d="M80 107 Q79 102 85 102 H130 Q135 102 136 107 L143 139 H91 Q87 139 86 134Z"
+            fill={surface}
+          />
+          <path d={star} transform="translate(112 120) scale(.65)" fill="white" opacity=".85" />
+        </g>
+      );
+    case "monitor":
+      return (
+        <g>
+          <path
+            d="M119 132 H127 V141 H135 Q138 141 138 144 H107 Q107 141 111 141 H119Z"
+            fill={edge}
+          />
+          <rect x="98" y="102" width="49" height="32" rx="5" fill={edge} />
+          <rect x="101" y="105" width="43" height="25" rx="3" fill={surface} />
+          <path
+            d="M107 121 L114 114 L119 119 L124 116 L137 126 H107Z"
+            fill="#e5e5e5"
+            opacity=".65"
+          />
+        </g>
+      );
+    case "code-panel":
+      return (
+        <g>
+          <rect x="98" y="107" width="49" height="35" rx="6" fill={edge} />
+          <path d="M98 113 Q98 107 104 107 H141 Q147 107 147 113 V116 H98Z" fill={surface} />
+          <path
+            d="M114 121 L110 125 L114 129 M130 121 L134 125 L130 129 M124 120 L120 130"
+            fill="none"
+            stroke="#e5e5e5"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+      );
   }
-
-  const props = {
-    fill: "#202d43",
-    stroke: "#b4c4df",
-    strokeWidth: 2.5,
-    strokeLinejoin: "round" as const,
-  };
-
-  if (device === "phone" || device === "tablet") {
-    return (
-      <g {...props}>
-        <rect
-          x={device === "phone" ? 111 : 94}
-          y="99"
-          width={device === "phone" ? 27 : 47}
-          height="45"
-          rx="5"
-        />
-        <path d={device === "phone" ? "M121 105 H128 M122 137 H127" : "M113 137 H122"} />
-      </g>
-    );
-  }
-
-  return (
-    <g {...props}>
-      <path d="M91 103 H143 Q147 103 145 108 L138 137 H81 L88 108 Q89 103 91 103Z" />
-      {device === "laptop" ? (
-        <path d="M81 137 H138 L143 143 H74Z" />
-      ) : device === "monitor" ? (
-        <path d="M109 137 V145 M97 145 H121" />
-      ) : null}
-      <path
-        d="M109 115 103 120 108 124 M124 115 130 119 123 124 M120 113 114 127"
-        fill="none"
-        stroke="#f5f8ff"
-      />
-    </g>
-  );
 };
 
 export const AvatarLips = ({ lips = "none" }: Pick<ViberAppearance, "lips">) => {
-  const props = {
-    stroke: "#101c32",
-    strokeWidth: 3,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
+  const ink = "#171717";
+  const props = { fill: "none", stroke: ink, strokeWidth: 3.5, strokeLinecap: "round" as const };
 
   switch (lips) {
     case "none":
       return null;
     case "smile":
-      return <path d="M68 99 Q80 112 92 99" fill="none" {...props} />;
+      return <path d="M70 98 Q79 109 91 99" {...props} />;
     case "grin":
-      return <path d="M67 98 H93 Q91 113 80 113 Q69 113 67 98Z" fill="#f5f8ff" {...props} />;
-    case "neutral":
-      return <path d="M70 103 H90" fill="none" {...props} />;
-    case "open":
-      return <ellipse cx="80" cy="104" rx="9" ry="6" fill="#101c32" />;
-    case "pout":
       return (
-        <path d="M72 100 Q80 96 88 102 Q80 104 73 107 Q81 112 88 107" fill="none" {...props} />
+        <g>
+          <path d="M68 98 Q80 101 92 97 C91 117 70 119 68 98Z" fill={ink} />
+          <path d="M72 107 Q80 103 88 107 Q81 116 72 107Z" fill="#a3a3a3" />
+        </g>
       );
+    case "neutral":
+      return <path d="M73 103 H87" {...props} />;
+    case "open":
+      return (
+        <g>
+          <ellipse cx="80" cy="103" rx="9" ry="6" fill={ink} />
+          <path d="M74 106 Q80 103 86 106 Q80 110 74 106Z" fill="#a3a3a3" />
+        </g>
+      );
+    case "pout":
+      return <path d="M73 101 Q80 97 87 101 Q85 103 78 104 Q82 107 87 106" {...props} />;
     case "surprised":
-      return <ellipse cx="80" cy="104" rx="6" ry="9" fill="#101c32" />;
+      return <ellipse cx="80" cy="104" rx="6" ry="8" fill={ink} />;
   }
 };

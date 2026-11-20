@@ -72,7 +72,7 @@ export const ViberRecoveryDialog = ({
         {busy ? "Inspecting…" : "Inspect activity and files"}
       </Button>
       {(inspection || error) && (
-        <div className="viber-recovery-inspection">
+        <div className="viber-recovery-inspection max-h-[50vh] wrap-anywhere">
           {activity}
           {error && <RunError error={error} conversation />}
           {inspection && (
@@ -83,7 +83,7 @@ export const ViberRecoveryDialog = ({
                 baseline.
               </p>
               {!inspection.files.length && <p>No workspace files to inspect.</p>}
-              <div className="viber-recovery-files">
+              <div className="flex flex-wrap gap-1">
                 {inspection.files.map((path) => (
                   <Button
                     key={path}
@@ -102,7 +102,7 @@ export const ViberRecoveryDialog = ({
           )}
         </div>
       )}
-      <div className="actions">
+      <div className="actions flex gap-1.5">
         <Button variant="ghost" onClick={cancel}>
           Cancel
         </Button>

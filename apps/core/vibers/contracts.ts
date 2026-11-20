@@ -117,7 +117,7 @@ export const ViberSessionSendSchema = ViberSessionScopeSchema.extend({
 export const ViberThreadSchema = z.object({
   thread_id: z.string().min(1).max(500),
   provider: AgentExecutionSchema.shape.provider,
-  model: z.string(),
+  model: z.string().default(""),
   configuration: z.string(),
   status: z.enum(["ready", "uncertain"]),
 });
@@ -158,6 +158,17 @@ export const ViberMessageSchema = z.object({
 
 export type ViberSession = z.infer<typeof ViberSessionSchema>;
 export type ViberMessage = z.infer<typeof ViberMessageSchema>;
+
+export interface ViberMessagePreview {
+  profile_id: string;
+  content: string;
+  created_at: string;
+}
+
+export interface ViberNavigation {
+  profiles: AgentProfile[];
+  previews: ViberMessagePreview[];
+}
 
 export interface ViberSessionDetail {
   session: ViberSession;

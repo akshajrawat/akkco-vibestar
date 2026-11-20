@@ -1,230 +1,165 @@
 .sidebar {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-  color: var(--foreground);
-  background: var(--background-sidebar);
-  border-right: 1px solid var(--border-default);
+  --background-input: #1c1c1c;
+  --background-hover: var(--background-app);
+  --background-selected: var(--background-app);
+  --text-secondary: #adadad;
+  --text-muted: #929292;
+  container-type: inline-size;
+  @apply h-full overflow-hidden bg-surface-sidebar;
 }
 
 .sidebar-brand-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex: 0 0 44px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  @apply gap-2 px-3 py-0;
 }
 
 .sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  user-select: none;
+  @apply gap-2.5;
 }
 
 .sidebar-brand img {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  @apply shrink-0 size-6.5;
 }
 
 .sidebar-brand span {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  @apply text-[15px] font-semibold text-ink-primary tracking-[-0.01em] overflow-hidden text-ellipsis whitespace-nowrap;
+}
+
+@container (max-width: 190px) {
+  .sidebar-brand span {
+    @apply hidden;
+  }
 }
 
 .sidebar-collapse {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    color var(--motion-fast),
-    background-color var(--motion-fast);
+  @apply size-8 rounded-[6px] bg-transparent text-ink-muted cursor-pointer;
 }
 
 .sidebar-collapse:hover {
-  background: var(--background-hover);
-  color: var(--foreground);
+  @apply bg-surface-hover text-foreground;
+}
+
+.sidebar-collapse svg {
+  @apply size-4.5;
+}
+
+.sidebar-content {
+  @apply flex-1 min-h-0 overflow-x-hidden overflow-y-auto scroll-pt-11.75;
 }
 
 .sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex: 0 0 44px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  @apply sticky top-0 z-10 px-3 pt-1 pb-1.75 bg-surface-sidebar;
 }
 
 .sidebar-search {
-  display: flex;
-  flex: 1;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  margin: 0;
-  background: var(--background-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  color: var(--text-muted);
-  transition: border-color var(--motion-fast);
+  @apply flex items-center gap-1 h-10 pr-0.5 rounded-control bg-surface-input [transition:background-color_var(--motion-fast)];
 }
 
-.sidebar-search svg {
-  flex-shrink: 0;
-  color: var(--text-muted);
+.sidebar-search label {
+  @apply flex flex-1 flex-row items-center gap-2 h-full min-w-0 m-0 pl-2.5;
+}
+
+.sidebar-search label svg {
+  @apply shrink-0 text-ink-muted;
 }
 
 .sidebar-search input {
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  color: var(--foreground);
-  background: transparent;
-  caret-color: var(--accent-blue);
-  font-size: 12px;
-  font-weight: 400;
-  box-shadow: none;
+  @apply w-full min-w-0 h-full p-0 [border:0] [border-radius:0] [outline:none] text-foreground bg-transparent caret-foreground text-[13px] font-medium [box-shadow:none];
 }
 
 .sidebar-search input::placeholder {
-  color: var(--text-muted);
-  opacity: 1;
+  @apply text-ink-muted opacity-100;
 }
 
+.sidebar-search:hover,
 .sidebar-search:focus-within {
-  border-color: var(--border-strong);
+  @apply bg-surface-hover;
 }
 
 .sidebar-new-viber {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  flex-shrink: 0;
-  padding: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition:
-    color var(--motion-fast),
-    background-color var(--motion-fast),
-    border-color var(--motion-fast);
+  @apply grid place-items-center shrink-0 size-6.5 p-0 [border:0] rounded-[6px] bg-transparent text-ink-secondary [transition:color_var(--motion-fast),_background-color_var(--motion-fast)];
 }
 
 .sidebar-new-viber:hover:not(:disabled) {
-  background: var(--background-hover);
-  color: var(--foreground);
-  border-color: var(--border-default);
-}
-
-.sidebar-new-viber:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  @apply bg-surface-selected text-foreground;
 }
 
 .sidebar-vibers {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 6px 8px;
+  @apply flex flex-col gap-1 px-3 pb-2;
+}
+
+.sidebar-viber {
+  @apply w-full min-h-13 flex items-center gap-1.5 pl-1.5 pr-2 py-0 [border:0] rounded-[10px] bg-transparent text-foreground text-left;
+}
+
+.sidebar-viber:hover {
+  @apply bg-surface-hover;
+}
+
+.sidebar-viber[aria-current="page"] {
+  @apply bg-surface-selected;
+}
+
+.sidebar-viber > .viber-face {
+  @apply size-12 shrink-0;
+}
+
+.sidebar-viber .viber-face-shadow {
+  @apply hidden;
+}
+
+.sidebar-viber-details {
+  @apply grid flex-1 min-w-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[18px_18px] items-baseline gap-x-2 gap-y-px;
+}
+
+.sidebar-viber-details strong {
+  @apply truncate text-[14px] leading-[18px] font-medium;
+}
+
+.sidebar-viber-details time {
+  @apply text-[12px] leading-[18px] font-normal text-ink-secondary whitespace-nowrap;
+}
+
+.sidebar-viber-details small {
+  @apply col-span-2 row-start-2 truncate text-[13px] leading-[18px] font-normal text-ink-secondary;
 }
 
 .sidebar-empty {
-  margin: 0;
-  padding: 24px 12px;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: center;
+  @apply m-0;
 }
 
 .sidebar-vibers .error {
-  margin: 6px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--background-error);
-  color: var(--accent-red);
-  font-size: 11px;
-  line-height: 1.4;
-  word-break: break-word;
+  @apply m-1.5 px-2.5 py-2 rounded-[6px] bg-surface-error text-accent-red text-[11px] leading-[1.4] [word-break:break-word];
 }
 
-.sidebar-tools,
 .sidebar-dock {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  flex: 0 0 44px;
-  margin-top: auto;
-  padding: 0 8px;
-  border-top: 1px solid var(--border-subtle);
-  background: var(--background-sidebar);
+  @apply flex items-center gap-2 flex-[0_0_46px] mt-auto px-3 py-0 bg-surface-sidebar;
 }
 
-.sidebar-tools button,
-.sidebar-dock-button {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  color: var(--text-muted);
-  background: transparent;
-  cursor: pointer;
-  transition:
-    color var(--motion-fast),
-    background-color var(--motion-fast);
+.sidebar-dock-item {
+  @apply relative;
 }
 
-.sidebar-tools button:hover,
-.sidebar-dock-button:hover {
-  color: var(--foreground);
-  background: var(--background-hover);
+.sidebar-dock button {
+  @apply grid place-items-center size-9 p-0 border-0 rounded-control text-ink-secondary bg-transparent;
 }
 
-.sidebar-tools button.selected,
-.sidebar-tools button[aria-current="page"],
-.sidebar-dock-button.selected,
-.sidebar-dock-button[aria-current="page"] {
-  color: var(--accent-blue);
-  background: var(--background-selected);
+.sidebar-dock button:hover,
+.sidebar-dock button:focus-visible {
+  @apply text-foreground bg-neutral-800;
+}
+
+.sidebar-dock button:focus-visible {
+  @apply outline-none;
+}
+
+.sidebar-dock button:is(:hover, :focus-visible) + .sidebar-dock-label {
+  @apply visible;
+}
+
+.sidebar-dock-label {
+  @apply invisible pointer-events-none absolute bottom-full left-0 z-10 mb-1.5 rounded-control bg-surface-elevated px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-foreground shadow-lg shadow-black/60;
+}
+
+.sidebar-dock svg {
+  @apply size-4.5 [stroke-width:2];
 }

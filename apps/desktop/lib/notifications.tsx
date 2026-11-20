@@ -58,12 +58,12 @@ const notify = (kind: Kind, message: string, options: Options = {}) => {
   toast(
     (current) => (
       <div
-        className={`notification notification-${kind}`}
+        className={`notification flex items-center gap-2.5 px-3 py-2.5 text-left leading-[1.5] notification-${kind}`}
         aria-hidden={!current.visible}
         inert={!current.visible}
       >
         <Icon size={19} aria-hidden="true" className={kind === "progress" ? "spinning" : ""} />
-        <div className="notification-content">
+        <div className="grid justify-items-start gap-2.5 flex-1 min-w-0 wrap-anywhere">
           <span>{message}</span>
           {options.action && (
             <Button

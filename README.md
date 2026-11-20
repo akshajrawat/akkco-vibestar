@@ -39,7 +39,7 @@ npm start
 
 ## Basic use
 
-- **Sidebar Navigation**: The sidebar lists your Vibers. Search Vibers by name with the search bar (`Ctrl+F` or click), create a new Viber with the **+** button, or adjust settings and usage via the bottom dock.
+- **Sidebar Navigation**: The sidebar lists your Vibers. Search Vibers by name in the sidebar and create one with the **+** button. The dock opens Repositories, Providers, Usage, and Settings in overlays above the current chat.
 - **Conversations & Workspaces**: Selecting a Viber opens directly into its continuous conversation interface with dedicated workspace files or connected repositories.
 - **Viber Computers**: Manage the Viber's dedicated execution environment, persistent home volume, and isolated sandboxing.
 - **Model Selection & Composer**: Switch providers (Codex / Antigravity), models, and reasoning effort dynamically in the composer. Use `/clear` to reset native AI context anytime.

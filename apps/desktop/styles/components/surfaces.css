@@ -1,241 +1,62 @@
 /* Local settings, semantic status and utility surfaces. */
 
 .sidebar {
-  background: var(--background-sidebar);
+  @apply bg-surface-sidebar;
 }
 
 .workspace,
 .conversation {
-  background: var(--background-panel);
-}
-
-.utility-dock,
-.context-pane {
-  background: var(--background-app);
-}
-
-.success,
-.healthy {
-  color: var(--accent-green);
-}
-
-.failure {
-  color: var(--accent-red);
-}
-
-.warning {
-  color: var(--accent-amber);
-}
-
-.running {
-  color: var(--accent-blue);
-}
-
-.notice {
-  color: var(--accent-green);
-}
-
-.error-box {
-  color: var(--accent-red);
-  background: var(--background-error);
-  border-color: var(--background-error);
-}
-
-.warning-box {
-  color: var(--accent-amber);
-  background: var(--background-warning);
-  border-color: var(--background-warning);
-}
-
-.run-error {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  flex: 0 0 auto;
-  padding: 8px 20px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.run-error-status {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
+  @apply bg-surface-panel;
 }
 
 .run-error-failed strong {
-  color: var(--accent-red);
-}
-
-.run-error-details {
-  min-width: 0;
-  margin-left: auto;
+  @apply text-accent-red;
 }
 
 .run-error-details summary {
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.run-error-details[open] {
-  flex-basis: 100%;
+  @apply text-muted cursor-pointer;
 }
 
 .run-error-details pre {
-  white-space: pre-wrap;
-  max-height: 180px;
-  overflow: auto;
-}
-
-.storage-sizes {
-  max-width: 620px;
-  margin: 20px 0;
-}
-
-.storage-sizes > div {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.storage-sizes dd {
-  font-variant-numeric: tabular-nums;
-}
-
-.storage-sizes > div:last-child {
-  font-weight: 600;
-  color: var(--foreground);
-}
-
-.storage-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0;
-  max-width: 700px;
+  @apply whitespace-pre-wrap max-h-[180px] overflow-auto;
 }
 
 .compact-dialog {
-  width: min(590px, 90vw);
-  padding: 24px;
-  max-height: 85vh;
-  overflow-y: auto;
-  background: var(--background-panel);
+  @apply w-[min(590px,_90vw)] p-6 max-h-[85vh] overflow-y-auto bg-surface-panel;
 }
 
 .compact-dialog > p {
-  margin: 16px 0;
-  line-height: 1.6;
+  @apply mx-0 my-4 leading-[1.6];
 }
 
 .compact-dialog .actions {
-  margin-top: 20px;
-}
-
-.search-roots > div {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.search-roots input {
-  flex: 1;
-}
-
-.indexed-repo,
-.checkout-candidate {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+  @apply mt-5;
 }
 
 .checkout-candidate button {
-  align-self: flex-start;
-}
-
-.usage-view {
-  padding: 16px;
-  overflow: auto;
+  @apply self-start;
 }
 
 .usage-runs > details {
-  border-bottom: 1px solid var(--border);
-  padding: 12px 0;
+  @apply border-b border-b-border px-0 py-3;
 }
 
 .usage-runs summary {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  cursor: pointer;
-  flex-wrap: wrap;
+  @apply flex gap-2.5 items-center cursor-pointer flex-wrap;
 }
 
 .usage-runs summary > span:not(.usage-dot) {
-  color: var(--muted);
+  @apply text-muted;
 }
 
 .usage-runs summary > small {
-  margin-left: auto;
+  @apply ml-auto;
 }
 
 .usage-runs details > div {
-  padding: 10px 18px;
+  @apply px-4.5 py-2.5;
 }
 
-.usage-breakdown {
-  max-width: 640px;
-}
-
-.usage-breakdown p {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.usage-dot {
-  height: 7px;
-  width: 7px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.usage-dot.completed {
-  background: var(--accent-green);
-}
-
-.usage-dot.failed {
-  background: var(--accent-red);
-}
-
-.usage-dot.cancelled,
-.usage-dot.interrupted {
-  background: var(--accent-amber);
-}
-
-.usage-dot.running {
-  background: var(--accent-blue);
-}
-
-.message-actions {
-  display: flex;
-  gap: 3px;
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-.user-message:hover .message-actions,
-.message-actions:focus-within {
-  opacity: 1;
-}
-
-.user-message > small {
-  margin-right: 12px;
+.user-message:hover .message-actions {
+  @apply opacity-100;
 }

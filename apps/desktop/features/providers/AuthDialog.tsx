@@ -162,14 +162,14 @@ export const AuthDialog = ({
   }, [provider, initiallyConnected]);
 
   return (
-    <div className="modal-backdrop">
+    <div className="modal-backdrop fixed inset-[var(--titlebar-height)_0_0] flex items-center justify-center z-[50]">
       <section
-        className="modal auth-dialog"
+        className="modal border border-border-strong p-6 max-w-[94vw] max-h-[90%] overflow-auto [box-shadow:0_12px_45px_var(--overlay)] animate-[surface-enter_var(--motion-enter)_ease-out] auth-dialog"
         role="dialog"
         aria-modal="true"
         aria-label={`Connect ${provider}`}
       >
-        <div className="modal-heading">
+        <div className="modal-heading flex items-center justify-between gap-2 mb-[9px]">
           <h2>
             Connect{" "}
             {provider === "github" ? "GitHub" : provider === "codex" ? "Codex" : "Antigravity"}
@@ -183,9 +183,12 @@ export const AuthDialog = ({
         <p className="subtle">
           Complete the official CLI login. Credentials stay with the provider.
         </p>
-        <div ref={container} className="auth-terminal" />
+        <div ref={container} className="auth-terminal overflow-hidden px-0 py-2.5" />
         {error && (
-          <p role="alert" className="error-box">
+          <p
+            role="alert"
+            className="error-box px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere"
+          >
             {error}
           </p>
         )}

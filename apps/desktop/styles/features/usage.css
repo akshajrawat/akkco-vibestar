@@ -1,390 +1,207 @@
 .usage-panel {
-  overflow: auto;
-  padding: 18px 20px;
-  min-width: 0;
+  @apply overflow-auto px-5 py-4.5;
 }
 
 .usage-panel.usage-dashboard {
-  padding: 30px clamp(20px, 3vw, 48px);
+  @apply px-[clamp(20px,_3vw,_48px)] py-7.5;
 }
 
 .usage-panel h2 {
-  margin: 0;
-  font-size: 15px;
-}
-
-.usage-stats,
-.usage-tokens {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-  margin: 20px 0;
-  gap: 12px;
+  @apply m-0 text-[15px];
 }
 
 .usage-stats > div,
 .usage-tokens > div {
-  display: grid;
-  gap: 5px;
-  min-width: 100px;
-  padding: 18px;
-  border-radius: var(--radius-panel);
-  background: var(--background-panel);
-  border: 1px solid var(--border-subtle);
+  @apply grid gap-[5px] min-w-[100px] p-4.5 rounded-panel bg-surface-panel border border-border-subtle;
 }
 
 .usage-stats small,
 .usage-tokens small {
-  color: var(--text-secondary);
-  text-transform: capitalize;
+  @apply text-ink-secondary capitalize;
 }
 
 .usage-stats strong {
-  font-size: 25px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+  @apply text-[25px] font-medium [font-variant-numeric:tabular-nums];
 }
 
 .usage-tokens strong {
-  font-size: 14px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.usage-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
+  @apply text-[14px] font-medium [font-variant-numeric:tabular-nums];
 }
 
 .usage-filters label {
-  display: grid;
-  gap: 4px;
-  color: var(--text-secondary);
-  text-transform: capitalize;
-  flex: 1;
-  min-width: 110px;
+  @apply grid gap-1 text-ink-secondary capitalize flex-1 min-w-[110px];
 }
 
 .usage-filters .select-trigger {
-  width: 100%;
-  max-width: 260px;
-}
-
-.usage-run {
-  border-bottom: 1px solid var(--border-default);
-  padding: 10px 0;
+  @apply w-full max-w-[260px];
 }
 
 .usage-run > summary {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  cursor: pointer;
+  @apply flex items-center gap-3.5 cursor-pointer;
 }
 
 .usage-run > summary > div {
-  flex: 1;
-  min-width: 0;
+  @apply flex-1 min-w-0;
 }
 
 .usage-run > summary small {
-  display: block;
-  color: var(--text-secondary);
-  margin-top: 4px;
+  @apply block text-ink-secondary mt-1;
 }
 
 .usage-run .status-chip {
-  width: 92px;
-  justify-content: center;
+  @apply w-23 justify-center;
 }
 
 .usage-run pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  @apply whitespace-pre-wrap wrap-anywhere;
 }
 
 .usage-run dd {
-  overflow-wrap: anywhere;
-}
-
-.usage-empty {
-  padding: 22px 0;
-  color: var(--text-secondary);
-}
-
-.usage-source {
-  display: block;
-  margin-top: 16px;
-  overflow-wrap: anywhere;
+  @apply wrap-anywhere;
 }
 
 .allowance-panel {
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-panel);
-  padding: 20px;
-  margin: 24px 0;
-  background: var(--background-panel);
-}
-
-.usage-charts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
-  gap: 16px;
-  margin: 24px 0;
+  @apply rounded-panel bg-surface-panel;
 }
 
 .analytics-chart {
-  margin: 0;
-  padding: 20px;
-  min-width: 0;
-  background: var(--background-panel);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-panel);
+  @apply bg-surface-panel rounded-panel;
 }
 
 .analytics-chart figcaption {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 20px;
+  @apply flex flex-col gap-1 mb-5;
 }
 
 .analytics-chart figcaption strong {
-  font-size: 13px;
-  font-weight: 500;
+  @apply text-[13px] font-medium;
 }
 
 .chart-bars {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  height: 120px;
-  border-bottom: 1px solid var(--border-default);
+  @apply h-[120px];
 }
 
 .chart-bars button {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  flex: 1;
-  min-width: 0;
-  max-width: 56px;
-  border: 0;
-  background: transparent;
-  padding: 0 2px;
+  @apply flex items-end justify-center flex-1 min-w-0 max-w-14 [border:0] bg-transparent px-0.5 py-0;
 }
 
 .chart-bar {
-  width: 100%;
-  background: var(--accent-blue);
-  opacity: 0.7;
-  border-radius: 4px 4px 0 0;
+  @apply w-full bg-ink-primary rounded-[4px_4px_0_0];
 }
 
 .chart-bar.unavailable {
-  background: var(--text-muted);
+  @apply bg-ink-muted;
 }
 
 .chart-bars button:hover .chart-bar,
 .chart-bars button:focus-visible .chart-bar {
-  opacity: 1;
-}
-
-.chart-axis {
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-muted);
-  font-size: 10px;
-  margin-top: 8px;
-}
-
-.chart-tooltip {
-  font-size: 11px;
-  color: var(--text-muted);
-  min-height: 36px;
-  margin-top: 10px;
-}
-
-.runtime-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  @apply opacity-100;
 }
 
 .runtime-chart > div {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 7px 12px;
-  font-size: 11px;
+  @apply grid grid-cols-[1fr_auto] gap-[7px_12px] text-[11px];
 }
 
 .runtime-chart span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
+  @apply overflow-hidden text-ellipsis whitespace-nowrap text-ink-secondary;
 }
 
 .runtime-chart strong {
-  font-weight: 400;
+  @apply font-normal;
 }
 
 .runtime-track {
-  grid-column: 1 / -1;
-  height: 4px;
-  background: var(--background-hover);
-  border-radius: 3px;
+  @apply h-1 bg-surface-hover rounded-[3px];
 }
 
 .runtime-track i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent-blue);
-}
-
-.usage-history {
-  margin-top: 28px;
+  @apply block h-full rounded-[inherit] bg-ink-primary;
 }
 
 .usage-history .section-heading {
-  flex-wrap: wrap;
-  gap: 16px;
+  @apply flex-wrap gap-4;
 }
 
 .usage-history .search-field {
-  max-width: 380px;
-}
-
-.data-table-scroll {
-  overflow: auto;
+  @apply max-w-[380px];
 }
 
 .usage-table {
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 12px;
-  width: 100%;
+  @apply w-full;
 }
 
 .usage-table th {
-  color: var(--text-muted);
-  font-weight: 500;
-  font-size: 11px;
-  white-space: nowrap;
+  @apply text-ink-muted font-medium text-[11px] whitespace-nowrap;
 }
 
 .usage-table td,
 .usage-table th {
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  @apply px-2.5 py-3 border-b border-b-border-subtle;
 }
 
 .usage-table td {
-  max-width: 210px;
-  overflow-wrap: anywhere;
+  @apply max-w-[210px] wrap-anywhere;
 }
 
 .usage-table tbody tr:hover {
-  background: var(--background-panel);
+  @apply bg-surface-panel;
 }
 
 .table-run-link {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  color: var(--accent-blue);
+  @apply bg-transparent;
 }
 
 .table-run-link small {
-  display: block;
-  margin-top: 3px;
-}
-
-.allowance-window {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin: 12px 0;
-  font-variant-numeric: tabular-nums;
+  @apply block mt-[3px];
 }
 
 .allowance-window > span {
-  width: 68px;
+  @apply w-17;
 }
 
 .allowance-window progress {
-  width: 180px;
-  height: 7px;
+  @apply w-[180px] h-[7px];
 }
 
 progress {
-  accent-color: var(--text-secondary);
-  appearance: none;
-  border: 0;
-  background: var(--border-strong);
+  @apply accent-ink-secondary appearance-none [border:0] bg-border-strong;
 }
 
 progress::-webkit-progress-bar {
-  background: var(--border-strong);
+  @apply bg-border-strong;
 }
 
 progress::-webkit-progress-value {
-  background: var(--accent-blue);
+  @apply bg-ink-primary;
 }
 
 .allowance-window.warning progress::-webkit-progress-value {
-  background: var(--accent-amber);
+  @apply bg-accent-amber;
 }
 
 .allowance-window.failure progress::-webkit-progress-value {
-  background: var(--accent-red);
+  @apply bg-accent-red;
 }
 
 .usage-breakdown > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--border-default);
+  @apply flex justify-between gap-3 px-0 py-[7px] border-b border-b-border-default;
 }
 
 .usage-breakdown strong {
-  font-weight: 500;
-  overflow-wrap: anywhere;
+  @apply font-medium wrap-anywhere;
 }
 
 .token-channel-track {
-  height: 6px;
-  margin: 10px 0;
-  background: var(--background-hover);
-  border-radius: 4px;
-  overflow: hidden;
+  @apply h-1.5 bg-surface-hover rounded-[4px];
 }
 
 .token-channel-track span {
-  display: block;
-  height: 100%;
-  background: var(--accent-blue);
-  border-radius: inherit;
+  @apply block h-full bg-ink-primary rounded-[inherit];
 }
 
 .token-channel-track.unavailable {
-  border: 1px dashed var(--border-strong);
-}
-
-.usage-pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding-top: 14px;
+  @apply [border:1px_dashed_var(--border-strong)];
 }
 
 .usage-pagination small {
-  color: var(--text-secondary);
+  @apply text-ink-secondary;
 }

@@ -55,23 +55,20 @@ Feature-specific code belongs with its owner. Shared renderer primitives stay un
 and ordered CSS chapters under `apps/desktop/styles/`. Detailed folder and check ownership is documented in
 the [contributor guide](CONTRIBUTING.md) and [testing guide](docs/testing.md).
 
-## Workspace overlays
+## Desktop tool overlays
 
-Settings opens independently of page navigation in the shared `WorkspaceOverlay`. The native modal
-keeps the current conversation and view mounted and makes the underlying interface inert, contains keyboard
-focus and restores the opener on close. Select popovers use the modal's portal target so they remain
-interactive in its top layer. Workspace shortcuts cannot run through the overlay.
+The dock and command palette open Repositories, Providers, Usage and Settings in modal overlays
+inside the main window. The active Viber conversation stays mounted below the overlay. Closing the
+overlay restores focus to its opener.
 
-Settings owns one long-lived autosave queue for core settings and another for desktop configuration,
-including while the overlay is closed. Serialized field patches roll failures back to acknowledged
-values without replaying a failed field in another setting's save. Changing the setting again
-creates a new serialized save.
-Visited panels retain local form values and scroll positions while the overlay is open. Desktop
-configuration changes require native confirmation; the core atomically refuses restart when activity
-exists and closes admission before stopping. Providers, Repositories and Storage reuse their existing
-feature and guarded service boundaries.
+Settings serializes core settings and desktop configuration saves in separate queues. Failed fields
+roll back to their acknowledged values. Settings finishes pending saves before closing.
+Visited panels keep their form values and scroll positions while the overlay remains open. Desktop
+configuration changes require native confirmation. The core refuses restart while activity exists
+and closes admission before stopping. Providers, Repositories and Storage use the same services
+from their Settings panels and their standalone surfaces where applicable.
 
-One root `react-hot-toast` Toaster renders through `apps/desktop/lib/notifications.tsx`. It follows the active
+Each renderer has one `react-hot-toast` Toaster that renders through `apps/desktop/lib/notifications.tsx`. It follows the active
 native modal's top layer without stealing focus. The saved notification preference filters optional
 messages; errors, required input, blocking warnings and essential runtime installation progress remain
 visible. A display-only cache of the acknowledged preference covers startup before the core connects;
@@ -90,7 +87,7 @@ dynamically per turn in the Viber composer rather than from global model setting
 Vibestar is built entirely around persistent AI employees called **Vibers**:
 
 - **Simplified Viber identity**: Each Viber is defined by its name and custom appearance avatar. Viber creation requires only name and appearance; there are no mandatory descriptions, custom instructions, predefined roles, default model configs, or built-in presets (`planner`, `refiner`, `implementer`, `reviewer`). Essential internal runtime and security instructions are applied automatically.
-- **One continuous chat per Viber**: Each Viber owns exactly one continuous conversation. There are no multiple-chat creation buttons or session-switching dropdowns. Selecting a Viber directly displays its ongoing continuous conversation and associated workspace.
+- **One continuous chat per Viber**: Each Viber owns exactly one continuous conversation. There are no multiple-chat creation buttons or session-switching dropdowns. Selecting a Viber directly displays its ongoing continuous conversation and associated workspace. New chats start in managed workspaces. Existing repository-linked chats keep their dedicated worktrees.
 - **Native provider session management**:
   - Separate native conversation IDs are maintained for Codex and Antigravity.
   - Native sessions are resumed seamlessly across turns and application restarts.
@@ -103,7 +100,7 @@ Vibestar is built entirely around persistent AI employees called **Vibers**:
 
 ## Persistence, verification and recovery
 
-SQLite migrations safely pruned all obsolete Task, Graph Workflow, Issue Watch, and PR Watch tables and indices while preserving all Viber identities, appearances, continuous sessions, messages, native provider threads, and usage records.
+SQLite migrations safely pruned all retired workflow and monitoring tables and indices while preserving all Viber identities, appearances, continuous sessions, messages, native provider threads, and usage records.
 
 Data-root migration, backup procedures, and workspace isolation enforce strict ownership boundaries so user files and repositories are never silently deleted.
 

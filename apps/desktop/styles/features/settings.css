@@ -1,188 +1,88 @@
-.settings-section {
-  padding: 8px 0 24px;
-}
-
 .settings-section > h2 {
-  margin-bottom: 8px;
+  @apply mb-2;
 }
 
 .settings-section > p {
-  color: var(--text-muted);
-  font-size: 12px;
-  margin: 8px 0;
-}
-
-.settings-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px 24px;
-  align-items: start;
-  max-width: 900px;
+  @apply text-ink-muted text-[12px] mx-0 my-2;
 }
 
 .settings-fields input,
 .settings-fields .select-trigger {
-  min-height: 38px;
+  @apply min-h-9.5;
 }
 
 .settings-fields label {
-  margin: 0;
+  @apply m-0;
 }
 
 .settings-fields label > span > small {
-  margin-left: 6px;
-  font-weight: 400;
+  @apply ml-1.5 font-normal;
 }
 
-.execution-settings > details,
-.discovery-advanced {
-  margin-block: 24px;
+.execution-settings > details {
+  @apply my-6;
 }
 
-.execution-settings > details[open] > p:first-of-type,
-.discovery-advanced[open] > p:first-of-type {
-  margin-top: 12px;
-}
-
-.discovery-settings > .search-roots {
-  margin-block: 20px 12px;
-}
-
-.discovery-settings > [role="status"] {
-  margin-top: 16px;
-}
-
-@media (max-width: 760px) {
-  .settings-fields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .config-block {
-    grid-template-columns: minmax(0, 1fr) 130px;
-  }
-
-  .config-block.pipeline-config {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .config-block.pipeline-config > label:first-of-type {
-    grid-column: auto;
-  }
-
-  .config-block > label:first-of-type {
-    grid-column: 1 / -1;
-  }
+.execution-settings > details[open] > p:first-of-type {
+  @apply mt-3;
 }
 
 .install-log {
-  padding: 12px;
-  max-height: 200px;
-  overflow: auto;
-  background: var(--background-app);
-  font-size: 11px;
+  @apply bg-surface-app;
 }
 
 .palette-backdrop {
-  position: fixed;
-  inset: 34px 0 0;
-  z-index: 100;
-  background: var(--shadow);
-  display: flex;
-  justify-content: center;
-  padding-top: 55px;
-  align-items: flex-start;
+  @apply bg-shadow;
 }
 
 .command-palette {
-  width: 580px;
-  max-width: 90vw;
-  background: var(--background-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 40px var(--overlay);
-  overflow: hidden;
-}
-
-.palette-search {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  padding: 10px 13px;
-  border-bottom: 1px solid var(--border);
+  @apply w-[580px] bg-surface-elevated rounded-control;
 }
 
 .palette-search input {
-  border: 0;
-  background: transparent;
-  padding: 4px 0;
+  @apply [border:0] bg-transparent px-0 py-1;
 }
 
 .palette-search kbd {
-  color: var(--text-muted);
-  font-size: 10px;
+  @apply text-ink-muted text-[10px];
 }
 
 .command-palette [role="listbox"] {
-  max-height: 370px;
-  overflow: auto;
-  padding: 5px;
+  @apply max-h-[370px] overflow-auto p-[5px];
 }
 
 .command-palette [role="option"] {
-  display: flex;
-  width: 100%;
-  text-align: left;
-  gap: 12px;
-  padding: 8px 10px;
-  border: 0;
-  background: transparent;
-  border-radius: 3px;
+  @apply flex w-full text-left gap-3 px-2.5 py-2 [border:0] bg-transparent rounded-[3px];
 }
 
 .command-palette [role="option"].selected {
-  background: var(--border-default);
+  @apply bg-border-default;
 }
 
 .command-palette small {
-  margin-left: auto;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10px;
+  @apply ml-auto max-w-[220px] overflow-hidden text-ellipsis whitespace-nowrap text-[10px];
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  @apply w-2 h-2;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 3px;
+  @apply bg-border-default rounded-[3px];
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  @apply bg-transparent;
 }
 
 .spinning {
-  animation: spin 1.5s linear infinite;
+  @apply animate-[spin_1.5s_linear_infinite];
 }
 
 .chat-changes {
-  margin: 16px 0;
-}
-
-.pr-title {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 3px;
+  @apply mx-0 my-4;
 }
 
 .chat-changes summary {
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 5px;
+  @apply text-muted text-[12px] mb-[5px];
 }

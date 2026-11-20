@@ -18,6 +18,7 @@ import {
   ViberWorkspaceSchema,
   agentPrompt,
   type AgentProfile,
+  type ViberMessagePreview,
   type ViberSessionDetail,
   type ViberWorkspace,
 } from "./contracts";
@@ -323,6 +324,19 @@ export class ViberSessionStore {
       )
       .map(({ id }) => this.session(id, profileId));
 
+  messagePreviews = () =>
+    this.db.all<ViberMessagePreview>(`
+      SELECT s.profile_id, substr(m.content, 1, 280) AS content, m.created_at
+      FROM viber_sessions s
+      JOIN viber_messages m ON m.id = (
+        SELECT id FROM viber_messages
+        WHERE session_id = s.id
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT 1
+      )
+      WHERE s.profile_id NOT IN (SELECT profile_id FROM retired_viber_profiles)
+    `);
+
   continuousSession = (profileId: string, repositoryId?: string) => {
     identity.parse(profileId);
 
@@ -441,19 +455,24 @@ export class ViberSessionStore {
       const execution = { ...profile.execution, ...selection, output: "conversation" as const };
       this.workspace(session.id);
 
-      if (this.requiresRecovery(session.id, input.profile_id) && !input.acknowledge_uncertain) {
-        throw new AdeError(
-          "recovery",
-          "The previous turn may have changed files or executed commands. Inspect its activity and acknowledge the uncertain outcome before sending a new instruction. No operation was replayed.",
-        );
-      }
-
       const configuration = threadConfiguration(execution, profile.instructions);
       const targetProvider = execution.provider;
 
       const candidateThread =
         session.threads?.[targetProvider] ||
         (session.thread?.provider === targetProvider ? session.thread : null);
+
+      const targetUncertain = candidateThread?.status === "uncertain";
+
+      if (
+        (this.requiresRecovery(session.id, input.profile_id) || targetUncertain) &&
+        !input.acknowledge_uncertain
+      ) {
+        throw new AdeError(
+          "recovery",
+          "The previous turn may have changed files or executed commands. Inspect its activity and acknowledge the uncertain outcome before sending a new instruction. No operation was replayed.",
+        );
+      }
 
       const thread =
         !input.new_thread && candidateThread?.configuration === configuration
@@ -525,7 +544,7 @@ export class ViberSessionStore {
       let missedMessages: { role: string; content: string }[] = [];
       if (thread && isProviderSwitch) {
         const threadRun = this.db.all<{ last_rowid: number }>(
-          "SELECT max(m.rowid) as last_rowid FROM viber_messages m JOIN utility_runs r ON r.viber_message_id=m.id WHERE m.session_id=? AND r.conversation_id=? AND m.status='completed'",
+          "SELECT max(m.rowid) as last_rowid FROM viber_messages m JOIN utility_runs r ON (r.viber_message_id=m.id OR m.run_id=r.id) WHERE m.session_id=? AND r.conversation_id=? AND m.status='completed'",
           session.id,
           thread.thread_id,
         )[0];

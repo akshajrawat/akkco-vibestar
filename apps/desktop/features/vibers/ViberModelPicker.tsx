@@ -80,17 +80,34 @@ export const ViberModelPicker = ({
   execution: AgentProfile["execution"];
   change: (execution: AgentProfile["execution"]) => void;
   disabled?: boolean;
-  profileId?: string;
+  profileId: string;
 }) => {
-  const { providers } = useProviders(profileId);
+  const computer = useProviders(profileId);
   const [browsingProvider, setBrowsingProvider] = useState(execution.provider);
   const [draft, setDraft] = useState<AgentProfile["execution"] | null>(null);
   const current = draft || execution;
-  const selectedProvider = providers.find((item) => item.provider === current.provider);
+  const browsingComputer = computer.providers.find((item) => item.provider === browsingProvider);
+  const needsLocalCatalog = Boolean(draft && !computer.loading && !browsingComputer?.models.length);
+  const local = useProviders(undefined, needsLocalCatalog);
+  const browsingLocal = local.providers.find((item) => item.provider === browsingProvider);
+
+  const usingLocalCatalog =
+    !browsingComputer?.models.length && Boolean(browsingLocal?.models.length);
+
+  const selectedComputer = computer.providers.find((item) => item.provider === current.provider);
+
+  const selectedProvider = selectedComputer?.models.length
+    ? selectedComputer
+    : local.providers.find((item) => item.provider === current.provider);
+
   const selectedGroups = groupModels(current.provider, selectedProvider?.models || []);
 
   const selectedGroup = selectedGroups.find((group) =>
-    group.variants.some((model) => (current.model ? model.id === current.model : model.isDefault)),
+    group.variants.some((model) =>
+      current.model
+        ? model.id === current.model
+        : selectedComputer?.models.length && model.isDefault,
+    ),
   );
 
   const name = selectedGroup?.label || (current.model ? modelName(current.model) : "Choose model");
@@ -101,7 +118,7 @@ export const ViberModelPicker = ({
     ? selectedGroups
     : groupModels(
         browsingProvider,
-        providers.find((item) => item.provider === browsingProvider)?.models || [],
+        (usingLocalCatalog ? browsingLocal : browsingComputer)?.models || [],
       );
 
   const efforts =
@@ -126,9 +143,19 @@ export const ViberModelPicker = ({
     });
   }
 
+  const discoveryMessage =
+    computer.loading || local.loading
+      ? "Loading models…"
+      : computer.error ||
+        browsingComputer?.error ||
+        browsingLocal?.error ||
+        local.error ||
+        "Start the Viber computer and sign in to load models.";
+
   return (
     <Select
       label="Model"
+      triggerAppearance="chip"
       disabled={disabled}
       searchable
       closeOnSelect={false}
@@ -136,6 +163,9 @@ export const ViberModelPicker = ({
         if (open) {
           setDraft(execution);
           setBrowsingProvider(execution.provider);
+          if (!computer.loading && !selectedComputer?.models.length) {
+            void computer.refresh();
+          }
         } else {
           if (draft && JSON.stringify(draft) !== JSON.stringify(execution)) {
             change(draft);
@@ -151,13 +181,20 @@ export const ViberModelPicker = ({
         <>
           {name}
           {(selectedGroup || current.model) && (
-            <span className="viber-model-effort">
-              {" "}
-              {effortNames[current.effort] || current.effort}
-            </span>
+            <span> {effortNames[current.effort] || current.effort}</span>
           )}
         </>
       }
+      listNotice={
+        (usingLocalCatalog || (!groups.length && options.length > 0)) && (
+          <p className="viber-model-notice" role="status">
+            {usingLocalCatalog
+              ? "Local catalog · availability depends on the Viber computer"
+              : discoveryMessage}
+          </p>
+        )
+      }
+      emptyMessage={discoveryMessage}
       popoverClassName="viber-model-popover"
       navigation={
         <div className="viber-model-providers" role="group" aria-label="Model providers">
@@ -214,21 +251,17 @@ export const ViberModelPicker = ({
         const provider = value.slice(0, separator) as typeof current.provider;
         const id = value.slice(separator + 1);
         const group = groups.find((group) => group.id === id);
+        if (!group) {
+          return;
+        }
 
-        const efforts =
-          group?.efforts ||
-          supportedEfforts(
-            providers.find((item) => item.provider === provider),
-            "",
-          );
-
-        const effort = efforts.includes(current.effort)
+        const effort = group.efforts.includes(current.effort)
           ? current.effort
-          : efforts[0] || current.effort;
+          : group.efforts[0] || current.effort;
 
         const model =
-          group?.variants.find((model) => model.supportedEfforts.includes(effort)) ||
-          group?.variants[0];
+          group.variants.find((model) => model.supportedEfforts.includes(effort)) ||
+          group.variants[0];
 
         setDraft({ ...current, provider, model: model?.id || id, effort });
       }}

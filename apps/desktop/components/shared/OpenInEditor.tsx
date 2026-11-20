@@ -89,16 +89,19 @@ export const OpenInEditor = ({
       )}
 
       {selection && (
-        <div className="modal-backdrop" onClick={() => setSelection(undefined)}>
+        <div
+          className="modal-backdrop fixed inset-[var(--titlebar-height)_0_0] flex items-center justify-center z-[50]"
+          onClick={() => setSelection(undefined)}
+        >
           <section
-            className="modal compact-modal"
+            className="modal border border-border-strong p-6 max-w-[94vw] max-h-[90%] overflow-auto [box-shadow:0_12px_45px_var(--overlay)] animate-[surface-enter_var(--motion-enter)_ease-out] compact-modal"
             role="dialog"
             aria-modal="true"
             aria-label="Open in Editor"
             onClick={(e) => e.stopPropagation()}
           >
             <h2>{kind === "repository" ? "Open source checkout" : "Open Viber worktree"}</h2>
-            <code className="repository-path">{path}</code>
+            <code className="block mb-3 wrap-anywhere">{path}</code>
             {busy && (
               <p className="subtle" role="status">
                 Opening through the editor CLI. On first use, WSL integration may need to download
@@ -123,12 +126,15 @@ export const OpenInEditor = ({
             </div>
 
             {error && (
-              <p className="error-box" role="alert">
+              <p
+                className="error-box px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere"
+                role="alert"
+              >
                 {error}
               </p>
             )}
 
-            <div className="actions">
+            <div className="actions flex gap-1.5">
               <Button
                 onClick={() =>
                   void rpc("open.directory", { id, kind }).catch((e) => setError(errorMessage(e)))

@@ -11,7 +11,7 @@ export const GeneralSettings = ({
   editors: { id: string; label: string }[];
 }) => (
   <>
-    <section className="settings-section settings-general-section">
+    <section className="settings-section p-[8px_0_24px] settings-general-section">
       <h2>Viber Workspaces</h2>
       <div className="settings-card">
         <label className="settings-row">
@@ -51,7 +51,7 @@ export const GeneralSettings = ({
         </label>
       </div>
     </section>
-    <section className="settings-section settings-general-section">
+    <section className="settings-section p-[8px_0_24px] settings-general-section">
       <h2>Notifications</h2>
       <div className="settings-card">
         <label className="settings-row">

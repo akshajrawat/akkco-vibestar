@@ -1,524 +1,94 @@
 export const migrations = [
   {
-    version: 1,
+    version: 0,
+    foreign_keys_off: true,
     sql: `
-CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS repositories(id TEXT PRIMARY KEY,owner TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,UNIQUE(owner,name));
-CREATE TABLE IF NOT EXISTS issues(repo_id TEXT NOT NULL REFERENCES repositories(id),number INTEGER NOT NULL,data TEXT NOT NULL,PRIMARY KEY(repo_id,number));
-CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,repo_id TEXT NOT NULL REFERENCES repositories(id),status TEXT NOT NULL,stage INTEGER NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS task_queue ON tasks(status,created_at);
-CREATE TABLE IF NOT EXISTS agent_runs(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),stage INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,pid INTEGER,process_identity TEXT,conversation_id TEXT,output TEXT,error TEXT);
-CREATE TABLE IF NOT EXISTS agent_events(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES agent_runs(id),task_id TEXT NOT NULL REFERENCES tasks(id),timestamp TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL,raw TEXT NOT NULL,stream TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS task_events ON agent_events(task_id,id);
-CREATE TABLE IF NOT EXISTS task_messages(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),role TEXT NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS task_artifacts(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),stage INTEGER NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS test_runs(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),command TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,duration_ms INTEGER,stdout TEXT NOT NULL DEFAULT '',stderr TEXT NOT NULL DEFAULT '');
-CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-INSERT OR IGNORE INTO schema_migrations VALUES(1,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
-`,
-  },
-
-  {
-    version: 2,
-    sql: "ALTER TABLE test_runs ADD COLUMN pid INTEGER; ALTER TABLE test_runs ADD COLUMN process_identity TEXT;",
-  },
-
-  {
-    version: 3,
-    sql: `
-CREATE TABLE scheduled_jobs(id TEXT PRIMARY KEY,data TEXT NOT NULL);
-CREATE TABLE scheduled_attention(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,created_at TEXT NOT NULL,summary TEXT NOT NULL,changes TEXT NOT NULL,analysis TEXT,refinement TEXT,error TEXT,dismissed INTEGER NOT NULL DEFAULT 0);
-ALTER TABLE agent_runs ADD COLUMN purpose TEXT NOT NULL DEFAULT 'pipeline';
-`,
-  },
-
-  {
-    version: 4,
-    sql: `CREATE TABLE task_review_notes(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,path TEXT NOT NULL,side TEXT NOT NULL,line_start INTEGER NOT NULL,line_end INTEGER NOT NULL,content TEXT NOT NULL,source_hash TEXT NOT NULL,created_at TEXT NOT NULL);CREATE INDEX task_review_notes_by_task ON task_review_notes(task_id,created_at);`,
-  },
-
-  {
-    version: 5,
-    sql: `CREATE TABLE terminal_sessions(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,pid INTEGER,process_identity TEXT,exit_code INTEGER);`,
-  },
-
-  {
-    version: 6,
-    sql: `
-ALTER TABLE tasks ADD COLUMN scope_mode TEXT NOT NULL DEFAULT 'partial' CHECK(scope_mode IN ('whole_issue','partial'));
-UPDATE tasks SET data=json_set(data,'$.scope_mode','partial') WHERE json_valid(data);
-CREATE TABLE task_activity(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,kind TEXT NOT NULL,data TEXT NOT NULL,timestamp TEXT NOT NULL);
-CREATE TABLE github_repositories(id INTEGER PRIMARY KEY,full_name TEXT NOT NULL UNIQUE,data TEXT NOT NULL,synced_at TEXT NOT NULL);
-CREATE TABLE github_pull_requests(url TEXT PRIMARY KEY,data TEXT NOT NULL,updated_at TEXT NOT NULL);
-`,
-  },
-
-  {
-    version: 7,
-    sql: `CREATE TABLE scheduled_agent_runs(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,stage INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,pid INTEGER,process_identity TEXT,conversation_id TEXT,output TEXT,error TEXT,purpose TEXT NOT NULL DEFAULT 'scheduled');`,
-  },
-
-  {
-    version: 8,
-    sql: `
-CREATE TABLE local_repositories(path TEXT PRIMARY KEY,data TEXT NOT NULL,indexed_at TEXT NOT NULL);
-CREATE TABLE ai_usage(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,job_id TEXT REFERENCES scheduled_jobs(id) ON DELETE SET NULL,repository TEXT,purpose TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,duration_ms INTEGER,status TEXT NOT NULL,input_tokens INTEGER,cached_input_tokens INTEGER,output_tokens INTEGER,reasoning_tokens INTEGER,total_tokens INTEGER,error TEXT);
-CREATE INDEX ai_usage_time ON ai_usage(started_at);
-ALTER TABLE task_messages ADD COLUMN status TEXT NOT NULL DEFAULT 'delivered';
-ALTER TABLE task_messages ADD COLUMN configuration TEXT;
-ALTER TABLE task_messages ADD COLUMN run_id TEXT;
-CREATE TABLE utility_runs(id TEXT PRIMARY KEY,stage INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,pid INTEGER,process_identity TEXT,conversation_id TEXT,output TEXT,error TEXT,purpose TEXT NOT NULL);
-`,
-  },
-
-  {
-    version: 9,
-    sql: `
-INSERT OR IGNORE INTO ai_usage(id,task_id,repository,purpose,provider,model,effort,started_at,ended_at,duration_ms,status,error)
-SELECT a.id,a.task_id,r.owner||'/'||r.name,CASE WHEN a.purpose='pipeline' THEN CASE a.stage WHEN 1 THEN 'Antigravity Plan' WHEN 2 THEN 'Codex Plan Refinement' ELSE 'Codex Implementation' END ELSE a.purpose END,a.provider,a.model,a.effort,a.started_at,a.ended_at,CASE WHEN a.ended_at IS NOT NULL THEN MAX(0,CAST(ROUND((julianday(a.ended_at)-julianday(a.started_at))*86400000) AS INTEGER)) END,a.status,a.error FROM agent_runs a JOIN tasks t ON t.id=a.task_id JOIN repositories r ON r.id=t.repo_id;
-INSERT OR IGNORE INTO ai_usage(id,job_id,purpose,provider,model,effort,started_at,ended_at,duration_ms,status,error)
-SELECT id,job_id,CASE stage WHEN 1 THEN 'PR Review Analysis' ELSE 'Scheduler Verification' END,provider,model,effort,started_at,ended_at,CASE WHEN ended_at IS NOT NULL THEN MAX(0,CAST(ROUND((julianday(ended_at)-julianday(started_at))*86400000) AS INTEGER)) END,status,error FROM scheduled_agent_runs;
-`,
-  },
-
-  {
-    version: 10,
-    sql: "ALTER TABLE ai_usage ADD COLUMN subscription_limits TEXT;",
-  },
-
-  {
-    version: 11,
-    sql: `
-UPDATE scheduled_attention SET dismissed=1 WHERE error='Cannot read properties of undefined (reading ''slice'')' AND job_id IN (
-SELECT id FROM scheduled_jobs WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.status')='error' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.error')='Cannot read properties of undefined (reading ''slice'')' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.pending_snapshot')='object' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.action')='object' AND (json_type(CASE WHEN json_valid(data) THEN data END,'$.action.outstandingRequests') IS NULL OR json_type(CASE WHEN json_valid(data) THEN data END,'$.action.alreadyAddressed') IS NULL)
+CREATE TABLE IF NOT EXISTS schema_migrations(
+  version INTEGER PRIMARY KEY,
+  applied_at TEXT NOT NULL
 );
-UPDATE scheduled_jobs SET data=json_set(data,'$.status','pending','$.error',NULL,'$.next_run_at',strftime('%Y-%m-%dT%H:%M:%SZ','now'))
-WHERE json_extract(CASE WHEN json_valid(data) THEN data END,'$.status')='error' AND json_extract(CASE WHEN json_valid(data) THEN data END,'$.error')='Cannot read properties of undefined (reading ''slice'')' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.pending_snapshot')='object' AND json_type(CASE WHEN json_valid(data) THEN data END,'$.action')='object' AND (json_type(CASE WHEN json_valid(data) THEN data END,'$.action.outstandingRequests') IS NULL OR json_type(CASE WHEN json_valid(data) THEN data END,'$.action.alreadyAddressed') IS NULL);
-UPDATE scheduled_jobs SET data=json_insert(data,'$.action.conversationState','neutral','$.action.outstandingRequests',json('[]'),'$.action.alreadyAddressed',json('[]'),'$.action.newActivity',json('[]')) WHERE json_type(CASE WHEN json_valid(data) THEN data END,'$.action')='object';
-UPDATE scheduled_jobs SET data=json_insert(data,'$.conversation_action.conversationState','neutral','$.conversation_action.outstandingRequests',json('[]'),'$.conversation_action.alreadyAddressed',json('[]'),'$.conversation_action.newActivity',json('[]')) WHERE json_type(CASE WHEN json_valid(data) THEN data END,'$.conversation_action')='object';
-`,
-  },
 
-  {
-    version: 12,
-    foreign_keys_off: true,
-    sql: `
-CREATE TABLE repositories_new(id TEXT PRIMARY KEY,owner TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL);
-INSERT INTO repositories_new SELECT id,owner,name,CASE WHEN json_valid(data) THEN json_insert(data,'$.connected',json('true')) ELSE data END FROM repositories;
-DROP TABLE repositories;
-ALTER TABLE repositories_new RENAME TO repositories;
-CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),json_extract(CASE WHEN json_valid(data) THEN data END,'$.path'));
-`,
-  },
+CREATE TABLE IF NOT EXISTS settings(
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 
-  {
-    version: 13,
-    sql: `
-ALTER TABLE ai_usage ADD COLUMN subscription_limits_after TEXT;
-ALTER TABLE ai_usage ADD COLUMN provider_session_id TEXT;
-UPDATE ai_usage SET provider_session_id=COALESCE((SELECT conversation_id FROM agent_runs WHERE agent_runs.id=ai_usage.id),(SELECT conversation_id FROM scheduled_agent_runs WHERE scheduled_agent_runs.id=ai_usage.id),(SELECT conversation_id FROM utility_runs WHERE utility_runs.id=ai_usage.id));
-CREATE TABLE task_reviewed_files(task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,path TEXT NOT NULL,source_hash TEXT NOT NULL,reviewed_at TEXT NOT NULL,PRIMARY KEY(task_id,path));
-CREATE TABLE code_questions(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,path TEXT NOT NULL,old_path TEXT,side TEXT NOT NULL,line_start INTEGER NOT NULL,line_end INTEGER NOT NULL,selected_code TEXT NOT NULL,source_hash TEXT NOT NULL,question TEXT NOT NULL,answer TEXT,status TEXT NOT NULL,error TEXT,run_id TEXT,created_at TEXT NOT NULL);
-CREATE INDEX code_questions_task ON code_questions(task_id,created_at);
-`,
-  },
-
-  {
-    version: 14,
-    sql: `UPDATE tasks SET stage=6,data=json_set(data,'$.stage',6) WHERE json_valid(data) AND stage=5 AND status IN ('ready_for_review','completed');`,
-  },
-
-  {
-    version: 15,
-    sql: `UPDATE tasks SET status='awaiting_approval',stage=5,data=json_set(data,'$.status','awaiting_approval','$.stage',5,'$.approval_gate','implementation') WHERE json_valid(data) AND status='ready_for_review' AND NOT EXISTS(SELECT 1 FROM task_artifacts a WHERE a.task_id=tasks.id AND a.stage=5 AND a.kind='plan');`,
-  },
-
-  {
-    version: 16,
-    sql: `ALTER TABLE test_runs ADD COLUMN run_id TEXT;
-ALTER TABLE test_runs ADD COLUMN call_id TEXT;
-ALTER TABLE test_runs ADD COLUMN output_truncated INTEGER NOT NULL DEFAULT 0;
-CREATE UNIQUE INDEX test_runs_provider_call ON test_runs(task_id,run_id,call_id);`,
-  },
-
-  {
-    version: 17,
-    sql: `
-UPDATE settings SET value=json_set(value,'$.auto_watch',json('false')) WHERE key='github_watch' AND json_valid(value);
-UPDATE scheduled_jobs SET data=json_set(data,'$.enabled',json('false'),'$.check_once',json('false'),'$.status',CASE WHEN json_extract(CASE WHEN json_valid(data) THEN data END,'$.status') IN ('polling','pending','analyzing') THEN 'interrupted' ELSE COALESCE(json_extract(CASE WHEN json_valid(data) THEN data END,'$.status'),'idle') END) WHERE json_valid(data);
-INSERT OR REPLACE INTO settings VALUES('pr_execution_policy','"manual_only_v1"');
-`,
-  },
-
-  {
-    version: 18,
-    sql: `
-CREATE TABLE pr_analyses(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,data TEXT NOT NULL);
-CREATE INDEX pr_analyses_job ON pr_analyses(job_id,started_at);
-CREATE TABLE pr_review_actions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,anchor TEXT NOT NULL,created_at TEXT NOT NULL,UNIQUE(job_id,anchor));
-CREATE TABLE pr_action_assessments(analysis_id TEXT NOT NULL REFERENCES pr_analyses(id) ON DELETE CASCADE,action_id TEXT NOT NULL REFERENCES pr_review_actions(id) ON DELETE CASCADE,data TEXT NOT NULL,PRIMARY KEY(analysis_id,action_id));
-ALTER TABLE scheduled_agent_runs ADD COLUMN analysis_id TEXT REFERENCES pr_analyses(id) ON DELETE SET NULL;
-ALTER TABLE ai_usage ADD COLUMN analysis_id TEXT REFERENCES pr_analyses(id) ON DELETE SET NULL;
-`,
-  },
-
-  {
-    version: 19,
-    sql: `
-CREATE TABLE pr_repairs(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES scheduled_jobs(id),repo_id TEXT NOT NULL REFERENCES repositories(id),analysis_id TEXT NOT NULL REFERENCES pr_analyses(id),status TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-CREATE INDEX pr_repairs_job ON pr_repairs(job_id,created_at);
-CREATE TABLE repair_messages(id TEXT PRIMARY KEY,repair_id TEXT NOT NULL REFERENCES pr_repairs(id),role TEXT NOT NULL,content TEXT NOT NULL,created_at TEXT NOT NULL);
-CREATE TABLE repair_activity(id INTEGER PRIMARY KEY AUTOINCREMENT,repair_id TEXT NOT NULL REFERENCES pr_repairs(id),kind TEXT NOT NULL,data TEXT NOT NULL,timestamp TEXT NOT NULL);
-CREATE TABLE repair_publications(id TEXT PRIMARY KEY,repair_id TEXT NOT NULL REFERENCES pr_repairs(id),status TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-CREATE INDEX repair_publications_session ON repair_publications(repair_id,created_at);
-CREATE TABLE repair_reviewed_files(repair_id TEXT NOT NULL REFERENCES pr_repairs(id),path TEXT NOT NULL,source_hash TEXT NOT NULL,reviewed_at TEXT NOT NULL,PRIMARY KEY(repair_id,path));
-`,
-  },
-
-  {
-    version: 20,
-    foreign_keys_off: true,
-    sql: `
-CREATE TABLE agent_runs_new(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id),stage INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,prompt TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,pid INTEGER,process_identity TEXT,conversation_id TEXT,output TEXT,error TEXT,purpose TEXT NOT NULL DEFAULT 'pipeline',repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
-INSERT INTO agent_runs_new(id,task_id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,pid,process_identity,conversation_id,output,error,purpose) SELECT id,task_id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,pid,process_identity,conversation_id,output,error,purpose FROM agent_runs;
-DROP TABLE agent_runs;
-ALTER TABLE agent_runs_new RENAME TO agent_runs;
-CREATE INDEX repair_runs ON agent_runs(repair_id,started_at);
-CREATE TABLE agent_events_new(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES agent_runs(id),task_id TEXT REFERENCES tasks(id),timestamp TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL,raw TEXT NOT NULL,stream TEXT NOT NULL,repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
-INSERT INTO agent_events_new(id,run_id,task_id,timestamp,kind,data,raw,stream) SELECT id,run_id,task_id,timestamp,kind,data,raw,stream FROM agent_events;
-DROP TABLE agent_events;
-ALTER TABLE agent_events_new RENAME TO agent_events;
-CREATE INDEX task_events ON agent_events(task_id,id);
-CREATE INDEX repair_events ON agent_events(repair_id,id);
-CREATE TABLE test_runs_new(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id),command TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,exit_code INTEGER,duration_ms INTEGER,stdout TEXT NOT NULL DEFAULT '',stderr TEXT NOT NULL DEFAULT '',pid INTEGER,process_identity TEXT,run_id TEXT,call_id TEXT,output_truncated INTEGER NOT NULL DEFAULT 0,repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
-INSERT INTO test_runs_new(id,task_id,command,status,started_at,ended_at,exit_code,duration_ms,stdout,stderr,pid,process_identity,run_id,call_id,output_truncated) SELECT id,task_id,command,status,started_at,ended_at,exit_code,duration_ms,stdout,stderr,pid,process_identity,run_id,call_id,output_truncated FROM test_runs;
-DROP TABLE test_runs;
-ALTER TABLE test_runs_new RENAME TO test_runs;
-CREATE UNIQUE INDEX test_runs_provider_call ON test_runs(run_id,call_id);
-CREATE INDEX repair_tests ON test_runs(repair_id,started_at);
-CREATE TABLE terminal_sessions_new(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,status TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,pid INTEGER,process_identity TEXT,exit_code INTEGER,repair_id TEXT REFERENCES pr_repairs(id),CHECK((task_id IS NOT NULL)+(repair_id IS NOT NULL)=1));
-INSERT INTO terminal_sessions_new(id,task_id,status,started_at,ended_at,pid,process_identity,exit_code) SELECT id,task_id,status,started_at,ended_at,pid,process_identity,exit_code FROM terminal_sessions;
-DROP TABLE terminal_sessions;
-ALTER TABLE terminal_sessions_new RENAME TO terminal_sessions;
-ALTER TABLE ai_usage ADD COLUMN repair_id TEXT REFERENCES pr_repairs(id) ON DELETE SET NULL;
-CREATE INDEX repair_usage ON ai_usage(repair_id,started_at);
-`,
-  },
-
-  {
-    version: 21,
-    sql: `
-CREATE TABLE persistence_diagnostics(table_name TEXT NOT NULL,record_id TEXT NOT NULL,column_name TEXT NOT NULL,source_hash TEXT NOT NULL,first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,resolved_at TEXT,PRIMARY KEY(table_name,record_id,column_name));
-CREATE TABLE task_requests(request_id TEXT PRIMARY KEY,digest TEXT NOT NULL,task_id TEXT UNIQUE REFERENCES tasks(id) ON DELETE SET NULL,created_at TEXT NOT NULL);
-DROP INDEX IF EXISTS repositories_checkout;
-CREATE UNIQUE INDEX repositories_checkout ON repositories(lower(owner),lower(name),CASE WHEN json_valid(data) THEN json_extract(CASE WHEN json_valid(data) THEN data END,'$.path') END);
-`,
-  },
-
-  {
-    version: 22,
-    sql: `
-CREATE TABLE issue_watches(id TEXT PRIMARY KEY,name TEXT NOT NULL,repository_id TEXT NOT NULL,repository_full_name TEXT NOT NULL,current_revision INTEGER NOT NULL CHECK(current_revision>0),archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN(0,1)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,last_complete_scan_id TEXT REFERENCES issue_watch_scans(id),data TEXT NOT NULL CHECK(json_valid(data)));
-CREATE TABLE issue_watch_revisions(watch_id TEXT NOT NULL REFERENCES issue_watches(id),revision INTEGER NOT NULL CHECK(revision>0),request_id TEXT NOT NULL UNIQUE,request_digest TEXT NOT NULL,created_at TEXT NOT NULL,rules_digest TEXT NOT NULL,compiler_version INTEGER NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,effort TEXT NOT NULL,timeout_secs INTEGER NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(watch_id,revision));
-CREATE TABLE issue_watch_scans(id TEXT PRIMARY KEY,watch_id TEXT NOT NULL,revision INTEGER NOT NULL,request_id TEXT NOT NULL UNIQUE,request_digest TEXT NOT NULL,parent_scan_id TEXT REFERENCES issue_watch_scans(id),intent TEXT NOT NULL CHECK(intent IN('scan','retry','continue','recheck')),status TEXT NOT NULL CHECK(status IN('running','cancelling','completed','partial','blocked','failed','cancelled','interrupted')),phase TEXT NOT NULL,started_at TEXT NOT NULL,ended_at TEXT,semantic_attempts INTEGER NOT NULL DEFAULT 0 CHECK(semantic_attempts IN(0,1)),utility_run_id TEXT REFERENCES utility_runs(id),data TEXT NOT NULL CHECK(json_valid(data)),FOREIGN KEY(watch_id,revision) REFERENCES issue_watch_revisions(watch_id,revision));
-CREATE UNIQUE INDEX issue_watch_active ON issue_watch_scans(watch_id) WHERE status IN('running','cancelling');
-CREATE INDEX issue_watch_scan_history ON issue_watch_scans(watch_id,started_at);
-CREATE TABLE issue_watch_sources(scan_id TEXT NOT NULL REFERENCES issue_watch_scans(id),source_key TEXT NOT NULL,kind TEXT NOT NULL,url TEXT NOT NULL,revision_digest TEXT NOT NULL,fetched_at TEXT NOT NULL,complete INTEGER NOT NULL CHECK(complete IN(0,1)),data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(scan_id,source_key));
-CREATE TABLE issue_watch_candidates(scan_id TEXT NOT NULL REFERENCES issue_watch_scans(id),issue_id TEXT NOT NULL,repository_id TEXT NOT NULL,number INTEGER NOT NULL CHECK(number>0),claim_state TEXT NOT NULL,semantic_state TEXT NOT NULL,checked_at TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(scan_id,issue_id));
-CREATE INDEX issue_watch_candidate_state ON issue_watch_candidates(scan_id,claim_state);
-CREATE INDEX issue_watch_candidate_identity ON issue_watch_candidates(repository_id,number);
-CREATE TABLE issue_watch_results(watch_id TEXT NOT NULL REFERENCES issue_watches(id),issue_id TEXT NOT NULL,last_evaluated_scan_id TEXT NOT NULL REFERENCES issue_watch_scans(id),last_complete_match_scan_id TEXT REFERENCES issue_watch_scans(id),classification TEXT NOT NULL,dismissed_at TEXT,first_seen TEXT NOT NULL,last_seen TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),PRIMARY KEY(watch_id,issue_id));
-`,
-  },
-
-  {
-    version: 23,
-    sql: `
-ALTER TABLE utility_runs ADD COLUMN watch_id TEXT REFERENCES issue_watches(id) ON DELETE SET NULL;
-ALTER TABLE utility_runs ADD COLUMN scan_id TEXT REFERENCES issue_watch_scans(id) ON DELETE SET NULL;
-CREATE INDEX utility_scan_runs ON utility_runs(scan_id,started_at);
-ALTER TABLE ai_usage ADD COLUMN watch_id TEXT REFERENCES issue_watches(id) ON DELETE SET NULL;
-ALTER TABLE ai_usage ADD COLUMN scan_id TEXT REFERENCES issue_watch_scans(id) ON DELETE SET NULL;
-CREATE INDEX issue_watch_usage ON ai_usage(watch_id,scan_id,started_at);
-CREATE TABLE utility_events(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES utility_runs(id) ON DELETE CASCADE,timestamp TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),raw TEXT NOT NULL,stream TEXT NOT NULL);
-CREATE INDEX utility_run_events ON utility_events(run_id,id);
-`,
-  },
-
-  {
-    version: 24,
-    sql: `
-CREATE TABLE git_finalizations(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-CREATE INDEX git_finalizations_task ON git_finalizations(task_id,created_at);
-CREATE TABLE git_operation_events(id INTEGER PRIMARY KEY AUTOINCREMENT,finalization_id TEXT NOT NULL REFERENCES git_finalizations(id),phase TEXT NOT NULL,output TEXT NOT NULL,exit_code INTEGER,timestamp TEXT NOT NULL);
-CREATE INDEX git_operation_history ON git_operation_events(finalization_id,id);
-CREATE TABLE task_git_presets(task_id TEXT PRIMARY KEY REFERENCES tasks(id),data TEXT NOT NULL CHECK(json_valid(data)));
-`,
-  },
-
-  {
-    version: 25,
-    sql: `
-ALTER TABLE task_messages ADD COLUMN purpose TEXT NOT NULL DEFAULT 'instruction' CHECK(purpose IN ('instruction','chat'));
-CREATE INDEX task_conversation ON task_messages(task_id,purpose,created_at);
-`,
-  },
-
-  {
-    version: 26,
-    sql: `CREATE TABLE pr_analysis_batches(id TEXT PRIMARY KEY,status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL);`,
-  },
-  {
-    version: 27,
-    sql: `CREATE TABLE issue_watch_http_cache(endpoint TEXT PRIMARY KEY,etag TEXT NOT NULL,body TEXT NOT NULL CHECK(json_valid(body)),checked_at TEXT NOT NULL);`,
-  },
-  {
-    version: 28,
-    sql: `
-ALTER TABLE agent_runs ADD COLUMN execution TEXT CHECK(execution IS NULL OR json_valid(execution));
-ALTER TABLE utility_runs ADD COLUMN execution TEXT CHECK(execution IS NULL OR json_valid(execution));
-ALTER TABLE scheduled_agent_runs ADD COLUMN execution TEXT CHECK(execution IS NULL OR json_valid(execution));
-`,
-  },
-  {
-    version: 29,
-    sql: `
-CREATE TABLE agent_profiles(id TEXT PRIMARY KEY,current_revision INTEGER NOT NULL CHECK(current_revision>0),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(id,current_revision) REFERENCES agent_profile_revisions(profile_id,revision) DEFERRABLE INITIALLY DEFERRED);
-CREATE TABLE agent_profile_revisions(profile_id TEXT NOT NULL REFERENCES agent_profiles(id),revision INTEGER NOT NULL CHECK(revision>0),data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL,PRIMARY KEY(profile_id,revision));
-CREATE TABLE flow_definitions(id TEXT PRIMARY KEY,task_id TEXT REFERENCES tasks(id),current_revision INTEGER NOT NULL CHECK(current_revision>0),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(id,current_revision) REFERENCES flow_revisions(flow_id,revision) DEFERRABLE INITIALLY DEFERRED);
-CREATE TABLE flow_revisions(flow_id TEXT NOT NULL REFERENCES flow_definitions(id),revision INTEGER NOT NULL CHECK(revision>0),data TEXT NOT NULL CHECK(json_valid(data)),created_at TEXT NOT NULL,PRIMARY KEY(flow_id,revision));
-CREATE INDEX task_flows ON flow_definitions(task_id);
-CREATE TABLE flow_canvas_layouts(flow_id TEXT PRIMARY KEY REFERENCES flow_definitions(id),data TEXT NOT NULL CHECK(json_valid(data)),updated_at TEXT NOT NULL);
-`,
-  },
-  {
-    version: 30,
-    sql: `
-CREATE TABLE flow_runs(id TEXT PRIMARY KEY,flow_id TEXT NOT NULL,revision INTEGER NOT NULL,task_id TEXT NOT NULL REFERENCES tasks(id),status TEXT NOT NULL CHECK(status IN ('queued','running','pausing','paused','waiting','completed','failed','cancelled','interrupted','continued')),request_id TEXT NOT NULL UNIQUE,request_digest TEXT NOT NULL,parent_run_id TEXT REFERENCES flow_runs(id),snapshot TEXT NOT NULL CHECK(json_valid(snapshot)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL,error TEXT,FOREIGN KEY(flow_id,revision) REFERENCES flow_revisions(flow_id,revision));
-CREATE UNIQUE INDEX flow_active_task ON flow_runs(task_id) WHERE status IN ('queued','running','pausing','paused','waiting');
-CREATE INDEX flow_run_history ON flow_runs(flow_id,created_at);
-CREATE TABLE flow_node_attempts(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES flow_runs(id),node_id TEXT NOT NULL,ordinal INTEGER NOT NULL CHECK(ordinal>0),status TEXT NOT NULL CHECK(status IN ('running','waiting','completed','failed','rejected','cancelled','interrupted')),configuration TEXT NOT NULL CHECK(json_valid(configuration)),configuration_hash TEXT NOT NULL,inputs TEXT NOT NULL CHECK(json_valid(inputs)),inputs_hash TEXT NOT NULL,workspace_fingerprint TEXT NOT NULL,agent_run_id TEXT UNIQUE REFERENCES agent_runs(id),command_run_id TEXT UNIQUE REFERENCES test_runs(id),started_at TEXT NOT NULL,ended_at TEXT,output TEXT,verification TEXT NOT NULL CHECK(verification IN ('missing','passed','failed','stale')),error TEXT,UNIQUE(run_id,node_id,ordinal),CHECK(agent_run_id IS NULL OR command_run_id IS NULL));
-CREATE UNIQUE INDEX flow_active_node ON flow_node_attempts(run_id,node_id) WHERE status IN ('running','waiting');
-CREATE UNIQUE INDEX flow_serial_attempt ON flow_node_attempts(run_id) WHERE status='running';
-CREATE TABLE flow_approval_decisions(attempt_id TEXT PRIMARY KEY REFERENCES flow_node_attempts(id),request_id TEXT NOT NULL UNIQUE,decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),configuration_hash TEXT NOT NULL,inputs_hash TEXT NOT NULL,workspace_fingerprint TEXT NOT NULL,created_at TEXT NOT NULL);
-CREATE TABLE flow_transitions(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES flow_runs(id),attempt_id TEXT REFERENCES flow_node_attempts(id),previous_status TEXT,next_status TEXT NOT NULL,timestamp TEXT NOT NULL);
-CREATE TRIGGER flow_run_snapshot_immutable BEFORE UPDATE OF flow_id,revision,task_id,request_id,request_digest,parent_run_id,snapshot,created_at ON flow_runs BEGIN SELECT RAISE(ABORT,'Flow run snapshots are immutable'); END;
-CREATE TRIGGER flow_attempt_snapshot_immutable BEFORE UPDATE OF run_id,node_id,ordinal,configuration,configuration_hash,inputs,inputs_hash,workspace_fingerprint,started_at ON flow_node_attempts BEGIN SELECT RAISE(ABORT,'Node attempt snapshots are immutable'); END;
-CREATE TRIGGER flow_approval_immutable BEFORE UPDATE ON flow_approval_decisions BEGIN SELECT RAISE(ABORT,'Approval decisions are immutable'); END;
-`,
-  },
-  {
-    version: 31,
-    foreign_keys_off: true,
-    sql: `
-CREATE TABLE tasks_new(id TEXT PRIMARY KEY,repo_id TEXT REFERENCES repositories(id),status TEXT NOT NULL,stage INTEGER NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,scope_mode TEXT NOT NULL DEFAULT 'partial' CHECK(scope_mode IN ('whole_issue','partial')));
-INSERT INTO tasks_new(id,repo_id,status,stage,data,created_at,scope_mode) SELECT id,repo_id,status,stage,data,created_at,scope_mode FROM tasks;
-DROP TABLE tasks;
-ALTER TABLE tasks_new RENAME TO tasks;
-CREATE INDEX task_queue ON tasks(status,created_at);
-`,
-  },
-  {
-    version: 32,
-    sql: `
-CREATE TABLE flow_dispatches(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES flow_runs(id),kind TEXT NOT NULL CHECK(kind IN ('flow','node','retry')),node_id TEXT,retry_of TEXT REFERENCES flow_node_attempts(id),request_digest TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('queued','running','waiting','completed','failed','cancelled','interrupted')),created_at TEXT NOT NULL,started_at TEXT,ended_at TEXT,error TEXT,CHECK((kind='flow' AND node_id IS NULL AND retry_of IS NULL) OR (kind='node' AND node_id IS NOT NULL AND retry_of IS NULL) OR (kind='retry' AND node_id IS NOT NULL AND retry_of IS NOT NULL)));
-CREATE UNIQUE INDEX flow_active_dispatch ON flow_dispatches(run_id) WHERE status IN ('queued','running');
-ALTER TABLE flow_node_attempts ADD COLUMN dispatch_id TEXT REFERENCES flow_dispatches(id);
-CREATE TRIGGER flow_dispatch_immutable BEFORE UPDATE OF run_id,kind,node_id,retry_of,request_digest,created_at ON flow_dispatches BEGIN SELECT RAISE(ABORT,'Flow execution requests are immutable'); END;
-CREATE TRIGGER flow_attempt_dispatch_immutable BEFORE UPDATE OF dispatch_id ON flow_node_attempts BEGIN SELECT RAISE(ABORT,'Node execution request attribution is immutable'); END;
-`,
-  },
-  {
-    version: 33,
-    sql: `
-ALTER TABLE flow_node_attempts ADD COLUMN completed_fingerprint TEXT;
-CREATE TRIGGER flow_attempt_completion_immutable BEFORE UPDATE OF completed_fingerprint ON flow_node_attempts WHEN OLD.completed_fingerprint IS NOT NULL BEGIN SELECT RAISE(ABORT,'Completed workspace evidence is immutable'); END;
-CREATE TABLE flow_result_links(run_id TEXT NOT NULL REFERENCES flow_runs(id),node_id TEXT NOT NULL,source_attempt_id TEXT NOT NULL REFERENCES flow_node_attempts(id),workspace_fingerprint TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(run_id,node_id));
-CREATE TRIGGER flow_result_link_immutable BEFORE UPDATE ON flow_result_links BEGIN SELECT RAISE(ABORT,'Reused result links are immutable'); END;
-CREATE TABLE flow_continuations(request_id TEXT PRIMARY KEY,request_digest TEXT NOT NULL,run_id TEXT NOT NULL UNIQUE REFERENCES flow_runs(id),parent_run_id TEXT NOT NULL REFERENCES flow_runs(id),plan TEXT NOT NULL CHECK(json_valid(plan)),created_at TEXT NOT NULL);
-CREATE TRIGGER flow_continuation_immutable BEFORE UPDATE ON flow_continuations BEGIN SELECT RAISE(ABORT,'Continuation requests are immutable'); END;
-`,
-  },
-  {
-    version: 34,
-    sql: `
-CREATE TABLE flow_result_invalidations(run_id TEXT NOT NULL,node_id TEXT NOT NULL,reason TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(run_id,node_id),FOREIGN KEY(run_id,node_id) REFERENCES flow_result_links(run_id,node_id));
-CREATE TRIGGER flow_result_invalidation_immutable BEFORE UPDATE ON flow_result_invalidations BEGIN SELECT RAISE(ABORT,'Result invalidation evidence is immutable'); END;
-`,
-  },
-  {
-    version: 35,
-    sql: `
-ALTER TABLE flow_runs ADD COLUMN origin TEXT NOT NULL DEFAULT 'user' CHECK(origin IN ('user','historical'));
-CREATE TRIGGER flow_run_origin_immutable BEFORE UPDATE OF origin ON flow_runs BEGIN SELECT RAISE(ABORT,'Flow run origin is immutable'); END;
-CREATE TABLE flow_migration_sources(task_id TEXT NOT NULL REFERENCES tasks(id),source_hash TEXT NOT NULL,data TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(task_id,source_hash));
-CREATE TRIGGER flow_migration_source_immutable BEFORE UPDATE ON flow_migration_sources BEGIN SELECT RAISE(ABORT,'Historical task source bytes are immutable'); END;
-CREATE TABLE flow_task_migrations(task_id TEXT PRIMARY KEY REFERENCES tasks(id),source_hash TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data)),updated_at TEXT NOT NULL,FOREIGN KEY(task_id,source_hash) REFERENCES flow_migration_sources(task_id,source_hash));
-`,
-  },
-  {
-    version: 36,
-    sql: `
-ALTER TABLE flow_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'flow' CHECK(kind IN ('flow','conversation'));
-CREATE TRIGGER flow_run_kind_immutable BEFORE UPDATE OF kind ON flow_runs BEGIN SELECT RAISE(ABORT,'Flow run kind is immutable'); END;
-DROP INDEX flow_active_task;
-CREATE UNIQUE INDEX flow_active_task ON flow_runs(task_id,kind) WHERE status IN ('queued','running','pausing','paused','waiting');
-ALTER TABLE task_messages ADD COLUMN flow_node_id TEXT;
-ALTER TABLE task_messages ADD COLUMN viber_profile_id TEXT REFERENCES agent_profiles(id);
-UPDATE task_messages AS m SET
-flow_node_id=(SELECT a.node_id FROM flow_node_attempts a JOIN flow_runs r ON r.id=a.run_id JOIN agent_profiles p ON p.id=json_extract(CASE WHEN json_valid(a.configuration) THEN a.configuration END,'$.agent.profile.id') WHERE a.agent_run_id=m.run_id AND r.task_id=m.task_id LIMIT 1),
-viber_profile_id=(SELECT p.id FROM flow_node_attempts a JOIN flow_runs r ON r.id=a.run_id JOIN agent_profiles p ON p.id=json_extract(CASE WHEN json_valid(a.configuration) THEN a.configuration END,'$.agent.profile.id') WHERE a.agent_run_id=m.run_id AND r.task_id=m.task_id LIMIT 1)
-WHERE m.purpose='chat' AND EXISTS(SELECT 1 FROM flow_node_attempts a JOIN flow_runs r ON r.id=a.run_id JOIN agent_profiles p ON p.id=json_extract(CASE WHEN json_valid(a.configuration) THEN a.configuration END,'$.agent.profile.id') WHERE a.agent_run_id=m.run_id AND r.task_id=m.task_id);
-CREATE INDEX task_viber_messages ON task_messages(task_id,flow_node_id,viber_profile_id,created_at);
-CREATE TRIGGER task_viber_scope_immutable BEFORE UPDATE OF flow_node_id,viber_profile_id ON task_messages WHEN OLD.flow_node_id IS NOT NULL OR OLD.viber_profile_id IS NOT NULL BEGIN SELECT RAISE(ABORT,'Viber conversation scope is immutable'); END;
-CREATE TABLE flow_run_invalidations(run_id TEXT PRIMARY KEY REFERENCES flow_runs(id),reason TEXT NOT NULL,created_at TEXT NOT NULL);
-CREATE TRIGGER flow_run_invalidation_immutable BEFORE UPDATE ON flow_run_invalidations BEGIN SELECT RAISE(ABORT,'Flow workspace invalidation evidence is immutable'); END;
-`,
-  },
-  {
-    version: 37,
-    sql: `
-CREATE TABLE retired_viber_profiles(profile_id TEXT PRIMARY KEY);
-INSERT INTO retired_viber_profiles SELECT id FROM agent_profiles WHERE id NOT IN ('e1bc5ab8-3a96-4d53-96c5-3103cf484501','e1bc5ab8-3a96-4d53-96c5-3103cf484502','e1bc5ab8-3a96-4d53-96c5-3103cf484503','e1bc5ab8-3a96-4d53-96c5-3103cf484504');
-CREATE TABLE retired_viber_conversations(task_id TEXT PRIMARY KEY REFERENCES tasks(id));
-INSERT INTO retired_viber_conversations
-SELECT DISTINCT f.task_id FROM flow_definitions f JOIN flow_revisions r ON r.flow_id=f.id AND r.revision=f.current_revision
-WHERE json_extract(r.data,'$.definition.name')='Solo Viber'
-AND json_array_length(json_extract(r.data,'$.definition.nodes'))=1
-AND json_extract(r.data,'$.definition.nodes[0].profile_id') IN (SELECT profile_id FROM retired_viber_profiles)
-AND EXISTS(SELECT 1 FROM task_messages m WHERE m.task_id=f.task_id AND m.purpose='chat')
-AND NOT EXISTS(SELECT 1 FROM flow_runs runs WHERE runs.task_id=f.task_id AND runs.kind='flow');
-CREATE TEMP TABLE unused_viber_profiles AS
-SELECT profile_id FROM retired_viber_profiles p
-WHERE NOT EXISTS(SELECT 1 FROM flow_revisions r,json_tree(r.data) j WHERE j.key='profile_id' AND j.value=p.profile_id)
-AND NOT EXISTS(SELECT 1 FROM flow_runs r,json_tree(r.snapshot) j WHERE j.key='id' AND j.value=p.profile_id)
-AND NOT EXISTS(SELECT 1 FROM task_messages m WHERE m.viber_profile_id=p.profile_id);
-DELETE FROM agent_profile_revisions WHERE profile_id IN (SELECT profile_id FROM unused_viber_profiles);
-DELETE FROM agent_profiles WHERE id IN (SELECT profile_id FROM unused_viber_profiles);
-DROP TABLE unused_viber_profiles;
-CREATE TABLE viber_session_settings(task_id TEXT NOT NULL REFERENCES tasks(id),node_id TEXT NOT NULL,selection TEXT NOT NULL CHECK(json_valid(selection)),PRIMARY KEY(task_id,node_id));
-`,
-  },
-  {
-    version: 38,
-    sql: `
-CREATE TABLE viber_sessions(id TEXT PRIMARY KEY,profile_id TEXT NOT NULL REFERENCES agent_profiles(id),title TEXT NOT NULL,selection TEXT NOT NULL CHECK(json_valid(selection)),configuration TEXT NOT NULL CHECK(json_valid(configuration)),created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-CREATE INDEX viber_profile_sessions ON viber_sessions(profile_id,updated_at);
-CREATE TRIGGER viber_session_owner_immutable BEFORE UPDATE OF id,profile_id,configuration,created_at ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber session ownership is immutable'); END;
-CREATE TABLE viber_messages(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES viber_sessions(id),role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','completed','failed','cancelled','interrupted')),run_id TEXT REFERENCES utility_runs(id),configuration TEXT CHECK(configuration IS NULL OR json_valid(configuration)),created_at TEXT NOT NULL,error TEXT);
-CREATE INDEX viber_session_messages ON viber_messages(session_id,created_at);
-CREATE UNIQUE INDEX viber_pending_message ON viber_messages(session_id) WHERE status='pending';
-CREATE TRIGGER viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;
-ALTER TABLE utility_runs ADD COLUMN viber_session_id TEXT REFERENCES viber_sessions(id);
-ALTER TABLE utility_runs ADD COLUMN viber_message_id TEXT REFERENCES viber_messages(id);
-CREATE UNIQUE INDEX viber_message_run ON utility_runs(viber_message_id);
-CREATE INDEX viber_session_runs ON utility_runs(viber_session_id,started_at);
-ALTER TABLE ai_usage ADD COLUMN viber_session_id TEXT REFERENCES viber_sessions(id);
-`,
-  },
-  {
-    version: 39,
-    sql: `
-ALTER TABLE viber_sessions ADD COLUMN repository_id TEXT REFERENCES repositories(id);
-ALTER TABLE viber_sessions ADD COLUMN workspace TEXT CHECK(workspace IS NULL OR json_valid(workspace));
-ALTER TABLE viber_sessions ADD COLUMN thread TEXT CHECK(thread IS NULL OR json_valid(thread));
-CREATE UNIQUE INDEX viber_native_thread ON viber_sessions(json_extract(thread,'$.provider'),json_extract(thread,'$.thread_id')) WHERE thread IS NOT NULL;
-CREATE TRIGGER viber_repository_immutable BEFORE UPDATE OF repository_id ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber repository ownership is immutable'); END;
-CREATE TRIGGER viber_workspace_owner_immutable BEFORE UPDATE OF workspace ON viber_sessions WHEN json_extract(OLD.workspace,'$.id') IS NOT json_extract(NEW.workspace,'$.id') OR json_extract(OLD.workspace,'$.repo_id') IS NOT json_extract(NEW.workspace,'$.repo_id') BEGIN SELECT RAISE(ABORT,'Viber workspace ownership is immutable'); END;
-`,
-  },
-  {
-    version: 40,
-    sql: `ALTER TABLE viber_messages ADD COLUMN effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible'));`,
-  },
-  {
-    version: 41,
-    sql: `CREATE TABLE viber_computers(profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id));`,
-  },
-  {
-    version: 42,
-    foreign_keys_off: true,
-    sql: `
-DROP TABLE IF EXISTS flow_run_invalidations;
-DROP TABLE IF EXISTS flow_task_migrations;
-DROP TABLE IF EXISTS flow_migration_sources;
-DROP TABLE IF EXISTS flow_continuations;
-DROP TABLE IF EXISTS flow_result_invalidations;
-DROP TABLE IF EXISTS flow_result_links;
-DROP TABLE IF EXISTS flow_dispatches;
-DROP TABLE IF EXISTS flow_transitions;
-DROP TABLE IF EXISTS flow_approval_decisions;
-DROP TABLE IF EXISTS flow_node_attempts;
-DROP TABLE IF EXISTS flow_runs;
-DROP TABLE IF EXISTS flow_canvas_layouts;
-DROP TABLE IF EXISTS flow_revisions;
-DROP TABLE IF EXISTS flow_definitions;
-DROP TABLE IF EXISTS viber_session_settings;
-DROP TABLE IF EXISTS retired_viber_conversations;
-DROP TABLE IF EXISTS task_git_presets;
-DROP TABLE IF EXISTS git_operation_events;
-DROP TABLE IF EXISTS git_finalizations;
-DROP TABLE IF EXISTS issue_watch_http_cache;
-DROP TABLE IF EXISTS issue_watch_results;
-DROP TABLE IF EXISTS issue_watch_candidates;
-DROP TABLE IF EXISTS issue_watch_sources;
-DROP TABLE IF EXISTS issue_watch_scans;
-DROP TABLE IF EXISTS issue_watch_revisions;
-DROP TABLE IF EXISTS issue_watches;
-DROP TABLE IF EXISTS task_requests;
-DROP TABLE IF EXISTS repair_reviewed_files;
-DROP TABLE IF EXISTS repair_publications;
-DROP TABLE IF EXISTS repair_activity;
-DROP TABLE IF EXISTS repair_messages;
-DROP TABLE IF EXISTS pr_repairs;
-DROP TABLE IF EXISTS pr_action_assessments;
-DROP TABLE IF EXISTS pr_review_actions;
-DROP TABLE IF EXISTS pr_analyses;
-DROP TABLE IF EXISTS pr_analysis_batches;
-DROP TABLE IF EXISTS code_questions;
-DROP TABLE IF EXISTS task_reviewed_files;
-DROP TABLE IF EXISTS scheduled_agent_runs;
-DROP TABLE IF EXISTS github_pull_requests;
-DROP TABLE IF EXISTS github_repositories;
-DROP TABLE IF EXISTS task_activity;
-DROP TABLE IF EXISTS task_review_notes;
-DROP TABLE IF EXISTS scheduled_attention;
-DROP TABLE IF EXISTS scheduled_jobs;
-DROP TABLE IF EXISTS terminal_sessions;
-DROP TABLE IF EXISTS test_runs;
-DROP TABLE IF EXISTS task_artifacts;
-DROP TABLE IF EXISTS task_messages;
-DROP TABLE IF EXISTS agent_events;
-DROP TABLE IF EXISTS agent_runs;
-DROP TABLE IF EXISTS tasks;
-DROP TABLE IF EXISTS issues;
-CREATE TABLE IF NOT EXISTS ai_usage_viber(
+CREATE TABLE IF NOT EXISTS repositories(
   id TEXT PRIMARY KEY,
-  viber_session_id TEXT REFERENCES viber_sessions(id) ON DELETE CASCADE,
-  purpose TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  model TEXT NOT NULL,
-  effort TEXT NOT NULL,
-  started_at TEXT NOT NULL,
-  ended_at TEXT,
-  duration_ms INTEGER,
-  status TEXT NOT NULL,
-  input_tokens INTEGER,
-  cached_input_tokens INTEGER,
-  output_tokens INTEGER,
-  reasoning_tokens INTEGER,
-  total_tokens INTEGER,
-  error TEXT,
-  provider_session_id TEXT,
-  subscription_limits TEXT,
-  subscription_limits_after TEXT
+  owner TEXT NOT NULL,
+  name TEXT NOT NULL,
+  data TEXT NOT NULL
 );
-INSERT OR IGNORE INTO ai_usage_viber SELECT id,viber_session_id,purpose,provider,model,effort,started_at,ended_at,duration_ms,status,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens,total_tokens,error,provider_session_id,subscription_limits,subscription_limits_after FROM ai_usage;
-DROP TABLE ai_usage;
-ALTER TABLE ai_usage_viber RENAME TO ai_usage;
-CREATE INDEX IF NOT EXISTS viber_usage ON ai_usage(viber_session_id,started_at);
 
-CREATE TABLE utility_runs_viber(
+CREATE UNIQUE INDEX IF NOT EXISTS repositories_checkout ON repositories(
+  lower(owner),
+  lower(name),
+  CASE WHEN json_valid(data) THEN json_extract(CASE WHEN json_valid(data) THEN data END,'$.path') END
+);
+
+CREATE TABLE IF NOT EXISTS local_repositories(
+  path TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  indexed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS persistence_diagnostics(
+  table_name TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  column_name TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  first_seen TEXT NOT NULL,
+  last_seen TEXT NOT NULL,
+  resolved_at TEXT,
+  PRIMARY KEY(table_name, record_id, column_name)
+);
+
+CREATE TABLE IF NOT EXISTS agent_profiles(
+  id TEXT PRIMARY KEY,
+  current_revision INTEGER NOT NULL CHECK(current_revision > 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(id, current_revision) REFERENCES agent_profile_revisions(profile_id, revision) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE IF NOT EXISTS agent_profile_revisions(
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+  revision INTEGER NOT NULL CHECK(revision > 0),
+  data TEXT NOT NULL CHECK(json_valid(data)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(profile_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS retired_viber_profiles(
+  profile_id TEXT PRIMARY KEY
+);
+
+CREATE TABLE IF NOT EXISTS viber_computers(
+  profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id)
+);
+
+CREATE TABLE IF NOT EXISTS viber_sessions(
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+  title TEXT NOT NULL,
+  selection TEXT NOT NULL CHECK(json_valid(selection)),
+  configuration TEXT NOT NULL CHECK(json_valid(configuration)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  repository_id TEXT REFERENCES repositories(id),
+  workspace TEXT CHECK(workspace IS NULL OR json_valid(workspace)),
+  thread TEXT CHECK(thread IS NULL OR json_valid(thread)),
+  threads TEXT CHECK(threads IS NULL OR json_valid(threads))
+);
+
+CREATE INDEX IF NOT EXISTS viber_profile_sessions ON viber_sessions(profile_id, updated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS viber_profile_single_session ON viber_sessions(profile_id);
+CREATE UNIQUE INDEX IF NOT EXISTS viber_native_thread ON viber_sessions(
+  json_extract(thread, '$.provider'),
+  json_extract(thread, '$.thread_id')
+) WHERE thread IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS utility_runs(
   id TEXT PRIMARY KEY,
   stage INTEGER NOT NULL,
   provider TEXT NOT NULL,
@@ -539,13 +109,11 @@ CREATE TABLE utility_runs_viber(
   viber_session_id TEXT REFERENCES viber_sessions(id) ON DELETE CASCADE,
   viber_message_id TEXT REFERENCES viber_messages(id) ON DELETE CASCADE
 );
-INSERT OR IGNORE INTO utility_runs_viber SELECT id,stage,provider,model,effort,prompt,status,started_at,ended_at,exit_code,pid,process_identity,conversation_id,output,error,purpose,execution,viber_session_id,viber_message_id FROM utility_runs;
-DROP TABLE utility_runs;
-ALTER TABLE utility_runs_viber RENAME TO utility_runs;
-CREATE UNIQUE INDEX viber_message_run ON utility_runs(viber_message_id);
-CREATE INDEX viber_session_runs ON utility_runs(viber_session_id,started_at);
 
-CREATE TABLE utility_events_viber(
+CREATE UNIQUE INDEX IF NOT EXISTS viber_message_run ON utility_runs(viber_message_id);
+CREATE INDEX IF NOT EXISTS viber_session_runs ON utility_runs(viber_session_id, started_at);
+
+CREATE TABLE IF NOT EXISTS utility_events(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id TEXT NOT NULL REFERENCES utility_runs(id) ON DELETE CASCADE,
   timestamp TEXT NOT NULL,
@@ -554,75 +122,54 @@ CREATE TABLE utility_events_viber(
   raw TEXT NOT NULL,
   stream TEXT NOT NULL
 );
-INSERT OR IGNORE INTO utility_events_viber SELECT id,run_id,timestamp,kind,data,raw,stream FROM utility_events;
-DROP TABLE utility_events;
-ALTER TABLE utility_events_viber RENAME TO utility_events;
-`,
-  },
 
-  {
-    version: 43,
-    sql: "ALTER TABLE viber_sessions ADD COLUMN threads TEXT CHECK(threads IS NULL OR json_valid(threads));",
-  },
-
-  {
-    version: 44,
-    sql: `
-DROP TRIGGER IF EXISTS viber_message_snapshot_immutable;
-
-UPDATE viber_messages
-SET session_id = (
-  SELECT s1.id FROM viber_sessions s1
-  WHERE s1.profile_id = (SELECT s2.profile_id FROM viber_sessions s2 WHERE s2.id = viber_messages.session_id)
-  ORDER BY s1.updated_at DESC, s1.rowid DESC
-  LIMIT 1
-)
-WHERE session_id NOT IN (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
-    FROM viber_sessions
-  ) WHERE rn = 1
+CREATE TABLE IF NOT EXISTS viber_messages(
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES viber_sessions(id),
+  role TEXT NOT NULL CHECK(role IN ('user','assistant')),
+  content TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending','completed','failed','cancelled','interrupted')),
+  run_id TEXT REFERENCES utility_runs(id),
+  configuration TEXT CHECK(configuration IS NULL OR json_valid(configuration)),
+  created_at TEXT NOT NULL,
+  error TEXT,
+  effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible'))
 );
 
-UPDATE utility_runs
-SET viber_session_id = (
-  SELECT s1.id FROM viber_sessions s1
-  WHERE s1.profile_id = (SELECT s2.profile_id FROM viber_sessions s2 WHERE s2.id = utility_runs.viber_session_id)
-  ORDER BY s1.updated_at DESC, s1.rowid DESC
-  LIMIT 1
-)
-WHERE viber_session_id IS NOT NULL AND viber_session_id NOT IN (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
-    FROM viber_sessions
-  ) WHERE rn = 1
+CREATE UNIQUE INDEX IF NOT EXISTS viber_pending_message ON viber_messages(session_id) WHERE status='pending';
+CREATE INDEX IF NOT EXISTS viber_session_messages ON viber_messages(session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS ai_usage(
+  id TEXT PRIMARY KEY,
+  viber_session_id TEXT REFERENCES viber_sessions(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  effort TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  ended_at TEXT,
+  duration_ms INTEGER,
+  status TEXT NOT NULL,
+  input_tokens INTEGER,
+  cached_input_tokens INTEGER,
+  output_tokens INTEGER,
+  reasoning_tokens INTEGER,
+  total_tokens INTEGER,
+  error TEXT,
+  provider_session_id TEXT,
+  subscription_limits TEXT,
+  subscription_limits_after TEXT
 );
 
-UPDATE ai_usage
-SET viber_session_id = (
-  SELECT s1.id FROM viber_sessions s1
-  WHERE s1.profile_id = (SELECT s2.profile_id FROM viber_sessions s2 WHERE s2.id = ai_usage.viber_session_id)
-  ORDER BY s1.updated_at DESC, s1.rowid DESC
-  LIMIT 1
-)
-WHERE viber_session_id IS NOT NULL AND viber_session_id NOT IN (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
-    FROM viber_sessions
-  ) WHERE rn = 1
-);
+CREATE INDEX IF NOT EXISTS viber_usage ON ai_usage(viber_session_id, started_at);
 
-DELETE FROM viber_sessions
-WHERE id NOT IN (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (PARTITION BY profile_id ORDER BY updated_at DESC, rowid DESC) as rn
-    FROM viber_sessions
-  ) WHERE rn = 1
-);
+CREATE TRIGGER IF NOT EXISTS viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;
 
-CREATE TRIGGER viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS viber_repository_immutable BEFORE UPDATE OF repository_id ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber repository ownership is immutable'); END;
 
-CREATE UNIQUE INDEX IF NOT EXISTS viber_profile_single_session ON viber_sessions(profile_id);
+CREATE TRIGGER IF NOT EXISTS viber_session_owner_immutable BEFORE UPDATE OF id,profile_id,configuration,created_at ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber session ownership is immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS viber_workspace_owner_immutable BEFORE UPDATE OF workspace ON viber_sessions WHEN json_extract(OLD.workspace,'$.id') IS NOT json_extract(NEW.workspace,'$.id') OR json_extract(OLD.workspace,'$.repo_id') IS NOT json_extract(NEW.workspace,'$.repo_id') BEGIN SELECT RAISE(ABORT,'Viber workspace ownership is immutable'); END;
 `,
   },
 ];

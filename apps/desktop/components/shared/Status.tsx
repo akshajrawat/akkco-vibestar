@@ -34,7 +34,10 @@ export const Status = ({ status }: { status: string }) => {
           : "muted";
 
   return (
-    <span className={`status status-chip ${color}`} title={status.replaceAll("_", " ")}>
+    <span
+      className={`status inline-flex items-center text-[11px] gap-1.5 capitalize status-chip ${color}`}
+      title={status.replaceAll("_", " ")}
+    >
       <i />
       {running
         ? "Running"

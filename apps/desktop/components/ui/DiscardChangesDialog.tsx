@@ -15,7 +15,7 @@ export const DiscardChangesDialog = ({
   >
     <h2>Discard unsaved changes?</h2>
     <p>Your changes have not been saved. Keep editing to save them, or discard them and close.</p>
-    <div className="actions">
+    <div className="actions flex gap-1.5">
       <Button onClick={keep}>Keep editing</Button>
       <Button variant="destructive" onClick={discard}>
         Discard changes

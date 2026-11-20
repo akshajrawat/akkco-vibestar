@@ -423,15 +423,6 @@ export class CoreBridge extends EventEmitter {
         };
       }
 
-      if (
-        this.warning &&
-        ["snapshot", "usage.info"].includes(method) &&
-        result &&
-        typeof result === "object"
-      ) {
-        return { ...result, warning: this.warning };
-      }
-
       return result;
     } catch (error) {
       if (this.warning && error instanceof Error && error.message.includes("Unknown method")) {

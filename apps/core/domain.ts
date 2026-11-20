@@ -37,17 +37,6 @@ export const StageConfigSchema = z.object({
   timeout_secs: z.number().int().min(10).max(86400),
 });
 
-export const FollowupConfigSchema = z.object({
-  provider: z.enum(["codex", "antigravity"]),
-  config: StageConfigSchema,
-});
-
-export const AgentConfigurationSchema = StageConfigSchema.extend({
-  provider: z.enum(["antigravity", "codex"]),
-});
-
-export type AgentConfiguration = z.infer<typeof AgentConfigurationSchema>;
-
 export const PipelineStageConfigSchema = StageConfigSchema.extend({
   provider: z.enum(["codex", "antigravity"]).optional(),
 });
@@ -285,7 +274,3 @@ export const remoteIdentity = (input: string) => {
 };
 
 export const now = () => new Date().toISOString();
-
-export const repositoryMatchesIssue = (repository: Repository, reference: IssueRef) =>
-  `${repository.owner}/${repository.name}`.toLowerCase() ===
-  `${reference.owner}/${reference.repo}`.toLowerCase();

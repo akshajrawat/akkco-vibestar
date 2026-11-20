@@ -4,10 +4,11 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { useState } from "react";
 
 import { ViberModelPicker } from "../../apps/desktop/features/vibers/ViberModelPicker";
+import { useProviders } from "../../apps/desktop/hooks/useWorkspace";
 import { viberProfile } from "../helpers/viber-fixtures";
 
 vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
-  useProviders: () => ({
+  useProviders: vi.fn(() => ({
     providers: [
       {
         provider: "codex",
@@ -42,10 +43,13 @@ vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
         efforts: ["low", "medium", "high", "xhigh"],
       },
     ],
-  }),
+  })),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.mocked(useProviders).mockReset();
+});
 
 const Harness = ({
   change,
@@ -62,6 +66,7 @@ const Harness = ({
   const [execution, setExecution] = useState(initial);
   return (
     <ViberModelPicker
+      profileId={viberProfile.id}
       execution={execution}
       change={(next) => {
         change(next);
@@ -119,6 +124,52 @@ it("keeps model and reasoning edits in one open picker and saves the final confi
       effort: "low",
     }),
   );
+});
+
+it("shows local models when computer discovery fails without treating a local default as selected", async () => {
+  const { useProviders: actualUseProviders } = await vi.importActual<
+    typeof import("../../apps/desktop/hooks/useWorkspace")
+  >("../../apps/desktop/hooks/useWorkspace");
+
+  vi.mocked(useProviders).mockImplementation(actualUseProviders);
+
+  const rpc = vi.fn(async (method: string) => {
+    if (method === "computer.providers") {
+      throw new Error("Docker is unavailable.");
+    }
+
+    return [
+      {
+        provider: "codex",
+        models: [{ id: "gpt-6.2-sol", isDefault: true, supportedEfforts: ["high"] }],
+      },
+    ];
+  });
+
+  vi.stubGlobal("vibestar", { rpc, subscribe: () => () => {} });
+  try {
+    const change = vi.fn();
+    render(<Harness change={change} initial={{ ...viberProfile.execution, model: "" }} />);
+    const trigger = screen.getByRole("combobox", { name: "Model" });
+    expect(trigger.textContent).toBe("Choose model");
+    expect(trigger.querySelector(".lucide-chevron-down")).toBeNull();
+    fireEvent.click(trigger);
+
+    const model = await screen.findByRole("option", { name: "6.2 Sol" });
+    expect(model.getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByText(/Local catalog/)).toBeTruthy();
+    expect(trigger.textContent).toBe("Choose model");
+    fireEvent.click(model);
+    fireEvent.click(trigger);
+
+    expect(change).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ model: "gpt-6.2-sol", effort: "high" }),
+    );
+
+    expect(rpc.mock.calls.filter(([method]) => method === "providers.detect")).toHaveLength(1);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 it("maps grouped reasoning choices to discovered CLI IDs and supports models with automatic reasoning", () => {

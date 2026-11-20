@@ -1,8 +1,11 @@
 import { useEffect, useState, useRef, type Ref } from "react";
-import { Minus, Square, Copy, X, PanelLeftOpen, PanelRight, Search } from "lucide-react";
+import { Minus, Square, Copy, X, PanelLeftOpen, PanelRight } from "lucide-react";
+
+import type { AgentProfile } from "../../core/vibers/contracts";
+import { ViberFace } from "../features/vibers/ViberFace";
 
 export const TitleBar = ({
-  onPalette,
+  profile,
   onSidebar,
   toggleRef,
   onComputer,
@@ -10,12 +13,14 @@ export const TitleBar = ({
 }: {
   onComputer?: () => void;
   computerOpen?: boolean;
-  onPalette?: () => void;
+  profile?: AgentProfile;
   onSidebar?: () => void;
   toggleRef?: Ref<HTMLButtonElement>;
 } = {}) => {
   const [maximized, setMaximized] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const fullscreenRef = useRef(fullscreen);
+  fullscreenRef.current = fullscreen;
   const [error, setError] = useState("");
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const manualDragging = window.electronWindow.manualDragging;
@@ -39,7 +44,7 @@ export const TitleBar = ({
         void window.electronWindow.fullscreen();
       }
 
-      if (event.key === "Escape" && fullscreen) {
+      if (event.key === "Escape" && fullscreenRef.current) {
         event.preventDefault();
         void window.electronWindow.fullscreen();
       }
@@ -57,12 +62,12 @@ export const TitleBar = ({
       unsubscribe();
       window.removeEventListener("keydown", key);
     };
-  }, [fullscreen]);
+  }, []);
 
   const control = (action: () => Promise<void>) => void action().catch((e) => setError(String(e)));
   return (
     <header
-      className={`titlebar ${manualDragging ? "titlebar-manual" : ""}`}
+      className={`titlebar flex items-center border-b border-b-border select-none ${manualDragging ? "titlebar-manual" : ""}`}
       onPointerDown={(event) => {
         if (
           !manualDragging ||
@@ -107,51 +112,43 @@ export const TitleBar = ({
       {onSidebar && (
         <button
           ref={toggleRef}
-          className="titlebar-action"
+          className="titlebar-action grid place-items-center shrink-0 p-0 [border:0] focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[-2px]"
           aria-label="Expand sidebar"
           aria-expanded="false"
           title="Expand sidebar (Ctrl+B)"
           onClick={onSidebar}
         >
-          <PanelLeftOpen size={15} aria-hidden="true" />
+          <PanelLeftOpen size={18} aria-hidden="true" />
         </button>
       )}
-      {onPalette && (
-        <button
-          className="titlebar-action"
-          aria-label="Open command palette"
-          title="Open command palette (Ctrl+Shift+P)"
-          onClick={onPalette}
-        >
-          <Search size={14} aria-hidden="true" />
-        </button>
-      )}
-
-      <div className="titlebar-drag-region" />
+      <div className="titlebar-identity flex flex-1 min-w-0 items-center gap-1.5 px-3">
+        {profile && <ViberFace profile={profile} compact className="size-[54px] shrink-0" />}
+        <strong className="truncate text-[16px] font-bold">{profile?.name || "Vibestar"}</strong>
+      </div>
 
       {error && (
-        <span role="alert" className="titlebar-error">
+        <span role="alert" className="text-[11px] text-accent-red">
           {error}
         </span>
       )}
 
       {onComputer && (
         <button
-          className="titlebar-action"
+          className="titlebar-action grid place-items-center shrink-0 p-0 [border:0] focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[-2px]"
           aria-label="Toggle computer panel"
           aria-expanded={computerOpen}
           title="Toggle computer panel"
           onClick={onComputer}
         >
-          <PanelRight size={15} aria-hidden="true" />
+          <PanelRight size={20} aria-hidden="true" />
         </button>
       )}
-      <div className="window-controls" aria-label="Window controls">
+      <div className="window-controls shrink-0 flex ml-auto" aria-label="Window controls">
         <button
           aria-label="Minimize window"
           onClick={() => control(window.electronWindow.minimize)}
         >
-          <Minus size={14} />
+          <Minus size={17} />
         </button>
 
         <button
@@ -160,7 +157,7 @@ export const TitleBar = ({
           }
           onClick={() => control(window.electronWindow.maximize)}
         >
-          {maximized || fullscreen ? <Copy size={12} /> : <Square size={12} />}
+          {maximized || fullscreen ? <Copy size={15} /> : <Square size={15} />}
         </button>
 
         <button
@@ -168,7 +165,7 @@ export const TitleBar = ({
           aria-label="Close window"
           onClick={() => control(window.electronWindow.close)}
         >
-          <X size={15} />
+          <X size={18} />
         </button>
       </div>
     </header>

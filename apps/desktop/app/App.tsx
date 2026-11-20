@@ -1,29 +1,47 @@
-import { useState, useCallback, useEffect, useRef } from "react";
-import type { Page } from "../lib/types";
+import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useWorkspace } from "../hooks/useWorkspace";
-import { RepositoryPage } from "../features/repositories/RepositoryPage";
-import type { AgentProfile } from "../../core/vibers/contracts";
+import { DEFAULT_VIBER_INSTRUCTIONS, type AgentProfile } from "../../core/vibers/contracts";
+import { randomAppearance } from "../../core/vibers/appearance";
 import { ViberChat } from "../features/vibers/ViberChat";
-import { ProfileEditor } from "../features/vibers/ProfileEditor";
+import { CreateViberDialog } from "../features/vibers/CreateViberDialog";
+import type { WorkspaceTool } from "../lib/types";
 import { useProfiles } from "../features/vibers/useProfiles";
 import { ViberWelcome } from "../features/vibers/ViberWelcome";
-import { ProvidersPage } from "../features/providers/ProvidersPage";
-import { SettingsPage } from "../features/settings/SettingsPage";
-import { Button } from "../components/ui/button";
-import { ListSkeleton, PageHeader } from "../components/ui/PageHeader";
 import { CommandPalette } from "./CommandPalette";
 import { ResizeHandle } from "../components/shared/ResizeHandle";
 import { NavigationSidebar } from "./NavigationSidebar";
 import { usePaneSize } from "../hooks/usePaneSize";
 import { TitleBar } from "./TitleBar";
 import { DataMigration } from "./DataMigration";
-import { UsageView } from "../features/usage/UsageView";
 import { notifications as notify } from "../lib/notifications";
 import { GlobalNotifications } from "./GlobalNotifications";
+import { ToolOverlay } from "./ToolOverlay";
+
+const minSidebarWidth = 200;
+const maxSidebarWidth = 320;
+
+const initialSidebarWidth = () => {
+  const previousWidth = Number(localStorage.getItem("vibestar.sidebarWidth"));
+  // The previous sidebar saved 238px even when it had never been resized.
+  return previousWidth && previousWidth !== 238 ? previousWidth : 300;
+};
+
+const subscribeToWindowResize = (onResize: () => void) => {
+  window.addEventListener("resize", onResize);
+  return () => window.removeEventListener("resize", onResize);
+};
+
+const getWindowWidth = () => window.innerWidth;
 
 export const App = () => {
   const { snapshot, error, refresh, revision } = useWorkspace();
-  const { profiles, error: profilesError, refresh: refreshProfiles } = useProfiles(revision);
+
+  const {
+    profiles,
+    previews,
+    error: profilesError,
+    refresh: refreshProfiles,
+  } = useProfiles(revision);
 
   const [selectedViber, setSelectedViber] = useState<string>(
     () => localStorage.getItem("vibestar.activeViber") || "",
@@ -39,19 +57,20 @@ export const App = () => {
       return !open;
     });
 
-  const [profileEditor, setProfileEditor] = useState<AgentProfile>();
+  const [newProfile, setNewProfile] = useState<AgentProfile>();
 
   const createViber = () => {
     if (!snapshot) {
       return;
     }
 
-    setProfileEditor({
+    setNewProfile({
       id: crypto.randomUUID(),
       revision: 0,
       name: "",
+      appearance: randomAppearance(),
       description: "",
-      instructions: "",
+      instructions: DEFAULT_VIBER_INSTRUCTIONS,
       supported_access: ["read-only", "workspace-write"],
       execution: {
         ...snapshot.settings.codex_implementation,
@@ -62,9 +81,8 @@ export const App = () => {
     });
   };
 
-  const [page, setPage] = useState<Page>("Vibers");
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [runtimePhase, setRuntimePhase] = useState<string>();
+  const [tool, openTool] = useState<WorkspaceTool>();
   const [palette, setPalette] = useState(false);
   const [sidebar, setSidebar] = useState(true);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
@@ -74,7 +92,14 @@ export const App = () => {
     requestAnimationFrame(() => sidebarToggle.current?.focus());
   }, []);
 
-  const [sidebarWidth, setSidebarWidth] = usePaneSize("sidebarWidth", 238, 180, 380);
+  const [sidebarWidth, setSidebarWidth] = usePaneSize(
+    "navigationWidth",
+    initialSidebarWidth,
+    minSidebarWidth,
+    maxSidebarWidth,
+  );
+
+  const windowWidth = useSyncExternalStore(subscribeToWindowResize, getWindowWidth);
 
   useEffect(() => {
     if (runtimePhase && runtimePhase !== "ready") {
@@ -108,120 +133,114 @@ export const App = () => {
   const openViber = useCallback((profile: AgentProfile) => {
     setSelectedViber(profile.id);
     localStorage.setItem("vibestar.activeViber", profile.id);
-    setPage("Vibers");
-  }, []);
-
-  const navigate = useCallback((target: Page) => {
-    if (target === "Settings") {
-      setSettingsOpen(true);
-    } else {
-      setPage(target);
-    }
   }, []);
 
   const chatProfile = profiles.find((p) => p.id === selectedViber) || profiles[0];
+  const showingComputer = !!chatProfile && computerOpen;
 
-  const content =
-    page === "Vibers" && chatProfile ? (
-      <ViberChat
-        key={chatProfile.id}
-        profile={chatProfile}
-        computerOpen={computerOpen}
-        hideComputer={toggleComputer}
-        revision={revision}
-        edit={setProfileEditor}
-      />
-    ) : page === "Vibers" ? (
-      <ViberWelcome create={createViber} disabled={!snapshot} hasVibers={profiles.length > 0} />
-    ) : page === "Usage" ? (
-      <UsageView />
-    ) : page === "Providers" ? (
-      <ProvidersPage />
-    ) : page === "Repositories" && snapshot ? (
-      <RepositoryPage snapshot={snapshot} refresh={refresh} />
-    ) : (
-      <div className="page">
-        <PageHeader
-          title={error ? "Execution environment unavailable" : "Connecting execution environment…"}
-          description={
-            error
-              ? "Inspect the execution settings and reconnect the helper to load your saved workspace."
-              : "Starting the local core and loading saved vibers, repositories and settings."
-          }
-          actions={<Button onClick={() => navigate("Settings")}>Open Settings</Button>}
-        />
-        {!error && <ListSkeleton label="Loading the saved workspace" />}
-      </div>
-    );
+  // The open computer pane needs 280px alongside the 260px chat and its 3px handle.
+  const availableSidebarWidth = Math.max(
+    minSidebarWidth,
+    Math.min(
+      maxSidebarWidth,
+      Math.floor(windowWidth / 2),
+      windowWidth - (showingComputer ? 543 : 260),
+    ),
+  );
+
+  const visibleSidebarWidth = Math.min(sidebarWidth, availableSidebarWidth);
 
   return (
-    <div className="desktop-shell">
-      <div className="app-shell">
+    <div className="desktop-shell flex flex-col">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {snapshot?.migration && <DataMigration migration={snapshot.migration} refresh={refresh} />}
         {sidebar && (
           <NavigationSidebar
             toggleSidebar={toggleSidebar}
             toggleRef={sidebarToggle}
-            width={sidebarWidth}
-            revision={revision}
+            width={visibleSidebarWidth}
             snapshot={snapshot}
-            page={page}
             profiles={profiles}
+            previews={previews}
             profilesError={profilesError}
             createViber={createViber}
             selectViber={openViber}
-            selectedViber={selectedViber}
-            navigate={navigate}
+            selectedViber={chatProfile?.id}
+            openTool={openTool}
           />
         )}
 
         {sidebar && (
           <ResizeHandle
+            className="navigation-resize-handle"
             label="Resize navigation pane"
-            value={sidebarWidth}
+            value={visibleSidebarWidth}
             onChange={setSidebarWidth}
-            min={180}
-            max={380}
+            min={minSidebarWidth}
+            max={availableSidebarWidth}
           />
         )}
 
-        <main className="main-area">
+        <main className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           <GlobalNotifications
             preference={snapshot?.settings.notification_preference}
             onRuntimeStatus={setRuntimePhase}
           />
           <TitleBar
-            onComputer={page === "Vibers" && chatProfile ? toggleComputer : undefined}
+            onComputer={chatProfile ? toggleComputer : undefined}
             computerOpen={computerOpen}
-            onPalette={() => setPalette(true)}
+            profile={chatProfile}
             onSidebar={sidebar ? undefined : toggleSidebar}
             toggleRef={sidebarToggle}
           />
           {snapshot?.warning && (
-            <p className="helper-warning" role="alert">
+            <p
+              className="helper-warning text-accent-amber px-4 py-2 m-0 border-b border-b-border-default text-[12px] leading-[1.4]"
+              role="alert"
+            >
               {snapshot.warning}
             </p>
           )}
 
-          {content}
+          {chatProfile ? (
+            <ViberChat
+              key={chatProfile.id}
+              profile={chatProfile}
+              computerOpen={computerOpen}
+              hideComputer={toggleComputer}
+              revision={revision}
+            />
+          ) : (
+            <ViberWelcome
+              create={createViber}
+              disabled={!snapshot}
+              hasVibers={profiles.length > 0}
+            />
+          )}
         </main>
 
-        <SettingsPage
-          open={settingsOpen}
-          settings={snapshot?.settings}
-          root={snapshot?.root}
-          diagnostics={snapshot?.persistence}
-          snapshot={snapshot || undefined}
-          refresh={refresh}
-          close={() => setSettingsOpen(false)}
-        />
+        {tool && (
+          <ToolOverlay
+            key={tool}
+            tool={tool}
+            snapshot={snapshot}
+            refresh={refresh}
+            error={error}
+            close={() => openTool(undefined)}
+          />
+        )}
 
-        {profileEditor && (
-          <ProfileEditor
-            key={profileEditor.id}
-            profile={profileEditor}
-            close={() => setProfileEditor(undefined)}
-            saved={refreshProfiles}
+        {newProfile && (
+          <CreateViberDialog
+            key={newProfile.id}
+            profile={newProfile}
+            close={() => {
+              setNewProfile(undefined);
+            }}
+            saved={(created) => {
+              refreshProfiles();
+              openViber(created);
+            }}
           />
         )}
 
@@ -245,25 +264,25 @@ export const App = () => {
                 id: "repositories",
                 label: "Repositories",
                 detail: "Workspace checkouts",
-                run: () => navigate("Repositories"),
+                run: () => openTool("Repositories"),
               },
               {
                 id: "providers",
                 label: "Providers",
                 detail: "Codex & Antigravity",
-                run: () => navigate("Providers"),
+                run: () => openTool("Providers"),
               },
               {
                 id: "usage",
                 label: "AI Usage",
                 detail: "Token and runtime metrics",
-                run: () => navigate("Usage"),
+                run: () => openTool("Usage"),
               },
               {
                 id: "settings",
                 label: "Settings",
                 detail: "System configuration",
-                run: () => setSettingsOpen(true),
+                run: () => openTool("Settings"),
               },
             ]}
           />

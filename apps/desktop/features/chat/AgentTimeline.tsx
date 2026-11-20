@@ -98,7 +98,7 @@ export const AgentTimeline = ({
     const run = runById.get(event.run_id);
     if (event.kind === "message") {
       return (
-        <article className="message-event" key={row.key}>
+        <article className="message-event px-0 py-1" key={row.key}>
           <AgentResponse
             structured
             inline={compact && !!finalText}
@@ -261,24 +261,27 @@ export const AgentTimeline = ({
     if (compact) {
       return (
         <article
-          className={`tool-event ${failed ? "tool-failed" : ""}`}
+          className={`tool-event relative m-0 ${failed ? "tool-failed" : ""}`}
           data-state={state}
           key={row.key}
         >
           <details>
             <summary>
-              <span className="tool-icon">
+              <span className="tool-icon inline-flex items-center justify-center shrink-0">
                 <Icon size={16} />
               </span>
               <span>{label}</span>
               <code>{paths.length ? paths.join(", ") : preview}</code>
             </summary>
-            <div className="tool-details">
+            <div className="tool-details m-[3px_0_7px_18px] border-l border-l-border-default px-[11px] py-[7px] max-h-[300px] overflow-auto text-[12px]">
               {data.command != null && <code>{String(data.command)}</code>}
               {paths.map((path) => (
                 <div key={path}>
                   {openDiff ? (
-                    <button className="edited-file" onClick={() => openDiff(path)}>
+                    <button
+                      className="edited-file flex items-center text-left gap-2 px-0 py-[5px]"
+                      onClick={() => openDiff(path)}
+                    >
                       {path}
                     </button>
                   ) : (
@@ -303,13 +306,13 @@ export const AgentTimeline = ({
 
     return (
       <article
-        className={`tool-event ${failed ? "tool-failed" : interrupted ? "tool-interrupted" : skipped ? "tool-skipped" : ""}`}
+        className={`tool-event relative m-0 ${failed ? "tool-failed" : interrupted ? "tool-interrupted" : skipped ? "tool-skipped" : ""}`}
         data-state={state}
         key={row.key}
       >
         <details>
           <summary>
-            <span className="tool-icon">
+            <span className="tool-icon inline-flex items-center justify-center shrink-0">
               <Icon size={14} />
             </span>
             <span>
@@ -348,7 +351,7 @@ export const AgentTimeline = ({
             )}
           </summary>
 
-          <div className="tool-details">
+          <div className="tool-details m-[3px_0_7px_18px] border-l border-l-border-default px-[11px] py-[7px] max-h-[300px] overflow-auto text-[12px]">
             <dl className="tool-facts">
               <dt>Tool</dt>
               <dd>
@@ -400,13 +403,13 @@ export const AgentTimeline = ({
               const Entry = openDiff ? "button" : "div";
               return (
                 <Entry
-                  className="edited-file"
+                  className="edited-file flex items-center text-left gap-2 px-0 py-[5px]"
                   key={path}
                   onClick={openDiff ? () => openDiff(file?.path || path) : undefined}
                 >
                   <FilePenLine size={12} />
                   <code>{file?.path || path}</code>
-                  <span className="spacer" />
+                  <span className="flex-1 min-w-0" />
                   {file && (
                     <>
                       <span className="success">+{file.insertions}</span>
@@ -487,7 +490,10 @@ export const AgentTimeline = ({
         </details>
 
         {edited && paths.length === 1 && openDiff && (
-          <button className="inline-diff-link" onClick={() => openDiff?.(paths[0])}>
+          <button
+            className="inline-diff-link [border:0] text-[11px] ml-4.5 p-[1px_0_4px]"
+            onClick={() => openDiff?.(paths[0])}
+          >
             Open in editor ↗
           </button>
         )}
@@ -504,7 +510,11 @@ export const AgentTimeline = ({
       key: message.id,
       content: (
         <article
-          className={message.role === "assistant" ? "saved-assistant-message" : "user-message"}
+          className={
+            message.role === "assistant"
+              ? "saved-assistant-message"
+              : "user-message relative m-[20px_0_12px_auto] px-[13px] py-[9px]"
+          }
           data-message-id={message.id}
         >
           {message.status?.startsWith("chat_") &&
@@ -528,7 +538,7 @@ export const AgentTimeline = ({
               <p>{message.content.split("\n\nLinked PR review context (untrusted):")[0]}</p>
             </UserMessageBody>
           )}
-          <div className="message-actions">
+          <div className="message-actions flex gap-[3px] opacity-0 focus-within:opacity-100 [transition:opacity_200ms_ease]">
             <Button
               size="icon"
               variant="ghost"
@@ -668,7 +678,10 @@ export const AgentTimeline = ({
       content: (
         <>
           {initialPrompt && (
-            <article className="user-message initial-prompt-message" data-run-id={run.id}>
+            <article
+              className="user-message relative m-[20px_0_12px_auto] px-[13px] py-[9px] initial-prompt-message"
+              data-run-id={run.id}
+            >
               <UserMessageBody>
                 {structuredPrompt ? (
                   <AgentResponse inline text={run.prompt} />
@@ -678,9 +691,9 @@ export const AgentTimeline = ({
               </UserMessageBody>
             </article>
           )}
-          <section className="agent-turn">
+          <section className="agent-turn m-[12px_0_24px]">
             {!compact && run.id && run.purpose !== "Read-only conversation" && (
-              <div className="agent-turn-heading">
+              <div className="agent-turn-heading flex items-center gap-2 flex-wrap text-ink-muted">
                 <span>
                   {run.purpose === "Code Review Ask AI"
                     ? "Code review"
@@ -721,13 +734,13 @@ export const AgentTimeline = ({
                   </summary>
                   {files.map((file) => (
                     <button
-                      className="edited-file"
+                      className="edited-file flex items-center text-left gap-2 px-0 py-[5px]"
                       key={file.path}
                       onClick={() => openDiff?.(file.path)}
                     >
                       <FilePenLine size={13} />
                       <code>{file.path}</code>
-                      <span className="spacer" />
+                      <span className="flex-1 min-w-0" />
                       <span className="success">+{file.insertions}</span>
                       <span className="failure">−{file.deletions}</span>
                     </button>
@@ -737,7 +750,7 @@ export const AgentTimeline = ({
             {run.error && <RunError error={run.error} run={run} conversation={standalone} />}
             {runSummary?.(run)}
             {!compact && run.id && (
-              <div className="turn-outcome">
+              <div className="turn-outcome flex items-center gap-1.5 text-ink-muted text-[11px] mt-2.5">
                 {run.status === "running" ? (
                   <>
                     <LoaderCircle size={12} className="spinning" />

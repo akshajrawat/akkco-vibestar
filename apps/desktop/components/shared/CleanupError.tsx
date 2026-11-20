@@ -113,7 +113,7 @@ export const CleanupError = ({
         </p>
       )}
       {stopError && <p className="failure">{stopError}</p>}
-      <div className="actions">
+      <div className="actions flex gap-1.5">
         {blockers.some((b) => b.stoppable) && (
           <Button size="sm" disabled={busy || stopping} onClick={() => void stop()}>
             {stopping ? "Stopping…" : "Stop blockers"}

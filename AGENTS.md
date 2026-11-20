@@ -93,3 +93,4 @@
 - Avoid unnecessary Markdown files, repetitive explanations and
   comments documenting implementation history.
 - Preserve required licensing and third-party notices.
+- keep the FEATUREMAP.md updated and only visual

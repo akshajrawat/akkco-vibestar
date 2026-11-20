@@ -15,20 +15,20 @@ export const useAutosave = <T extends object>(
   const acknowledged = useRef(initial);
   const displayed = useRef(initial);
   const pending = useRef<Partial<T>>({});
-  const saving = useRef<Promise<void> | null>(null);
+  const saving = useRef<Promise<boolean> | null>(null);
 
   const show = (next: T) => {
     displayed.current = next;
     setValue(next);
   };
 
-  const flush = (): Promise<void> => {
+  const flush = (): Promise<boolean> => {
     if (saving.current) {
       return saving.current;
     }
 
     if (!Object.keys(pending.current).length) {
-      return Promise.resolve();
+      return Promise.resolve(true);
     }
 
     setBusy(true);
@@ -65,6 +65,8 @@ export const useAutosave = <T extends object>(
             id: `settings:${label}`,
           });
         }
+
+        return !failed;
       })
       .finally(() => {
         saving.current = null;
@@ -78,6 +80,7 @@ export const useAutosave = <T extends object>(
     value,
     busy,
     flush,
+    hasPending: () => !!saving.current || Object.keys(pending.current).length > 0,
     update: (next: T) => {
       const patch: Partial<T> = {};
       for (const key of Object.keys(next) as (keyof T)[]) {

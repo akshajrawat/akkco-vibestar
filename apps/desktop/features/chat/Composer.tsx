@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUp, LoaderCircle, Plus, Square, X } from "lucide-react";
+import { ArrowUp, LoaderCircle, Paperclip, Square, X } from "lucide-react";
 
 import { useTaskView, updateTaskView } from "../../lib/taskView";
 import { containDialogFocus } from "../../lib/keyboard";
@@ -127,7 +127,7 @@ export const Composer = ({
 
   return (
     <form
-      className={`chat-input ${compact ? "chat-input-compact" : ""}`}
+      className={`chat-input m-[0_18px_15px] p-[9px_11px_7px] shrink-0 ${compact ? "chat-input-compact" : ""}`}
       onSubmit={(event) => {
         event.preventDefault();
         if (!busy && !disabled && content && !tooLong) {
@@ -136,9 +136,15 @@ export const Composer = ({
       }}
     >
       {view.draftContext.length > 0 && (
-        <div className="context-chips" aria-label="Attached context">
+        <div
+          className="context-chips flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto"
+          aria-label="Attached context"
+        >
           {view.draftContext.map((entry) => (
-            <div className="context-chip" key={entry.id}>
+            <div
+              className="context-chip flex items-start max-w-full px-[7px] py-[3px] text-[11px]"
+              key={entry.id}
+            >
               <details>
                 <summary>{entry.label}</summary>
                 <pre>{entry.text}</pre>
@@ -185,8 +191,8 @@ export const Composer = ({
         }}
       />
 
-      <div className="composer-toolbar">
-        <div className="context-picker-anchor">
+      <div className="composer-toolbar flex items-center gap-[5px] min-w-0">
+        <div className="context-picker-anchor relative">
           <Button
             variant="ghost"
             size="sm"
@@ -197,14 +203,14 @@ export const Composer = ({
               setError("");
             }}
           >
-            <Plus size={14} />
+            <Paperclip size={17} aria-hidden="true" />
             {!compact && " Context"}
           </Button>
 
           {open && (
             <section
               ref={picker}
-              className="context-picker"
+              className="context-picker absolute z-[35] flex flex-col gap-2 max-h-[min(440px,_55vh)] overflow-y-auto p-3.5 border border-border-strong [box-shadow:0_8px_24px_var(--shadow)]"
               role="dialog"
               aria-modal="true"
               aria-label="Add context"
@@ -306,7 +312,7 @@ export const Composer = ({
             {save.label}
           </Button>
         )}
-        <span className="spacer" />
+        <span className="flex-1 min-w-0" />
         {compact ? <div className="composer-model">{model}</div> : model}
         {stop ? (
           <Button
@@ -347,7 +353,7 @@ export const Composer = ({
         </small>
       ) : (
         notice && (
-          <small className="composer-state" role="status">
+          <small className="block pt-[5px] text-ink-secondary text-[11px]" role="status">
             {notice}
           </small>
         )

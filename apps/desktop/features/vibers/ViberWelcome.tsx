@@ -12,9 +12,12 @@ export const ViberWelcome = ({
   disabled: boolean;
   hasVibers?: boolean;
 }) => (
-  <section className="viber-welcome-page" aria-label="Vibers">
+  <section
+    className="viber-welcome-page grid flex-1 place-items-center min-h-0 px-6 py-8 text-center"
+    aria-label="Vibers"
+  >
     <div className="viber-welcome-guide">
-      <ViberFace className="viber-idle" />
+      <ViberFace animated />
       <h1>{hasVibers ? "Your Vibers" : "Create your first Viber"}</h1>
       <p>
         {hasVibers

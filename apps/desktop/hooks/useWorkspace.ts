@@ -77,8 +77,9 @@ export const useWorkspace = () => {
 let detectedProviders: Detection[] = [];
 let detectedAt = 0;
 let detecting: Promise<Detection[]> | undefined;
+const detectingComputers = new Map<string, Promise<Detection[]>>();
 
-export const useProviders = (profileId?: string) => {
+export const useProviders = (profileId?: string, enabled = true) => {
   const [providers, setProviders] = useState<Detection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -88,7 +89,16 @@ export const useProviders = (profileId?: string) => {
       setLoading(true);
       try {
         if (profileId) {
-          setProviders(await rpc<Detection[]>("computer.providers", { profile_id: profileId }));
+          let request = detectingComputers.get(profileId);
+          if (!request) {
+            request = rpc<Detection[]>("computer.providers", { profile_id: profileId }).finally(
+              () => detectingComputers.delete(profileId),
+            );
+
+            detectingComputers.set(profileId, request);
+          }
+
+          setProviders(await request);
         } else if (!force && Date.now() - detectedAt < 60000) {
           setProviders(detectedProviders);
         } else {
@@ -133,8 +143,10 @@ export const useProviders = (profileId?: string) => {
   }, [profileId]);
 
   useEffect(() => {
-    void refresh(false);
-  }, [refresh]);
+    if (enabled) {
+      void refresh(false);
+    }
+  }, [enabled, refresh]);
 
   return { providers, loading, error, refresh };
 };

@@ -1,174 +1,130 @@
 button,
 input,
 textarea {
-  font: inherit;
-  border-radius: var(--radius);
+  @apply [font:inherit] rounded-control;
 }
 
 button {
-  color: inherit;
-  cursor: pointer;
+  @apply text-inherit cursor-pointer;
 }
 
 button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  @apply opacity-45 cursor-not-allowed;
 }
 
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible {
-  outline: 1px solid var(--focus-ring);
-  outline-offset: 2px;
+  @apply [outline:1px_solid_var(--focus-ring)] outline-offset-[2px];
 }
 
 input,
 textarea {
-  color: var(--foreground);
-  background: var(--background-input);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-input);
-  padding: 8px 11px;
-  outline: none;
-  transition:
-    border-color var(--motion-fast),
-    box-shadow var(--motion-fast);
+  @apply text-foreground bg-surface-input [border:0] rounded-input px-[11px] py-2 [outline:none] [transition:background_var(--motion-fast),_box-shadow_var(--motion-fast)];
+}
+
+input:hover,
+textarea:hover {
+  @apply bg-surface-hover [border:0];
 }
 
 input:focus,
 textarea:focus {
-  border-color: var(--focus-ring);
-  outline: none;
-  box-shadow: none;
+  @apply [border:0] [outline:none] [box-shadow:none];
+}
+
+input:focus-visible,
+textarea:focus-visible {
+  @apply bg-surface-hover;
 }
 
 input,
 textarea {
-  width: 100%;
+  @apply w-full;
 }
 
 input[type="checkbox"],
 input[type="radio"] {
-  accent-color: var(--text-secondary);
+  @apply accent-ink-secondary;
 }
 
 textarea {
-  resize: vertical;
+  @apply resize-y;
 }
 
 label {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 12px 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.checkbox-label {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.checkbox-label input {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  flex: 0 0 auto;
-  accent-color: var(--text-secondary);
+  @apply flex flex-col gap-1.5 mx-0 my-3 text-ink-secondary text-[12px];
 }
 
 h1,
 h2,
 h3,
 p {
-  margin: 0;
+  @apply m-0;
 }
 
 h1 {
-  font-size: 16px;
-  font-weight: 600;
+  @apply text-[16px] font-semibold;
 }
 
 h2 {
-  font-size: 13px;
-  font-weight: 600;
+  @apply text-[13px] font-semibold;
 }
 
 h3 {
-  font-size: 12px;
-  font-weight: 500;
+  @apply text-[12px] font-medium;
 }
 
 p {
-  line-height: 1.65;
+  @apply leading-[1.65];
 }
 
 code,
-.mono,
 pre {
-  font-family: var(--font-mono);
-  font-size: 12px;
+  @apply font-mono text-[12px];
 }
 
 code {
-  color: var(--text-secondary);
+  @apply text-ink-secondary;
 }
 
 pre {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.6;
+  @apply m-0 whitespace-pre-wrap wrap-anywhere leading-[1.6];
 }
 
 small {
-  font-size: 11px;
-  color: var(--muted);
+  @apply text-[11px] text-muted;
 }
 
 svg {
-  flex-shrink: 0;
+  @apply shrink-0;
 }
 
 summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
+  @apply cursor-pointer text-muted text-[12px] leading-[1.6];
 }
 
 details > pre {
-  margin-top: 8px;
+  @apply mt-2;
 }
 
 .subtle,
 .muted {
-  color: var(--muted);
+  @apply text-muted;
 }
 
 .success {
-  color: var(--accent-green);
+  @apply text-accent-green;
 }
 
 .failure {
-  color: var(--accent-red);
+  @apply text-accent-red;
 }
 
 .warning {
-  color: var(--accent-amber);
+  @apply text-accent-amber;
 }
 
 .running {
-  color: var(--accent-blue);
-}
-
-.spacer {
-  flex: 1;
-  min-width: 0;
-}
-
-.eyebrow {
-  display: none;
+  @apply text-accent-blue;
 }

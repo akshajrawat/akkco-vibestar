@@ -8,6 +8,7 @@ import { Rpc } from "../../apps/core/rpc";
 import { testProfileIds as builtInProfiles } from "../helpers/viber-fixtures";
 import type {
   ViberMessage,
+  ViberNavigation,
   ViberSession,
   ViberSessionDetail,
 } from "../../apps/core/vibers/contracts";
@@ -88,6 +89,9 @@ const detail = async (session: ViberSession) =>
     events: { run_id: string; kind: string }[];
   };
 
+const messagePreviews = async () =>
+  ((await rpc.call("profile.list", { include_previews: true })) as ViberNavigation).previews;
+
 const settled = async (session: ViberSession, status = "completed") => {
   await expect
     .poll(
@@ -131,10 +135,19 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
   const profile = engine.vibers.profile(profileId);
   const session = await create();
   const input = { request_id: randomUUID(), content: "Write the first answer" };
+  expect(await messagePreviews()).toEqual([]);
   const pending = await send(session, input);
   const first = await settled(session);
   expect(first.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
   expect(first.messages[1].content).toBe("Saved session answer.");
+
+  const firstPreview = {
+    profile_id: profileId,
+    content: first.messages[1].content,
+    created_at: first.messages[1].created_at,
+  };
+
+  expect(await messagePreviews()).toEqual([firstPreview]);
   expect(first.events.some((event) => event.kind === "message")).toBe(true);
   expect(first.runs).toHaveLength(1);
 
@@ -168,10 +181,16 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
   engine = await createFixtureEngine(join(dir, "data"), () => provider);
   rpc = new Rpc(engine);
   expect(await detail(session)).toEqual(first);
+  expect(await messagePreviews()).toEqual([firstPreview]);
   expect(await send(session, input)).toEqual(retained);
   expect(provider.requests).toHaveLength(1);
   await send(session, { content: "A new answer" });
-  await settled(session);
+  const next = await settled(session);
+
+  expect(await messagePreviews()).toEqual([
+    { ...firstPreview, created_at: next.messages[3].created_at },
+  ]);
+
   expect(provider.requests[1].config).toMatchObject(selection);
   expect(provider.requests[1].conversation).toEqual({ threadId: first.session.thread?.thread_id });
   expect(provider.requests[1].prompt).toBe("A new answer");
@@ -206,7 +225,18 @@ it("isolates profile ownership, duplicate session rejection, request identities,
   expect((await detail(two)).events).toEqual([]);
   expect((await detail(two)).runs).toEqual([]);
   await send(two, { content: "Private second session" });
-  await settled(two);
+  const second = await settled(two);
+
+  expect(await messagePreviews()).toEqual(
+    expect.arrayContaining(
+      [first, second].map(({ session, messages }) => ({
+        profile_id: session.profile_id,
+        content: messages[1].content,
+        created_at: messages[1].created_at,
+      })),
+    ),
+  );
+
   expect(provider.requests[1].prompt).not.toContain("Private first session");
   expect(provider.requests[0].cwd).not.toBe(provider.requests[1].cwd);
   expect(await rpc.call("viber.session.list", { profile_id: builtInProfiles.planner })).toEqual([]);
@@ -260,8 +290,17 @@ it("enforces shared execution capacity, serializes one session, supports cancell
   engine.db.saveSettings({ ...engine.db.settings(), concurrency: 1 });
   const one = await create(profileId);
   const two = await create(builtInProfiles.reviewer);
+  engine.viberSessions.store.clearContext(one.id, one.profile_id);
   const input = { request_id: randomUUID() };
   const pending = await send(one, input);
+
+  const pendingPreview = {
+    profile_id: one.profile_id,
+    content: pending.content,
+    created_at: pending.created_at,
+  };
+
+  expect(await messagePreviews()).toEqual([pendingPreview]);
   expect(await send(one, input)).toEqual(pending);
   await expect(send(one)).rejects.toThrow("execution slots");
   await expect(send(two)).rejects.toThrow("execution slots");
@@ -293,6 +332,17 @@ it("enforces shared execution capacity, serializes one session, supports cancell
   expect(failed.messages).toHaveLength(1);
   expect(failed.runs[0].status).toBe("failed");
   expect(failed.events.some((event) => event.kind === "run.failed")).toBe(true);
+
+  expect(await messagePreviews()).toEqual(
+    expect.arrayContaining([
+      pendingPreview,
+      {
+        profile_id: two.profile_id,
+        content: failed.messages[0].content,
+        created_at: failed.messages[0].created_at,
+      },
+    ]),
+  );
 
   await expect(
     send(one, { history_ids: [pending.id], acknowledge_uncertain: true }),

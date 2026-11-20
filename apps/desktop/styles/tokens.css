@@ -1,33 +1,33 @@
 :root {
   color-scheme: dark;
-  --background-app: #090a0d;
-  --background-sidebar: #0d0f12;
-  --background-panel: #111317;
-  --background-elevated: #16181e;
-  --background-input: #13151a;
-  --background-hover: #1c1e26;
-  --background-selected: #222530;
+  --background-app: #0b0b0b;
+  --background-sidebar: #141414;
+  --background-panel: #080808;
+  --background-elevated: #171717;
+  --background-input: #131313;
+  --background-hover: #202020;
+  --background-selected: #292929;
   --background-success: #14231a;
   --background-warning: #292013;
   --background-error: #2b1416;
-  --background-info: #141b24;
-  --border-default: #1e222b;
-  --border-strong: #2d3340;
-  --border-subtle: #171a21;
-  --focus-ring: #4b5563;
-  --text-primary: #f3f4f6;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --text-disabled: #4b5563;
+  --background-info: #191919;
+  --border-default: #232323;
+  --border-strong: #353535;
+  --border-subtle: #1e1e1e;
+  --focus-ring: #737373;
+  --text-primary: #f5f5f5;
+  --text-secondary: #a3a3a3;
+  --text-muted: #8a8a8a;
+  --text-disabled: #636363;
   --accent-blue: #60a5fa;
   --accent-green: #4ade80;
   --accent-amber: #f59e0b;
   --accent-red: #f87171;
   --accent-purple: #c084fc;
-  --button-primary: #f3f4f6;
+  --button-primary: #f5f5f5;
   --button-primary-hover: #ffffff;
-  --button-primary-active: #e5e7eb;
-  --text-on-accent: #090a0d;
+  --button-primary-active: #e5e5e5;
+  --text-on-accent: #090909;
   --overlay: rgba(0, 0, 0, 0.7);
   --shadow: rgba(0, 0, 0, 0.4);
   --background: var(--background-app);
@@ -35,19 +35,9 @@
   --panel: var(--background-panel);
   --border: var(--border-default);
   --muted: var(--text-muted);
-  --accent: var(--accent-blue);
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --radius: 8px;
-  --radius-input: 10px;
-  --radius-panel: 12px;
-  --radius-composer: 20px;
+  --accent: var(--text-primary);
   --font-mono: "Geist Mono", "JetBrains Mono", Consolas, monospace;
+  --titlebar-height: 60px;
   --motion-fast: 140ms;
   --motion-enter: 180ms;
   font-family:
@@ -62,4 +52,58 @@
   font-synthesis: style;
   color: var(--foreground);
   background: var(--background);
+}
+
+@theme {
+  --spacing: 4px;
+  --radius-control: 8px;
+  --radius-input: 10px;
+  --radius-panel: 12px;
+  --radius-composer: 20px;
+  --animate-skeleton: skeleton-pulse 1.6s ease-in-out infinite alternate;
+
+  @keyframes skeleton-pulse {
+    to {
+      opacity: 0.45;
+    }
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface-app: var(--background-app);
+  --color-surface-sidebar: var(--background-sidebar);
+  --color-surface-panel: var(--background-panel);
+  --color-surface-elevated: var(--background-elevated);
+  --color-surface-input: var(--background-input);
+  --color-surface-hover: var(--background-hover);
+  --color-surface-selected: var(--background-selected);
+  --color-surface-success: var(--background-success);
+  --color-surface-warning: var(--background-warning);
+  --color-surface-error: var(--background-error);
+  --color-surface-info: var(--background-info);
+  --color-border: var(--border);
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-ink-primary: var(--text-primary);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+  --color-ink-disabled: var(--text-disabled);
+  --color-ink-on-accent: var(--text-on-accent);
+  --color-accent: var(--accent);
+  --color-accent-red: var(--accent-red);
+  --color-accent-amber: var(--accent-amber);
+  --color-accent-green: var(--accent-green);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-purple: var(--accent-purple);
+  --color-focus-ring: var(--focus-ring);
+  --color-muted: var(--muted);
+  --color-panel: var(--panel);
+  --color-button-primary: var(--button-primary);
+  --color-button-primary-hover: var(--button-primary-hover);
+  --color-button-primary-active: var(--button-primary-active);
+  --color-overlay: var(--overlay);
+  --color-shadow: var(--shadow);
 }

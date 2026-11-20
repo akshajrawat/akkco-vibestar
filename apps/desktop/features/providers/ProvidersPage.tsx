@@ -11,14 +11,14 @@ export const ProvidersPage = () => {
   const { providers, loading, error, refresh } = useProviders();
   const [login, setLogin] = useState("");
   return (
-    <div className="page providers-page">
+    <div className="page px-[clamp(20px,_3vw,_48px)] py-7.5 flex-1 min-h-0 providers-page">
       <PageHeader
         title="Providers"
         description="Connect your developer tools through their official command-line sign-in."
         actions={
           <button
             type="button"
-            className="ghost-action-button"
+            className="ghost-action-button inline-flex items-center gap-1.5 [border:0] px-2.5 py-1.5 text-[12px] font-medium [transition:background_var(--motion-fast),_color_var(--motion-fast)] disabled:opacity-50 focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[2px]"
             disabled={loading}
             onClick={() => void refresh()}
             aria-label="Refresh providers"
@@ -28,9 +28,13 @@ export const ProvidersPage = () => {
           </button>
         }
       />
-      {error && <p className="error-box">{error}</p>}
+      {error && (
+        <p className="error-box px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere">
+          {error}
+        </p>
+      )}
       {loading && !providers.length && <ListSkeleton label="Detecting providers" />}
-      <div className="provider-list">
+      <div className="provider-list grid gap-3.5">
         {providers.map((p) => {
           const name =
             p.provider === "github"
@@ -42,12 +46,15 @@ export const ProvidersPage = () => {
           const connected = p.connected;
 
           return (
-            <section className="provider-row" key={p.provider}>
-              <div className="provider-icon">
+            <section
+              className="provider-row flex items-start gap-3.5 p-6 border border-border-subtle"
+              key={p.provider}
+            >
+              <div className="provider-icon border border-border-default grid place-items-center text-ink-secondary">
                 <ProviderIcon provider={p.provider} size={20} />
               </div>
 
-              <div className="provider-info">
+              <div className="provider-info flex-1 min-w-0">
                 <h2>{name}</h2>
                 <p className={connected ? "success" : "subtle"}>
                   {connected && <CheckCircle2 size={12} />}{" "}
@@ -78,7 +85,7 @@ export const ProvidersPage = () => {
               {connected ? (
                 <button
                   type="button"
-                  className="ghost-action-button"
+                  className="ghost-action-button inline-flex items-center gap-1.5 [border:0] px-2.5 py-1.5 text-[12px] font-medium [transition:background_var(--motion-fast),_color_var(--motion-fast)] disabled:opacity-50 focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[2px]"
                   disabled={!p.installed || !!login}
                   onClick={() => setLogin(p.provider)}
                 >
@@ -95,7 +102,7 @@ export const ProvidersPage = () => {
         })}
       </div>
 
-      <p className="provider-footnote">
+      <p className="provider-footnote text-ink-muted text-[11px]">
         Subscriptions and authentication are managed by the official CLIs in your execution
         environment.
       </p>

@@ -107,10 +107,10 @@ export const ConnectLocalRepository = ({
   };
 
   return (
-    <div className="modal-backdrop">
+    <div className="modal-backdrop fixed inset-[var(--titlebar-height)_0_0] flex items-center justify-center z-[50]">
       <section
         ref={focus}
-        className="modal compact-dialog repository-connect"
+        className="modal border border-border-strong p-6 max-w-[94vw] max-h-[90%] overflow-auto [box-shadow:0_12px_45px_var(--overlay)] animate-[surface-enter_var(--motion-enter)_ease-out] compact-dialog repository-connect"
         role="dialog"
         aria-modal="true"
         aria-labelledby="connect-repository-title"
@@ -123,7 +123,7 @@ export const ConnectLocalRepository = ({
           }
         }}
       >
-        <div className="modal-heading">
+        <div className="modal-heading flex items-center justify-between gap-2 mb-[9px]">
           <h2 id="connect-repository-title">Connect local repository</h2>
           <Button
             variant="ghost"
@@ -144,7 +144,7 @@ export const ConnectLocalRepository = ({
             }
           }}
         >
-          <fieldset className="scope-options">
+          <fieldset className="scope-options p-0 [border:0] mt-[13px] flex flex-wrap gap-[0_15px]">
             <legend>Environment</legend>
             {(["wsl", "windows"] as const).map((value) => (
               <label key={value}>
@@ -193,7 +193,7 @@ export const ConnectLocalRepository = ({
         </form>
 
         {useExisting && (
-          <div className="verified-repository">
+          <div className="verified-repository grid grid-cols-[minmax(0,_1fr)] gap-2.5 border-t border-t-border-default mt-3.5 pt-3">
             <h3>
               {existing.owner}/{existing.name}
             </h3>
@@ -228,12 +228,12 @@ export const ConnectLocalRepository = ({
         )}
 
         {verification && !useExisting && (
-          <div className="verified-repository">
+          <div className="verified-repository grid grid-cols-[minmax(0,_1fr)] gap-2.5 border-t border-t-border-default mt-3.5 pt-3">
             <h3 className="success">
               <Check size={14} /> Repository verified
             </h3>
 
-            <dl className="repository-facts">
+            <dl className="repository-facts grid grid-cols-[120px_minmax(0,_1fr)] gap-[6px_12px] mx-0 my-3 text-[12px]">
               {verification.windows_path && (
                 <>
                   <dt>Windows path</dt>
@@ -253,7 +253,7 @@ export const ConnectLocalRepository = ({
               <dt>Current branch</dt>
               <dd>{verification.branch}</dd>
               {verification.remotes.map((r) => (
-                <div className="repository-remote" key={r.name}>
+                <div className="contents" key={r.name}>
                   <dt>{r.name}</dt>
                   <dd>
                     {r.identity || "Non-GitHub remote"}
@@ -353,7 +353,10 @@ export const ConnectLocalRepository = ({
         )}
 
         {error && (
-          <p className="error-box" role="alert">
+          <p
+            className="error-box px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere"
+            role="alert"
+          >
             {error}
           </p>
         )}

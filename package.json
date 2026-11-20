@@ -19,6 +19,7 @@
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "start": "electron .",
     "test:security": "vitest run --project security",
+    "preinstall": "node -e 'if(process.env.npm_config_user_agent&&/pnpm/i.test(process.env.npm_config_user_agent)){console.error(\"\\x1b[31mError: pnpm is not allowed in this repository. Please use npm.\\x1b[0m\");process.exit(1)}'",
     "test:regression": "vitest run --project unit --project integration --project security",
     "verify": "npm run check && npm run test:integration && npm run test:security && npm run build",
     "prepare": "node scripts/install-hooks.mjs",

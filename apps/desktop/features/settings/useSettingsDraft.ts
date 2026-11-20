@@ -161,6 +161,12 @@ export const useSettingsDraft = (settings: Settings | undefined, refresh: () => 
       }, 400);
     },
     flush: flushDesktop,
+    hasPending: () => core.hasPending() || environment.hasPending(),
+    flushOnClose: async () => {
+      const coreSaved = await core.flush();
+      const desktopSaved = await flushDesktop();
+      return coreSaved && desktopSaved;
+    },
     error,
     busy: core.busy || environment.busy || installing,
     installLog,

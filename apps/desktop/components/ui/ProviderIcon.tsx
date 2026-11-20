@@ -30,7 +30,7 @@ export const ProviderIcon = ({
 
   return brand ? (
     <img
-      className={`brand-icon brand-${brand.name}`}
+      className={`inline-block flex-none align-middle object-contain brand-${brand.name}`}
       src={brand.source}
       width={size}
       height={size}
@@ -38,6 +38,10 @@ export const ProviderIcon = ({
       aria-hidden="true"
     />
   ) : (
-    <Plug className="brand-icon" size={size} aria-hidden="true" />
+    <Plug
+      className="inline-block flex-none align-middle object-contain"
+      size={size}
+      aria-hidden="true"
+    />
   );
 };

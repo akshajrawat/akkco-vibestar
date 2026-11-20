@@ -9,7 +9,7 @@ import {
   randomAppearance,
 } from "../../apps/core/vibers/appearance";
 import { AgentProfileSchema } from "../../apps/core/vibers/contracts";
-import { ProfileEditor } from "../../apps/desktop/features/vibers/ProfileEditor";
+import { CreateViberDialog } from "../../apps/desktop/features/vibers/CreateViberDialog";
 import { ViberFace } from "../../apps/desktop/features/vibers/ViberFace";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { mockDialog } from "../helpers/dialog";
@@ -60,10 +60,14 @@ it("validates every layer option and rejects unsupported versions, unknown parts
   }
 });
 
-it("keeps appearance selections across categories and saves customizations using the existing revision API", async () => {
+it("keeps appearance selections across categories and includes them when creating the Viber", async () => {
   const saved = vi.fn();
   const close = vi.fn();
-  render(<ProfileEditor profile={viberProfile} saved={saved} close={close} />);
+
+  render(
+    <CreateViberDialog profile={{ ...viberProfile, revision: 0 }} saved={saved} close={close} />,
+  );
+
   expect(screen.queryByRole("region", { name: "Preset Vibers" })).toBeNull();
   fireEvent.click(screen.getByRole("tab", { name: "Shape" }));
   fireEvent.click(screen.getByRole("button", { name: "Diamond" }));
@@ -82,15 +86,15 @@ it("keeps appearance selections across categories and saves customizations using
     target: { value: "Updated Viber" },
   });
 
-  fireEvent.click(screen.getByRole("button", { name: "Save Viber" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create Viber" }));
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
 
   expect(rpc).toHaveBeenCalledWith("profile.save", {
-    expected_revision: viberProfile.revision,
+    expected_revision: null,
     profile: {
       ...viberProfile,
       name: "Updated Viber",
-      revision: viberProfile.revision + 1,
+      revision: 1,
       appearance: {
         ...defaultAppearance(),
         shape: "diamond",
@@ -109,7 +113,7 @@ it("protects appearance-only edits, validates custom color drafts and retains dr
   const close = vi.fn();
 
   render(
-    <ProfileEditor profile={{ ...viberProfile, revision: 0 }} saved={vi.fn()} close={close} />,
+    <CreateViberDialog profile={{ ...viberProfile, revision: 0 }} saved={vi.fn()} close={close} />,
   );
 
   fireEvent.click(screen.getByRole("tab", { name: "Color" }));
@@ -125,4 +129,19 @@ it("protects appearance-only edits, validates custom color drafts and retains dr
   await screen.findByText("Profile changed. Reload before saving.");
   expect(close).not.toHaveBeenCalled();
   expect((screen.getByLabelText("Custom HEX") as HTMLInputElement).value).toBe("#123456");
+});
+
+it("keeps the compact avatar body centered as accessories and devices change", () => {
+  const appearance = defaultAppearance();
+  const ui = render(<ViberFace compact appearance={appearance} />);
+  const avatar = ui.container.querySelector("svg")!;
+  const viewBox = avatar.getAttribute("viewBox");
+  const outline = avatar.querySelector(".viber-face-body > ellipse")?.outerHTML;
+
+  ui.rerender(
+    <ViberFace compact appearance={{ ...appearance, device: "laptop", accessory: "headphones" }} />,
+  );
+
+  expect(avatar.getAttribute("viewBox")).toBe(viewBox);
+  expect(avatar.querySelector(".viber-face-body > ellipse")?.outerHTML).toBe(outline);
 });

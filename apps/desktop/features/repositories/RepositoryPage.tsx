@@ -133,9 +133,9 @@ export const RepositoryPage = ({
   };
 
   return (
-    <div className="page repository-library">
-      <div className="repository-toolbar">
-        <div className="library-search">
+    <div className="page px-[clamp(20px,_3vw,_48px)] py-7.5 flex-1 min-h-0 repository-library">
+      <div className="repository-toolbar flex items-center flex-wrap gap-[12px_16px]">
+        <div className="library-search max-w-[600px] mb-[13px]">
           <Search size={19} aria-hidden="true" />
           <input
             aria-label="Search repositories"
@@ -144,7 +144,7 @@ export const RepositoryPage = ({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="page-actions">
+        <div className="flex gap-2 items-center flex-wrap">
           <Button variant="default" onClick={() => setConnection({ path: "" })}>
             <Plus size={14} />
             Connect local repository
@@ -161,20 +161,25 @@ export const RepositoryPage = ({
       </div>
 
       {snapshot.github?.phase && (
-        <p className="operation-status" role="status">
+        <p className="m-0 mb-4 text-accent-blue text-[12px]" role="status">
           {snapshot.github.phase}
         </p>
       )}
 
       {error && (
-        <p className="error-box" role="alert">
+        <p
+          className="error-box px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere"
+          role="alert"
+        >
           {error}
         </p>
       )}
 
       {!!snapshot.github?.clones?.length && (
         <section aria-label="Managed clone activity">
-          <h2 className="repository-section-title">Managed clones</h2>
+          <h2 className="repository-section-title m-[24px_0_12px] flex items-center gap-2.5 text-ink-secondary uppercase tracking-[0.08em] text-[11px]">
+            Managed clones
+          </h2>
           {snapshot.github.clones.map((activity) => (
             <CloneActivity key={activity.id} activity={activity} />
           ))}
@@ -182,16 +187,19 @@ export const RepositoryPage = ({
       )}
 
       <section aria-labelledby="active-repositories-title">
-        <h2 id="active-repositories-title" className="repository-section-title">
+        <h2
+          id="active-repositories-title"
+          className="repository-section-title m-[24px_0_12px] flex items-center gap-2.5 text-ink-secondary uppercase tracking-[0.08em] text-[11px]"
+        >
           Connected repositories <small>{active.length}</small>
         </h2>
 
-        <div className="repository-list-card">
+        <div className="repository-list-card px-4 py-0 border border-border-subtle">
           {!active.length && (
-            <div className="repository-empty">
+            <div className="repository-empty p-4 mb-2 border border-border-default">
               <strong>No active repositories</strong>
               <p>Connect a local Git repository to start working with Vibestar.</p>
-              <div className="actions">
+              <div className="actions flex gap-1.5">
                 <Button variant="default" onClick={() => setConnection({ path: "" })}>
                   Connect local repository
                 </Button>
@@ -209,20 +217,23 @@ export const RepositoryPage = ({
           {active
             .filter((r) => visible(r.owner + "/" + r.name + " " + r.path))
             .map((r) => (
-              <div className="active-repository-row" key={r.id}>
-                <div className="active-repository-heading">
+              <div
+                className="active-repository-row p-4 mb-2 border border-border-default grid grid-cols-[minmax(0,_1fr)_auto] [@media(max-width:900px)]:grid-cols-[minmax(0,_1fr)] gap-[6px_24px] [@media(max-width:900px)]:gap-2.5"
+                key={r.id}
+              >
+                <div className="active-repository-heading flex items-center gap-3 flex-wrap">
                   <strong>
                     {r.owner}/{r.name}
                   </strong>
                   <span className="status-chip success">Active</span>
                 </div>
-                <div className="active-repository-meta">
+                <div className="flex flex-wrap gap-[6px_16px] col-[1] text-[11px]">
                   <span className="subtle">
                     {r.source === "imported" ? "User-owned checkout" : "Vibestar-managed clone"}
                   </span>
                   <span className="subtle">Base {r.base_branch}</span>
                 </div>
-                <div className="active-repository-actions">
+                <div className="flex items-center gap-2 col-[2] [@media(max-width:900px)]:col-[1] row-[1_/_3] [@media(max-width:900px)]:row-auto">
                   <OpenInEditor id={r.id} kind="repository" path={r.path} />
                   <Button
                     variant="ghost"
@@ -262,9 +273,9 @@ export const RepositoryPage = ({
                     ·{" "}
                     {r.distro || snapshot.execution_environment?.distro || "Configured environment"}
                   </p>
-                  <code className="repository-path">{r.path}</code>
+                  <code className="block mb-3 wrap-anywhere">{r.path}</code>
                   {r.windows_path && <p className="subtle">Windows: {r.windows_path}</p>}
-                  <dl className="repository-facts">
+                  <dl className="repository-facts grid grid-cols-[120px_minmax(0,_1fr)] gap-[6px_12px] mx-0 my-3 text-[12px]">
                     <dt>Upstream</dt>
                     <dd>
                       {r.owner}/{r.name} <small>{r.upstream_remote || "upstream"}</small>
@@ -275,7 +286,7 @@ export const RepositoryPage = ({
                     <dd>{r.base_branch}</dd>
                   </dl>
 
-                  <div className="actions">
+                  <div className="actions flex gap-1.5">
                     <Button
                       size="sm"
                       onClick={() =>
@@ -332,12 +343,18 @@ export const RepositoryPage = ({
 
       {!!discovered.length && (
         <section aria-labelledby="discovered-repositories-title">
-          <h2 id="discovered-repositories-title" className="repository-section-title">
+          <h2
+            id="discovered-repositories-title"
+            className="repository-section-title m-[24px_0_12px] flex items-center gap-2.5 text-ink-secondary uppercase tracking-[0.08em] text-[11px]"
+          >
             Discovered local <small>{discovered.length}</small>
           </h2>
 
           {discovered.map((r) => (
-            <div className="repo-catalog-row" key={r.path}>
+            <div
+              className="repo-catalog-row flex items-center gap-3 px-[5px] py-[11px] border-b border-b-surface-hover"
+              key={r.path}
+            >
               <div>
                 <strong>{r.identities.join(" · ") || "Git repository"}</strong>
                 <small>{r.path}</small>
@@ -346,7 +363,7 @@ export const RepositoryPage = ({
                   not connected
                 </small>
               </div>
-              <div className="spacer" />
+              <div className="flex-1 min-w-0" />
               <Button size="sm" onClick={() => setConnection({ path: r.path })}>
                 Connect
               </Button>
@@ -356,14 +373,17 @@ export const RepositoryPage = ({
       )}
 
       <section aria-labelledby="github-repositories-title">
-        <div className="repository-section-header">
-          <h2 id="github-repositories-title" className="repository-section-title">
+        <div className="repository-section-header flex items-center justify-between m-[28px_0_14px_20px]">
+          <h2
+            id="github-repositories-title"
+            className="repository-section-title m-[24px_0_12px] flex items-center gap-2.5 text-ink-secondary uppercase tracking-[0.08em] text-[11px]"
+          >
             GitHub repositories <small>All</small>
           </h2>
 
           <button
             type="button"
-            className="ghost-action-button"
+            className="ghost-action-button inline-flex items-center gap-1.5 [border:0] px-2.5 py-1.5 text-[12px] font-medium [transition:background_var(--motion-fast),_color_var(--motion-fast)] disabled:opacity-50 focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[2px]"
             disabled={!!busy}
             onClick={() => void action("github.sync", {}, "sync")}
             aria-label={
@@ -387,7 +407,7 @@ export const RepositoryPage = ({
           </button>
         </div>
 
-        <div className="repository-list-card">
+        <div className="repository-list-card px-4 py-0 border border-border-subtle">
           {rows.map((r) => {
             const connected = active.find(
               (local) => `${local.owner}/${local.name}`.toLowerCase() === r.full_name.toLowerCase(),
@@ -404,14 +424,17 @@ export const RepositoryPage = ({
             );
 
             return (
-              <div className="repo-catalog-row" key={r.id}>
+              <div
+                className="repo-catalog-row flex items-center gap-3 px-[5px] py-[11px] border-b border-b-surface-hover"
+                key={r.id}
+              >
                 <div>
                   <strong>{r.full_name}</strong>
                   <small>
                     {r.default_branch} · {r.private ? "private" : "public"}
                   </small>
                 </div>
-                <div className="spacer" />
+                <div className="flex-1 min-w-0" />
                 <Button
                   size="sm"
                   disabled={!!busy || cloning || !!connected}
@@ -438,7 +461,7 @@ export const RepositoryPage = ({
           })}
 
           {!rows.length && snapshot.github?.status?.connected && (
-            <p className="empty-row">
+            <p className="px-1.5 py-3 text-[12px] text-ink-muted">
               {query
                 ? "No GitHub repositories match your search."
                 : "Sync GitHub to load your repository catalog."}
@@ -458,9 +481,9 @@ export const RepositoryPage = ({
       )}
 
       {candidates && (
-        <div className="modal-backdrop">
+        <div className="modal-backdrop fixed inset-[var(--titlebar-height)_0_0] flex items-center justify-center z-[50]">
           <section
-            className="modal compact-dialog"
+            className="modal border border-border-strong p-6 max-w-[94vw] max-h-[90%] overflow-auto [box-shadow:0_12px_45px_var(--overlay)] animate-[surface-enter_var(--motion-enter)_ease-out] compact-dialog"
             role="dialog"
             aria-modal="true"
             aria-label="Local checkout search"
@@ -468,7 +491,10 @@ export const RepositoryPage = ({
             <h2>{candidates.repository}</h2>
             {candidates.candidates.length ? (
               candidates.candidates.map((c) => (
-                <div className="checkout-candidate" key={c.path}>
+                <div
+                  className="checkout-candidate flex flex-col gap-2 px-0 py-3.5 border-b border-b-border"
+                  key={c.path}
+                >
                   <code>{c.path}</code>
                   <small>{c.environment === "wsl" ? "WSL checkout" : "Windows checkout"}</small>
                   <Button
@@ -493,7 +519,7 @@ export const RepositoryPage = ({
               the new clone; your existing checkouts remain user-owned.
             </p>
 
-            <div className="actions">
+            <div className="actions flex gap-1.5">
               <Button
                 onClick={() => {
                   setCandidates(undefined);

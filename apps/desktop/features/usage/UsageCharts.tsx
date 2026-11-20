@@ -30,11 +30,14 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
 
   const daily = [...days].sort(([a], [b]) => a.localeCompare(b)).slice(-30);
   return (
-    <div className="usage-charts">
+    <div className="grid grid-cols-[repeat(auto-fit,_minmax(min(100%,_330px),_1fr))] gap-4 mx-0 my-6">
       {(["tokens", "runs"] as const).map((field) => {
         const max = Math.max(1, ...daily.map(([, value]) => value[field]));
         return (
-          <figure className="analytics-chart" key={field}>
+          <figure
+            className="analytics-chart m-0 p-5 min-w-0 border border-border-subtle"
+            key={field}
+          >
             <figcaption>
               <strong>
                 {field === "tokens" ? "Daily reported tokens" : "Run count over time"}
@@ -43,7 +46,7 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
             </figcaption>
 
             <div
-              className="chart-bars"
+              className="chart-bars flex items-stretch gap-1 border-b border-b-border-default"
               role="group"
               aria-label={field === "tokens" ? "Daily reported token totals" : "Daily run counts"}
             >
@@ -62,7 +65,9 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
                     onMouseLeave={() => setFocused((current) => ({ ...current, [field]: "" }))}
                   >
                     <span
-                      className={available ? "chart-bar" : "chart-bar unavailable"}
+                      className={
+                        available ? "chart-bar opacity-70" : "chart-bar opacity-70 unavailable"
+                      }
                       style={{
                         height: `${available ? Math.max(2, (value[field] / max) * 100) : 2}%`,
                       }}
@@ -72,12 +77,12 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
               })}
             </div>
 
-            <div className="chart-axis">
+            <div className="flex justify-between text-ink-muted text-[10px] mt-2">
               <span>{daily[0]?.[0]}</span>
               <span>{daily.at(-1)?.[0]}</span>
             </div>
 
-            <p className="chart-tooltip" aria-live="polite">
+            <p className="text-[11px] text-ink-muted min-h-9 mt-2.5" aria-live="polite">
               {focused[field] ||
                 (field === "tokens"
                   ? "Provider totals only; missing totals remain unavailable."
@@ -96,13 +101,16 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
         const sorted = [...values].sort((a, b) => b[1] - a[1]).slice(0, 8);
         const max = Math.max(1, ...sorted.map(([, value]) => value));
         return (
-          <figure className="analytics-chart" key={label}>
+          <figure
+            className="analytics-chart m-0 p-5 min-w-0 border border-border-subtle"
+            key={label}
+          >
             <figcaption>
               <strong>{label}</strong>
               <small>Top 8 by observed runtime</small>
             </figcaption>
 
-            <div className="runtime-chart">
+            <div className="runtime-chart flex flex-col gap-4">
               {sorted.map(([key, value]) => (
                 <div key={key} title={`${key}: ${value.toLocaleString()} ms`}>
                   <span>{key}</span>
@@ -113,7 +121,7 @@ export const UsageCharts = ({ rows }: { rows: UsageRecord[] }) => {
                     min
                   </strong>
 
-                  <div className="runtime-track">
+                  <div className="runtime-track col-[1_/_-1]">
                     <i style={{ width: `${(value / max) * 100}%` }} />
                   </div>
                 </div>

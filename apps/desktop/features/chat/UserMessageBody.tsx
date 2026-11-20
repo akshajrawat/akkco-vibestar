@@ -31,7 +31,7 @@ export const UserMessageBody = ({ children }: { children: React.ReactNode }) => 
       </div>
       {overflow && (
         <button
-          className="message-expand"
+          className="message-expand block px-0 py-0.5 [border:0] text-ink-secondary text-[12px]"
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded((value) => !value)}

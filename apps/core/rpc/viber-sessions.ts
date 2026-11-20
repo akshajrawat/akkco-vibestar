@@ -5,6 +5,7 @@ import {
   ViberSessionCreateSchema,
   ViberSessionScopeSchema,
   ViberSessionSendSchema,
+  type ViberNavigation,
 } from "../vibers/contracts";
 import type { RpcServices } from "./services";
 import { AdeError } from "../domain";
@@ -29,8 +30,15 @@ export const callViberSessions = async (
 ) => {
   const sessions = engine.viberSessions;
   switch (method) {
-    case "profile.list":
-      return engine.vibers.listProfiles();
+    case "profile.list": {
+      const profiles = engine.vibers.listProfiles();
+
+      if (z.object({ include_previews: z.literal(true) }).safeParse(raw).success) {
+        return { profiles, previews: sessions.store.messagePreviews() } satisfies ViberNavigation;
+      }
+
+      return profiles;
+    }
 
     case "profile.save": {
       engine.assertAvailable();
@@ -75,11 +83,15 @@ export const callViberSessions = async (
 
       sessions.store.session(input.session_id, input.profile_id);
       const workspace = sessions.store.workspace(input.session_id);
-      await engine.git.assertOwnedTask(workspace);
       if (!workspace.repo_id) {
         return managedFiles(engine.root, workspace, input.path);
       }
 
+      if (!workspace.worktree_path) {
+        return { files: [], path: input.path || null, text: null };
+      }
+
+      await engine.git.assertOwnedTask(workspace);
       const diff = await engine.git.diff(workspace);
       if (input.path && !diff.files.some((file) => file.path === input.path)) {
         throw new AdeError("isolation", "Select a changed file from this conversation.");

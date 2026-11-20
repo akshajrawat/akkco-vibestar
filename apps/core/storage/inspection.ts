@@ -62,20 +62,13 @@ export const inspectStorage = async (engine: Engine) => {
     external_repositories: engine.db
       .repositories()
       .filter((repository) => repository.source === "imported").length,
-    flows: Object.fromEntries(
-      [
-        "agent_profiles",
-        "flow_definitions",
-        "flow_revisions",
-        "flow_runs",
-        "flow_run_invalidations",
-        "flow_node_attempts",
-        "flow_task_migrations",
-        "flow_migration_sources",
-      ].map((table) => [
-        table,
-        engine.db.all<{ count: number }>(`SELECT count(*) count FROM ${table}`)[0].count,
-      ]),
+    vibers: Object.fromEntries(
+      ["agent_profiles", "viber_sessions", "viber_messages", "utility_runs", "ai_usage"].map(
+        (table) => [
+          table,
+          engine.db.all<{ count: number }>(`SELECT count(*) count FROM ${table}`)[0].count,
+        ],
+      ),
     ),
   };
 };

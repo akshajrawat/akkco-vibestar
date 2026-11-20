@@ -5,7 +5,7 @@ import { tokenUsage, duration } from "../../lib/format";
 import { limitDeltas, readLimits, windowLabel, usageRuntime } from "../../lib/usage";
 import { Button } from "../../components/ui/button";
 import { useProviders } from "../../hooks/useWorkspace";
-import { Activity, Search } from "lucide-react";
+import { Activity, RefreshCw, Search } from "lucide-react";
 import { EmptyState, ListSkeleton, PageHeader } from "../../components/ui/PageHeader";
 import { UsageCharts } from "./UsageCharts";
 import { ProviderIcon } from "../../components/ui/ProviderIcon";
@@ -35,14 +35,7 @@ export const UsageView = ({
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
-  const [info, setInfo] = useState<{ database: string; warning?: string }>();
   const [, tick] = useState(0);
-
-  useEffect(() => {
-    void rpc<NonNullable<typeof info>>("usage.info")
-      .then(setInfo)
-      .catch((e) => setError(errorMessage(e)));
-  }, []);
 
   useEffect(() => {
     if (records) {
@@ -195,30 +188,40 @@ export const UsageView = ({
 
   const time = (ms: number) => duration(new Date(0).toISOString(), new Date(ms).toISOString());
   return (
-    <div className={`usage-panel ${!scoped ? "page usage-dashboard" : ""}`}>
+    <div
+      className={`usage-panel min-w-0 ${!scoped ? "page px-[clamp(20px,_3vw,_48px)] py-7.5 flex-1 min-h-0 usage-dashboard" : ""}`}
+    >
       <PageHeader
         title={taskId ? "Session usage" : "Local AI usage"}
         description="Observed runtime, provider-reported tokens and official subscription snapshots."
         actions={
-          <Button
-            size="sm"
+          <button
+            type="button"
+            className="ghost-action-button inline-flex items-center gap-1.5 border-0 px-2.5 py-1.5 text-xs font-medium"
+            disabled={loading || refreshing}
             onClick={() => {
               setRevision((n) => n + 1);
               void refreshProviders();
             }}
-            busy={loading || refreshing}
           >
+            <RefreshCw
+              size={13}
+              className={loading || refreshing ? "spinning" : ""}
+              aria-hidden="true"
+            />
             Refresh
-          </Button>
+          </button>
         }
       />
 
       {error && (
-        <p className="error-box" role="alert">
+        <p
+          className="error-box px-3 py-2 mx-0 my-2 text-[12px] whitespace-pre-wrap wrap-anywhere"
+          role="alert"
+        >
           {error}
         </p>
       )}
-      {info?.warning && <p className="warning">{info.warning}</p>}
       {!loaded && <ListSkeleton label="Loading usage records" />}
       {rows.length > 0 && (
         <>
@@ -243,7 +246,7 @@ export const UsageView = ({
 
           {!scoped && (
             <>
-              <div className="library-tabs">
+              <div className="library-tabs flex gap-1.5 border-b border-b-border mb-[5px]">
                 {[
                   [1, "Today"],
                   [7, "7 days"],
@@ -261,7 +264,7 @@ export const UsageView = ({
                 ))}
               </div>
 
-              <div className="usage-filters">
+              <div className="usage-filters flex flex-wrap gap-2.5 mt-3">
                 {(["provider", "model", "purpose", "status"] as const).map((key) => (
                   <label key={key}>
                     {key}
@@ -284,7 +287,7 @@ export const UsageView = ({
             </>
           )}
 
-          <div className="usage-stats">
+          <div className="usage-stats grid grid-cols-[repeat(auto-fit,_minmax(135px,_1fr))] mx-0 my-5 gap-3">
             <div>
               <small>Reported total tokens</small>
               <strong>
@@ -324,7 +327,10 @@ export const UsageView = ({
             </div>
           </div>
 
-          <div className="usage-tokens" aria-label="Reported token channels">
+          <div
+            className="usage-tokens grid grid-cols-[repeat(auto-fit,_minmax(135px,_1fr))] mx-0 my-5 gap-3"
+            aria-label="Reported token channels"
+          >
             {tokenColumns.map(({ field, total, coverage }) => {
               const label = {
                 input_tokens: "Input",
@@ -340,7 +346,7 @@ export const UsageView = ({
                   <strong>{total?.toLocaleString() ?? "Unavailable"}</strong>
                   {field !== "total_tokens" && (
                     <div
-                      className={`token-channel-track ${total === null ? "unavailable" : ""}`}
+                      className={`token-channel-track mx-0 my-2.5 overflow-hidden ${total === null ? "unavailable" : ""}`}
                       role="img"
                       aria-label={`${label}: ${total?.toLocaleString() ?? "Unavailable"} tokens · ${coverage}/${visible.length} runs reported`}
                     >
@@ -369,7 +375,7 @@ export const UsageView = ({
           )}
           {!scoped && <UsageCharts rows={visible} />}
           {!scoped && (
-            <section className="allowance-panel">
+            <section className="allowance-panel border border-border-subtle p-5 mx-0 my-6">
               <div className="section-heading">
                 <strong>
                   Codex · latest official allowance
@@ -381,7 +387,7 @@ export const UsageView = ({
                 <>
                   {latest.windows.map((w) => (
                     <div
-                      className={`allowance-window ${w.usedPercent >= 100 ? "failure" : w.usedPercent >= 80 ? "warning" : ""}`}
+                      className={`allowance-window flex items-center gap-3 flex-wrap mx-0 my-3 [font-variant-numeric:tabular-nums] ${w.usedPercent >= 100 ? "failure" : w.usedPercent >= 80 ? "warning" : ""}`}
                       key={w.windowDurationMins}
                     >
                       <span>{windowLabel(w.windowDurationMins)}</span>
@@ -411,7 +417,7 @@ export const UsageView = ({
           {!scoped && (
             <details className="usage-additional">
               <summary>Additional breakdowns</summary>
-              <div className="library-tabs">
+              <div className="library-tabs flex gap-1.5 border-b border-b-border mb-[5px]">
                 {["provider", "model", "purpose"].map((key) => (
                   <button
                     type="button"
@@ -424,7 +430,7 @@ export const UsageView = ({
                 ))}
               </div>
 
-              <div className="usage-breakdown">
+              <div className="usage-breakdown max-w-[640px]">
                 {[...groups].map(([key, value]) => (
                   <div key={key}>
                     <strong>{key}</strong>
@@ -438,10 +444,10 @@ export const UsageView = ({
           )}
 
           {!scoped && (
-            <section className="usage-history">
+            <section className="usage-history mt-7">
               <div className="section-heading">
                 <h2>Run history</h2>
-                <label className="search-field">
+                <label className="search-field flex flex-row items-center gap-0 m-0 flex-1 min-w-[220px] relative">
                   <Search size={14} />
                   <input
                     aria-label="Search usage runs"
@@ -452,8 +458,8 @@ export const UsageView = ({
                 </label>
               </div>
 
-              <div className="data-table-scroll">
-                <table className="usage-table">
+              <div className="overflow-auto">
+                <table className="usage-table border-collapse text-left text-[12px]">
                   <thead>
                     <tr>
                       {[
@@ -477,7 +483,7 @@ export const UsageView = ({
                       <tr key={row.id}>
                         <td>
                           <button
-                            className="table-run-link"
+                            className="table-run-link [border:0] p-0 text-left text-foreground underline-offset-4 hover:underline"
                             onClick={() => setExpandedRun(expandedRun === row.id ? "" : row.id)}
                             aria-expanded={expandedRun === row.id}
                           >
@@ -509,7 +515,10 @@ export const UsageView = ({
                 </table>
               </div>
 
-              <nav className="usage-pagination" aria-label="Usage history pages">
+              <nav
+                className="usage-pagination flex justify-between items-center flex-wrap gap-3 pt-3.5"
+                aria-label="Usage history pages"
+              >
                 <small>
                   {visible.length
                     ? `Showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, visible.length)} of ${visible.length} runs`
@@ -517,7 +526,7 @@ export const UsageView = ({
                   · Page {page + 1} of {pages}
                 </small>
 
-                <div className="actions">
+                <div className="actions flex gap-1.5">
                   <Button
                     size="sm"
                     disabled={page === 0}
@@ -542,7 +551,11 @@ export const UsageView = ({
             {visible
               .filter((row) => scoped || row.id === expandedRun)
               .map((row) => (
-                <details className="usage-run" key={row.id} open={!scoped ? true : undefined}>
+                <details
+                  className="usage-run border-b border-b-border-default px-0 py-2.5"
+                  key={row.id}
+                  open={!scoped ? true : undefined}
+                >
                   <summary>
                     <ProviderIcon provider={row.provider} model={row.model} size={16} />
                     <div>
@@ -559,7 +572,7 @@ export const UsageView = ({
                     </span>
                   </summary>
 
-                  <dl className="repository-facts">
+                  <dl className="repository-facts grid grid-cols-[120px_minmax(0,_1fr)] gap-[6px_12px] mx-0 my-3 text-[12px]">
                     <dt>Started</dt>
                     <dd>{new Date(row.started_at).toLocaleString()}</dd>
                     <dt>Finished</dt>
@@ -645,7 +658,7 @@ export const UsageView = ({
               ? "No AI usage recorded for this session yet."
               : rows.length
                 ? "No runs match these filters."
-                : "No AI usage recorded in this data root yet."
+                : "No AI usage recorded yet."
           }
           description="Your provider invocations will appear here with observed runtime and the token fields they report."
           action={
@@ -664,13 +677,9 @@ export const UsageView = ({
           }
         />
       )}
-      <small className="subtle usage-source">Local telemetry only · no analytics sent</small>
-      {info?.database && (
-        <details className="usage-diagnostics">
-          <summary>Storage information</summary>
-          <code>{info.database}</code>
-        </details>
-      )}
+      <small className="subtle block mt-4 wrap-anywhere">
+        Local telemetry only · no analytics sent
+      </small>
     </div>
   );
 };

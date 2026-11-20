@@ -1,119 +1,59 @@
 .provider-list {
-  width: 100%;
-  display: grid;
-  gap: 14px;
-}
-
-.brand-icon {
-  display: inline-block;
-  flex: 0 0 auto;
-  vertical-align: middle;
-  object-fit: contain;
+  @apply w-full;
 }
 
 .brand-openai {
-  padding: 2px;
-  border-radius: 4px;
-  background: #b4dccb;
+  @apply p-0.5 rounded-[4px] bg-[#b4dccb];
 }
 
 .brand-github {
-  filter: invert(1);
+  @apply [filter:invert(1)];
 }
 
 .providers-page > * {
-  width: min(100%, 1100px);
-  margin-inline: auto;
+  @apply w-[min(100%,_1100px)] mx-auto;
 }
 
 .provider-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 24px;
-  background: var(--background-panel);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-panel);
+  @apply bg-surface-panel rounded-panel;
 }
 
 .provider-icon {
-  width: 42px;
-  height: 42px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-panel);
-  background: var(--background-elevated);
-  display: grid;
-  place-items: center;
-  color: var(--text-secondary);
-}
-
-.provider-info {
-  flex: 1;
-  min-width: 0;
+  @apply w-10.5 h-10.5 rounded-panel bg-surface-elevated;
 }
 
 .provider-info h2 {
-  font-size: 14px;
-  font-weight: 500;
+  @apply text-[14px] font-medium;
 }
 
 .provider-info p {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  font-size: 12px;
-  margin: 6px 0;
+  @apply flex gap-[5px] items-center text-[12px] mx-0 my-1.5;
 }
 
 .provider-info details {
-  margin-top: 5px;
+  @apply mt-[5px];
 }
 
 .provider-info pre {
-  font-size: 11px;
-  max-height: 230px;
-  overflow: auto;
+  @apply text-[11px] max-h-[230px] overflow-auto;
 }
 
 .provider-footnote {
-  color: var(--text-muted);
-  font-size: 11px;
-  margin-top: 17px;
+  @apply mt-[17px];
 }
 
 .auth-dialog {
-  width: 770px;
+  @apply w-[770px];
 }
 
 .auth-terminal {
-  height: 340px;
-  overflow: hidden;
-  padding: 10px 0;
-}
-
-.library-search {
-  max-width: 600px;
-  margin-bottom: 13px;
-}
-
-.library-tabs {
-  display: flex;
-  gap: 6px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 5px;
+  @apply h-[340px];
 }
 
 .library-tabs button {
-  background: transparent;
-  border: 0;
-  color: var(--text-muted);
-  padding: 7px 12px;
-  border-radius: 0;
-  font-size: 12px;
+  @apply bg-transparent [border:0] text-ink-muted px-3 py-[7px] [border-radius:0] text-[12px];
 }
 
 .library-tabs button.selected {
-  color: var(--text-primary);
-  background: var(--background-selected);
-  border-radius: 6px;
+  @apply text-ink-primary bg-surface-selected rounded-[6px];
 }

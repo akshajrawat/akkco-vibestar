@@ -37,8 +37,8 @@ const CodeBlock = ({ children }: ComponentProps<"pre">) => {
   }, [feedback]);
 
   return (
-    <div className="code-block">
-      <div className="code-toolbar">
+    <div className="code-block mx-0 my-3 border border-border-default">
+      <div className="flex items-center justify-between px-2.5 py-[5px] font-mono text-[11px] text-ink-muted border-b border-b-border-subtle">
         <span>{language}</span>
         <Button
           size="sm"

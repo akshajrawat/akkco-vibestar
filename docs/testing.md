@@ -39,7 +39,7 @@ npm exec -- vitest run tests/security/workspace.test.ts
 - Display helpers and UI components: affected unit/UI tests, types, lint and formatting.
 - Viber lifecycle, continuity, and session handling: affected unit and integration tests.
 - Git, ownership, sandbox or storage cleanup: affected security and integration tests.
-- SQLite persistence: migration fixtures, foreign-key consistency, and recovery tests. Old migrations must be preserved.
+- SQLite persistence: migration fixtures, foreign-key consistency, and recovery tests. Preserve the upgrade path for existing data roots.
 
 ## CI Workflows
 

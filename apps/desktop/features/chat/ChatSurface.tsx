@@ -165,10 +165,13 @@ const ConversationSurface = ({
   }, [empty]);
 
   return (
-    <div className={`chat-main ${empty ? "chat-draft" : ""}`} hidden={view.expandedTool}>
+    <div
+      className={`chat-main flex flex-col flex-1 min-w-0 min-h-0 ${empty ? "chat-draft" : ""}`}
+      hidden={view.expandedTool}
+    >
       {activity}
       <div
-        className="event-timeline"
+        className="event-timeline flex-1 overflow-auto p-[24px_clamp(18px,_4vw,_70px)_26px] [@media(max-width:1100px)]:p-4.5"
         ref={scroll}
         tabIndex={0}
         aria-label="Conversation"
@@ -191,7 +194,7 @@ const ConversationSurface = ({
       </div>
       {away && !empty && (
         <Button
-          className="scroll-to-latest"
+          className="scroll-to-latest z-[2] transform-[translateX(-50%)] [box-shadow:0_3px_12px_var(--shadow)]"
           size="icon"
           aria-label="Jump to latest"
           title="Jump to latest"
@@ -211,10 +214,10 @@ const ConversationSurface = ({
           <ArrowDown size={19} />
         </Button>
       )}
-      <div className="chat-actions">
-        <div className="chat-actions-content">{actions}</div>
+      <div className="shrink-0 px-[var(--chat-gutter)] py-0">
+        <div className="chat-actions-content max-w-[var(--chat-reading-width)]">{actions}</div>
       </div>
-      <div className="composer-lane" ref={composerLane}>
+      <div className="composer-lane shrink-0" ref={composerLane}>
         {composer}
       </div>
     </div>

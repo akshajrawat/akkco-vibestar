@@ -13,6 +13,7 @@ import {
 
 import {
   avatarColors,
+  defaultAppearance,
   ViberAppearanceSchema,
   type ViberAppearance,
 } from "../../../core/vibers/appearance";
@@ -58,8 +59,12 @@ export const AvatarBuilder = ({
         : ViberAppearanceSchema.shape[category.key].options;
 
   return (
-    <section className="avatar-builder" aria-label="Appearance">
-      <div role="tablist" aria-label="Appearance categories" className="avatar-categories">
+    <section className="avatar-builder col-[1_/_-1] min-w-0" aria-label="Appearance">
+      <div
+        role="tablist"
+        aria-label="Appearance categories"
+        className="avatar-categories grid grid-cols-[repeat(8,_minmax(0,_1fr))] [@media(max-width:700px)]:grid-cols-[repeat(4,_minmax(0,_1fr))] gap-1"
+      >
         {categories.map((item, index) => (
           <button
             key={item.key}
@@ -103,14 +108,14 @@ export const AvatarBuilder = ({
         aria-labelledby={`${id}-${category.key}`}
         className="avatar-options-panel"
       >
-        <div className="avatar-options-heading">
+        <div className="avatar-options-heading flex items-center justify-between gap-2.5 px-0 py-2">
           <strong>{category.label}</strong>
           <Button type="button" variant="ghost" size="sm" onClick={randomize}>
             <Shuffle size={14} />
             Randomize Appearance
           </Button>
         </div>
-        <div className="avatar-options">
+        <div className="avatar-options grid grid-cols-[repeat(auto-fit,_minmax(66px,_1fr))] gap-1.5 min-h-19">
           {category.key === "color"
             ? Object.entries(avatarColors).map(([label, color]) => (
                 <button
@@ -123,7 +128,12 @@ export const AvatarBuilder = ({
                     setCustomColor(color);
                   }}
                 >
-                  <span className="avatar-color" style={{ background: color }} />
+                  <span
+                    className="avatar-color"
+                    style={{
+                      backgroundImage: `radial-gradient(circle at 30% 25%, color-mix(in oklab, ${color} 58%, white), ${color} 55%, color-mix(in oklab, ${color} 66%, black))`,
+                    }}
+                  />
                   <small>{label}</small>
                 </button>
               ))
@@ -135,7 +145,14 @@ export const AvatarBuilder = ({
                   aria-pressed={(appearance[category.key] ?? "none") === option}
                   onClick={() => change({ ...appearance, [category.key]: option })}
                 >
-                  <ViberFace appearance={{ ...appearance, [category.key]: option }} />
+                  <ViberFace
+                    appearance={{
+                      ...(category.key === "shape"
+                        ? { ...defaultAppearance(), color: appearance.color }
+                        : appearance),
+                      [category.key]: option,
+                    }}
+                  />
                   <small>{optionLabel(option)}</small>
                 </button>
               ))}

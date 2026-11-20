@@ -44,14 +44,6 @@ const windowApi: ElectronWindowApi = {
   minimize: () => ipcRenderer.invoke("window:minimize"),
   maximize: () => ipcRenderer.invoke("window:maximize"),
   close: () => ipcRenderer.invoke("window:close"),
-  isMaximized: () => ipcRenderer.invoke("window:is-maximized"),
-  onMaximizedChanged: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, state: { maximized: boolean }) =>
-      callback(state.maximized);
-
-    ipcRenderer.on("window:state", listener);
-    return () => ipcRenderer.removeListener("window:state", listener);
-  },
 };
 
 contextBridge.exposeInMainWorld("electronWindow", windowApi);

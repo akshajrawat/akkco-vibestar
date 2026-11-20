@@ -112,7 +112,7 @@ export const AgentResponse = memo(
       ));
 
       return (
-        <div className="agent-response markdown">
+        <div className="agent-response text-[14px] leading-[1.7] wrap-anywhere markdown">
           <MarkdownContent text={summary} />
           {entries.length > 0 &&
             (inline ? (
@@ -130,7 +130,10 @@ export const AgentResponse = memo(
     const partial = streamingSummary(text);
     if (partial !== null) {
       return (
-        <div className="agent-response markdown" aria-busy="true">
+        <div
+          className="agent-response text-[14px] leading-[1.7] wrap-anywhere markdown"
+          aria-busy="true"
+        >
           <MarkdownContent text={partial} />
         </div>
       );
@@ -148,7 +151,7 @@ export const AgentResponse = memo(
     }
 
     return (
-      <div className="agent-response markdown">
+      <div className="agent-response text-[14px] leading-[1.7] wrap-anywhere markdown">
         <MarkdownContent text={text} />
       </div>
     );

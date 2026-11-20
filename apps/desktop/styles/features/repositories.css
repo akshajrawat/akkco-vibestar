@@ -1,174 +1,49 @@
-.repo-catalog-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 5px;
-  border-bottom: 1px solid var(--background-hover);
-}
-
 .repo-catalog-row > div:first-child {
-  min-width: 0;
+  @apply min-w-0;
 }
 
 .repo-catalog-row strong {
-  font-size: 13px;
-  font-weight: 500;
+  @apply text-[13px] font-medium;
 }
 
 .repo-catalog-row span,
 .repo-catalog-row small {
-  font-size: 11px;
+  @apply text-[11px];
 }
 
 .repo-catalog-row > div:first-child > span {
-  margin-left: 10px;
-  color: var(--text-muted);
+  @apply ml-2.5 text-ink-muted;
 }
 
 .repo-catalog-row small {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-top: 4px;
-}
-
-.managed-repos {
-  margin-top: 24px;
-}
-
-.managed-repos h2 {
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}
-
-.managed-repo {
-  padding: 9px 0;
-  border-bottom: 1px solid var(--background-hover);
-}
-
-.managed-repo summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-}
-
-.managed-repo summary code {
-  margin-left: auto;
-  font-size: 11px;
-}
-
-.managed-repo p {
-  font-size: 11px;
-  margin-top: 7px;
-  overflow-wrap: anywhere;
+  @apply flex items-center gap-[3px] mt-1;
 }
 
 .actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.advanced-repository,
-.manual-watch {
-  margin-top: 23px;
-  max-width: 650px;
-}
-
-.advanced-repository form,
-.manual-watch form {
-  padding-top: 6px;
-}
-
-.pr-row-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.row-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.watch-dot,
-.attention-dot {
-  display: block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.watch-dot.enabled {
-  background: var(--accent-green);
-}
-
-.attention-dot {
-  background: var(--accent-amber);
-}
-
-.watch-settings {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  background: var(--background-panel);
-  padding: 10px 14px;
-  margin-bottom: 20px;
-}
-
-.watch-settings label {
-  margin: 3px 0;
-  font-size: 12px;
-}
-
-.watch-settings input[type="number"] {
-  width: 85px;
-}
-
-.inbox-footer {
-  font-size: 11px;
-  color: var(--text-muted);
-  padding: 15px 0 6px;
+  @apply mt-2.5;
 }
 
 .clone-activity {
-  padding: 14px 16px;
-  border: 1px solid var(--border-default);
-  border-left: 2px solid var(--accent-blue);
-  margin: 10px 0;
-  background: var(--background-panel);
-  border-radius: var(--radius);
+  @apply border border-border-default;
+  @apply [border-left:2px_solid_var(--accent-blue)] bg-surface-panel rounded-control;
 }
 
 .clone-activity p {
-  margin: 8px 0;
-  overflow-wrap: anywhere;
+  @apply mx-0 my-2 wrap-anywhere;
 }
 
 .clone-activity progress {
-  width: 100%;
-  height: 6px;
-  margin: 8px 0;
+  @apply w-full h-1.5 mx-0 my-2;
 }
 
 .clone-activity > small {
-  display: block;
-  margin-top: 6px;
+  @apply block mt-1.5;
 }
 
 .clone-activity .raw-log {
-  max-height: 220px;
-  white-space: pre-wrap;
+  @apply max-h-[220px] whitespace-pre-wrap;
 }
 
 .clone-activity details {
-  margin-top: 10px;
+  @apply mt-2.5;
 }

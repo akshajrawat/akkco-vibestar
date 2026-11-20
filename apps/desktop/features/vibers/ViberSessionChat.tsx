@@ -228,7 +228,7 @@ const SessionChat = ({
       expandResults={false}
     />
   ) : (
-    <p className="empty-row">Opening conversation…</p>
+    <p className="px-1.5 py-3 text-[12px] text-ink-muted">Opening conversation…</p>
   );
 
   return (
@@ -238,7 +238,7 @@ const SessionChat = ({
         revision={revision}
         empty={!data?.messages.length}
         activity={
-          <div className="viber-session-bar">
+          <div className="viber-session-bar flex items-center flex-wrap gap-2.5 px-6 py-1 text-ink-muted text-[12px]">
             <span title={data?.workspace?.path}>
               Workspace · {data?.workspace?.repository || "Isolated files"}
             </span>
@@ -277,7 +277,10 @@ const SessionChat = ({
               <RunError error={visibleError || invalid!} conversation />
             )}
             {(active || busy) && !data?.runs.some((run) => run.status === "running") && (
-              <p className="working-shimmer" role="status">
+              <p
+                className="working-shimmer inline-block text-ink-secondary animate-[working-shine_2s_linear_infinite] [@media(prefers-reduced-motion:reduce)]:animate-[none]"
+                role="status"
+              >
                 Working…
               </p>
             )}

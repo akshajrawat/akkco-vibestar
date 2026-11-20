@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { AgentProfile } from "../../../core/vibers/contracts";
+import type { AgentProfile, ViberNavigation } from "../../../core/vibers/contracts";
 import { rpc, errorMessage } from "../../lib/api";
 
 export const useProfiles = (revision: number) => {
-  const [profiles, setProfiles] = useState<AgentProfile[]>([]);
+  const [{ profiles, previews }, setNavigation] = useState<ViberNavigation>({
+    profiles: [],
+    previews: [],
+  });
+
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   const refresh = useCallback(() => setReload((value) => value + 1), []);
@@ -12,13 +16,16 @@ export const useProfiles = (revision: number) => {
   useEffect(() => {
     let active = true;
 
-    void rpc<AgentProfile[]>("profile.list")
-      .then((profiles) => {
+    void rpc<ViberNavigation | AgentProfile[]>("profile.list", { include_previews: true })
+      .then((navigation) => {
         if (!active) {
           return;
         }
 
-        setProfiles(profiles);
+        setNavigation(
+          Array.isArray(navigation) ? { profiles: navigation, previews: [] } : navigation,
+        );
+
         setError("");
       })
       .catch((reason) => {
@@ -32,5 +39,5 @@ export const useProfiles = (revision: number) => {
     };
   }, [revision, reload]);
 
-  return { profiles, error, refresh };
+  return { profiles, previews, error, refresh };
 };

@@ -66,7 +66,7 @@ export const ManagedFiles = ({
         ) : value?.text !== null && value?.text !== undefined ? (
           <pre>{value.text}</pre>
         ) : (
-          <p className="empty-row">
+          <p className="px-1.5 py-3 text-[12px] text-ink-muted">
             {value?.files.length ? "Select a file to inspect." : "No workspace files yet."}
           </p>
         )}

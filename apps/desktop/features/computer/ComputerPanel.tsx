@@ -119,19 +119,29 @@ export const ComputerPanel = ({
     selectTab("terminal");
   };
 
+  const state = status?.status || "stopped";
+
   return (
-    <aside className="computer-panel" hidden={!visible} aria-label="Viber computer">
-      <header className="computer-panel-header">
+    <aside
+      className="flex h-full flex-col border-l border-l-border-subtle bg-surface-panel text-[12px] text-ink-secondary"
+      hidden={!visible}
+      aria-label="Viber computer"
+    >
+      <header className="flex gap-2 items-center px-2.5 py-2 border-b border-b-border-subtle">
         <Monitor size={15} />
         <strong>Computer</strong>
-        <span role="status" className={`computer-status ${status?.status || "stopped"}`}>
-          {status?.status || "stopped"}
+        <span
+          role="status"
+          data-state={state}
+          className="ml-auto capitalize text-ink-muted data-[state=ready]:text-accent-green data-[state=running]:text-accent-green data-[state=starting]:text-accent-amber data-[state=error]:text-accent-red"
+        >
+          {state}
         </span>
         <Button size="icon" variant="ghost" aria-label="Hide computer panel" onClick={hide}>
           <X size={14} />
         </Button>
       </header>
-      <div className="computer-controls">
+      <div className="flex flex-wrap gap-[3px] p-[5px]">
         <Button
           size="sm"
           variant="ghost"
@@ -153,16 +163,20 @@ export const ComputerPanel = ({
         ))}
       </div>
       {status?.session_id && sessionId && status.session_id !== sessionId && (
-        <p className="computer-notice">
+        <p className="px-3 py-2 wrap-anywhere">
           The computer is attached to another chat. Close its terminal before switching workspaces.
         </p>
       )}
       {(error || status?.error) && (
-        <p role="alert" className="computer-error">
+        <p role="alert" className="text-accent-red px-3 py-2 wrap-anywhere">
           {error || status?.error}
         </p>
       )}
-      <div role="tablist" aria-label="Computer views" className="computer-tabs">
+      <div
+        role="tablist"
+        aria-label="Computer views"
+        className="flex border-b border-b-border-subtle [&>button]:border-b-2 [&>button]:border-b-transparent [&>button]:px-3.5 [&>button]:py-[9px] [&>button]:text-ink-muted [&>button[aria-selected=true]]:border-accent-blue [&>button[aria-selected=true]]:text-ink-primary"
+      >
         <button role="tab" aria-selected={tab === "terminal"} onClick={() => selectTab("terminal")}>
           Terminal
         </button>
@@ -171,12 +185,12 @@ export const ComputerPanel = ({
         </button>
       </div>
       <div
-        className="computer-tab"
+        className="flex-1 flex flex-col min-h-0 overflow-auto"
         role="tabpanel"
         aria-label="Terminal"
         hidden={tab !== "terminal"}
       >
-        <div className="computer-controls">
+        <div className="flex flex-wrap gap-[3px] p-[5px]">
           <Button
             size="sm"
             variant="ghost"
@@ -210,14 +224,14 @@ export const ComputerPanel = ({
           active={visible && tab === "terminal"}
           report={setError}
         />
-        <details className="computer-setup">
+        <details className="border-t border-t-border-subtle p-2.5 [&>p]:my-2 [&>p]:leading-[1.6]">
           <summary>Provider setup</summary>
           <p>
             Sign into each Viber separately using your subscription. Codex is installed. Install the
             official Linux Antigravity CLI in ~/.local/bin using the shell. User tools, Python
             environments and npm installs in your home persist.
           </p>
-          <div className="computer-controls">
+          <div className="flex flex-wrap gap-[3px] p-[5px]">
             <Button size="sm" disabled={busy} onClick={() => setConfirmation("codex")}>
               Sign in to Codex
             </Button>
@@ -232,12 +246,12 @@ export const ComputerPanel = ({
         </details>
       </div>
       <div
-        className="computer-tab computer-files"
+        className="flex-1 flex flex-col min-h-0 overflow-auto computer-files"
         role="tabpanel"
         aria-label="Files"
         hidden={tab !== "files"}
       >
-        <div className="computer-controls">
+        <div className="flex flex-wrap gap-[3px] p-[5px]">
           <Button
             size="sm"
             variant="ghost"
@@ -255,14 +269,16 @@ export const ComputerPanel = ({
             Up
           </Button>
         </div>
-        {!sessionId && <p className="computer-notice">Start a chat to browse its workspace.</p>}
-        {sessionId && !files && (
-          <p className="computer-notice">Select Workspace to browse accessible files.</p>
+        {!sessionId && (
+          <p className="px-3 py-2 wrap-anywhere">Start a chat to browse its workspace.</p>
         )}
-        <code className="computer-file-path">{files?.path || "/"}</code>
+        {sessionId && !files && (
+          <p className="px-3 py-2 wrap-anywhere">Select Workspace to browse accessible files.</p>
+        )}
+        <code className="px-3 py-1.5 text-ink-muted wrap-anywhere">{files?.path || "/"}</code>
         {files?.entries.map((entry) => (
           <button
-            className="computer-file"
+            className="flex items-center gap-[7px] px-3 py-1.5 text-left wrap-anywhere [&:hover]:bg-surface-hover"
             key={entry.name}
             onClick={() =>
               void run(() => browse([files.path, entry.name].filter(Boolean).join("/")))
@@ -273,28 +289,28 @@ export const ComputerPanel = ({
           </button>
         ))}
         {files?.text !== null && files?.text !== undefined && (
-          <pre className="computer-file-preview">{files.text}</pre>
+          <pre className="p-3 overflow-auto text-[12px] whitespace-pre">{files.text}</pre>
         )}
       </div>
       {confirmation && (
         <WorkspaceOverlay
           label="Confirm computer action"
           onClose={() => setConfirmation(undefined)}
-          className="computer-confirmation"
+          className="computer-confirmation max-w-[480px] p-6"
         >
           <h2>
             {confirmation === "codex" || confirmation === "antigravity"
               ? "Connect this Viber's account?"
               : `${confirmation[0].toUpperCase() + confirmation.slice(1)} computer?`}
           </h2>
-          <p>
+          <p className="my-4 leading-[1.6]">
             {confirmation === "reset"
               ? "This permanently deletes this computer's home, account sessions, user data and installed dependencies. Chat workspace files are preserved. Native AI context will be cleared."
               : confirmation === "codex" || confirmation === "antigravity"
                 ? "The official CLI will authenticate inside this Viber's private computer. Host credentials are never copied. Credentials saved here belong to this Viber until reset or deletion."
                 : "This closes the computer's shell and stops its processes. Saved home and workspace files remain."}
           </p>
-          <footer>
+          <footer className="flex justify-end gap-2">
             <Button onClick={() => setConfirmation(undefined)}>Cancel</Button>
             <Button onClick={() => void confirm()}>Confirm</Button>
           </footer>

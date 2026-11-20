@@ -176,5 +176,11 @@ export const ComputerTerminal = ({
     }
   }, [active]);
 
-  return <div className="computer-terminal" aria-label="Computer terminal" ref={surface} />;
+  return (
+    <div
+      className="min-h-[150px] flex-1 overflow-hidden bg-[#0b1220] p-1 [&_.xterm]:h-full"
+      aria-label="Computer terminal"
+      ref={surface}
+    />
+  );
 };

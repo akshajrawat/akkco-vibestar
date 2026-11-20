@@ -1,5 +1,4 @@
 import { realpath } from "node:fs/promises";
-import { join } from "node:path";
 import { z } from "zod";
 
 import { AdeError, SettingsSchema } from "../domain";
@@ -12,7 +11,6 @@ import { idInput } from "./validation";
 export const systemMethods = [
   "editors.list",
   "editors.open",
-  "usage.info",
   "snapshot",
   "persistence.diagnostics",
   "usage.list",
@@ -46,19 +44,6 @@ export const callSystem = async (
 
       return new Editors(e).open(p.id, p.kind, p.editor);
     }
-
-    case "usage.info":
-      return {
-        root: e.root,
-        capabilities: {
-          viber_conversations: 1,
-          viber_sessions: 2,
-          viber_computers: 1,
-        },
-        database: join(e.root, "state", "vibestar.sqlite"),
-        schema: e.db.all("SELECT max(version) version FROM schema_migrations")[0],
-        runs: e.db.all("SELECT count(*) count FROM ai_usage")[0],
-      };
 
     case "snapshot": {
       const snapshot = {

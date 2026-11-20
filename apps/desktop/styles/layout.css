@@ -1,26 +1,11 @@
 .desktop-shell {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
+  @apply h-screen overflow-hidden;
 }
 
 .titlebar {
-  height: 34px;
-  flex: 0 0 34px;
-  display: flex;
-  align-items: center;
-  background: var(--background-app);
-  border-bottom: 1px solid var(--border);
-  user-select: none;
+  @apply h-[var(--titlebar-height)] shrink-0 bg-surface-app;
   -webkit-app-region: drag;
   app-region: drag;
-}
-
-.titlebar-drag-region {
-  align-self: stretch;
-  flex: 1;
-  min-width: 40px;
 }
 
 .titlebar.titlebar-manual {
@@ -35,171 +20,55 @@
 }
 
 .titlebar-action {
-  display: grid;
-  place-items: center;
-  height: 28px;
-  width: 32px;
-  flex-shrink: 0;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  color: var(--text-muted);
+  @apply size-10 bg-transparent text-ink-muted;
 }
 
 .titlebar-action:hover {
-  color: var(--foreground);
-  background: var(--background-hover);
-}
-
-.titlebar-action:focus-visible {
-  outline: 1px solid var(--focus-ring);
-  outline-offset: -2px;
-}
-
-.titlebar-error {
-  font-size: 11px;
-  color: var(--accent-red);
+  @apply text-foreground bg-surface-hover;
 }
 
 .window-controls {
-  flex-shrink: 0;
-  height: 100%;
-  display: flex;
-  margin-left: auto;
+  @apply h-full;
 }
 
 .window-controls button {
-  width: 46px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
+  @apply w-12 grid place-items-center bg-transparent [border:0] [border-radius:0];
 }
 
 .window-controls button:hover {
-  background: var(--border-default);
+  @apply bg-border-default;
 }
 
 .window-controls .window-close:hover {
-  background: var(--accent-red);
-  color: var(--text-on-accent);
-}
-
-.app-shell {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
+  @apply bg-accent-red text-ink-on-accent;
 }
 
 .resize-handle {
-  width: 3px;
-  flex: 0 0 3px;
-  background: var(--background-elevated);
-  cursor: col-resize;
-  touch-action: none;
-  outline: none;
+  @apply w-[3px] flex-[0_0_3px] bg-surface-elevated;
 }
 
 .resize-handle:hover,
 .resize-handle:focus {
-  background: var(--text-muted);
+  @apply bg-ink-muted;
 }
 
 .resize-handle.vertical {
-  width: auto;
-  height: 3px;
-  flex: 0 0 3px;
-  cursor: row-resize;
+  @apply w-auto h-[3px] flex-[0_0_3px];
 }
 
-.main-area {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+.resize-handle.navigation-resize-handle {
+  @apply relative z-1 w-2 flex-[0_0_8px] -mx-1 bg-transparent;
+}
+
+.navigation-resize-handle:is(:hover, :active, :focus-visible)::after {
+  content: "";
+  @apply absolute inset-y-0 left-1 w-px bg-ink-muted;
 }
 
 .helper-warning {
-  color: var(--accent-amber);
-  background: var(--background-warning);
-  padding: 8px 16px;
-  margin: 0;
-  border-bottom: 1px solid var(--border-default);
-  font-size: 12px;
-  line-height: 1.4;
+  @apply bg-surface-warning;
 }
 
 .workspace {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.workspace-header {
-  background: var(--background-sidebar);
-  border-bottom: 1px solid var(--border-default);
-  padding: 7px 13px;
-}
-
-.workspace-heading {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-
-.workspace-tabs,
-.dock-tabs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-height: 34px;
-  padding: 0 9px;
-  border-bottom: 1px solid var(--border-default);
-  flex-shrink: 0;
-  background: var(--background-sidebar);
-}
-
-.workspace-tabs > button,
-.dock-tabs > button {
-  border: 0;
-  background: transparent;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    color var(--motion-fast),
-    background-color var(--motion-fast);
-}
-
-.workspace-tabs > button:hover,
-.dock-tabs > button:hover {
-  color: var(--text-primary);
-  background: var(--background-hover);
-}
-
-.workspace-tabs > button.selected,
-.dock-tabs > button.selected,
-.workspace-tabs > button[aria-selected="true"],
-.dock-tabs > button[aria-selected="true"] {
-  color: var(--text-primary);
-  background: var(--background-selected);
-  border-radius: 6px;
-}
-
-.workspace-content {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+  @apply relative flex flex-col flex-1 min-h-0 overflow-hidden;
 }

@@ -45,7 +45,10 @@ export const CloneActivity = ({ activity }: { activity: Activity }) => {
   }, [activity.id, active, expanded]);
 
   return (
-    <article className="clone-activity" aria-label={`Clone ${activity.repository}`}>
+    <article
+      className="clone-activity px-4 py-3.5 mx-0 my-2.5"
+      aria-label={`Clone ${activity.repository}`}
+    >
       <div className="section-heading">
         <strong>{activity.repository}</strong>
         <span
@@ -58,7 +61,7 @@ export const CloneActivity = ({ activity }: { activity: Activity }) => {
       <p>{activity.phase}</p>
       {active && <progress max={100} value={activity.percent} aria-label="Clone progress" />}
       {activity.destination && (
-        <code className="repository-path">Destination: {activity.destination}</code>
+        <code className="block mb-3 wrap-anywhere">Destination: {activity.destination}</code>
       )}
 
       {activity.upstream && (
@@ -67,7 +70,7 @@ export const CloneActivity = ({ activity }: { activity: Activity }) => {
         </small>
       )}
 
-      <div className="actions">
+      <div className="actions flex gap-1.5">
         {active && (
           <Button
             size="sm"
