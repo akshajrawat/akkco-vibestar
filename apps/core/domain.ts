@@ -143,6 +143,7 @@ export interface WorkspaceAssignment {
   branch_owned?: boolean;
   workspace_mode?: "source";
   workspace_kind?: "managed";
+  managed_removal_identity?: string;
   kind?: string;
   goal?: string;
   issue_number?: number | null;

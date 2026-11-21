@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import { AdeError } from "../domain";
 import type { RpcServices } from "./services";
+import { removeManagedWorkspace } from "../workspace/managed";
 import { managedPath } from "../workspace/paths";
 
 export const profileMethods = ["profile.delete"] as const;
@@ -45,11 +46,7 @@ export const callProfiles = async (
                 const repo = engine.db.repository(workspace.repo_id);
                 await engine.git.removeOwnedWorktree(repo, workspace, save);
               } else {
-                await engine.git.assertOwnedTask(workspace);
-                const directory = await managedPath(engine.root, dirname(workspace.worktree_path));
-                await rm(directory, { recursive: true });
-                workspace.worktree_path = "";
-                save();
+                await removeManagedWorkspace(engine.root, workspace, save);
               }
             }
           }

@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { expect, it } from "vitest";
+import { dirname, join } from "node:path";
+import { expect, it, vi } from "vitest";
 
 import { createFixtureEngine, fixtureRepository } from "../helpers/fixtures";
 import { Rpc } from "../../apps/core/rpc";
 import { gitChecked } from "../../apps/core/workspace/git-command";
 import { testProfileIds as builtInProfiles } from "../helpers/viber-fixtures";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...fs, rm: vi.fn(fs.rm) };
+});
 
 it("keeps each session's owned workspace and removes it when its Viber is deleted", async () => {
   const directory = await mkdtemp(join(tmpdir(), "vibestar-session-workspaces-"));
@@ -121,6 +126,76 @@ it("keeps each session's owned workspace and removes it when its Viber is delete
     );
 
     expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
+  } finally {
+    await rpc.close();
+    await engine.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it.each(["partially", "fully"])("retries a %s removed managed workspace", async (removal) => {
+  const directory = await mkdtemp(join(tmpdir(), "vibestar-session-removal-"));
+  const engine = await createFixtureEngine(join(directory, "data"));
+  const rpc = new Rpc(engine);
+
+  try {
+    const profile_id = builtInProfiles.implementer;
+    const session = engine.viberSessions.store.create({ request_id: randomUUID(), profile_id });
+    const files = await engine.viberSessions.prepareWorkspace(session.id, profile_id);
+    const owner = dirname(files);
+    const marker = join(owner, "vibestar-task-owner");
+    const retained = join(files, "retained.txt");
+    const deleteProfile = () => rpc.call("profile.delete", { profile_id, confirmed: true });
+    const workspace = () => engine.viberSessions.store.workspace(session.id);
+
+    await writeFile(retained, "remaining workspace data");
+    const markerContents = await readFile(marker, "utf8");
+    await rm(marker);
+    await expect(deleteProfile()).rejects.toThrow("ownership could not be proved");
+    expect(workspace().managed_removal_identity).toBeUndefined();
+    expect(await readFile(retained, "utf8")).toBe("remaining workspace data");
+    await writeFile(marker, markerContents);
+
+    const { rm: realRm } =
+      await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+
+    vi.mocked(rm).mockImplementationOnce(async (path, options) => {
+      expect(path).toBe(owner);
+      if (removal === "partially") {
+        await realRm(marker);
+      } else {
+        await realRm(path, options);
+      }
+
+      throw new Error("interrupted workspace removal");
+    });
+
+    await expect(deleteProfile()).rejects.toThrow("interrupted workspace removal");
+    expect(workspace().worktree_path).toBe(files);
+    expect(workspace().managed_removal_identity).toBeDefined();
+    await expect(stat(marker)).rejects.toMatchObject({ code: "ENOENT" });
+
+    await expect(engine.viberSessions.prepareWorkspace(session.id, profile_id)).rejects.toThrow(
+      "removal is pending",
+    );
+
+    if (removal === "partially") {
+      const moved = join(directory, "moved-workspace");
+      await rename(owner, moved);
+      await mkdir(owner);
+      const unrelated = join(owner, "unrelated.txt");
+      await writeFile(unrelated, "unrelated data");
+      await expect(deleteProfile()).rejects.toThrow("directory changed during removal");
+      expect(await readFile(unrelated, "utf8")).toBe("unrelated data");
+      await rm(owner, { recursive: true });
+      await rename(moved, owner);
+    }
+
+    await deleteProfile();
+    await expect(stat(owner)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(workspace().worktree_path).toBe("");
+    expect(workspace().managed_removal_identity).toBeUndefined();
+    await expect(deleteProfile()).rejects.toThrow("active Viber");
   } finally {
     await rpc.close();
     await engine.close();

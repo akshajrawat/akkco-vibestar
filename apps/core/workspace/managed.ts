@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
 
@@ -27,11 +27,18 @@ const location = async (root: string, task: WorkspaceAssignment) => {
   return { owner, files };
 };
 
+const assertUsable = (task: WorkspaceAssignment) => {
+  if (task.managed_removal_identity !== undefined) {
+    throw new AdeError("recovery", "Managed workspace removal is pending. Retry Viber deletion.");
+  }
+};
+
 /** The owner marker stays outside the directory mounted writable for the agent. */
 export const prepareManagedWorkspace = async <T extends WorkspaceAssignment>(
   root: string,
   task: T,
 ): Promise<T> => {
+  assertUsable(task);
   const { owner, files } = await location(root, task);
   await managedPath(root, "workspaces");
   await mkdir(join(root, "workspaces"), { recursive: true, mode: 0o700 });
@@ -71,6 +78,7 @@ export const prepareManagedWorkspace = async <T extends WorkspaceAssignment>(
 };
 
 export const assertManagedWorkspace = async (root: string, task: WorkspaceAssignment) => {
+  assertUsable(task);
   const { owner, files } = await location(root, task);
   if (
     task.worktree_path !== files ||
@@ -85,6 +93,59 @@ export const assertManagedWorkspace = async (root: string, task: WorkspaceAssign
   }
 
   return files;
+};
+
+const directoryIdentity = async (path: string) => {
+  try {
+    const entry = await lstat(path, { bigint: true });
+    if (!entry.isDirectory()) {
+      throw new AdeError("ownership", "Managed workspace removal requires its original directory.");
+    }
+
+    return `${entry.dev}:${entry.ino}:${entry.birthtimeNs}`;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+};
+
+export const removeManagedWorkspace = async (
+  root: string,
+  task: WorkspaceAssignment,
+  save: () => void,
+) => {
+  const { owner, files } = await location(root, task);
+  if (task.worktree_path !== files) {
+    throw new AdeError("ownership", "The managed task workspace identity changed.");
+  }
+
+  if (task.managed_removal_identity === undefined) {
+    const identity = await directoryIdentity(owner);
+    await assertManagedWorkspace(root, task);
+    if (identity === null) {
+      throw new AdeError("ownership", "Managed workspace directory changed during removal.");
+    }
+
+    // Recursive removal can unlink the owner marker before it finishes.
+    task.managed_removal_identity = identity;
+    save();
+  }
+
+  const current = await directoryIdentity(await managedPath(root, owner));
+  if (current !== null) {
+    if (current !== task.managed_removal_identity) {
+      throw new AdeError("ownership", "Managed workspace directory changed during removal.");
+    }
+
+    await rm(owner, { recursive: true, force: true });
+  }
+
+  task.worktree_path = "";
+  task.managed_removal_identity = undefined;
+  save();
 };
 
 const inspectManagedWorkspace = async (

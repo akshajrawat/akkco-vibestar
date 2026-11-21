@@ -70,6 +70,7 @@ export const ViberWorkspaceSchema = z.object({
   base_commit_sha: z.string().default(""),
   worktree_path: z.string().default(""),
   workspace_kind: z.literal("managed").optional(),
+  managed_removal_identity: z.string().optional(),
   workspace_mode: z.literal("source").optional(),
   created_at: z.string(),
   updated_at: z.string(),
