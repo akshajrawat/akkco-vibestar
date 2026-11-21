@@ -544,8 +544,9 @@ export class ViberSessionStore {
       let missedMessages: { role: string; content: string }[] = [];
       if (thread && isProviderSwitch) {
         const threadRun = this.db.all<{ last_rowid: number }>(
-          "SELECT max(m.rowid) as last_rowid FROM viber_messages m JOIN utility_runs r ON (r.viber_message_id=m.id OR m.run_id=r.id) WHERE m.session_id=? AND r.conversation_id=? AND m.status='completed'",
+          "SELECT max(m.rowid) as last_rowid FROM viber_messages m JOIN utility_runs r ON (r.viber_message_id=m.id OR m.run_id=r.id) WHERE m.session_id=? AND r.provider=? AND r.conversation_id=? AND m.status='completed'",
           session.id,
+          targetProvider,
           thread.thread_id,
         )[0];
 
