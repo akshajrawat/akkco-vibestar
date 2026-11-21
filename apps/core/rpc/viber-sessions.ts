@@ -112,11 +112,8 @@ export const callViberSessions = async (
     }
 
     case "viber.session.clear": {
-      engine.assertAvailable();
       const input = ViberSessionScopeSchema.parse(raw);
-      const res = sessions.store.clearContext(input.session_id, input.profile_id);
-      engine.changed();
-      return res;
+      return sessions.clearContext(input.session_id, input.profile_id);
     }
 
     default:

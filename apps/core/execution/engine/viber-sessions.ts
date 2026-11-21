@@ -17,7 +17,14 @@ export class ViberSessions {
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "computers" | "publish"
+      | "db"
+      | "root"
+      | "git"
+      | "changed"
+      | "assertAvailable"
+      | "isExecuting"
+      | "computers"
+      | "publish"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -54,21 +61,27 @@ export class ViberSessions {
     return this.host.git.assertOwnedTask(assignment);
   };
 
+  clearContext = (sessionId: string, profileId: string, requestId?: string) => {
+    this.host.assertAvailable();
+    this.store.session(sessionId, profileId);
+    if (this.host.isExecuting(`viber:${sessionId}`)) {
+      throw new AdeError("busy", "Wait for this Viber session to finish before clearing context.");
+    }
+
+    const cleared = this.store.clearContext(sessionId, profileId, requestId);
+    this.host.changed();
+    return cleared;
+  };
+
   send = (raw: z.input<typeof ViberSessionSendSchema>) => {
     const parsed = ViberSessionSendSchema.parse(raw);
-    const input = { ...parsed, content: redact(parsed.content) };
-    this.host.assertAvailable();
 
     if (parsed.content.trim() === "/clear") {
-      const cleared = this.store.clearContext(
-        parsed.session_id,
-        parsed.profile_id,
-        parsed.request_id,
-      );
-
-      this.host.changed();
-      return cleared;
+      return this.clearContext(parsed.session_id, parsed.profile_id, parsed.request_id);
     }
+
+    const input = { ...parsed, content: redact(parsed.content) };
+    this.host.assertAvailable();
 
     const previous = this.store.previous(input);
     if (previous) {
