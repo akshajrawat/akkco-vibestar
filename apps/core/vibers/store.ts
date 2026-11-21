@@ -489,6 +489,12 @@ export class ViberSessionStore {
       const previousProvider = lastRun?.provider || session.thread?.provider;
       const isProviderSwitch = !!(previousProvider && previousProvider !== targetProvider);
 
+      const isModelSwitch =
+        candidateThread &&
+        !input.new_thread &&
+        session.selection.provider === targetProvider &&
+        session.selection.model !== execution.model;
+
       const lastClear = this.db.all<{ rowid: number }>(
         "SELECT rowid FROM viber_messages WHERE session_id=? AND content='/clear' AND status='completed' ORDER BY rowid DESC LIMIT 1",
         session.id,
@@ -528,7 +534,7 @@ export class ViberSessionStore {
             "Selected bootstrap context exceeds 64,000 characters. Select less history or send a concise handoff.",
           );
         }
-      } else if (!thread && isProviderSwitch) {
+      } else if (!thread && (isProviderSwitch || isModelSwitch)) {
         const rows = this.db.all<{ role: string; content: string }>(
           "SELECT role,content FROM viber_messages WHERE session_id=? AND status='completed' AND role IN ('user','assistant') AND content<>'/clear' AND rowid>? ORDER BY rowid ASC",
           session.id,
