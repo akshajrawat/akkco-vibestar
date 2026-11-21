@@ -1,4 +1,6 @@
 import type { ComputerRpc } from "../../core/computers/contracts";
+import type { z } from "zod";
+import type { viberMemoryInputs, ViberMemoryResults } from "../../core/vibers/memory-contracts";
 
 import type { CoreEvent } from "./types";
 
@@ -18,3 +20,8 @@ export const computerRpc = <M extends keyof ComputerRpc>(
   method: M,
   params: ComputerRpc[M]["input"],
 ): Promise<ComputerRpc[M]["output"]> => rpc(method, params);
+
+export const viberMemoryRpc = <M extends keyof ViberMemoryResults>(
+  method: M,
+  params: z.input<(typeof viberMemoryInputs)[M]>,
+): Promise<ViberMemoryResults[M]> => rpc(method, params);

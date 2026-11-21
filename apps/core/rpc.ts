@@ -8,6 +8,7 @@ import { callSystem, systemMethods } from "./rpc/system";
 import { callViberSessions, viberSessionMethods } from "./rpc/viber-sessions";
 import { callComputers, computerMethods } from "./rpc/computers";
 import { StorageService } from "./storage/service";
+import { ViberMemory } from "./vibers/memory";
 
 export class Rpc {
   private readonly handlers = new Map<
@@ -49,6 +50,19 @@ export class Rpc {
       for (const method of methods) {
         this.handlers.set(method, (method, input) => handler(services, method, input));
       }
+    }
+
+    const memory = new ViberMemory(engine.db);
+    for (const [method, handle] of Object.entries({
+      "viber.memory.list": memory.list,
+      "viber.memory.create": memory.create,
+      "viber.memory.update": memory.update,
+      "viber.memory.forget": memory.forget,
+    })) {
+      this.handlers.set(method, async (_method, input) => {
+        engine.assertAvailable();
+        return handle(input);
+      });
     }
   }
 

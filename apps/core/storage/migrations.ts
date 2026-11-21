@@ -172,4 +172,15 @@ CREATE TRIGGER IF NOT EXISTS viber_session_owner_immutable BEFORE UPDATE OF id,p
 CREATE TRIGGER IF NOT EXISTS viber_workspace_owner_immutable BEFORE UPDATE OF workspace ON viber_sessions WHEN json_extract(OLD.workspace,'$.id') IS NOT json_extract(NEW.workspace,'$.id') OR json_extract(OLD.workspace,'$.repo_id') IS NOT json_extract(NEW.workspace,'$.repo_id') BEGIN SELECT RAISE(ABORT,'Viber workspace ownership is immutable'); END;
 `,
   },
+  {
+    version: 1,
+    sql: `
+CREATE TABLE IF NOT EXISTS viber_memory_facts(
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+  id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY(profile_id, id)
+);
+`,
+  },
 ];
