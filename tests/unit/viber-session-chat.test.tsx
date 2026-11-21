@@ -200,6 +200,72 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
   );
 });
 
+it("waits for explicit Retry and recovery confirmation after stopping a file-changing turn", async () => {
+  const turnId: string = crypto.randomUUID();
+
+  const turn = {
+    id: turnId,
+    role: "user",
+    content: "Edit the fixture workspace",
+    status: "pending",
+  };
+
+  const scope = { session_id: sessionId, profile_id: viberProfile.id };
+  let detail = { ...stored, recovery_required: false, messages: [turn] };
+
+  rpc.mockImplementation(async (method: string, input: { request_id: string }) => {
+    if (method === "viber.session.cancel") {
+      detail = {
+        ...detail,
+        recovery_required: true,
+        messages: [{ ...turn, status: "cancelled" }],
+      };
+    }
+
+    if (method === "viber.session.send") {
+      detail = { ...detail, messages: [...detail.messages, { ...turn, id: input.request_id }] };
+    }
+
+    return detail;
+  });
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
+  const retry = await screen.findByRole("button", { name: "Retry" });
+  expect(rpc).toHaveBeenCalledWith("viber.session.cancel", scope);
+  expect(screen.queryByRole("button", { name: "Stop response" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  const sends = () => rpc.mock.calls.filter(([method]) => method === "viber.session.send");
+  expect(sends()).toHaveLength(0);
+
+  fireEvent.click(retry);
+  await screen.findByRole("dialog", { name: "Review previous work" });
+  expect(sends()).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(sends()).toHaveLength(0);
+
+  fireEvent.click(retry);
+  fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
+  await screen.findByRole("button", { name: "Stop response" });
+
+  expect(sends()).toEqual([
+    [
+      "viber.session.send",
+      expect.objectContaining({
+        ...scope,
+        content: turn.content,
+        request_id: expect.any(String),
+        acknowledge_uncertain: true,
+      }),
+    ],
+  ]);
+
+  expect(sends()[0][1].request_id).not.toBe(turn.id);
+});
+
 it("sends beyond 50 saved messages and starts a fresh thread only when explicitly selected", async () => {
   const messages = Array.from({ length: 60 }, (_, index) => ({
     id: crypto.randomUUID(),

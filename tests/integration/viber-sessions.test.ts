@@ -19,7 +19,7 @@ import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
 class SessionProvider extends FixtureProvider {
   readonly requests: AgentRunRequest[] = [];
 
-  mode: "success" | "failure" | "wait" = "success";
+  mode: "success" | "failure" | "wait" | "write-and-wait" = "success";
 
   invocation = (request: AgentRunRequest) => {
     this.requests.push(request);
@@ -35,8 +35,13 @@ class SessionProvider extends FixtureProvider {
             : `
         ${request.access === "read-only" ? "" : "require('node:fs').writeFileSync('answer.txt','Session file');"}
         console.log(JSON.stringify({type:'thread.started',thread_id:${JSON.stringify(request.conversation?.threadId || request.runId)}}));
-        console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Saved session answer.'}}));
-        console.log(JSON.stringify({type:'turn.completed'}));
+        if (${this.mode === "write-and-wait"}) {
+          require('node:fs').appendFileSync('partial.txt', 'Partial edit\\n');
+          setInterval(() => {}, 1000);
+        } else {
+          console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Saved session answer.'}}));
+          console.log(JSON.stringify({type:'turn.completed'}));
+        }
       `,
       ],
     };
@@ -85,7 +90,7 @@ const detail = async (session: ViberSession) =>
     session_id: session.id,
     profile_id: session.profile_id,
   })) as ViberSessionDetail & {
-    runs: { id: string; status: string; execution: string }[];
+    runs: { id: string; status: string; execution: string; pid: number | null }[];
     events: { run_id: string; kind: string }[];
   };
 
@@ -348,6 +353,117 @@ it("enforces shared execution capacity, serializes one session, supports cancell
     send(one, { history_ids: [pending.id], acknowledge_uncertain: true }),
   ).rejects.toThrow("completed messages");
 });
+
+it("stops only the current turn in the requested Viber session and preserves completed turns", async () => {
+  engine.db.saveSettings({ ...engine.db.settings(), concurrency: 2 });
+  const one = await create();
+  const two = await create(builtInProfiles.reviewer);
+  const scope = { session_id: one.id, profile_id: one.profile_id };
+  await send(one, { content: "Finish the first turn" });
+  const completed = await settled(one);
+  expect(completed.runs[0].status).toBe("completed");
+  expect(await rpc.call("viber.session.cancel", scope)).toEqual(completed);
+
+  provider.mode = "wait";
+  const current = await send(one, { content: "Stop this turn" });
+  const sibling = await send(two, { content: "Keep this turn running" });
+
+  await expect
+    .poll(async () => {
+      const sessions = await Promise.all([detail(one), detail(two)]);
+      return sessions.every(({ runs }) => {
+        const run = runs.at(-1);
+        return run?.status === "running" && (run.pid ?? 0) > 1;
+      });
+    })
+    .toBe(true);
+
+  await expect(
+    rpc.call("viber.session.cancel", { ...scope, profile_id: two.profile_id }),
+  ).rejects.toThrow("not found for this profile");
+
+  const stopped = await rpc.call("viber.session.cancel", scope);
+  const cancelled = await settled(one, "cancelled");
+  expect(stopped).toEqual(cancelled);
+  expect(cancelled.messages.slice(0, -1)).toEqual(completed.messages);
+  expect(cancelled.messages.at(-1)).toMatchObject({ id: current.id, status: "cancelled" });
+  expect(cancelled.runs.map(({ status }) => status)).toEqual(["completed", "cancelled"]);
+
+  expect(cancelled.events.filter(({ run_id }) => run_id === completed.runs[0].id)).toEqual(
+    completed.events,
+  );
+
+  expect(await detail(two)).toMatchObject({
+    messages: [{ id: sibling.id, status: "pending" }],
+    runs: [{ status: "running" }],
+  });
+});
+
+it.each(["cancelled", "interrupted"] as const)(
+  "preserves a %s file-changing turn without replay and requires an explicit acknowledged retry",
+  async (status) => {
+    provider.mode = "write-and-wait";
+    const session = await create();
+    const scope = { session_id: session.id, profile_id: session.profile_id };
+    const request = { request_id: randomUUID(), content: "Edit the fixture workspace" };
+    await send(session, request);
+    const inspect = () => rpc.call("viber.session.inspect", { ...scope, path: "partial.txt" });
+    await expect.poll(inspect).toMatchObject({ text: "Partial edit\n" });
+
+    await expect
+      .poll(() => detail(session))
+      .toMatchObject({
+        session: { thread: { thread_id: expect.any(String) } },
+        messages: [{ id: request.request_id, status: "pending" }],
+        runs: [{ status: "running" }],
+      });
+
+    if (status === "cancelled") {
+      await rpc.call("viber.session.cancel", scope);
+      const cancelled = await settled(session, "cancelled");
+      expect(cancelled.runs).toMatchObject([{ status: "cancelled" }]);
+    }
+
+    await rpc.close();
+    await engine.close();
+    engine = await createFixtureEngine(join(dir, "data"), () => provider);
+    rpc = new Rpc(engine);
+    const recovered = await detail(session);
+
+    expect(recovered).toMatchObject({
+      recovery_required: true,
+      session: { thread: { status: "uncertain" } },
+      messages: [{ id: request.request_id, status, effects: "possible" }],
+    });
+
+    expect(recovered.runs).toHaveLength(1);
+
+    expect(await send(session, request)).toEqual(recovered.messages[0]);
+    const retry = { ...request, request_id: randomUUID() };
+    await expect(send(session, retry)).rejects.toThrow("acknowledge");
+    expect(await detail(session)).toEqual(recovered);
+    expect(engine.hasActive()).toBe(false);
+    expect(provider.requests).toHaveLength(1);
+    expect(await inspect()).toMatchObject({ text: "Partial edit\n" });
+
+    provider.mode = "success";
+    const acknowledgedRetry = { ...retry, acknowledge_uncertain: true };
+    await send(session, acknowledgedRetry);
+    const completed = await settled(session);
+    expect(completed.recovery_required).toBe(false);
+
+    expect(completed.messages.filter(({ role }) => role === "user")).toMatchObject([
+      { id: request.request_id, status },
+      { id: retry.request_id, status: "completed" },
+    ]);
+
+    expect(completed.runs).toMatchObject([recovered.runs[0], { status: "completed" }]);
+    expect(await send(session, acknowledgedRetry)).toEqual(completed.messages[1]);
+    expect(await detail(session)).toEqual(completed);
+    expect(provider.requests).toHaveLength(2);
+    expect(provider.requests[1].prompt).toBe(request.content);
+  },
+);
 
 it("marks shutdown and recovered pending turns interrupted without automatically invoking a provider", async () => {
   provider.mode = "wait";
