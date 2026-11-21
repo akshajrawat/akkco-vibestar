@@ -87,10 +87,12 @@ export const assertManagedWorkspace = async (root: string, task: WorkspaceAssign
   return files;
 };
 
-/** Bounded source integrity for workspaces without Git; links and unsupported files fail closed. */
-export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceAssignment) => {
+const inspectManagedWorkspace = async (
+  root: string,
+  task: WorkspaceAssignment,
+  hash?: ReturnType<typeof createHash>,
+) => {
   const cwd = await assertManagedWorkspace(root, task);
-  const hash = createHash("sha256").update(task.id);
   let entries = 0;
   let bytes = 0;
 
@@ -107,7 +109,7 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
 
       const path = await managedPath(root, join(directory, name));
       const metadata = await lstat(path, { bigint: true });
-      hash.update(JSON.stringify([relative(cwd, path), String(metadata.mode)]));
+      hash?.update(JSON.stringify([relative(cwd, path), String(metadata.mode)]));
       if (metadata.isDirectory()) {
         await visit(path);
         continue;
@@ -120,16 +122,7 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
         );
       }
 
-      bytes += Number(metadata.size);
-      if (bytes > 64 * 1024 * 1024) {
-        throw new AdeError(
-          "fingerprint",
-          "Managed workspace exceeds the 64 MiB integrity limit. Reduce its contents before running an agent.",
-        );
-      }
-
       const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-      const fileHash = createHash("sha256");
       try {
         const before = await handle.stat({ bigint: true });
         if (
@@ -141,6 +134,19 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
           throw new AdeError("ownership", "A workspace file changed identity during inspection.");
         }
 
+        if (!hash) {
+          continue;
+        }
+
+        bytes += Number(metadata.size);
+        if (bytes > 64 * 1024 * 1024) {
+          throw new AdeError(
+            "fingerprint",
+            "Managed workspace exceeds the 64 MiB integrity limit. Reduce its contents before running an agent.",
+          );
+        }
+
+        const fileHash = createHash("sha256");
         const buffer = Buffer.alloc(65536);
         let count = 0;
         while (true) {
@@ -180,5 +186,14 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
 
   await visit(cwd);
   await assertManagedWorkspace(root, task);
+};
+
+export const assertManagedWorkspaceEntries = (root: string, task: WorkspaceAssignment) =>
+  inspectManagedWorkspace(root, task);
+
+/** Bounded source integrity for workspaces without Git; links and unsupported files fail closed. */
+export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceAssignment) => {
+  const hash = createHash("sha256").update(task.id);
+  await inspectManagedWorkspace(root, task, hash);
   return `managed-v1:${hash.digest("hex")}`;
 };

@@ -225,6 +225,11 @@ it("reveals a new run error after dismissing an earlier one", () => {
   expect(screen.getByLabelText("Run failure")).toBeTruthy();
 });
 
+it("points native thread recovery to the model picker", () => {
+  render(<RunError error="Native thread not found" conversation />);
+  expect(screen.getByText(/choose a different model to start a new thread/i)).toBeTruthy();
+});
+
 it("keeps changed files with implementation when a later conversation starts", () => {
   const ui = render(
     <AgentTimeline

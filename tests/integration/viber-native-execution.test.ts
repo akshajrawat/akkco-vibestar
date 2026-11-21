@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import type { CoreEvent } from "../../apps/core/domain";
 import { Rpc } from "../../apps/core/rpc";
@@ -14,10 +14,21 @@ import type { ViberSession } from "../../apps/core/vibers/contracts";
 import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
 import { createFixtureEngine, fixtureRepository, detectFixtureProvider } from "../helpers/fixtures";
 
+const fixture = vi.hoisted(() => ({ home: "" }));
+
+vi.mock("node:os", async (original) => {
+  const module = await original<typeof import("node:os")>();
+  return { ...module, homedir: () => fixture.home || module.homedir() };
+});
+
 it.each(["codex", "antigravity"] as const)(
   "%s runs its native tool loop, recovers explicitly, and hands off across a restart",
   async (providerName) => {
     const directory = await mkdtemp(join(tmpdir(), "vibestar-native-session-"));
+    fixture.home = join(directory, "home");
+    const codexState = join(fixture.home, ".codex");
+    const geminiState = join(fixture.home, ".gemini");
+    const antigravityState = join(fixture.home, ".config", "antigravity");
     const requests: AgentRunRequest[] = [];
     const adapters = { codex: new CodexProvider(), antigravity: new AntigravityProvider() };
     let mode: "success" | "invalid" | "partial" | "truncated" | "wait" = "success";
@@ -31,7 +42,7 @@ it.each(["codex", "antigravity"] as const)(
       return {
         ...adapter,
         detect: async () => {
-          const detection = await detectFixtureProvider();
+          const detection = { ...(await detectFixtureProvider()), provider: name };
           detection.models.push({ id: "other-model", supportedEfforts: ["low", "high"] });
           return detection;
         },
@@ -57,6 +68,17 @@ it.each(["codex", "antigravity"] as const)(
               for (const path of ${JSON.stringify([join(directory, "private.txt"), sourcePath, otherWorkspace].filter(Boolean))}) {
                 try { fs.readFileSync(path); throw Error('Host or sibling files were exposed: ' + path); }
                 catch (error) { if (!['ENOENT', 'EACCES'].includes(error.code)) throw error; }
+              }
+              const visible = ${JSON.stringify(name === "codex" ? [codexState] : [geminiState, antigravityState])};
+              const hidden = ${JSON.stringify(name === "codex" ? [geminiState, antigravityState] : [codexState])};
+              for (const path of visible) {
+                if (fs.readFileSync(path + '/fixture', 'utf8') !== 'synthetic state') throw Error('Selected provider state was not mounted');
+              }
+              for (const path of hidden) {
+                if (fs.existsSync(path + '/fixture')) throw Error('Unselected provider state was mounted');
+              }
+              if (${JSON.stringify(name)} === 'codex' && fs.readFileSync(${JSON.stringify(join(codexState, "config.toml"))}, 'utf8') !== '') {
+                throw Error('Codex config was not masked');
               }
               const before = fs.readFileSync('source.txt', 'utf8');
               fs.writeFileSync('source.txt', before + 'changed\\n');
@@ -108,9 +130,7 @@ it.each(["codex", "antigravity"] as const)(
 
           return {
             ...invocation,
-            program: process.execPath,
             args: ["-e", script, "--", ...invocation.args],
-            isolateProviderConfig: false,
           };
         },
       };
@@ -119,6 +139,18 @@ it.each(["codex", "antigravity"] as const)(
     let engine = await createFixtureEngine(join(directory, "data"), providers);
     let rpc = new Rpc(engine);
     try {
+      const bin = join(fixture.home, ".local", "bin");
+      await mkdir(bin, { recursive: true });
+      for (const executable of ["codex", "agy"]) {
+        await writeFile(join(bin, executable), '#!/bin/sh\nexec node "$@"\n', { mode: 0o700 });
+      }
+
+      for (const state of [codexState, geminiState, antigravityState]) {
+        await mkdir(state, { recursive: true });
+        await writeFile(join(state, "fixture"), "synthetic state");
+      }
+
+      await writeFile(join(codexState, "config.toml"), "SYNTHETIC_CONFIG");
       await writeFile(join(directory, "private.txt"), "host-only");
       const { repo } = await fixtureRepository(engine, directory);
       sourcePath = join(repo.path, "source.txt");
@@ -514,6 +546,7 @@ it.each(["codex", "antigravity"] as const)(
     } finally {
       await rpc.close();
       await engine.close();
+      fixture.home = "";
       await rm(directory, { recursive: true, force: true });
     }
   },

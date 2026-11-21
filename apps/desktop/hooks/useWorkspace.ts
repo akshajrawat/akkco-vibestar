@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { rpc, subscribe, errorMessage } from "../lib/api";
 import type { Snapshot, Detection } from "../lib/types";
@@ -76,30 +76,41 @@ export const useWorkspace = () => {
 
 let detectedProviders: Detection[] = [];
 let detectedAt = 0;
-let detecting: Promise<Detection[]> | undefined;
+let detecting: Promise<void> | undefined;
+const providerListeners = new Set<() => void>();
+
+const subscribeToProviders = (listener: () => void) => {
+  providerListeners.add(listener);
+  return () => {
+    providerListeners.delete(listener);
+  };
+};
+
+const getProviders = () => detectedProviders;
 
 export const useProviders = () => {
-  const [providers, setProviders] = useState<Detection[]>([]);
+  const providers = useSyncExternalStore(subscribeToProviders, getProviders);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const refresh = useCallback(async (force = true) => {
-    setLoading(true);
     try {
-      if (!force && Date.now() - detectedAt < 60000) {
-        setProviders(detectedProviders);
-      } else {
+      if (force || Date.now() - detectedAt >= 60000 || detecting) {
+        setLoading(true);
+
         detecting ||= rpc<Detection[]>("providers.detect")
           .then((result) => {
             detectedProviders = result;
             detectedAt = Date.now();
-            return result;
+            for (const listener of providerListeners) {
+              listener();
+            }
           })
           .finally(() => {
             detecting = undefined;
           });
 
-        setProviders(await detecting);
+        await detecting;
       }
 
       setError("");

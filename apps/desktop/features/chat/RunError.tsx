@@ -28,7 +28,7 @@ const conversationError = (error: string) => {
   }
 
   if (/thread.*(not found|changed|different)|native thread/i.test(error)) {
-    return "AI context couldn't be resumed. Reset AI context to continue.";
+    return "AI context couldn't be resumed. Choose a different model to start a new thread.";
   }
 
   if (/cancelled|stopped|interrupt/i.test(error)) {

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 
 import { createFixtureEngine, fixtureRepository } from "../helpers/fixtures";
 import { Rpc } from "../../apps/core/rpc";
+import { gitChecked } from "../../apps/core/workspace/git-command";
 import { testProfileIds as builtInProfiles } from "../helpers/viber-fixtures";
 
 it("keeps each session's owned workspace and removes it when its Viber is deleted", async () => {
@@ -60,10 +61,55 @@ it("keeps each session's owned workspace and removes it when its Viber is delete
 
     release();
     await expect(rpc.call("profile.delete", { profile_id })).rejects.toThrow();
+
+    const logs = join(engine.root, "logs", `viber-${managed.id}`);
+    await symlink(siblingFiles, logs);
+
+    await expect(rpc.call("profile.delete", { profile_id, confirmed: true })).rejects.toThrow(
+      "symlink",
+    );
+
+    await expect(stat(files)).rejects.toMatchObject({ code: "ENOENT" });
+    await rm(logs);
+    await mkdir(logs);
+    await writeFile(join(logs, "run.jsonl"), "synthetic log");
     await rpc.call("profile.delete", { profile_id, confirmed: true });
-    await expect(stat(files)).rejects.toThrow();
-    await rpc.call("profile.delete", { profile_id: builtInProfiles.planner, confirmed: true });
-    await expect(stat(worktree)).rejects.toThrow();
+    await expect(stat(logs)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const workspace = engine.viberSessions.store.workspace(repository.id);
+    const branch = `refs/heads/${workspace.branch_name}`;
+    const lock = join(await engine.git.commonDirectory(repo.path), `${branch}.lock`);
+
+    const deletePlanner = () =>
+      rpc.call("profile.delete", { profile_id: builtInProfiles.planner, confirmed: true });
+
+    await writeFile(lock, "", { flag: "wx" });
+    await expect(deletePlanner()).rejects.toThrow("git exited");
+    await expect(stat(worktree)).rejects.toMatchObject({ code: "ENOENT" });
+
+    expect(engine.viberSessions.store.workspace(repository.id).workspace_checkpoint?.state).toBe(
+      "removing",
+    );
+
+    expect(await gitChecked(["rev-parse", "--verify", branch], repo.path)).toBe(
+      workspace.base_commit_sha,
+    );
+
+    await rm(lock);
+    const marker = `branch.${workspace.branch_name}.vibestarTask`;
+    await gitChecked(["config", "--local", marker, randomUUID()], repo.path);
+    await expect(deletePlanner()).rejects.toThrow("ownership changed");
+
+    expect(await gitChecked(["rev-parse", "--verify", branch], repo.path)).toBe(
+      workspace.base_commit_sha,
+    );
+
+    await gitChecked(["config", "--local", "--unset", marker], repo.path);
+    await expect(deletePlanner()).rejects.toThrow("ownership changed");
+
+    await gitChecked(["config", "--local", marker, workspace.id], repo.path);
+    await deletePlanner();
+    await expect(gitChecked(["rev-parse", "--verify", branch], repo.path)).rejects.toThrow();
     expect(await readFile(join(siblingFiles, "retained.txt"), "utf8")).toBe("another Viber");
 
     expect(await rpc.call("profile.list", {})).not.toEqual(

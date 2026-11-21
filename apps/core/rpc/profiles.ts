@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { AdeError } from "../domain";
 import type { RpcServices } from "./services";
 import { managedPath } from "../workspace/paths";
-import { gitChecked } from "../workspace/git-command";
 
 export const profileMethods = ["profile.delete"] as const;
 
@@ -38,39 +37,22 @@ export const callProfiles = async (
             session.id,
           )[0];
 
-          if (!row.workspace) {
-            continue;
+          if (row.workspace) {
+            const workspace = engine.viberSessions.store.workspace(session.id);
+            if (workspace.worktree_path && workspace.workspace_checkpoint?.state !== "removed") {
+              const save = () => engine.viberSessions.store.saveWorkspace(session.id, workspace);
+              if (workspace.repo_id) {
+                const repo = engine.db.repository(workspace.repo_id);
+                await engine.git.removeOwnedWorktree(repo, workspace, save);
+              } else {
+                await engine.git.assertOwnedTask(workspace);
+                const directory = await managedPath(engine.root, dirname(workspace.worktree_path));
+                await rm(directory, { recursive: true });
+                workspace.worktree_path = "";
+                save();
+              }
+            }
           }
-
-          const workspace = engine.viberSessions.store.workspace(session.id);
-          if (!workspace.worktree_path || workspace.workspace_checkpoint?.state === "removed") {
-            continue;
-          }
-
-          if (workspace.repo_id) {
-            const repo = engine.db.repository(workspace.repo_id);
-
-            await engine.git.withLock(repo.id, async () => {
-              await engine.git.assertOwnedTask(workspace);
-              await managedPath(engine.root, workspace.worktree_path);
-
-              await gitChecked(
-                ["worktree", "remove", "--force", "--", workspace.worktree_path],
-                repo.path,
-              );
-
-              await gitChecked(["branch", "-D", "--", workspace.branch_name], repo.path);
-            });
-
-            workspace.workspace_checkpoint!.state = "removed";
-          } else {
-            await engine.git.assertOwnedTask(workspace);
-            const directory = await managedPath(engine.root, dirname(workspace.worktree_path));
-            await rm(directory, { recursive: true });
-            workspace.worktree_path = "";
-          }
-
-          engine.viberSessions.store.saveWorkspace(session.id, workspace);
 
           const logs = await managedPath(
             engine.root,
@@ -80,15 +62,17 @@ export const callProfiles = async (
           await rm(logs, { recursive: true, force: true });
         }
 
-        engine.db.run(
-          "INSERT OR IGNORE INTO retired_viber_profiles(profile_id) VALUES(?)",
-          input.profile_id,
-        );
+        engine.db.transaction(() => {
+          engine.db.run(
+            "INSERT OR IGNORE INTO retired_viber_profiles(profile_id) VALUES(?)",
+            input.profile_id,
+          );
 
-        engine.db.run(
-          "UPDATE viber_sessions SET thread=NULL,threads=NULL WHERE profile_id=?",
-          input.profile_id,
-        );
+          engine.db.run(
+            "UPDATE viber_sessions SET thread=NULL,threads=NULL WHERE profile_id=?",
+            input.profile_id,
+          );
+        });
 
         engine.changed();
       });

@@ -353,7 +353,15 @@ export class AgentRunner {
 
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
-      const before = assignment ? await this.git.fingerprint(assignment) : null;
+
+      if (assignment && execution.access === "workspace-write") {
+        await this.git.assertWritableWorkspaceEntries(assignment);
+      }
+
+      const before =
+        assignment && execution.access === "read-only"
+          ? await this.git.fingerprint(assignment)
+          : null;
 
       this.emit({ event: "changed", session_id: options.viberSession?.sessionId });
       signal.throwIfAborted();

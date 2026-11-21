@@ -132,23 +132,42 @@ it("loads models through the provider RPC and saves a concrete selection", async
 
   vi.mocked(useProviders).mockImplementation(actualUseProviders);
 
-  const rpc = vi.fn(async () => [
-    {
-      provider: "codex",
-      models: [{ id: "gpt-6.2-sol", isDefault: true, supportedEfforts: ["high"] }],
-    },
-  ]);
+  const rpc = vi
+    .fn(async () => [
+      {
+        provider: "codex",
+        models: [{ id: "gpt-6.2-sol", isDefault: true, supportedEfforts: ["high"] }],
+      },
+    ])
+    .mockResolvedValueOnce([{ provider: "codex", models: [] }]);
+
+  const CatalogConsumer = () => {
+    const { providers } = actualUseProviders();
+    return (
+      <output>{providers[0]?.models[0]?.id || (providers.length ? "Empty catalog" : "")}</output>
+    );
+  };
 
   vi.stubGlobal("vibestar", { rpc, subscribe: () => () => {} });
   try {
     const change = vi.fn();
-    render(<Harness change={change} initial={{ ...viberProfile.execution, model: "" }} />);
+
+    render(
+      <>
+        <CatalogConsumer />
+        <Harness change={change} initial={{ ...viberProfile.execution, model: "" }} />
+      </>,
+    );
+
     const trigger = screen.getByRole("combobox", { name: "Model" });
     expect(trigger.textContent).toBe("Choose model");
     expect(trigger.querySelector(".lucide-chevron-down")).toBeNull();
+    await screen.findByText("Empty catalog");
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("providers.detect", {});
     fireEvent.click(trigger);
 
     const model = await screen.findByRole("option", { name: "6.2 Sol" });
+    expect(screen.getByText("gpt-6.2-sol")).toBeTruthy();
     expect(model.getAttribute("aria-selected")).toBe("true");
     expect(trigger.textContent).toBe("6.2 Sol Low");
     fireEvent.click(model);
@@ -158,7 +177,10 @@ it("loads models through the provider RPC and saves a concrete selection", async
       expect.objectContaining({ model: "gpt-6.2-sol", effort: "high" }),
     );
 
-    expect(rpc).toHaveBeenCalledExactlyOnceWith("providers.detect", {});
+    expect(rpc.mock.calls).toEqual([
+      ["providers.detect", {}],
+      ["providers.detect", {}],
+    ]);
   } finally {
     vi.unstubAllGlobals();
   }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -187,6 +187,9 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
   expect(await messagePreviews()).toEqual([firstPreview]);
   expect(await send(session, input)).toEqual(retained);
   expect(provider.requests).toHaveLength(1);
+  const largeArtifact = join(cwd, "large-artifact");
+  await writeFile(largeArtifact, "");
+  await truncate(largeArtifact, 65 * 1024 * 1024);
   await send(session, { content: "A new answer" });
   const next = await settled(session);
 

@@ -41,6 +41,7 @@ npm start
 - **Sidebar Navigation**: The sidebar lists your Vibers. Search Vibers by name in the sidebar and create one with the **+** button. The dock opens Repositories, Providers, Usage, and Settings in overlays above the current chat.
 - **Conversations & Workspaces**: Selecting a Viber opens directly into its continuous conversation interface with dedicated workspace files or connected repositories.
 - **Model Selection & Composer**: Switch providers (Codex / Antigravity), models, and reasoning effort dynamically in the composer.
+- **Planning**: Use the official provider CLI's plan mode when you need a planning-only session. In interactive Codex, use `/plan`. In Antigravity, use `agy --mode plan`.
 
 ## Project status and documentation
 
