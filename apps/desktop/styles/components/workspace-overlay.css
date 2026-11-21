@@ -53,3 +53,7 @@
     @apply w-[calc(100vw_-_16px)] h-[calc(100dvh_-_16px)] max-h-[calc(100dvh_-_16px)];
   }
 }
+
+.workspace-overlay.viber-memory-overlay {
+  @apply w-[min(560px,calc(100vw_-_32px))] h-fit overflow-y-auto p-5;
+}

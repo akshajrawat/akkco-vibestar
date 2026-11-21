@@ -7,6 +7,7 @@ import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { ViberFace } from "./ViberFace";
+import { ViberMemoryControl } from "./ViberMemory";
 import { ViberSessionChat } from "./ViberSessionChat";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
@@ -163,6 +164,7 @@ export const ViberChat = ({
         className="viber-chat-page flex flex-1 flex-col min-h-0 min-w-[260px] chat-workspace"
         aria-label={`Chat with ${profile.name}`}
       >
+        <ViberMemoryControl key={profile.id} profileId={profile.id} name={profile.name} />
         {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
         {sessionId ? (
           <ViberSessionChat
