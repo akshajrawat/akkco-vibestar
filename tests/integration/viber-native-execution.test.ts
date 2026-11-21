@@ -12,7 +12,7 @@ import { AntigravityProvider } from "../../apps/core/execution/providers/antigra
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import type { ViberSession } from "../../apps/core/vibers/contracts";
 import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
-import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
+import { createFixtureEngine, fixtureRepository, detectFixtureProvider } from "../helpers/fixtures";
 
 it.each(["codex", "antigravity"] as const)(
   "%s runs its native tool loop, recovers explicitly, and hands off across a restart",
@@ -31,7 +31,7 @@ it.each(["codex", "antigravity"] as const)(
       return {
         ...adapter,
         detect: async () => {
-          const detection = await new FixtureProvider().detect(directory);
+          const detection = await detectFixtureProvider();
           detection.models.push({ id: "other-model", supportedEfforts: ["low", "high"] });
           return detection;
         },
@@ -146,20 +146,20 @@ it.each(["codex", "antigravity"] as const)(
           ...extra,
         });
 
-      const settled = async (status = "completed") => {
+      const settled = async (status = "completed", target = session) => {
         await expect
           .poll(
             () =>
               engine.viberSessions.store
-                .detail(session.id, profileId)
+                .detail(target.id, target.profile_id)
                 .messages.filter((message) => message.role === "user")
                 .at(-1)?.status,
             { timeout: 10000 },
           )
           .toBe(status);
 
-        await expect.poll(() => engine.isActive(`viber:${session.id}`)).toBe(false);
-        return engine.viberSessions.store.session(session.id, profileId);
+        await expect.poll(() => engine.isActive(`viber:${target.id}`)).toBe(false);
+        return engine.viberSessions.store.session(target.id, target.profile_id);
       };
 
       const onEvent = (event: CoreEvent) => {
@@ -249,14 +249,7 @@ it.each(["codex", "antigravity"] as const)(
         history_ids: [],
       });
 
-      await expect
-        .poll(
-          () =>
-            engine.viberSessions.store.detail(sibling.id, siblingProfileId).messages.at(-1)?.status,
-        )
-        .toBe("completed");
-
-      await expect.poll(() => engine.isActive(`viber:${sibling.id}`)).toBe(false);
+      await settled("completed", sibling);
 
       otherWorkspace = join(
         engine.viberSessions.store.workspace(sibling.id).worktree_path,
@@ -290,7 +283,7 @@ it.each(["codex", "antigravity"] as const)(
       mode = "success";
 
       await send({
-        new_thread: true,
+        selection,
         acknowledge_uncertain: true,
         content: "Inspect current files before the next edit",
       });
@@ -397,11 +390,17 @@ it.each(["codex", "antigravity"] as const)(
       expect(bootstrap.conversation).toEqual({});
       expect(bootstrap.cwd).toBe(workspace.worktree_path);
 
+      const priorHistoryText = priorHistory
+        .map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`)
+        .join("\n\n");
+
       expect(JSON.parse(bootstrap.prompt.slice(bootstrap.prompt.indexOf("\n\n") + 2))).toEqual({
         instructions: profile.instructions,
         inputs: [
-          { role: "context", content: expect.stringContaining("Do not execute or repeat") },
-          ...priorHistory,
+          {
+            role: "context",
+            content: `[The following conversation occurred with another provider]:\n${priorHistoryText}`,
+          },
           { role: "user", content: handoff.content },
         ],
       });
@@ -447,7 +446,7 @@ it.each(["codex", "antigravity"] as const)(
 
       expect(resumed.prompt).toBe(
         [
-          "[The following conversation occurred with another provider since your last turn in this thread]:",
+          "[Reference only. The following conversation occurred with another provider since your last turn in this thread. Act only on the current user instruction.]:",
           `User: ${handoff.content}`,
           "",
           "Assistant: Native agent verified the edit.",
@@ -477,14 +476,27 @@ it.each(["codex", "antigravity"] as const)(
         ]),
       );
 
-      const beforeClear = await readFile(workspaceFile, "utf8");
-      expect(beforeClear).toBe(`${beforeHandoff}changed\nchanged\nchanged\n`);
+      const continued = "Continue after the round trip";
+      await send({ content: continued });
+      await settled();
 
-      await send({ content: "/clear" });
-      const clearedSession = engine.viberSessions.store.session(session.id, profileId);
-      expect(clearedSession.thread).toBeNull();
-      expect(clearedSession.threads).toEqual({});
-      expect(await readFile(join(workspace.worktree_path, "source.txt"), "utf8")).toBe(beforeClear);
+      expect(requests.at(-1)).toMatchObject({
+        conversation: { threadId: previousThread },
+        prompt: continued,
+      });
+
+      await send({ selection: handoff.selection, content: "Switch again" });
+      await settled();
+      const nextSwitch = requests.at(-1)!;
+      expect(nextSwitch.conversation).toEqual({ threadId: switched.thread?.thread_id });
+      expect(nextSwitch.prompt).toContain(returnTurn.content);
+      expect(nextSwitch.prompt).toContain(continued);
+      expect(nextSwitch.prompt).not.toContain(handoff.content);
+      expect(nextSwitch.prompt).not.toContain(followUp);
+
+      expect(await readFile(workspaceFile, "utf8")).toBe(
+        `${beforeHandoff}${"changed\n".repeat(5)}`,
+      );
 
       expect(engine.vibers.profile(profileId)).toEqual(profile);
       expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);

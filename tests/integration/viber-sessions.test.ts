@@ -14,9 +14,12 @@ import type {
 } from "../../apps/core/vibers/contracts";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
-import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
+import { createFixtureEngine, detectFixtureProvider } from "../helpers/fixtures";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
 
-class SessionProvider extends FixtureProvider {
+class SessionProvider extends CodexProvider {
+  detect = detectFixtureProvider;
+
   readonly requests: AgentRunRequest[] = [];
 
   mode: "success" | "failure" | "wait" = "success";
@@ -290,7 +293,6 @@ it("enforces shared execution capacity, serializes one session, supports cancell
   engine.db.saveSettings({ ...engine.db.settings(), concurrency: 1 });
   const one = await create(profileId);
   const two = await create(builtInProfiles.reviewer);
-  engine.viberSessions.store.clearContext(one.id, one.profile_id);
   const input = { request_id: randomUUID() };
   const pending = await send(one, input);
 
@@ -480,7 +482,7 @@ it("keeps outcomes uncertain after invocation even without reported tools, and e
   const failed = await settled(session, "failed");
   expect(failed.recovery_required).toBe(true);
   expect(failed.messages.at(-1)?.effects).toBe("possible");
-  await expect(send(session, { new_thread: true })).rejects.toThrow("acknowledge");
+  await expect(send(session)).rejects.toThrow("acknowledge");
   const scope = { session_id: session.id, profile_id: profileId };
   expect(await rpc.call("viber.session.inspect", scope)).toMatchObject({ files: ["answer.txt"] });
 
@@ -518,4 +520,48 @@ it("creates an isolated conversation from profile defaults without requiring a r
 
   expect(session.repository_id).toBeNull();
   expect(provider.requests).toHaveLength(0);
+});
+
+it("rebuilds unavailable native context from saved chat after upgrading a legacy workspace", async () => {
+  const session = await create();
+  const sibling = await create(builtInProfiles.planner);
+  await send(session, { content: "Remember the original chat context." });
+  const original = await settled(session);
+  const workspace = engine.viberSessions.store.workspace(session.id);
+  await send(sibling);
+  const other = await settled(sibling);
+
+  engine.db.run(
+    "CREATE TABLE viber_computers(profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id))",
+  );
+
+  engine.db.run("INSERT INTO viber_computers(profile_id) VALUES(?)", session.profile_id);
+  engine.db.run("DELETE FROM schema_migrations WHERE version=45");
+
+  engine.db.run(
+    "INSERT INTO schema_migrations(version, applied_at) VALUES (1, CURRENT_TIMESTAMP), (44, CURRENT_TIMESTAMP)",
+  );
+
+  await rpc.close();
+  await engine.close();
+  engine = await createFixtureEngine(join(dir, "data"), () => provider);
+  rpc = new Rpc(engine);
+
+  expect(engine.db.all("SELECT name FROM sqlite_schema WHERE name='viber_computers'")).toEqual([]);
+
+  const migrated = await detail(session);
+  expect(migrated.messages).toEqual(original.messages);
+  expect(engine.viberSessions.store.workspace(session.id)).toEqual(workspace);
+  expect(migrated.session.thread).toBeNull();
+  expect(migrated.session.threads).toEqual({});
+  expect((await detail(sibling)).session.thread).toEqual(other.session.thread);
+
+  await send(session, { content: "Continue the chat after upgrading." });
+  const continued = await settled(session);
+  const request = provider.requests.at(-1)!;
+  expect(request.conversation).toEqual({});
+  expect(request.prompt).toContain("Remember the original chat context.");
+  expect(request.prompt).toContain("Saved session answer.");
+  expect(request.prompt).toContain("Continue the chat after upgrading.");
+  expect(continued.session.thread?.thread_id).not.toBe(original.session.thread?.thread_id);
 });

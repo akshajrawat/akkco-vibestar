@@ -77,76 +77,42 @@ export const useWorkspace = () => {
 let detectedProviders: Detection[] = [];
 let detectedAt = 0;
 let detecting: Promise<Detection[]> | undefined;
-const detectingComputers = new Map<string, Promise<Detection[]>>();
 
-export const useProviders = (profileId?: string, enabled = true) => {
+export const useProviders = () => {
   const [providers, setProviders] = useState<Detection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const refresh = useCallback(
-    async (force = true) => {
-      setLoading(true);
-      try {
-        if (profileId) {
-          let request = detectingComputers.get(profileId);
-          if (!request) {
-            request = rpc<Detection[]>("computer.providers", { profile_id: profileId }).finally(
-              () => detectingComputers.delete(profileId),
-            );
+  const refresh = useCallback(async (force = true) => {
+    setLoading(true);
+    try {
+      if (!force && Date.now() - detectedAt < 60000) {
+        setProviders(detectedProviders);
+      } else {
+        detecting ||= rpc<Detection[]>("providers.detect")
+          .then((result) => {
+            detectedProviders = result;
+            detectedAt = Date.now();
+            return result;
+          })
+          .finally(() => {
+            detecting = undefined;
+          });
 
-            detectingComputers.set(profileId, request);
-          }
-
-          setProviders(await request);
-        } else if (!force && Date.now() - detectedAt < 60000) {
-          setProviders(detectedProviders);
-        } else {
-          detecting ||= rpc<Detection[]>("providers.detect")
-            .then((result) => {
-              detectedProviders = result;
-              detectedAt = Date.now();
-              return result;
-            })
-            .finally(() => {
-              detecting = undefined;
-            });
-
-          setProviders(await detecting);
-        }
-
-        setError("");
-      } catch (e) {
-        setError(errorMessage(e));
-      } finally {
-        setLoading(false);
+        setProviders(await detecting);
       }
-    },
-    [profileId],
-  );
+
+      setError("");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (profileId) {
-      const subscription = subscribe((event) => {
-        if (
-          event.event === "computer.providers" &&
-          (event.data as { profile_id: string }).profile_id === profileId
-        ) {
-          setProviders((event.data as { providers: Detection[] }).providers);
-        }
-      });
-
-      return () => {
-        void subscription.then((unsubscribe) => unsubscribe());
-      };
-    }
-  }, [profileId]);
-
-  useEffect(() => {
-    if (enabled) {
-      void refresh(false);
-    }
-  }, [enabled, refresh]);
+    void refresh(false);
+  }, [refresh]);
 
   return { providers, loading, error, refresh };
 };

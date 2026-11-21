@@ -3,7 +3,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 
-export const conversationError = (error: string) => {
+const conversationError = (error: string) => {
   if (error.startsWith("Choose a model before sending")) {
     return "Choose a model before sending a message.";
   }

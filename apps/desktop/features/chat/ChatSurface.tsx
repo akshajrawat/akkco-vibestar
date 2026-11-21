@@ -6,7 +6,6 @@ import { Button } from "../../components/ui/button";
 
 interface ChatSurfaceProps {
   id: string;
-  activity: React.ReactNode;
   conversation: React.ReactNode;
   actions?: React.ReactNode;
   composer: React.ReactNode;
@@ -21,7 +20,6 @@ export const ChatSurface = (props: ChatSurfaceProps) => (
 /** Resize-driven following stays local; scrolling history must never rebuild the workspace. */
 const ConversationSurface = ({
   id,
-  activity,
   conversation,
   actions,
   composer,
@@ -60,7 +58,7 @@ const ConversationSurface = ({
 
   useLayoutEffect(() => {
     const element = scroll.current;
-    if (!element || view.expandedTool) {
+    if (!element) {
       return;
     }
 
@@ -71,7 +69,7 @@ const ConversationSurface = ({
     }
 
     setAway(!position.current.follow);
-  }, [revision, view.expandedTool, alignOutput]);
+  }, [revision, alignOutput]);
 
   useLayoutEffect(() => {
     position.current.follow = view.chatFollow;
@@ -165,21 +163,13 @@ const ConversationSurface = ({
   }, [empty]);
 
   return (
-    <div
-      className={`chat-main flex flex-col flex-1 min-w-0 min-h-0 ${empty ? "chat-draft" : ""}`}
-      hidden={view.expandedTool}
-    >
-      {activity}
+    <div className={`chat-main flex flex-col flex-1 min-w-0 min-h-0 ${empty ? "chat-draft" : ""}`}>
       <div
         className="event-timeline flex-1 overflow-auto p-[24px_clamp(18px,_4vw,_70px)_26px] [@media(max-width:1100px)]:p-4.5"
         ref={scroll}
         tabIndex={0}
         aria-label="Conversation"
         onScroll={(event) => {
-          if (view.expandedTool) {
-            return;
-          }
-
           const element = event.currentTarget;
           const follow = element.scrollHeight - element.scrollTop - element.clientHeight <= 32;
 

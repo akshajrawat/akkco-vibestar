@@ -251,7 +251,7 @@ it("keeps changed files with implementation when a later conversation starts", (
   expect(turns[1].querySelector(".chat-changes")).toBeNull();
 });
 
-it("follows resizes, preserves history position and returns to latest on request", () => {
+it("shows chat with a retired expanded tool preference and preserves scrolling behavior", () => {
   let resized: ResizeObserverCallback = () => {};
 
   vi.stubGlobal(
@@ -274,10 +274,10 @@ it("follows resizes, preserves history position and returns to latest on request
 
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   const id = crypto.randomUUID();
+  localStorage.setItem(`vibestar.layout.${id}`, JSON.stringify({ expandedTool: true }));
 
   const props = {
     id,
-    activity: null,
     conversation: <p>First chunk</p>,
     composer: <textarea />,
     revision: 0,
@@ -337,7 +337,6 @@ it("keeps a new prompt and its response in the natural document flow without a s
 
   const props = {
     id,
-    activity: null,
     conversation: <article data-message-id="next">A new prompt</article>,
     composer: <textarea />,
     revision: 0,

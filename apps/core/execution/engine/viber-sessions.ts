@@ -15,10 +15,7 @@ export class ViberSessions {
   readonly store: ViberSessionStore;
 
   constructor(
-    private readonly host: Pick<
-      Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "computers" | "publish"
-    >,
+    private readonly host: Pick<Engine, "db" | "root" | "git" | "changed" | "assertAvailable">,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
     private readonly operations: Pick<
@@ -59,17 +56,6 @@ export class ViberSessions {
     const input = { ...parsed, content: redact(parsed.content) };
     this.host.assertAvailable();
 
-    if (parsed.content.trim() === "/clear") {
-      const cleared = this.store.clearContext(
-        parsed.session_id,
-        parsed.profile_id,
-        parsed.request_id,
-      );
-
-      this.host.changed();
-      return cleared;
-    }
-
     const previous = this.store.previous(input);
     if (previous) {
       return previous;
@@ -78,17 +64,7 @@ export class ViberSessions {
     const key = `viber:${input.session_id}`;
     this.operations.assertExecutionSlot(key);
 
-    const release = this.host.computers.acquire(input, "agent", () =>
-      this.cancel(input.session_id, input.profile_id).then(() => {}),
-    );
-
-    let snapshot: ReturnType<ViberSessionStore["capture"]>;
-    try {
-      snapshot = this.store.capture(input);
-    } catch (error) {
-      release();
-      throw error;
-    }
+    const snapshot = this.store.capture(input);
 
     const completed = this.operations.withExecutionSlot(
       key,
@@ -97,13 +73,6 @@ export class ViberSessions {
       async (signal) => {
         try {
           const workspace = await this.prepareWorkspace(input.session_id, input.profile_id, signal);
-
-          await this.host.computers.ensure(
-            input,
-            workspace,
-            snapshot.execution.access === "read-only",
-            signal,
-          );
 
           signal.throwIfAborted();
 
@@ -120,7 +89,6 @@ export class ViberSessions {
             },
           );
 
-          await this.host.computers.finish(input.profile_id);
           this.store.finish(input.request_id, "completed", output);
         } catch (error) {
           this.store.finish(
@@ -130,14 +98,6 @@ export class ViberSessions {
             String(error),
           );
         } finally {
-          try {
-            await this.host.computers.finish(input.profile_id);
-          } catch (error) {
-            this.host.publish({ event: "computer.unavailable", text: redact(String(error)) });
-          } finally {
-            release();
-          }
-
           this.host.changed();
         }
       },
@@ -145,7 +105,6 @@ export class ViberSessions {
 
     // Admission is checked synchronously before the captured turn is persisted.
     void completed.catch((error) => {
-      release();
       this.store.finish(input.request_id, "failed", undefined, String(error));
       this.host.changed();
     });

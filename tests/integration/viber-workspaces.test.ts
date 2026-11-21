@@ -8,8 +8,8 @@ import { createFixtureEngine, fixtureRepository } from "../helpers/fixtures";
 import { Rpc } from "../../apps/core/rpc";
 import { testProfileIds as builtInProfiles } from "../helpers/viber-fixtures";
 
-it("keeps each session's owned workspace and deletes every workspace and computer when its Viber is deleted", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "vibestar-computer-workspaces-"));
+it("keeps each session's owned workspace and removes it when its Viber is deleted", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "vibestar-session-workspaces-"));
   const engine = await createFixtureEngine(join(directory, "data"));
   const rpc = new Rpc(engine);
   try {
@@ -46,21 +46,11 @@ it("keeps each session's owned workspace and deletes every workspace and compute
     expect(await readFile(join(files, "notes.txt"), "utf8")).toBe("keep across sessions");
 
     await expect(
-      rpc.call("computer.files", { profile_id: sibling.profile_id, session_id: managed.id }),
+      rpc.call("viber.session.inspect", { profile_id: sibling.profile_id, session_id: managed.id }),
     ).rejects.toThrow("not found");
 
-    expect(
-      await rpc.call("computer.files", {
-        profile_id: builtInProfiles.planner,
-        session_id: repository.id,
-      }),
-    ).toMatchObject({
-      entries: expect.arrayContaining([{ name: "source.txt", directory: false }]),
-    });
-
-    const release = engine.computers.acquire(
-      { profile_id, session_id: managed.id },
-      "agent",
+    const release = engine.trackActivity(
+      { id: "test-active-run", kind: "viber", label: "Viber is running", stoppable: false },
       async () => {},
     );
 
@@ -80,7 +70,10 @@ it("keeps each session's owned workspace and deletes every workspace and compute
       expect.arrayContaining([expect.objectContaining({ id: profile_id })]),
     );
 
-    await expect(rpc.call("computer.status", { profile_id })).rejects.toThrow("active Viber");
+    await expect(rpc.call("profile.delete", { profile_id, confirmed: true })).rejects.toThrow(
+      "active Viber",
+    );
+
     expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
   } finally {
     await rpc.close();

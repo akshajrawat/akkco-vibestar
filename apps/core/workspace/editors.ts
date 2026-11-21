@@ -14,7 +14,7 @@ const editors = [
   { id: "codium", label: "VSCodium" },
 ];
 
-export const discoverEditors = async () => {
+const discoverEditors = async () => {
   const roots = (cleanEnvironment().PATH || "").split(":").filter(Boolean);
 
   const available = await Promise.all(

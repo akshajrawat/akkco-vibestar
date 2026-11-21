@@ -41,12 +41,12 @@ export const PipelineStageConfigSchema = StageConfigSchema.extend({
   provider: z.enum(["codex", "antigravity"]).optional(),
 });
 
-// Persisted keys and numeric stages retain compatibility with existing tasks.
-export const pipelineStages = [
-  { stage: 1, key: "antigravity", label: "Plan", provider: "antigravity" },
-  { stage: 2, key: "codex_plan", label: "Plan refinement", provider: "codex" },
-  { stage: 3, key: "codex_implementation", label: "Implementation", provider: "codex" },
-  { stage: 5, key: "antigravity_review", label: "Review", provider: "antigravity" },
+// Persisted settings keys retain compatibility with existing data.
+const pipelineStages = [
+  { key: "antigravity", provider: "antigravity" },
+  { key: "codex_plan", provider: "codex" },
+  { key: "codex_implementation", provider: "codex" },
+  { key: "antigravity_review", provider: "antigravity" },
 ] as const;
 
 export const SettingsSchema = z
@@ -228,7 +228,7 @@ export const parseIssue = (input: string | null): IssueRef => {
   };
 };
 
-export const slug = (scope: string) =>
+const slug = (scope: string) =>
   scope
     .trim()
     .split(/[\\/]/)

@@ -2,14 +2,13 @@
 
 Vibestar is a platform for persistent AI employees called **Vibers**.
 
-Each Viber is an autonomous agent with a name, custom appearance, dedicated execution environment ("Computer"), and a single continuous conversation.
+Each Viber is an autonomous agent with a name, custom appearance, dedicated workspace, and a single continuous conversation.
 
 ## Architecture & Concepts
 
 - **Viber**: Persistent AI employee defined by name and avatar appearance. Creation requires no complex prompt or model setup.
 - **Continuous Conversation**: Each Viber owns exactly one continuous conversation thread and workspace. No session switching or multiple chats per Viber.
-- **Native Provider Session Management**: Maintains separate native conversation IDs for Codex and Antigravity, resumed across turns and restarts. Seamless context handoff on provider or incompatible model switches, and `/clear` command to reset native context without losing history or files.
-- **Computer**: A dedicated, isolated persistent execution environment belonging to a Viber.
+- **Native Provider Session Management**: Maintains separate native conversation IDs for Codex and Antigravity, resumed across turns and restarts. A provider receives saved chat context on the first switch and the messages since its last turn when resumed.
 - **BYOS (Bring Your Own Subscription)**: Official Codex and Antigravity integration with per-turn dynamic model and reasoning effort selection in the composer.
 
 There are no Task or Workflow entities in Vibestar. Vibers are the primary operational and navigation entities.
@@ -41,8 +40,7 @@ npm start
 
 - **Sidebar Navigation**: The sidebar lists your Vibers. Search Vibers by name in the sidebar and create one with the **+** button. The dock opens Repositories, Providers, Usage, and Settings in overlays above the current chat.
 - **Conversations & Workspaces**: Selecting a Viber opens directly into its continuous conversation interface with dedicated workspace files or connected repositories.
-- **Viber Computers**: Manage the Viber's dedicated execution environment, persistent home volume, and isolated sandboxing.
-- **Model Selection & Composer**: Switch providers (Codex / Antigravity), models, and reasoning effort dynamically in the composer. Use `/clear` to reset native AI context anytime.
+- **Model Selection & Composer**: Switch providers (Codex / Antigravity), models, and reasoning effort dynamically in the composer.
 
 ## Project status and documentation
 

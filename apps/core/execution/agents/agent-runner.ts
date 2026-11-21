@@ -8,8 +8,7 @@ import { randomUUID } from "node:crypto";
 import { AdeError, now, type CoreEvent, type NormalizedEvent } from "../../domain";
 import type { Database } from "../../storage/database";
 import type { GitWorkspace } from "../../workspace/git";
-import type { Computers } from "../../computers/service";
-import { execute, redact, type ProcessTransform } from "../runtime/process";
+import { execute, redact } from "../runtime/process";
 import { BoundedWriter } from "../output/bounded-output";
 import { AgentExecutionSchema, type AgentExecution } from "../contracts";
 import { executionSchema } from "./execution-output";
@@ -21,7 +20,7 @@ import {
   type ProviderDetection,
 } from "../providers/contracts";
 
-export interface AgentRunOptions {
+interface AgentRunOptions {
   prompt: string;
   purpose: string;
   workspace?: string;
@@ -42,9 +41,7 @@ export class AgentRunner {
     private readonly providers: (
       stage: number,
       provider?: "codex" | "antigravity",
-      transform?: ProcessTransform,
     ) => AgentProvider,
-    private readonly computers?: Computers,
   ) {}
 
   clearProviderDetection = () => this.detections.clear();
@@ -127,19 +124,7 @@ export class AgentRunner {
 
     const table = "utility_runs";
 
-    const computerScope =
-      options.viberSession && this.computers
-        ? {
-            profile_id: this.db.all<{ profile_id: string }>(
-              "SELECT profile_id FROM viber_sessions WHERE id=?",
-              options.viberSession.sessionId,
-            )[0]?.profile_id,
-            session_id: options.viberSession.sessionId,
-          }
-        : null;
-
-    const transform = computerScope ? await this.computers!.transform(computerScope) : undefined;
-    const provider = this.providers(0, execution.provider, transform);
+    const provider = this.providers(0, execution.provider);
     const config = execution;
 
     const id = randomUUID();
@@ -256,9 +241,7 @@ export class AgentRunner {
     try {
       cwd = viberWorkspace ? await this.git.assertOwnedTask(viberWorkspace) : options!.workspace!;
 
-      const detection = computerScope
-        ? await provider.detect(cwd, signal)
-        : await this.detect(provider, signal);
+      const detection = await this.detect(provider, signal);
 
       if (signal.aborted) {
         throw new AdeError("cancelled", "Run cancelled");
@@ -276,9 +259,7 @@ export class AgentRunner {
       if (!detection.connected) {
         throw new AdeError(
           "authentication",
-          computerScope
-            ? `Open this Viber's Computer panel and sign in with the official ${provider.name} CLI.`
-            : `Connect ${provider.name} on the Providers page using the official CLI.`,
+          `Connect ${provider.name} on the Providers page using the official CLI.`,
         );
       }
 
@@ -351,31 +332,28 @@ export class AgentRunner {
         schemaPath,
         schema: outputSchema,
         workspaceType: "utility",
-        ...(computerScope ? { isolatedComputer: true } : {}),
         ...(conversation ? { conversation: options.conversation || {} } : {}),
       });
 
-      const invocation = transform
-        ? { ...directInvocation, ...transform(directInvocation) }
-        : await sandboxInvocation(
-            this.root,
-            this.db,
-            assignment,
-            directInvocation,
-            execution.access === "read-only",
-            conversation ? undefined : schemaPath,
-            (detection.provider === "codex" && directInvocation.program === "codex") ||
-              (detection.provider === "antigravity" && directInvocation.program === "agy")
-              ? detection.provider
-              : undefined,
-            options?.workspace,
-            contextPaths,
-            options.viberSession?.sessionId,
-          );
+      const invocation = await sandboxInvocation(
+        this.root,
+        this.db,
+        assignment,
+        directInvocation,
+        execution.access === "read-only",
+        conversation ? undefined : schemaPath,
+        (detection.provider === "codex" && directInvocation.program === "codex") ||
+          (detection.provider === "antigravity" && directInvocation.program === "agy")
+          ? detection.provider
+          : undefined,
+        options.workspace,
+        contextPaths,
+        options.viberSession?.sessionId,
+      );
 
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
       stderr = await open(join(dir, `${id}.stderr.log`), "a", 0o600);
-      const before = assignment && !computerScope ? await this.git.fingerprint(assignment) : null;
+      const before = assignment ? await this.git.fingerprint(assignment) : null;
 
       this.emit({ event: "changed", session_id: options.viberSession?.sessionId });
       signal.throwIfAborted();
@@ -521,7 +499,6 @@ export class AgentRunner {
 
       if (
         assignment &&
-        !computerScope &&
         execution.access === "read-only" &&
         before !== (await this.git.fingerprint(assignment))
       ) {

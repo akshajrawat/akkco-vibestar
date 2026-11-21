@@ -60,8 +60,6 @@ export const ConversationSelectionSchema = AgentExecutionSchema.pick({
   effort: true,
 });
 
-export type ConversationSelection = z.infer<typeof ConversationSelectionSchema>;
-
 export const ViberWorkspaceSchema = z.object({
   id: identity,
   repo_id: identity.nullable(),
@@ -110,7 +108,6 @@ export const ViberSessionSendSchema = ViberSessionScopeSchema.extend({
     .max(50)
     .refine((ids) => new Set(ids).size === ids.length),
   selection: ConversationSelectionSchema.optional(),
-  new_thread: z.literal(true).optional(),
   acknowledge_uncertain: z.literal(true).optional(),
 }).strict();
 
@@ -121,8 +118,6 @@ export const ViberThreadSchema = z.object({
   configuration: z.string(),
   status: z.enum(["ready", "uncertain"]),
 });
-
-export type ViberThread = z.infer<typeof ViberThreadSchema>;
 
 export const ViberSessionSchema = z.object({
   id: identity,
@@ -137,7 +132,7 @@ export const ViberSessionSchema = z.object({
 });
 
 export const ViberMessageSnapshotSchema = z.object({
-  request: ViberSessionSendSchema,
+  request: ViberSessionSendSchema.extend({ new_thread: z.literal(true).optional() }),
   profile: AgentProfileSchema,
   execution: AgentExecutionSchema,
   prompt: z.string(),
@@ -173,7 +168,6 @@ export interface ViberNavigation {
 export interface ViberSessionDetail {
   session: ViberSession;
   messages: ViberMessage[];
-  workspace: { path: string; repository: string | null } | null;
   recovery_required: boolean;
 }
 

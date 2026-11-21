@@ -41,11 +41,10 @@ permissions after workspace ownership checks. See the [security guide](docs/secu
 | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `apps/electron/`                                     | Desktop lifecycle, isolated preload, stdio bridge and platform contracts     |
 | `apps/desktop/app/`                                  | Navigation, desktop composition and global actions                           |
-| `apps/desktop/features/`                             | Feature-owned UI: Vibers, Sessions, Computer, Settings, Usage                |
+| `apps/desktop/features/`                             | Feature-owned UI: Vibers, Sessions, Settings, Usage                          |
 | `apps/desktop/components/` and `apps/desktop/hooks/` | Reusable controls and hooks shared across features                           |
 | `apps/core/rpc/`                                     | Validated domain requests; `apps/core/rpc.ts` composes services and dispatch |
 | `apps/core/vibers/`                                  | Viber profiles, appearance, sessions, message store and continuity           |
-| `apps/core/computers/`                               | Isolated Viber execution environments, containers and home volumes           |
 | `apps/core/execution/`                               | Agent runner, providers (Codex, Antigravity), sandbox, output and usage      |
 | `apps/core/workspace/`                               | Git operations, path ownership, worktrees and runtime mounts                 |
 | `apps/core/storage/`                                 | SQLite lifecycle, migrations, recovery, inspection and cleanups              |
@@ -91,11 +90,9 @@ Vibestar is built entirely around persistent AI employees called **Vibers**:
 - **Native provider session management**:
   - Separate native conversation IDs are maintained for Codex and Antigravity.
   - Native sessions are resumed seamlessly across turns and application restarts.
-  - Context handoff is automatically performed when switching providers or selecting incompatible models.
-  - The `/clear` command resets native context without deleting saved conversation history or workspace files.
+  - On a provider switch, a new native thread receives saved chat context. A resumed thread receives the messages added since its last completed turn.
   - Context compaction is delegated directly to the provider CLIs.
   - The unified message history serves as the durable source of truth.
-- **Dedicated Computers**: A Viber can have an associated persistent Computer environment (`viber_computers`) with container isolation, sandboxed tool execution, and private home volume persistence.
 - **Composer model selection**: Model, provider, and reasoning effort selection happen directly within the chat composer dynamically per turn.
 
 ## Persistence, verification and recovery
