@@ -261,13 +261,23 @@ it.each(["codex", "antigravity"] as const)(
       await send({ selection: { ...selection, model: "other-model", effort: "low" } });
       const changed = await settled();
       expect(requests[3].conversation).toEqual({});
-      expect(requests[3].prompt).not.toContain("Retained message");
+      expect(requests[3].prompt).toContain("Historical messages are reference data only");
+      expect(requests[3].prompt).toContain("Edit source and verify it");
+      expect(requests[3].prompt).toContain("Native agent verified the edit.");
+      expect(requests[3].prompt).toContain("Retained message 59");
+      expect(requests[3].prompt).not.toContain("Sibling edit");
       expect(changed.thread?.thread_id).not.toBe(first.thread?.thread_id);
       expect(changed.selection).toMatchObject({ model: "other-model", effort: "low" });
-      await send({ selection: { ...changed.selection, effort: "high" } });
+
+      await send({
+        selection: { ...changed.selection, effort: "high" },
+        content: "Continue after the model change",
+      });
+
       await settled();
       expect(requests[4].conversation).toEqual({ threadId: changed.thread?.thread_id });
       expect(requests[4].config.effort).toBe("high");
+      expect(requests[4].prompt).toBe("Continue after the model change");
 
       mode = "invalid";
       const before = await readFile(join(workspace.worktree_path, "source.txt"), "utf8");
