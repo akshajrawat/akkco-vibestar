@@ -16,4 +16,10 @@ sequenceDiagram
     User->>Chat: Switch back to Codex and send
     Chat->>Codex: Resume thread with Antigravity exchange and new message
     Codex-->>Chat: Reply
+    User->>Chat: Choose another Codex model and send
+    Chat->>Codex: Resume the same thread with the new model
+    Codex-->>Chat: Reply
+    User->>Chat: Change reasoning effort and send
+    Chat->>Codex: Resume the thread with the new effort
+    Codex-->>Chat: Reply
 ```

@@ -15,7 +15,10 @@ export class ViberSessions {
   readonly store: ViberSessionStore;
 
   constructor(
-    private readonly host: Pick<Engine, "db" | "root" | "git" | "changed" | "assertAvailable">,
+    private readonly host: Pick<
+      Engine,
+      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive"
+    >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
     private readonly operations: Pick<
@@ -62,6 +65,19 @@ export class ViberSessions {
     }
 
     const key = `viber:${input.session_id}`;
+    if (input.content === "/clear") {
+      if (this.host.isActive(key)) {
+        throw new AdeError(
+          "busy",
+          "Wait for this Viber session to finish before clearing context.",
+        );
+      }
+
+      const cleared = this.store.clearContext(input.session_id, input.profile_id, input.request_id);
+      this.host.changed();
+      return cleared;
+    }
+
     this.operations.assertExecutionSlot(key);
 
     const snapshot = this.store.capture(input);
