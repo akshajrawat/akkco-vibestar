@@ -173,8 +173,6 @@ export class Engine extends EventEmitter {
 
   isActive = (id: string) => this.state.active.has(id) || this.state.interactive.has(id);
 
-  isExecuting = (id: string) => this.state.active.has(id);
-
   hasActive = () => this.cleanupBlockers().length > 0;
 
   drain = (...args: Parameters<EngineScheduling["drain"]>) => this.scheduling.drain(...args);

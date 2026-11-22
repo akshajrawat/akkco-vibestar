@@ -106,7 +106,7 @@ const SessionChat = ({
       sending.current ||
       !data ||
       active ||
-      invalid ||
+      (invalid && content.trim() !== "/clear") ||
       !content.trim() ||
       content.length > 32000
     ) {
@@ -264,7 +264,7 @@ const SessionChat = ({
               },
             ]}
             busy={busy || active || stopping}
-            disabled={!data || !!invalid}
+            disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
             stop={active ? () => void stop() : undefined}
             model={
               <ViberModelPicker

@@ -146,8 +146,11 @@ it("/clear clears both native contexts only when the target Viber is idle", asyn
 
     await startHeldTurn(unrelated);
     const beforeClear = requests.length;
+    const firstClearId = randomUUID();
+    const firstClear = () => send(session, " /clear ", undefined, firstClearId);
 
-    await expect(send(session, "/clear")).resolves.toMatchObject({
+    await expect(firstClear()).resolves.toMatchObject({
+      id: firstClearId,
       content: "/clear",
       status: "completed",
     });
@@ -163,6 +166,13 @@ it("/clear clears both native contexts only when the target Viber is idle", asyn
     });
 
     expect(cleared.messages.slice(0, original.messages.length)).toEqual(original.messages);
+
+    expect(cleared.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: "Conversation context reset. Saved history and workspace files have been preserved.",
+      status: "completed",
+    });
+
     expect(engine.viberSessions.store.workspace(session.id)).toEqual(assignment);
     expect(await readFile(file)).toEqual(bytes);
 
@@ -186,6 +196,10 @@ it("/clear clears both native contexts only when the target Viber is idle", asyn
       expect(switched.prompt).not.toContain(marker);
     }
 
+    const afterSwitch = await detail(session);
+    await expect(firstClear()).resolves.toMatchObject({ id: firstClearId, status: "completed" });
+    expect(await detail(session)).toEqual(afterSwitch);
+
     await startHeldTurn(session);
     const active = await detail(session);
     const beforeRefusal = requests.length;
@@ -196,7 +210,28 @@ it("/clear clears both native contexts only when the target Viber is idle", asyn
     expect(await readFile(file)).toEqual(bytes);
     expect(requests).toHaveLength(beforeRefusal);
 
-    await rpc.call("viber.session.cancel", scope(session));
+    // The cancellation finalizes the message before it releases the execution slot.
+    let clearDuringCleanup: Promise<PromiseSettledResult<unknown>[]> | undefined;
+
+    const tryClearDuringCleanup = () => {
+      const { messages } = engine.viberSessions.store.detail(session.id, session.profile_id);
+      if (engine.isActive(`viber:${session.id}`) && !messages.some((m) => m.status === "pending")) {
+        engine.off("event", tryClearDuringCleanup);
+        clearDuringCleanup = Promise.allSettled([clear()]);
+      }
+    };
+
+    engine.on("event", tryClearDuringCleanup);
+    try {
+      await rpc.call("viber.session.cancel", scope(session));
+    } finally {
+      engine.off("event", tryClearDuringCleanup);
+    }
+
+    expect(await clearDuringCleanup).toMatchObject([
+      { status: "rejected", reason: { kind: "busy" } },
+    ]);
+
     await expect(clear()).resolves.toMatchObject({ id: requestId, status: "completed" });
     expect((await detail(session)).session).toMatchObject({ thread: null, threads: {} });
   } finally {
