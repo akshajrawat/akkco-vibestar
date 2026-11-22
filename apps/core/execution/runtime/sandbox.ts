@@ -242,6 +242,13 @@ export const sandboxInvocation = async (
       args.push("--bind", await realpath(state), state);
     }
 
+    if (provider === "antigravity") {
+      const credentials = join(home, ".config", "antigravity");
+      if (await exists(credentials)) {
+        args.push("--bind", await realpath(credentials), credentials);
+      }
+    }
+
     if (invocation.isolateProviderConfig) {
       if (provider !== "codex") {
         throw new AdeError("sandbox", "Unsupported isolated provider configuration");

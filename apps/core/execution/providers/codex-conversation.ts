@@ -61,11 +61,7 @@ export const codexConversation = (request: AgentRunRequest) => {
             cwd: request.cwd,
             model: request.config.model || null,
             approvalPolicy: "never",
-            sandbox: request.isolatedComputer
-              ? "danger-full-access"
-              : writable
-                ? "workspace-write"
-                : "read-only",
+            sandbox: writable ? "workspace-write" : "read-only",
             config: { project_doc_max_bytes: 0 },
           },
         });
@@ -78,7 +74,7 @@ export const codexConversation = (request: AgentRunRequest) => {
         if (threadId && returnedId !== threadId) {
           throw new AdeError(
             "provider_failed",
-            "Codex resumed a different thread. Start a new thread explicitly; the turn was not dispatched.",
+            "Codex resumed a different thread before the turn was dispatched. Choose a different model to start a new thread.",
           );
         }
 
@@ -95,11 +91,9 @@ export const codexConversation = (request: AgentRunRequest) => {
             model: request.config.model || null,
             effort: request.config.effort,
             approvalPolicy: "never",
-            sandboxPolicy: request.isolatedComputer
-              ? { type: "dangerFullAccess" }
-              : writable
-                ? { type: "workspaceWrite", writableRoots: [request.cwd], networkAccess: true }
-                : { type: "readOnly" },
+            sandboxPolicy: writable
+              ? { type: "workspaceWrite", writableRoots: [request.cwd], networkAccess: true }
+              : { type: "readOnly" },
             input: [{ type: "text", text: request.prompt }],
           },
         });

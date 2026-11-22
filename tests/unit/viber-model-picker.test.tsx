@@ -66,7 +66,6 @@ const Harness = ({
   const [execution, setExecution] = useState(initial);
   return (
     <ViberModelPicker
-      profileId={viberProfile.id}
       execution={execution}
       change={(next) => {
         change(next);
@@ -126,39 +125,51 @@ it("keeps model and reasoning edits in one open picker and saves the final confi
   );
 });
 
-it("shows local models when computer discovery fails without treating a local default as selected", async () => {
+it("loads models through the provider RPC and saves a concrete selection", async () => {
   const { useProviders: actualUseProviders } = await vi.importActual<
     typeof import("../../apps/desktop/hooks/useWorkspace")
   >("../../apps/desktop/hooks/useWorkspace");
 
   vi.mocked(useProviders).mockImplementation(actualUseProviders);
 
-  const rpc = vi.fn(async (method: string) => {
-    if (method === "computer.providers") {
-      throw new Error("Docker is unavailable.");
-    }
-
-    return [
+  const rpc = vi
+    .fn(async () => [
       {
         provider: "codex",
         models: [{ id: "gpt-6.2-sol", isDefault: true, supportedEfforts: ["high"] }],
       },
-    ];
-  });
+    ])
+    .mockResolvedValueOnce([{ provider: "codex", models: [] }]);
+
+  const CatalogConsumer = () => {
+    const { providers } = actualUseProviders();
+    return (
+      <output>{providers[0]?.models[0]?.id || (providers.length ? "Empty catalog" : "")}</output>
+    );
+  };
 
   vi.stubGlobal("vibestar", { rpc, subscribe: () => () => {} });
   try {
     const change = vi.fn();
-    render(<Harness change={change} initial={{ ...viberProfile.execution, model: "" }} />);
+
+    render(
+      <>
+        <CatalogConsumer />
+        <Harness change={change} initial={{ ...viberProfile.execution, model: "" }} />
+      </>,
+    );
+
     const trigger = screen.getByRole("combobox", { name: "Model" });
     expect(trigger.textContent).toBe("Choose model");
     expect(trigger.querySelector(".lucide-chevron-down")).toBeNull();
+    await screen.findByText("Empty catalog");
+    expect(rpc).toHaveBeenCalledExactlyOnceWith("providers.detect", {});
     fireEvent.click(trigger);
 
     const model = await screen.findByRole("option", { name: "6.2 Sol" });
-    expect(model.getAttribute("aria-selected")).toBe("false");
-    expect(screen.getByText(/Local catalog/)).toBeTruthy();
-    expect(trigger.textContent).toBe("Choose model");
+    expect(screen.getByText("gpt-6.2-sol")).toBeTruthy();
+    expect(model.getAttribute("aria-selected")).toBe("true");
+    expect(trigger.textContent).toBe("6.2 Sol Low");
     fireEvent.click(model);
     fireEvent.click(trigger);
 
@@ -166,7 +177,10 @@ it("shows local models when computer discovery fails without treating a local de
       expect.objectContaining({ model: "gpt-6.2-sol", effort: "high" }),
     );
 
-    expect(rpc.mock.calls.filter(([method]) => method === "providers.detect")).toHaveLength(1);
+    expect(rpc.mock.calls).toEqual([
+      ["providers.detect", {}],
+      ["providers.detect", {}],
+    ]);
   } finally {
     vi.unstubAllGlobals();
   }
