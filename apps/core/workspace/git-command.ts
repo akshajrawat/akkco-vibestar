@@ -91,7 +91,7 @@ const refusal = (key: string) =>
     `Unsupported Git configuration key ${key}. The checkout was not changed. Use a clean managed checkout or remove this setting yourself; Vibestar does not edit source or global configuration.`,
   );
 
-export const githubTransport = (url: string) => {
+const githubTransport = (url: string) => {
   const identity = remoteIdentity(url);
   return `https://github.com/${identity.owner}/${identity.name}.git`;
 };

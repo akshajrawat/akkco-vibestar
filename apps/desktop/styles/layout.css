@@ -8,6 +8,10 @@
   app-region: drag;
 }
 
+.titlebar.titlebar-chat {
+  @apply bg-black;
+}
+
 .titlebar.titlebar-manual {
   -webkit-app-region: no-drag;
   app-region: no-drag;

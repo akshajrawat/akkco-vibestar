@@ -19,7 +19,7 @@ export class AdeError extends Error {
   }
 }
 
-export const modelEffortError = (provider: string, model: string, effort: string) => {
+const modelEffortError = (provider: string, model: string, effort: string) => {
   const suffix =
     provider === "antigravity" ? model.match(/-(low|medium|high|xhigh|max)$/)?.[1] : null;
 
@@ -37,16 +37,16 @@ export const StageConfigSchema = z.object({
   timeout_secs: z.number().int().min(10).max(86400),
 });
 
-export const PipelineStageConfigSchema = StageConfigSchema.extend({
+const PipelineStageConfigSchema = StageConfigSchema.extend({
   provider: z.enum(["codex", "antigravity"]).optional(),
 });
 
-// Persisted keys and numeric stages retain compatibility with existing tasks.
-export const pipelineStages = [
-  { stage: 1, key: "antigravity", label: "Plan", provider: "antigravity" },
-  { stage: 2, key: "codex_plan", label: "Plan refinement", provider: "codex" },
-  { stage: 3, key: "codex_implementation", label: "Implementation", provider: "codex" },
-  { stage: 5, key: "antigravity_review", label: "Review", provider: "antigravity" },
+// Persisted settings keys retain compatibility with existing data.
+const pipelineStages = [
+  { key: "antigravity", provider: "antigravity" },
+  { key: "codex_plan", provider: "codex" },
+  { key: "codex_implementation", provider: "codex" },
+  { key: "antigravity_review", provider: "antigravity" },
 ] as const;
 
 export const SettingsSchema = z
@@ -105,13 +105,6 @@ export const defaultSettings: Settings = {
   },
 };
 
-export interface IssueRef {
-  owner: string;
-  repo: string;
-  number: number;
-  url: string;
-}
-
 export interface Repository {
   id: string;
   owner: string;
@@ -143,6 +136,7 @@ export interface WorkspaceAssignment {
   branch_owned?: boolean;
   workspace_mode?: "source";
   workspace_kind?: "managed";
+  managed_removal_identity?: string;
   kind?: string;
   goal?: string;
   issue_number?: number | null;
@@ -189,46 +183,7 @@ export interface NormalizedEvent {
   data: unknown;
 }
 
-export const parseIssue = (input: string | null): IssueRef => {
-  let u: URL;
-  try {
-    if (!input) {
-      throw new Error("Issue URL is required.");
-    }
-
-    u = new URL(input.trim());
-  } catch {
-    throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
-  }
-
-  const m = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/issues\/(\d+)\/?$/);
-  if (
-    u.protocol !== "https:" ||
-    u.hostname !== "github.com" ||
-    u.username ||
-    u.password ||
-    u.port ||
-    !m ||
-    [".", ".."].includes(m[1]) ||
-    [".", ".."].includes(m[2])
-  ) {
-    throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
-  }
-
-  const number = Number(m[3]);
-  if (!Number.isSafeInteger(number) || number <= 0) {
-    throw new AdeError("invalid_input", "Invalid GitHub issue number");
-  }
-
-  return {
-    owner: m[1],
-    repo: m[2],
-    number,
-    url: `https://github.com/${m[1]}/${m[2]}/issues/${number}`,
-  };
-};
-
-export const slug = (scope: string) =>
+const slug = (scope: string) =>
   scope
     .trim()
     .split(/[\\/]/)

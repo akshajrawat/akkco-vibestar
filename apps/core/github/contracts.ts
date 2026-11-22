@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { AdeError } from "../domain";
 
 export const parsePullRequest = (value: string) => {
@@ -26,49 +25,6 @@ export const parsePullRequest = (value: string) => {
     url: `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}`,
   };
 };
-
-export const GitHubRepositorySchema = z
-  .object({
-    id: z.number().int(),
-    full_name: z.string(),
-    owner: z.object({ login: z.string(), type: z.string() }),
-    name: z.string(),
-    description: z.string().nullable(),
-    default_branch: z.string(),
-    private: z.boolean(),
-    fork: z.boolean(),
-    permissions: z.object({ push: z.boolean() }).optional(),
-    clone_url: z.string(),
-    parent: z
-      .object({
-        id: z.number().int().positive().optional(),
-        full_name: z.string(),
-        clone_url: z.string(),
-        default_branch: z.string(),
-      })
-      .optional(),
-    updated_at: z.string(),
-  })
-  .loose();
-
-export const GitHubPullRequestSchema = z
-  .object({
-    url: z.string(),
-    repository: z.string(),
-    number: z.number().int().positive(),
-    title: z.string(),
-    state: z.string(),
-    draft: z.boolean().optional(),
-    head_sha: z.string().optional(),
-    access_error: z.string().optional(),
-    last_known_state: z.string().optional(),
-    head_branch: z.string(),
-    head_repository: z.string().nullable(),
-    updated_at: z.string(),
-    refreshed_at: z.string().optional(),
-    task_id: z.string().nullable(),
-  })
-  .loose();
 
 export interface GitHubRepository {
   id: number;

@@ -1,6 +1,10 @@
 import { readWorktreeOwner, writeWorktreeOwner } from "./ownership";
 import { prepareSourceCheckout, sourceCheckout } from "./source-checkout";
-import { assertManagedWorkspace, managedWorkspaceFingerprint } from "./managed";
+import {
+  assertManagedWorkspace,
+  assertManagedWorkspaceEntries,
+  managedWorkspaceFingerprint,
+} from "./managed";
 import { gitChecked, gitExecute, gitCapture } from "./git-command";
 import {
   mkdir,
@@ -631,23 +635,101 @@ export class GitWorkspace {
 
   assertOwnedWorkspace = this.assertOwnedTask;
 
+  removeOwnedWorktree = async (repo: Repository, task: WorkspaceAssignment, save: () => void) =>
+    this.withLock(repo.id, async () => {
+      const path = await managedPath(this.root, task.worktree_path);
+      const checkpoint = task.workspace_checkpoint;
+      if (
+        task.repo_id !== repo.id ||
+        task.workspace_mode === "source" ||
+        !inside(join(this.root, "worktrees", repo.id), path) ||
+        !task.branch_owned ||
+        !checkpoint ||
+        checkpoint.git_common_dir !== (await this.commonDirectory(repo.path))
+      ) {
+        throw new AdeError("ownership", "Task workspace removal ownership changed.");
+      }
+
+      if (await exists(path)) {
+        await this.assertOwnedTask(task);
+        await gitChecked(["worktree", "remove", "--force", "--", path], repo.path);
+      }
+
+      // The worktree may already be gone after an earlier deletion attempt.
+      const registrations = (
+        await gitChecked(["worktree", "list", "--porcelain", "-z"], repo.path)
+      ).split("\0");
+
+      if (
+        registrations.includes(`worktree ${path}`) ||
+        registrations.includes(`branch refs/heads/${task.branch_name}`)
+      ) {
+        throw new AdeError("ownership", "Task worktree or branch still has a Git registration.");
+      }
+
+      checkpoint.state = "removing";
+      save();
+
+      const ref = await gitCapture(
+        ["show-ref", "--verify", "--quiet", `refs/heads/${task.branch_name}`],
+        repo.path,
+      );
+
+      if (ref.code !== 1) {
+        const marker = await gitExecute({
+          program: "git",
+          args: ["config", "--local", "--get", `branch.${task.branch_name}.vibestarTask`],
+          cwd: repo.path,
+          rawStdoutForIntegrity: true,
+        });
+
+        if (ref.code !== 0 || marker.code !== 0 || marker.stdout.trim() !== task.id) {
+          throw new AdeError(
+            "ownership",
+            "Task branch ownership changed; its branch was preserved.",
+          );
+        }
+
+        await gitChecked(["branch", "-D", "--", task.branch_name], repo.path);
+      }
+
+      checkpoint.state = "removed";
+      save();
+    });
+
   fingerprint = async (t: WorkspaceAssignment) =>
     t.workspace_kind === "managed"
       ? managedWorkspaceFingerprint(this.root, t)
       : `issue-v2:${await this.workspaceFingerprint(t, true, true)}`;
 
+  assertWritableWorkspaceEntries = async (task: WorkspaceAssignment) => {
+    if (task.workspace_kind === "managed") {
+      await assertManagedWorkspaceEntries(this.root, task);
+    } else {
+      await this.workspaceFingerprint(task, true, true, { validateOnly: true });
+    }
+  };
+
   contentFingerprint = (t: WorkspaceAssignment) => this.workspaceFingerprint(t, false, true);
 
   disposalFingerprint = (t: WorkspaceAssignment) =>
-    this.workspaceFingerprint(t, true, true, undefined, 0, true);
+    this.workspaceFingerprint(t, true, true, { includeIgnored: true });
 
   private workspaceFingerprint = async (
     t: WorkspaceAssignment,
     includeHistory: boolean,
     allTracked = false,
-    physicalDirectory?: string,
-    depth = 0,
-    includeIgnored = false,
+    {
+      physicalDirectory,
+      depth = 0,
+      includeIgnored = false,
+      validateOnly = false,
+    }: {
+      physicalDirectory?: string;
+      depth?: number;
+      includeIgnored?: boolean;
+      validateOnly?: boolean;
+    } = {},
   ) => {
     const cwd = physicalDirectory || (await this.assertTask(t));
     if (
@@ -660,7 +742,7 @@ export class GitWorkspace {
       );
     }
 
-    const hash = createHash("sha256").update(t.base_commit_sha);
+    const hash = validateOnly ? undefined : createHash("sha256").update(t.base_commit_sha);
 
     const output = async (args: string[], directory = cwd) => {
       const result = await gitExecute({
@@ -689,7 +771,7 @@ export class GitWorkspace {
         .map((entry) => entry.slice(entry.indexOf("\t") + 1)),
     );
 
-    if (includeHistory) {
+    if (includeHistory && hash) {
       hash.update(await output(["rev-parse", "HEAD"]));
 
       hash.update(
@@ -722,17 +804,17 @@ export class GitWorkspace {
     );
 
     for (const path of [...paths].sort()) {
-      hash.update(`\0${path}\0`);
+      hash?.update(`\0${path}\0`);
       const { path: file, metadata } = await workspaceEntry(cwd, path);
       if (!metadata) {
-        hash.update("deleted");
+        hash?.update("deleted");
         continue;
       }
 
-      hash.update(String(metadata.mode & 0o111));
+      hash?.update(String(metadata.mode & 0o111));
       if (metadata.isSymbolicLink()) {
-        hash.update("symlink:");
-        hash.update(await readlink(file, { encoding: "buffer" }));
+        hash?.update("symlink:");
+        hash?.update(await readlink(file, { encoding: "buffer" }));
       } else if (metadata.isFile()) {
         const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
         try {
@@ -744,11 +826,15 @@ export class GitWorkspace {
           }
 
           const opened = await handle.stat();
-          const content = createHash("sha256");
-          for await (const chunk of handle.createReadStream({
-            autoClose: false,
-          })) {
-            content.update(chunk);
+          if (hash) {
+            const content = createHash("sha256");
+            for await (const chunk of handle.createReadStream({
+              autoClose: false,
+            })) {
+              content.update(chunk);
+            }
+
+            hash.update(content.digest());
           }
 
           const after = await handle.stat();
@@ -764,14 +850,12 @@ export class GitWorkspace {
               "A file changed while its integrity evidence was being read. Retry after writes finish.",
             );
           }
-
-          hash.update(content.digest());
         } finally {
           await handle.close();
         }
       } else if (metadata.isDirectory()) {
         if (!gitlinks.has(path)) {
-          hash.update("directory");
+          hash?.update("directory");
           continue;
         }
 
@@ -783,7 +867,7 @@ export class GitWorkspace {
             );
           }
 
-          hash.update("uninitialized-gitlink");
+          hash?.update("uninitialized-gitlink");
           continue;
         }
 
@@ -805,24 +889,22 @@ export class GitWorkspace {
         }
 
         const head = (await output(["rev-parse", "HEAD"], file)).trim();
-        hash.update("gitlink:");
+        hash?.update("gitlink:");
 
-        hash.update(
-          await this.workspaceFingerprint(
-            { ...t, base_commit_sha: head },
-            true,
-            true,
-            file,
-            depth + 1,
-            includeIgnored,
-          ),
+        const nested = await this.workspaceFingerprint(
+          { ...t, base_commit_sha: head },
+          true,
+          true,
+          { physicalDirectory: file, depth: depth + 1, includeIgnored, validateOnly },
         );
+
+        hash?.update(nested);
       } else {
         throw new AdeError("fingerprint", "Review changes include an unsupported file type.");
       }
     }
 
-    return hash.digest("hex");
+    return hash?.digest("hex") ?? "";
   };
 
   file = async (t: WorkspaceAssignment, path: string, oldPath?: string | null, head?: string) => {

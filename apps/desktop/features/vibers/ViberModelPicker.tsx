@@ -75,39 +75,22 @@ export const ViberModelPicker = ({
   execution,
   change,
   disabled = false,
-  profileId,
 }: {
   execution: AgentProfile["execution"];
   change: (execution: AgentProfile["execution"]) => void;
   disabled?: boolean;
-  profileId: string;
 }) => {
-  const computer = useProviders(profileId);
+  const { providers, loading, error, refresh } = useProviders();
   const [browsingProvider, setBrowsingProvider] = useState(execution.provider);
   const [draft, setDraft] = useState<AgentProfile["execution"] | null>(null);
   const current = draft || execution;
-  const browsingComputer = computer.providers.find((item) => item.provider === browsingProvider);
-  const needsLocalCatalog = Boolean(draft && !computer.loading && !browsingComputer?.models.length);
-  const local = useProviders(undefined, needsLocalCatalog);
-  const browsingLocal = local.providers.find((item) => item.provider === browsingProvider);
-
-  const usingLocalCatalog =
-    !browsingComputer?.models.length && Boolean(browsingLocal?.models.length);
-
-  const selectedComputer = computer.providers.find((item) => item.provider === current.provider);
-
-  const selectedProvider = selectedComputer?.models.length
-    ? selectedComputer
-    : local.providers.find((item) => item.provider === current.provider);
+  const browsingCatalog = providers.find((item) => item.provider === browsingProvider);
+  const selectedProvider = providers.find((item) => item.provider === current.provider);
 
   const selectedGroups = groupModels(current.provider, selectedProvider?.models || []);
 
   const selectedGroup = selectedGroups.find((group) =>
-    group.variants.some((model) =>
-      current.model
-        ? model.id === current.model
-        : selectedComputer?.models.length && model.isDefault,
-    ),
+    group.variants.some((model) => (current.model ? model.id === current.model : model.isDefault)),
   );
 
   const name = selectedGroup?.label || (current.model ? modelName(current.model) : "Choose model");
@@ -116,10 +99,7 @@ export const ViberModelPicker = ({
 
   const groups = sameProvider
     ? selectedGroups
-    : groupModels(
-        browsingProvider,
-        (usingLocalCatalog ? browsingLocal : browsingComputer)?.models || [],
-      );
+    : groupModels(browsingProvider, browsingCatalog?.models || []);
 
   const efforts =
     sameProvider && (selectedGroup || current.model)
@@ -143,14 +123,9 @@ export const ViberModelPicker = ({
     });
   }
 
-  const discoveryMessage =
-    computer.loading || local.loading
-      ? "Loading models…"
-      : computer.error ||
-        browsingComputer?.error ||
-        browsingLocal?.error ||
-        local.error ||
-        "Start the Viber computer and sign in to load models.";
+  const discoveryMessage = loading
+    ? "Loading models…"
+    : error || browsingCatalog?.error || "Connect a provider to load models.";
 
   return (
     <Select
@@ -163,8 +138,8 @@ export const ViberModelPicker = ({
         if (open) {
           setDraft(execution);
           setBrowsingProvider(execution.provider);
-          if (!computer.loading && !selectedComputer?.models.length) {
-            void computer.refresh();
+          if (!loading && !selectedProvider?.models.length) {
+            void refresh();
           }
         } else {
           if (draft && JSON.stringify(draft) !== JSON.stringify(execution)) {
@@ -186,11 +161,10 @@ export const ViberModelPicker = ({
         </>
       }
       listNotice={
-        (usingLocalCatalog || (!groups.length && options.length > 0)) && (
+        !groups.length &&
+        options.length > 0 && (
           <p className="viber-model-notice" role="status">
-            {usingLocalCatalog
-              ? "Local catalog · availability depends on the Viber computer"
-              : discoveryMessage}
+            {discoveryMessage}
           </p>
         )
       }
