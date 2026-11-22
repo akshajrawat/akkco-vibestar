@@ -271,7 +271,9 @@ it.each(["before move", "after move", "after partial removal", "after full remov
 
       await deleteProfile();
       await expect(stat(quarantine)).rejects.toMatchObject({ code: "ENOENT" });
-      if (interruption !== "before move") {
+      if (interruption === "before move") {
+        await expect(stat(owner)).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
         expect(await readFile(join(owner, "unrelated.txt"), "utf8")).toBe("unrelated data");
       }
 
