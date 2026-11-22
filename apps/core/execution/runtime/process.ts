@@ -11,6 +11,7 @@ export interface ProcessInputProtocol {
   start: (send: (message: unknown) => void, end: () => void) => void;
   validate?: (line: string) => void;
   receive: (line: string) => void;
+  validateExit?: (output: ProcessOutput) => void;
 }
 
 export interface ProcessRequest {
@@ -377,15 +378,23 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       if (aborted) {
         reject(aborted);
-      } else {
-        resolve({
-          code: code ?? -1,
-          stdout: r.rawStdoutForIntegrity ? stdout : redact(stdout),
-          stderr: redact(stderr),
-          duration_ms: Date.now() - start,
-          ...(truncated.stdout ? { stdout_truncated: true } : {}),
-          ...(truncated.stderr ? { stderr_truncated: true } : {}),
-        });
+        return;
+      }
+
+      const output = {
+        code: code ?? -1,
+        stdout: r.rawStdoutForIntegrity ? stdout : redact(stdout),
+        stderr: redact(stderr),
+        duration_ms: Date.now() - start,
+        ...(truncated.stdout ? { stdout_truncated: true } : {}),
+        ...(truncated.stderr ? { stderr_truncated: true } : {}),
+      };
+
+      try {
+        r.inputProtocol?.validateExit?.(output);
+        resolve(output);
+      } catch (error) {
+        reject(error);
       }
     });
   });

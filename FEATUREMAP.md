@@ -28,10 +28,14 @@ sequenceDiagram
     User->>Chat: Continue where you left off
     alt Provider confirms the saved thread
         Chat->>Provider: Continue in the saved thread
-    else Saved thread cannot be safely resumed
-        Chat->>Provider: Start a new thread with the original prompt and workspace instructions
+        Provider-->>Chat: Reply
+    else No usable saved thread or explicit rejection before dispatch
+        Chat->>Provider: Start a new thread with Viber instructions, recent chat after /clear, and the original prompt
+        Note over Provider: Inspect workspace files and partial edits before continuing
+        Provider-->>Chat: Reply
+    else Resume outcome is uncertain
+        Chat-->>User: Show the failure for inspection
     end
-    Codex-->>Chat: Reply
     User->>Chat: Send /clear
     alt Viber has an active turn
         Chat-->>User: Wait for the turn to finish

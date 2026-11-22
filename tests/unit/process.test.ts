@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 
 import { tmpdir } from "node:os";
 
@@ -74,12 +74,17 @@ it("preserves UTF-8 split across independent stdout/stderr chunks before redacti
 });
 
 it("enforces process timeout", async () => {
+  const validateExit = vi.fn();
+
   await expect(
     execute({
       program: process.execPath,
       args: ["-e", "setInterval(()=>{},1000)"],
       cwd: tmpdir(),
       timeoutMs: 50,
+      inputProtocol: { start: () => {}, receive: () => {}, validateExit },
     }),
   ).rejects.toThrow("timeout");
+
+  expect(validateExit).not.toHaveBeenCalled();
 });

@@ -135,6 +135,7 @@ export class AgentRunner {
     const prompt = options.prompt;
     const usage = new Usage(this.db);
     const purpose = options.purpose;
+    const resumeThreadId = options.conversation?.threadId ?? null;
 
     usage.start(id, {
       viber_session_id: options.viberSession?.sessionId || null,
@@ -164,7 +165,7 @@ export class AgentRunner {
 
     this.db.run(
       `UPDATE ${table} SET execution=? WHERE id=?`,
-      JSON.stringify({ configuration: execution, output_schema: schema }),
+      JSON.stringify({ configuration: execution, output_schema: schema, resumeThreadId }),
       id,
     );
 
@@ -312,6 +313,7 @@ export class AgentRunner {
         JSON.stringify({
           configuration: selectedConfig,
           output_schema: schema,
+          resumeThreadId,
         }),
         id,
       );
@@ -356,8 +358,7 @@ export class AgentRunner {
         );
       };
 
-      const confirmResume =
-        options.originalPrompt !== undefined && !!options.conversation?.threadId;
+      const confirmResume = options.originalPrompt !== undefined && resumeThreadId !== null;
 
       const invocation = await prepareInvocation(
         prompt,
@@ -512,6 +513,10 @@ export class AgentRunner {
 
         const freshInvocation = await prepareInvocation(freshPrompt, {});
         runSignal.throwIfAborted();
+        failure = undefined;
+        final = undefined;
+        completedTurn = false;
+        conversationMessages.clear();
         output = await run(freshInvocation);
       }
 

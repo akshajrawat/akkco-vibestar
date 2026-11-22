@@ -31,7 +31,16 @@ export const codexConversation = (request: AgentRunRequest) => {
           }
 
           const thread = object(object(response.result).thread);
-          if (response.error || thread.id !== threadId || object(thread.status).type === "active") {
+
+          const missing =
+            object(response.error).message === `no rollout found for thread id ${threadId}`;
+
+          const unusable =
+            typeof thread.id === "string" &&
+            thread.id !== "" &&
+            (thread.id !== threadId || object(thread.status).type === "active");
+
+          if (missing || unusable) {
             throw new AdeError(
               "thread_resume_rejected",
               "Codex could not confirm the saved thread.",

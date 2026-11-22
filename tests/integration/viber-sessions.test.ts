@@ -564,6 +564,12 @@ it("marks shutdown and recovered pending turns interrupted without automatically
   rpc = new Rpc(engine);
   expect((await detail(session)).messages[0].status).toBe("interrupted");
   const crashed = await create(builtInProfiles.reviewer);
+  provider.mode = "success";
+  await send(crashed, { content: "History before clear" });
+  await settled(crashed);
+  await send(crashed, { content: "/clear" });
+  await send(crashed, { content: "History after clear" });
+  const prior = await settled(crashed);
 
   engine.viberSessions.store.capture({
     session_id: crashed.id,
@@ -578,30 +584,39 @@ it("marks shutdown and recovered pending turns interrupted without automatically
   engine = await createFixtureEngine(join(dir, "data"), () => provider);
   rpc = new Rpc(engine);
 
-  expect((await detail(crashed)).messages[0]).toMatchObject({
+  const stopped = (await detail(crashed)).messages.at(-1)!;
+
+  expect(stopped).toMatchObject({
     status: "interrupted",
     run_id: null,
   });
 
-  expect(provider.requests).toHaveLength(1);
+  expect(provider.requests).toHaveLength(3);
   expect(engine.hasActive()).toBe(false);
-
-  provider.mode = "success";
-  const stopped = (await detail(crashed)).messages[0];
 
   await send(crashed, {
     content: "Continue where you left off.",
     continue_message_id: stopped.id,
   });
 
-  await settled(crashed);
+  const fresh = await settled(crashed);
 
-  expect(provider.requests).toHaveLength(2);
+  expect(provider.requests).toHaveLength(4);
+  const continuation = provider.requests[3];
+  expect(continuation.conversation).toEqual({});
+  expect(fresh.session.thread?.thread_id).toBe(continuation.runId);
+  expect(fresh.session.thread?.thread_id).not.toBe(prior.session.thread?.thread_id);
+  expect(continuation.prompt).not.toContain("History before clear");
 
-  expect(provider.requests[1]).toMatchObject({
-    conversation: {},
-    prompt:
-      "Original user prompt:\nCrash before invocation\n\nThe previous thread couldn’t be resumed. Inspect the current workspace and any partial edits, then continue from where it left off.",
+  expect(JSON.parse(continuation.prompt.slice(continuation.prompt.indexOf("\n\n") + 2))).toEqual({
+    instructions: engine.vibers.profile(crashed.profile_id).instructions,
+    inputs: [
+      { role: "context", content: expect.stringContaining("User: History after clear") },
+      {
+        role: "user",
+        content: expect.stringContaining("Original user prompt:\nCrash before invocation"),
+      },
+    ],
   });
 });
 

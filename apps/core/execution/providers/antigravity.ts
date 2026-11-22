@@ -98,7 +98,7 @@ export class AntigravityProvider implements AgentProvider {
       ...(r.conversation ? [] : ["--json-schema", r.schemaPath]),
     ];
 
-    if (!r.conversation?.confirmResume) {
+    if (!r.conversation?.confirmResume || !r.conversation.threadId) {
       // One stdin message keeps complete task context out of OS-limited argv.
       return { program: "agy", args, input: `${JSON.stringify(message)}\n` };
     }
@@ -127,6 +127,21 @@ export class AntigravityProvider implements AgentProvider {
       receive: (line) => {
         if (dispatch && object(JSON.parse(line)).event === "init") {
           dispatch();
+        }
+      },
+      validateExit: ({ code, stderr }) => {
+        const missing = `conversation ${JSON.stringify(expectedThread)} not found`;
+        if (
+          dispatch &&
+          code > 0 &&
+          stderr
+            .split("\n")
+            .some((line) => line.trim().replace(/^(?:warning|error):\s*/i, "") === missing)
+        ) {
+          throw new AdeError(
+            "thread_resume_rejected",
+            "Antigravity could not find the saved thread.",
+          );
         }
       },
     };

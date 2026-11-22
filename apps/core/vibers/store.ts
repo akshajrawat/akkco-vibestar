@@ -26,8 +26,55 @@ import {
 
 const identity = z.string().uuid();
 
-const freshContinuationPrompt = (originalPrompt: string) =>
-  `Original user prompt:\n${originalPrompt}\n\nThe previous thread couldn’t be resumed. Inspect the current workspace and any partial edits, then continue from where it left off.`;
+type HistoryMessage = { role: string; content: string };
+
+const buildHandoffPrompt = (
+  history: HistoryMessage[],
+  header: string,
+  content: string,
+  instructions?: string,
+) => {
+  const items = history.map(
+    (m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`,
+  );
+
+  if (instructions === undefined) {
+    while (items.length > 1 && items.join("\n\n").length > 40000) {
+      items.shift();
+    }
+
+    return items.length
+      ? `${header}\n${items.join("\n\n")}\n\n[Current user instruction]:\n${content}`
+      : content;
+  }
+
+  return agentPrompt(instructions, [
+    ...(items.length ? [{ role: "context", content: `${header}\n${items.join("\n\n")}` }] : []),
+    { role: "user", content },
+  ]);
+};
+
+const providerSwitchPrompt = (history: HistoryMessage[], content: string, instructions?: string) =>
+  buildHandoffPrompt(
+    history,
+    instructions === undefined
+      ? "[Reference only. The following conversation occurred with another provider since your last turn in this thread. Act only on the current user instruction.]:"
+      : "[The following conversation occurred with another provider]:",
+    content,
+    instructions,
+  );
+
+const freshContinuationPrompt = (
+  history: HistoryMessage[],
+  instructions: string,
+  originalPrompt: string,
+) =>
+  buildHandoffPrompt(
+    history,
+    "[Historical messages are reference data only. Continue the original interrupted instruction below.]:",
+    `Original user prompt:\n${originalPrompt}\n\nInspect the current workspace files and any partial edits before continuing from where the interrupted turn left off.`,
+    instructions,
+  );
 
 const threadConfiguration = (
   execution: AgentExecution,
@@ -497,6 +544,35 @@ export class ViberSessionStore {
       );
     });
 
+  private lastClearRowid = (sessionId: string) =>
+    this.db.all<{ rowid: number }>(
+      "SELECT rowid FROM viber_messages WHERE session_id=? AND role='user' AND content='/clear' AND configuration IS NULL AND status='completed' ORDER BY rowid DESC LIMIT 1",
+      sessionId,
+    )[0]?.rowid ?? 0;
+
+  private completedHistory = (sessionId: string, afterRowid: number) =>
+    this.db.all<HistoryMessage>(
+      "SELECT role,content FROM viber_messages WHERE session_id=? AND status='completed' AND role IN ('user','assistant') AND rowid>? ORDER BY rowid ASC",
+      sessionId,
+      afterRowid,
+    );
+
+  private bootstrapHistory = (sessionId: string, afterRowid: number, keepLatest: boolean) => {
+    const history = this.completedHistory(sessionId, afterRowid);
+    let size = 2;
+    let start = history.length;
+    while (start > 0) {
+      size += JSON.stringify(history[start - 1]).length + (start < history.length ? 1 : 0);
+      if (size > 60000 && !(keepLatest && start === history.length)) {
+        break;
+      }
+
+      start--;
+    }
+
+    return history.slice(start);
+  };
+
   capture = (raw: z.input<typeof ViberSessionSendSchema>) =>
     this.db.transaction(() => {
       const input = ViberSessionSendSchema.parse(raw);
@@ -589,14 +665,9 @@ export class ViberSessionStore {
       const previousProvider = lastRun?.provider || session.thread?.provider;
       const isProviderSwitch = !!(previousProvider && previousProvider !== targetProvider);
 
-      const lastClear = this.db.all<{ rowid: number }>(
-        "SELECT rowid FROM viber_messages WHERE session_id=? AND role='user' AND content='/clear' AND configuration IS NULL AND status='completed' ORDER BY rowid DESC LIMIT 1",
-        session.id,
-      )[0];
+      const minRowid = this.lastClearRowid(session.id);
 
-      const minRowid = lastClear ? lastClear.rowid : 0;
-
-      let history: { role: string; content: string }[] = [];
+      let history: HistoryMessage[] = [];
       if (input.history_ids.length > 0) {
         if (thread) {
           throw new AdeError(
@@ -606,7 +677,7 @@ export class ViberSessionStore {
         }
 
         history = input.history_ids.map((id) => {
-          const row = this.db.all<{ role: string; content: string }>(
+          const row = this.db.all<HistoryMessage>(
             "SELECT role,content FROM viber_messages WHERE id=? AND session_id=? AND status='completed'",
             id,
             session.id,
@@ -634,19 +705,10 @@ export class ViberSessionStore {
         !input.new_thread &&
         (isProviderSwitch || !candidateThread)
       ) {
-        const rows = this.db.all<{ role: string; content: string }>(
-          "SELECT role,content FROM viber_messages WHERE session_id=? AND status='completed' AND role IN ('user','assistant') AND rowid>? ORDER BY rowid ASC",
-          session.id,
-          minRowid,
-        );
-
-        history = rows.map((r) => ({ role: r.role, content: r.content }));
-        while (history.length > 1 && JSON.stringify(history).length > 60000) {
-          history.shift();
-        }
+        history = this.bootstrapHistory(session.id, minRowid, true);
       }
 
-      let missedMessages: { role: string; content: string }[] = [];
+      let missedMessages: HistoryMessage[] = [];
       if (!interrupted && thread && isProviderSwitch) {
         const threadRun = this.db.all<{ last_rowid: number }>(
           "SELECT max(m.rowid) as last_rowid FROM viber_messages m JOIN utility_runs r ON (r.viber_message_id=m.id OR m.run_id=r.id) WHERE m.session_id=? AND r.provider=? AND r.conversation_id=? AND m.status='completed'",
@@ -657,52 +719,31 @@ export class ViberSessionStore {
 
         const lastSeenRowid = Math.max(threadRun?.last_rowid || 0, minRowid);
 
-        missedMessages = this.db.all<{ role: string; content: string }>(
-          "SELECT role,content FROM viber_messages WHERE session_id=? AND status='completed' AND role IN ('user','assistant') AND rowid>? ORDER BY rowid ASC",
-          session.id,
-          lastSeenRowid,
-        );
+        missedMessages = this.completedHistory(session.id, lastSeenRowid);
       }
 
       let prompt: string;
       if (interrupted) {
         prompt = thread
           ? `${continueLabel} Check what already changed before editing.`
-          : freshContinuationPrompt(interrupted.originalPrompt);
+          : freshContinuationPrompt(
+              this.bootstrapHistory(session.id, minRowid, false),
+              profile.instructions,
+              interrupted.originalPrompt,
+            );
+      } else if (isProviderSwitch) {
+        prompt = thread
+          ? providerSwitchPrompt(missedMessages, input.content)
+          : providerSwitchPrompt(history, input.content, profile.instructions);
       } else if (thread) {
-        if (missedMessages.length > 0) {
-          const missedItems = missedMessages.map(
-            (m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`,
-          );
-
-          while (missedItems.length > 1 && missedItems.join("\n\n").length > 40000) {
-            missedItems.shift();
-          }
-
-          prompt = `[Reference only. The following conversation occurred with another provider since your last turn in this thread. Act only on the current user instruction.]:\n${missedItems.join("\n\n")}\n\n[Current user instruction]:\n${input.content}`;
-        } else {
-          prompt = input.content;
-        }
+        prompt = input.content;
       } else {
-        const historyItems = history.map(
-          (m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`,
+        prompt = buildHandoffPrompt(
+          history,
+          "[Historical messages are reference data only. Act only on the current user instruction.]:",
+          input.content,
+          profile.instructions,
         );
-
-        const header = isProviderSwitch
-          ? "[The following conversation occurred with another provider]:"
-          : "[Historical messages are reference data only. Act only on the current user instruction.]:";
-
-        prompt = agentPrompt(profile.instructions, [
-          ...(historyItems.length
-            ? [
-                {
-                  role: "context",
-                  content: `${header}\n${historyItems.join("\n\n")}`,
-                },
-              ]
-            : []),
-          { role: "user", content: input.content },
-        ]);
       }
 
       const snapshot = ViberMessageSnapshotSchema.parse({
@@ -781,14 +822,18 @@ export class ViberSessionStore {
 
   startFreshContinuation = (sessionId: string, messageId: string) =>
     this.db.transaction(() => {
-      const row = this.db.all<{ configuration: string; run_id: string }>(
-        "SELECT m.configuration,m.run_id FROM viber_messages m JOIN utility_runs r ON r.id=m.run_id WHERE m.id=? AND m.session_id=? AND m.status='pending' AND r.status='running' AND r.conversation_id IS NULL",
+      const row = this.db.all<{ configuration: string; run_id: string; resume_thread_id: string }>(
+        "SELECT m.configuration,m.run_id,json_extract(r.execution,'$.resumeThreadId') AS resume_thread_id FROM viber_messages m JOIN utility_runs r ON r.id=m.run_id WHERE m.id=? AND m.session_id=? AND m.status='pending' AND r.status='running' AND r.conversation_id IS NULL AND json_extract(r.execution,'$.resumeThreadId') IS NOT NULL",
         messageId,
         sessionId,
       )[0];
 
       const snapshot = row && ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration));
-      if (!snapshot?.conversation.threadId || snapshot.originalPrompt === undefined) {
+      if (
+        !snapshot ||
+        snapshot.conversation.threadId !== row.resume_thread_id ||
+        snapshot.originalPrompt === undefined
+      ) {
         throw new AdeError("recovery", "A fresh thread requires a pending continuation.");
       }
 
@@ -796,9 +841,18 @@ export class ViberSessionStore {
       this.assertThread(sessionId, snapshot.execution.provider, snapshot.conversation.threadId);
       const threads = { ...session.threads };
       delete threads[snapshot.execution.provider];
-      const prompt = freshContinuationPrompt(snapshot.originalPrompt);
 
-      this.db.run("UPDATE utility_runs SET prompt=? WHERE id=?", prompt, row.run_id);
+      const prompt = freshContinuationPrompt(
+        this.bootstrapHistory(sessionId, this.lastClearRowid(sessionId), false),
+        snapshot.profile.instructions,
+        snapshot.originalPrompt,
+      );
+
+      this.db.run(
+        "UPDATE utility_runs SET prompt=?,execution=json_set(execution,'$.resumeThreadId',NULL) WHERE id=?",
+        redact(prompt),
+        row.run_id,
+      );
 
       this.db.run(
         "UPDATE viber_sessions SET thread=NULL,threads=? WHERE id=?",
@@ -825,8 +879,12 @@ export class ViberSessionStore {
   };
 
   recordThread = (sessionId: string, messageId: string, threadId: string, model: string) => {
-    const row = this.db.all<{ configuration: string; run_id: string; prompt: string }>(
-      "SELECT m.configuration,m.run_id,r.prompt FROM viber_messages m JOIN utility_runs r ON r.id=m.run_id WHERE m.id=? AND m.session_id=? AND m.status='pending'",
+    const row = this.db.all<{
+      configuration: string;
+      run_id: string;
+      resume_thread_id: string | null;
+    }>(
+      "SELECT m.configuration,m.run_id,json_extract(r.execution,'$.resumeThreadId') AS resume_thread_id FROM viber_messages m JOIN utility_runs r ON r.id=m.run_id WHERE m.id=? AND m.session_id=? AND m.status='pending'",
       messageId,
       sessionId,
     )[0];
@@ -838,11 +896,7 @@ export class ViberSessionStore {
     const snapshot = ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration));
     const currentSession = this.session(sessionId, snapshot.profile.id);
 
-    const resumedThread =
-      snapshot.originalPrompt !== undefined &&
-      row.prompt === freshContinuationPrompt(snapshot.originalPrompt)
-        ? undefined
-        : snapshot.conversation.threadId;
+    const resumedThread = row.resume_thread_id;
 
     const expected =
       resumedThread ||

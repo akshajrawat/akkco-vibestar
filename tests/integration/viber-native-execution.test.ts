@@ -31,8 +31,16 @@ it.each(["codex", "antigravity"] as const)(
     const antigravityState = join(fixture.home, ".config", "antigravity");
     const requests: AgentRunRequest[] = [];
     const adapters = { codex: new CodexProvider(), antigravity: new AntigravityProvider() };
-    let mode: "success" | "invalid" | "partial" | "truncated" | "wait" | "resume-rejected" =
-      "success";
+    let mode:
+      | "success"
+      | "invalid"
+      | "partial"
+      | "truncated"
+      | "wait"
+      | "wait-before-init"
+      | "resume-rejected"
+      | "resume-missing"
+      | "startup-error" = "success";
     let sourcePath = "";
     let otherWorkspace = "";
     let handoffThreadId: string | undefined;
@@ -97,21 +105,27 @@ it.each(["codex", "antigravity"] as const)(
                 if(mode !== 'truncated') emit({method:'turn/completed',params:{turn:{status:'completed'}}});
                 else process.exit(0);
               } else {
-                emit({event:'step_update',step_update:{step_index:1,step_type:'tool',tool_name:'replace_file_content',state:'DONE',tool_info:{parameters:{TargetFile:'source.txt'},output:'edited'}}});
+                emit({event:'step_update',step_update:{step_index:1,step_type:'tool',tool_name:'replace_file_content',state:'DONE',tool_info:{parameters:{TargetFile:'source.txt'},output:'RAW_TOOL_OUTPUT'}}});
                 emit({event:'step_update',step_update:{step_index:2,step_type:'tool',tool_name:'run_command',state:'DONE',tool_info:{parameters:{CommandLine:command},exit_code:0,stdout:'verified'},usage:{input_tokens:12}}});
                 emit({event:'step_update',step_update:{step_index:3,step_type:'agent_response',state:'DONE',text:'Native agent verified the edit.'}});
                 if(mode === 'partial') process.exit(2);
                 if(mode !== 'truncated') emit({event:'result',result:{status:'SUCCESS',response:'Native agent verified the edit.',conversation_id:nativeId,usage:{input_tokens:12}}});
               }
             };
-            if (${JSON.stringify(name)} === 'codex') {
+            if (mode === 'wait-before-init') {
+              setInterval(() => {}, 1000);
+            } else if (${JSON.stringify(name)} === 'codex') {
               require('node:readline').createInterface({input:process.stdin}).on('line', line => {
                 const r=JSON.parse(line);
                 if(r.method==='initialize') emit({id:r.id,result:{}});
                 if(r.method==='thread/start' || r.method==='thread/resume') {
                   if (r.method !== (resumeId ? 'thread/resume' : 'thread/start') || r.params.threadId !== resumeId) throw Error('Wrong native thread request');
                   if(mode === 'invalid' || (mode === 'resume-rejected' && resumeId)) {
-                    emit({id:r.id,error:{message:'Native thread not found'}});
+                    emit({id:r.id,error:{message:'no rollout found for thread id ' + resumeId}});
+                    return;
+                  }
+                  if(mode === 'startup-error') {
+                    emit({id:r.id,error:{message:'Backend unavailable'}});
                     return;
                   }
                   emit({id:r.id,result:{thread:{id:nativeId}}});
@@ -129,6 +143,11 @@ it.each(["codex", "antigravity"] as const)(
               if ((resume === -1 ? undefined : args[resume + 1]) !== resumeId) throw Error('Wrong resume identity');
               if (args[args.indexOf('--model') + 1] !== model) throw Error('Wrong turn model');
               if(mode === 'invalid') { console.error('Native thread not found'); process.exit(1); }
+              if(mode === 'startup-error') { console.error('Backend unavailable'); process.exit(1); }
+              if(mode === 'resume-missing' && resumeId) {
+                console.error('error: conversation ' + JSON.stringify(resumeId) + ' not found');
+                process.exit(1);
+              }
               const rejected = mode === 'resume-rejected' && resumeId;
               emit({event:'init',conversation_id:rejected ? 'unexpected-thread' : nativeId,init:{model}});
               let input='';
@@ -451,8 +470,31 @@ it.each(["codex", "antigravity"] as const)(
       const resumePrompt =
         "Continue where you left off. Check what already changed before editing.";
 
-      const freshPrompt = (original: string) =>
-        `Original user prompt:\n${original}\n\nThe previous thread couldn’t be resumed. Inspect the current workspace and any partial edits, then continue from where it left off.`;
+      const checkFreshPrompt = (prompt: string, original: string, expectedHistory: string) => {
+        const handoff = JSON.parse(prompt.slice(prompt.indexOf("\n\n") + 2));
+
+        expect(handoff).toEqual({
+          instructions: profile.instructions,
+          inputs: [
+            {
+              role: "context",
+              content: expect.stringContaining(expectedHistory),
+            },
+            {
+              role: "user",
+              content: `Original user prompt:\n${original}\n\nInspect the current workspace files and any partial edits before continuing from where the interrupted turn left off.`,
+            },
+          ],
+        });
+
+        expect(prompt).not.toContain("RAW_TOOL_OUTPUT");
+      };
+
+      const savedRun = (runId: string) =>
+        engine.db.all<{ conversation_id: string | null; resume_thread_id: string | null }>(
+          "SELECT conversation_id,json_extract(execution,'$.resumeThreadId') AS resume_thread_id FROM utility_runs WHERE id=?",
+          runId,
+        )[0];
 
       await send(continueRequest(interrupted.request_id));
       const continuedSession = await settled();
@@ -460,7 +502,14 @@ it.each(["codex", "antigravity"] as const)(
 
       const stopTurn = async (content: string) => {
         mode = "wait";
-        const request = { request_id: randomUUID(), content, selection };
+
+        const request = {
+          request_id: randomUUID(),
+          content,
+          selection,
+          acknowledge_uncertain: true,
+        };
+
         await send(request);
         await expect.poll(() => nativeIdFor(request.request_id)).toBeTruthy();
         await rpc.call("viber.session.cancel", { session_id: session.id, profile_id: profileId });
@@ -475,25 +524,49 @@ it.each(["codex", "antigravity"] as const)(
 
       expect(continuedSession.thread?.thread_id).toBe(interruptedThread);
 
-      const stopped = await stopTurn("Continue this edit if the native thread is gone");
-      const beforeFallback = requests.length;
+      expect(savedRun(requests[count].runId)).toEqual({
+        conversation_id: interruptedThread,
+        resume_thread_id: interruptedThread,
+      });
+
       const file = join(workspace.worktree_path, "source.txt");
-      const beforeEdit = await readFile(file, "utf8");
-      mode = "resume-rejected";
-      await send(continueRequest(stopped.request_id));
-      const fresh = await settled();
 
-      expect(requests.slice(beforeFallback)).toMatchObject([
-        {
-          conversation: { threadId: interruptedThread, confirmResume: true },
-          prompt: resumePrompt,
-        },
-        { conversation: {}, prompt: freshPrompt(stopped.content) },
-      ]);
+      const rejectionModes =
+        providerName === "antigravity"
+          ? (["resume-rejected", "resume-missing"] as const)
+          : (["resume-rejected"] as const);
 
-      expect(requests[beforeFallback].runId).toBe(requests[beforeFallback + 1].runId);
-      expect(fresh.thread?.thread_id).not.toBe(interruptedThread);
-      expect(await readFile(file, "utf8")).toBe(beforeEdit + "changed\n");
+      for (const rejectionMode of rejectionModes) {
+        const stopped = await stopTurn("Continue this edit if the native thread is gone");
+        const stoppedThread = nativeIdFor(stopped.request_id);
+        const beforeFallback = requests.length;
+        const beforeEdit = await readFile(file, "utf8");
+        mode = rejectionMode;
+        await send(continueRequest(stopped.request_id));
+        const fresh = await settled();
+
+        expect(requests.slice(beforeFallback)).toMatchObject([
+          {
+            conversation: { threadId: stoppedThread, confirmResume: true },
+            prompt: resumePrompt,
+          },
+          { conversation: {} },
+        ]);
+
+        const freshRequest = requests[beforeFallback + 1];
+        checkFreshPrompt(freshRequest.prompt, stopped.content, "User: Inspect current files");
+        expect(requests[beforeFallback].runId).toBe(freshRequest.runId);
+        expect(fresh.thread?.thread_id).toBe(freshRequest.runId);
+        expect(fresh.thread?.thread_id).not.toBe(stoppedThread);
+
+        expect(savedRun(freshRequest.runId)).toEqual({
+          conversation_id: freshRequest.runId,
+          resume_thread_id: null,
+        });
+
+        expect(await readFile(file, "utf8")).toBe(beforeEdit + "changed\n");
+      }
+
       mode = "success";
 
       const otherProvider = providerName === "codex" ? "antigravity" : "codex";
@@ -646,6 +719,60 @@ it.each(["codex", "antigravity"] as const)(
       await settled("failed");
       expect(requests).toHaveLength(beforeTruncated + 1);
       expect(await readFile(workspaceFile, "utf8")).toBe(beforeTruncatedEdit + "changed\n");
+
+      const stoppedOnStartup = await stopTurn("Continue only if the provider confirms the thread");
+      const beforeError = requests.length;
+      const beforeErrorEdit = await readFile(file, "utf8");
+      mode = "startup-error";
+      await send(continueRequest(stoppedOnStartup.request_id));
+      await settled("failed");
+      expect(requests).toHaveLength(beforeError + 1);
+      expect(await readFile(file, "utf8")).toBe(beforeErrorEdit);
+
+      mode = "success";
+      await send({ content: "/clear" });
+      await send({ content: `Old context after clear: ${"a".repeat(31000)}` });
+      await settled();
+      await send({ content: `Recent context after clear: ${"b".repeat(31000)}` });
+      await settled();
+
+      mode = "wait-before-init";
+
+      const withoutThread = {
+        request_id: randomUUID(),
+        content: "Finish the interrupted edit without a saved thread",
+        new_thread: true,
+      };
+
+      await send(withoutThread);
+      await expect.poll(() => requests.at(-1)?.prompt.includes(withoutThread.content)).toBe(true);
+      await rpc.call("viber.session.cancel", { session_id: session.id, profile_id: profileId });
+      await settled("cancelled");
+      expect(nativeIdFor(withoutThread.request_id)).toBeNull();
+
+      mode = "success";
+      const beforeFresh = requests.length;
+      handoffThreadId = undefined;
+      await send(continueRequest(withoutThread.request_id));
+      const fresh = await settled();
+      expect(requests).toHaveLength(beforeFresh + 1);
+      const freshRequest = requests[beforeFresh];
+      expect(freshRequest.conversation).toEqual({});
+
+      checkFreshPrompt(
+        freshRequest.prompt,
+        withoutThread.content,
+        "User: Recent context after clear",
+      );
+
+      expect(freshRequest.prompt).not.toContain("Old context after clear");
+      expect(freshRequest.prompt).not.toContain(handoff.content);
+      expect(fresh.thread?.thread_id).toBe(freshRequest.runId);
+
+      expect(savedRun(freshRequest.runId)).toEqual({
+        conversation_id: freshRequest.runId,
+        resume_thread_id: null,
+      });
 
       expect(engine.vibers.profile(profileId)).toEqual(profile);
       expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
