@@ -28,7 +28,7 @@ export interface ProcessRequest {
   onSpawn?: (pid: number, identity: string) => void;
 }
 
-export interface ProcessOutput {
+interface ProcessOutput {
   code: number;
   stdout: string;
   stderr: string;
@@ -36,11 +36,6 @@ export interface ProcessOutput {
   stdout_truncated?: boolean;
   stderr_truncated?: boolean;
 }
-
-export type ProcessTransform = (invocation: { program: string; args: string[] }) => {
-  program: string;
-  args: string[];
-};
 
 export const redact = (text: string) => {
   if (text.includes("\x1b") || /\\u[\da-f]{4}/i.test(text)) {
@@ -391,22 +386,16 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
   });
 };
 
-export const capture = (
-  program: string,
-  args: string[],
-  cwd: string,
-  signal?: AbortSignal,
-  transform?: ProcessTransform,
-) => execute({ ...(transform ? transform({ program, args }) : { program, args }), cwd, signal });
+export const capture = (program: string, args: string[], cwd: string, signal?: AbortSignal) =>
+  execute({ program, args, cwd, signal });
 
 export const checked = async (
   program: string,
   args: string[],
   cwd: string,
   signal?: AbortSignal,
-  transform?: ProcessTransform,
 ) => {
-  const o = await capture(program, args, cwd, signal, transform);
+  const o = await capture(program, args, cwd, signal);
   if (o.code !== 0) {
     throw new AdeError("command_failed", `${program} exited ${o.code}: ${o.stderr.slice(-6000)}`, {
       program,

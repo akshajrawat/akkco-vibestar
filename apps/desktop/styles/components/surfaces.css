@@ -45,7 +45,7 @@
   @apply flex gap-2.5 items-center cursor-pointer flex-wrap;
 }
 
-.usage-runs summary > span:not(.usage-dot) {
+.usage-runs summary > span {
   @apply text-muted;
 }
 

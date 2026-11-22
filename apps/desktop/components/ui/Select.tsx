@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { useOverlayPortal } from "./WorkspaceOverlay";
 
-export interface SelectOption {
+interface SelectOption {
   value: string;
   label: string;
   description?: string;

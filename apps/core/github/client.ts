@@ -3,7 +3,7 @@ import { AdeError } from "../domain";
 import type { GitHubRepository, GitHubStatus } from "./contracts";
 import { authoredPullRequests, knownPullRequests } from "./pull-requests";
 
-export interface GitHubResponseCache {
+interface GitHubResponseCache {
   get: (endpoint: string) => { etag: string; body: unknown } | undefined;
   set: (endpoint: string, etag: string, body: unknown) => void;
 }

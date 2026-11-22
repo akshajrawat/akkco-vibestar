@@ -21,7 +21,7 @@ export interface DesktopApi {
   openExternal: (url: string) => Promise<void>;
 }
 
-export interface WindowState {
+interface WindowState {
   maximized: boolean;
   fullscreen: boolean;
 }

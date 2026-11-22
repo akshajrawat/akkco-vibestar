@@ -71,8 +71,6 @@ export class CoreBridge extends EventEmitter {
 
   private viberSessionsAvailable = false;
 
-  private computersAvailable = false;
-
   private pending = new Map<
     string,
     {
@@ -101,7 +99,6 @@ export class CoreBridge extends EventEmitter {
     this.notificationPreferencesAvailable = false;
     this.viberConversationsAvailable = false;
     this.viberSessionsAvailable = false;
-    this.computersAvailable = false;
     this.manualTerminalAvailable = false;
 
     this.checking = this.launch()
@@ -304,7 +301,6 @@ export class CoreBridge extends EventEmitter {
         build: string;
         viber_conversations?: number;
         viber_sessions?: number;
-        viber_computers?: number;
         manual_user_terminal?: number;
         runtime_restart?: number;
         notification_preferences?: number;
@@ -314,16 +310,14 @@ export class CoreBridge extends EventEmitter {
         this.runtimeRestartAvailable = info.runtime_restart === 1;
         this.notificationPreferencesAvailable = info.notification_preferences === 1;
         this.viberConversationsAvailable = info.viber_conversations === 1;
-        this.viberSessionsAvailable = info.viber_sessions === 2;
-        this.computersAvailable = info.viber_computers === 1;
+        this.viberSessionsAvailable = info.viber_sessions === 3;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
 
-        this.warning =
-          !this.viberSessionsAvailable || !this.computersAvailable
-            ? "The running core is missing required Viber functionality. Update the WSL helper in Settings → Execution, then restart."
-            : createHash("sha256").update(bundle).digest("hex") === info.build
-              ? undefined
-              : "The WSL helper differs from this desktop build. Settings → Execution → Install / update WSL helper, then restart. Usage and newer features may be incomplete until updated.";
+        this.warning = !this.viberSessionsAvailable
+          ? "The running core is missing required Viber functionality. Update the WSL helper in Settings → Execution, then restart."
+          : createHash("sha256").update(bundle).digest("hex") === info.build
+            ? undefined
+            : "The WSL helper differs from this desktop build. Settings → Execution → Install / update WSL helper, then restart. Usage and newer features may be incomplete until updated.";
 
         if (process.platform === "win32") {
           if (this.warning) {
@@ -364,15 +358,9 @@ export class CoreBridge extends EventEmitter {
     }
 
     if (
-      !this.computersAvailable &&
-      (method.startsWith("computer.") ||
-        method === "profile.delete" ||
-        method === "viber.session.send")
+      !this.viberSessionsAvailable &&
+      (method.startsWith("viber.session.") || method === "profile.delete")
     ) {
-      throw new Error("Update the execution helper before using dedicated Viber computers.");
-    }
-
-    if (!this.viberSessionsAvailable && method.startsWith("viber.session.")) {
       throw new Error("Update the execution helper before using standalone Viber sessions.");
     }
 
@@ -416,8 +404,7 @@ export class CoreBridge extends EventEmitter {
           ...result,
           capabilities: {
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
-            ...(this.viberSessionsAvailable ? { viber_sessions: 2 } : {}),
-            ...(this.computersAvailable ? { viber_computers: 1 } : {}),
+            ...(this.viberSessionsAvailable ? { viber_sessions: 3 } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };
