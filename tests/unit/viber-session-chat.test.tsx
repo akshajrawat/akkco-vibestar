@@ -69,6 +69,43 @@ afterEach(() => {
   localStorage.clear();
 });
 
+it("allows a local context reset when the saved provider model is unavailable", async () => {
+  const id = crypto.randomUUID();
+
+  rpc.mockImplementation(async (method: string) =>
+    method === "viber.session.detail"
+      ? {
+          ...stored,
+          session: {
+            ...stored.session,
+            id,
+            selection: { ...stored.session.selection, model: "retired-model" },
+          },
+        }
+      : {},
+  );
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberSessionChat sessionId={id} profile={viberProfile} revision={0} />);
+  await screen.findByText("Previous answer");
+
+  const draft = screen.getByRole("textbox", { name: `Message ${viberProfile.name}` });
+  const send = screen.getByRole<HTMLButtonElement>("button", { name: "Send message" });
+  fireEvent.change(draft, { target: { value: "Ordinary prompt" } });
+  expect(send.disabled).toBe(true);
+
+  fireEvent.change(draft, { target: { value: " /clear " } });
+  expect(send.disabled).toBe(false);
+  fireEvent.click(send);
+
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "viber.session.send",
+      expect.objectContaining({ session_id: id, content: "/clear" }),
+    ),
+  );
+});
+
 it("restores the saved model and retries a send with the picker selection and no history replay", async () => {
   let fail = true;
 

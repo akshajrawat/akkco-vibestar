@@ -22,4 +22,12 @@ sequenceDiagram
     User->>Chat: Change reasoning effort and send
     Chat->>Codex: Resume the thread with the new effort
     Codex-->>Chat: Reply
+    User->>Chat: Send /clear
+    alt Viber has an active turn
+        Chat-->>User: Wait for the turn to finish
+    else Viber is idle
+        Chat-->>User: Confirm reset and keep the saved transcript and files
+        User->>Chat: Send another message
+        Chat->>Codex: Start a fresh thread
+    end
 ```
