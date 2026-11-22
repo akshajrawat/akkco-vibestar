@@ -73,7 +73,6 @@ export interface AgentRunRequest {
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
   conversation?: { threadId?: string };
-  isolatedComputer?: boolean;
 }
 
 export interface AgentProvider {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type Ref } from "react";
-import { Minus, Square, Copy, X, PanelLeftOpen, PanelRight } from "lucide-react";
+import { Minus, Square, Copy, X, PanelLeftOpen } from "lucide-react";
 
 import type { AgentProfile } from "../../core/vibers/contracts";
 import { ViberFace } from "../features/vibers/ViberFace";
@@ -8,11 +8,7 @@ export const TitleBar = ({
   profile,
   onSidebar,
   toggleRef,
-  onComputer,
-  computerOpen,
 }: {
-  onComputer?: () => void;
-  computerOpen?: boolean;
   profile?: AgentProfile;
   onSidebar?: () => void;
   toggleRef?: Ref<HTMLButtonElement>;
@@ -67,7 +63,7 @@ export const TitleBar = ({
   const control = (action: () => Promise<void>) => void action().catch((e) => setError(String(e)));
   return (
     <header
-      className={`titlebar flex items-center border-b border-b-border select-none ${manualDragging ? "titlebar-manual" : ""}`}
+      className={`titlebar flex items-center select-none ${profile ? "titlebar-chat" : "border-b border-b-border"} ${manualDragging ? "titlebar-manual" : ""}`}
       onPointerDown={(event) => {
         if (
           !manualDragging ||
@@ -132,17 +128,6 @@ export const TitleBar = ({
         </span>
       )}
 
-      {onComputer && (
-        <button
-          className="titlebar-action grid place-items-center shrink-0 p-0 [border:0] focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[-2px]"
-          aria-label="Toggle computer panel"
-          aria-expanded={computerOpen}
-          title="Toggle computer panel"
-          onClick={onComputer}
-        >
-          <PanelRight size={20} aria-hidden="true" />
-        </button>
-      )}
       <div className="window-controls shrink-0 flex ml-auto" aria-label="Window controls">
         <button
           aria-label="Minimize window"

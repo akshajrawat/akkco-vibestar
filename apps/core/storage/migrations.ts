@@ -63,10 +63,6 @@ CREATE TABLE IF NOT EXISTS retired_viber_profiles(
   profile_id TEXT PRIMARY KEY
 );
 
-CREATE TABLE IF NOT EXISTS viber_computers(
-  profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id)
-);
-
 CREATE TABLE IF NOT EXISTS viber_sessions(
   id TEXT PRIMARY KEY,
   profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
@@ -170,6 +166,19 @@ CREATE TRIGGER IF NOT EXISTS viber_repository_immutable BEFORE UPDATE OF reposit
 CREATE TRIGGER IF NOT EXISTS viber_session_owner_immutable BEFORE UPDATE OF id,profile_id,configuration,created_at ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber session ownership is immutable'); END;
 
 CREATE TRIGGER IF NOT EXISTS viber_workspace_owner_immutable BEFORE UPDATE OF workspace ON viber_sessions WHEN json_extract(OLD.workspace,'$.id') IS NOT json_extract(NEW.workspace,'$.id') OR json_extract(OLD.workspace,'$.repo_id') IS NOT json_extract(NEW.workspace,'$.repo_id') BEGIN SELECT RAISE(ABORT,'Viber workspace ownership is immutable'); END;
+`,
+  },
+  {
+    version: 45,
+    sql: `
+CREATE TABLE IF NOT EXISTS viber_computers(
+  profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id)
+);
+
+-- Provider threads saved in the retired execution environment are unavailable to the local CLIs.
+UPDATE viber_sessions SET thread=NULL, threads=NULL
+WHERE profile_id IN (SELECT profile_id FROM viber_computers);
+DROP TABLE IF EXISTS viber_computers;
 `,
   },
 ];

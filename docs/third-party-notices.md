@@ -4,10 +4,12 @@ Project code uses the root [MIT License](../LICENSE), with the requested notice
 `Copyright (c) 2026 akkco`. This notice does not replace third-party licenses or
 change historical author attribution.
 
-Bundled `apps/desktop/assets/fonts/Geist-Sans.woff2` and `Geist-Mono.woff2` retain the SIL Open
-Font License 1.1 and the Vercel/basement.studio copyright notice in
-[`public/Geist-OFL.txt`](../public/Geist-OFL.txt). Vite copies that notice into `out/desktop`.
-Do not remove it from packaged renderer assets.
+The Geist Mono font retains the Vercel/basement.studio copyright notice and SIL Open Font
+License 1.1 in [`public/Geist-OFL.txt`](../public/Geist-OFL.txt).
+
+The Inter WOFF2 file comes from the [Inter project](https://rsms.me/inter/) and retains its
+copyright notice and SIL Open Font License 1.1 in [`public/Inter-OFL.txt`](../public/Inter-OFL.txt).
+Vite copies both license notices into `out/desktop` for packaging.
 
 Runtime/development dependencies, Electron and native addons retain their own
 licenses/notices in the installed packages. Packaging must preserve the applicable

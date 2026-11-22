@@ -20,12 +20,17 @@
   @apply shrink-0 size-6.5;
 }
 
-.sidebar-brand span {
-  @apply text-[15px] font-semibold text-ink-primary tracking-[-0.01em] overflow-hidden text-ellipsis whitespace-nowrap;
+.sidebar-brand-title {
+  @apply font-mono text-[19px] font-bold tracking-[-0.03em] overflow-hidden text-ellipsis whitespace-nowrap select-none;
+  color: #ffffff;
+}
+
+.sidebar-brand-v {
+  color: #ffffff;
 }
 
 @container (max-width: 190px) {
-  .sidebar-brand span {
+  .sidebar-brand-title {
     @apply hidden;
   }
 }

@@ -130,7 +130,7 @@ export interface RepositoryIndexSnapshot {
   warnings: string[];
 }
 
-export const discoveryRoot = (value: string, home = homedir()) => {
+const discoveryRoot = (value: string, home = homedir()) => {
   const path = value === "~" ? home : value.startsWith("~/") ? join(home, value.slice(2)) : value;
   if (!isAbsolute(path)) {
     throw new AdeError(

@@ -260,7 +260,3 @@
 .chat-workspace .chat-input button[aria-label="Stop response"] {
   @apply rounded-[50%] w-8 h-8 p-0 shrink-0 justify-center;
 }
-
-.secondary-expanded {
-  @apply absolute inset-0 z-[22] w-full! max-w-none [border-left:0];
-}

@@ -7,7 +7,7 @@ import { useDialogFocus } from "../../hooks/useDialogFocus";
 import { errorMessage } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 
-export interface ContextOption {
+interface ContextOption {
   label: string;
   input?: string;
   load: (input: string) => Promise<{ label: string; text: string }>;
@@ -77,7 +77,7 @@ export const Composer = ({
 
     field.style.height = "auto";
     field.style.height = `${Math.max(compact ? 24 : 56, Math.min(field.scrollHeight, 240))}px`;
-  }, [view.draft, view.expandedTool, compact]);
+  }, [view.draft, compact]);
 
   const attach = async (source: ContextOption, value = "") => {
     if (attaching) {
