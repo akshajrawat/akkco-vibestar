@@ -6,7 +6,6 @@ import type { AgentEvent, Run } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
-import { Select } from "../../components/ui/Select";
 import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
 import { AgentTimeline } from "../chat/AgentTimeline";
@@ -35,12 +34,11 @@ const SessionChat = ({
 }) => {
   const id = `viber-session:${sessionId}`;
   const view = useTaskView(id);
-  const { providers } = useProviders(profile.id);
+  const { providers } = useProviders();
   const [data, setData] = useState<SessionDetail>();
   const [error, setError] = useState<{ message: string; requestId?: string }>();
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [newThread, setNewThread] = useState(false);
   const [recovery, setRecovery] = useState<string>();
   const sending = useRef(false);
   const cancelling = useRef(false);
@@ -108,7 +106,7 @@ const SessionChat = ({
       sending.current ||
       !data ||
       active ||
-      invalid ||
+      (invalid && content.trim() !== "/clear") ||
       !content.trim() ||
       content.length > 32000
     ) {
@@ -125,27 +123,11 @@ const SessionChat = ({
     setError(undefined);
     let requestId: string | undefined;
     try {
-      if (content.trim() === "/clear") {
-        await rpc("viber.session.send", {
-          session_id: sessionId,
-          profile_id: profile.id,
-          request_id: crypto.randomUUID(),
-          content: "/clear",
-          history_ids: [],
-          selection,
-        });
-
-        updateTaskView(id, { draft: "", draftContext: [] });
-        await refresh();
-        return;
-      }
-
-      const inputFor = (reset: boolean, acknowledge: boolean) => ({
+      const inputFor = (acknowledge: boolean) => ({
         session_id: sessionId,
         profile_id: profile.id,
         content,
         history_ids: [],
-        ...(reset ? { new_thread: true } : {}),
         ...(acknowledge ? { acknowledge_uncertain: true } : {}),
         selection,
       });
@@ -160,16 +142,11 @@ const SessionChat = ({
 
       // A lost-response resend retains the original flags even after a remount.
       const input =
-        [
-          inputFor(false, false),
-          inputFor(false, true),
-          inputFor(true, false),
-          inputFor(true, true),
-        ].find(
+        [inputFor(false), inputFor(true)].find(
           (input) =>
             (!acknowledged || input.acknowledge_uncertain) &&
             JSON.stringify(input) === saved?.signature,
-        ) || inputFor(newThread, acknowledged);
+        ) || inputFor(acknowledged);
 
       const signature = JSON.stringify(input);
       let request = saved;
@@ -186,7 +163,6 @@ const SessionChat = ({
         messageRequest: null,
       });
 
-      setNewThread(newThread && !input.new_thread);
       await refresh();
     } catch (reason) {
       setError({ message: errorMessage(reason), requestId });
@@ -237,31 +213,6 @@ const SessionChat = ({
         id={id}
         revision={revision}
         empty={!data?.messages.length}
-        activity={
-          <div className="viber-session-bar flex items-center flex-wrap gap-2.5 px-6 py-1 text-ink-muted text-[12px]">
-            <span title={data?.workspace?.path}>
-              Workspace · {data?.workspace?.repository || "Isolated files"}
-            </span>
-            {newThread && <span>AI context will reset on your next message.</span>}
-            <Select
-              label="Conversation menu"
-              value=""
-              selectedLabel="•••"
-              disabled={!data || busy || active}
-              options={[
-                { value: "clear", label: "Clear context now (/clear)" },
-                { value: "reset", label: newThread ? "Keep AI context" : "Reset AI context" },
-              ]}
-              onChange={(value) => {
-                if (value === "clear") {
-                  void send("/clear");
-                } else if (value === "reset") {
-                  setNewThread((v) => !v);
-                }
-              }}
-            />
-          </div>
-        }
         conversation={
           <>
             {timeline}
@@ -287,15 +238,13 @@ const SessionChat = ({
           </>
         }
         actions={
-          !active && !busy && !invalid && previousTurn && previousTurn.status !== "pending" ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                void send(previousTurn.status === "completed" ? "Continue" : previousTurn.content)
-              }
-            >
-              {previousTurn.status === "completed" ? "Continue" : "Retry"}
+          !active &&
+          !busy &&
+          !invalid &&
+          previousTurn &&
+          ["failed", "cancelled", "interrupted"].includes(previousTurn.status) ? (
+            <Button variant="ghost" size="sm" onClick={() => void send(previousTurn.content)}>
+              Retry
             </Button>
           ) : null
         }
@@ -315,11 +264,10 @@ const SessionChat = ({
               },
             ]}
             busy={busy || active || stopping}
-            disabled={!data || !!invalid}
+            disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
             stop={active ? () => void stop() : undefined}
             model={
               <ViberModelPicker
-                profileId={profile.id}
                 execution={{ ...profile.execution, ...selection }}
                 disabled={busy || active}
                 change={(execution) =>

@@ -252,10 +252,22 @@
 .viber-chat-page .chat-main {
   --chat-reading-width: 760px;
   --chat-gutter: clamp(12px, 3vw, 28px);
+  @apply bg-black;
+}
+
+.viber-chat-page .chat-main::before {
+  @apply pointer-events-none absolute inset-x-0 top-0 z-[3] h-6 bg-black;
+  content: "";
+  backdrop-filter: blur(8px);
+  mask-image: linear-gradient(to bottom, black, transparent);
+}
+
+.viber-chat-page .timeline-content {
+  @apply flex flex-col gap-6;
 }
 
 .viber-chat-page .event-timeline {
-  @apply pt-3.5;
+  @apply pt-6;
   @apply pb-5;
 }
 
@@ -301,10 +313,6 @@
   }
 }
 
-.viber-session-bar .select-trigger {
-  @apply ml-auto w-auto min-h-7 px-2 py-1 border-0 bg-transparent text-xs;
-}
-
 .viber-recovery-dialog {
   @apply w-[min(760px,_calc(100vw_-_32px))] max-h-[calc(100dvh_-_32px)] p-6 overflow-auto;
 }
@@ -325,26 +333,37 @@
 .viber-chat-page .saved-assistant-message,
 .viber-chat-page .message-event,
 .viber-chat-page .agent-turn > .agent-response {
-  @apply w-fit max-w-[78%] px-[13px] py-2.5 [border:0] rounded-[12px] my-1.5;
+  @apply w-fit max-w-[78%] px-[13px] py-2.5 [border:0] rounded-[20px] my-0;
 }
 
 .viber-chat-page .user-message {
-  @apply ml-auto rounded-br-[4px] bg-[color-mix(in_srgb,_var(--background-sidebar)_75%,_black)];
+  @apply ml-auto;
+  background-color: var(--viber-message-bg);
+  color: var(--viber-message-ink);
+}
+
+.viber-chat-page .user-message .message-expand {
+  color: inherit;
 }
 
 .viber-chat-page .saved-assistant-message,
 .viber-chat-page .message-event,
 .viber-chat-page .agent-turn > .agent-response {
-  @apply mr-auto rounded-bl-[4px] bg-surface-elevated;
+  @apply mr-auto bg-[#222225];
 }
 
 .viber-chat-page .agent-turn {
-  @apply mx-0 my-1.5;
+  @apply m-0;
+}
+
+.viber-chat-page .work-log {
+  @apply mt-0;
 }
 
 .viber-chat-page .user-message p,
-.viber-chat-page .agent-response {
-  @apply text-[13px] leading-[1.55];
+.viber-chat-page :is(.saved-assistant-message, .message-event) > .agent-response,
+.viber-chat-page .agent-turn > .agent-response {
+  @apply text-[14px] font-medium leading-[1.55];
 }
 
 .viber-chat-page .saved-assistant-message {
@@ -500,7 +519,8 @@
 
   .viber-chat-page .user-message,
   .viber-chat-page .saved-assistant-message,
-  .viber-chat-page .message-event {
+  .viber-chat-page .message-event,
+  .viber-chat-page .agent-turn > .agent-response {
     @apply max-w-[88%];
   }
 }

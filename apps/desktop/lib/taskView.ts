@@ -1,18 +1,17 @@
 import { useSyncExternalStore } from "react";
 
-export interface ContextAttachment {
+interface ContextAttachment {
   id: string;
   label: string;
   text: string;
 }
 
-export interface TaskView {
+interface TaskView {
   draft: string;
   draftContext: ContextAttachment[];
   messageRequest: { id: string; signature: string } | null;
   chatScroll: number;
   chatFollow: boolean;
-  expandedTool: boolean;
   followupProvider: "codex" | "antigravity" | null;
   followupModel: string | null;
   followupEffort: string | null;
@@ -69,7 +68,6 @@ const savedLayout = (id: string): Partial<TaskView> => {
         String((saved.messageRequest as Record<string, unknown>).signature).length <= 50000
           ? (saved.messageRequest as TaskView["messageRequest"])
           : null,
-      expandedTool: saved.expandedTool === true,
       chatScroll: bounded(saved.chatScroll, 0, 0, Number.MAX_SAFE_INTEGER),
       chatFollow: saved.chatFollow !== false,
       followupProvider:
@@ -91,7 +89,6 @@ const state = (id: string): TaskView => {
       draft: read(`vibestar.draft.${id}`) || "",
       draftContext: [],
       messageRequest: null,
-      expandedTool: false,
       chatScroll: 0,
       chatFollow: true,
       followupProvider: null,

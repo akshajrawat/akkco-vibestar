@@ -19,8 +19,6 @@ import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
 import { ViberSessions } from "./engine/viber-sessions";
 import { ViberStore } from "../vibers/store";
-import { Computers } from "../computers/service";
-import type { ProcessTransform } from "./runtime/process";
 
 export class Engine extends EventEmitter {
   private readonly state = new ExecutionState();
@@ -38,8 +36,6 @@ export class Engine extends EventEmitter {
   readonly viberSessions: ViberSessions;
 
   readonly vibers: ViberStore;
-
-  readonly computers: Computers;
 
   private readonly runner: AgentRunner;
 
@@ -76,18 +72,13 @@ export class Engine extends EventEmitter {
     readonly root: string,
     private readonly release: () => Promise<void>,
     database: Database,
-    providers?: (
-      stage: number,
-      provider?: "codex" | "antigravity",
-      transform?: ProcessTransform,
-    ) => AgentProvider,
+    providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
   ) {
     super();
     this.db = database;
     this.vibers = new ViberStore(database);
     this.git = new GitWorkspace(root, (id) => this.db.repository(id), gitTransport);
-    this.computers = new Computers(this);
 
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>
       this.trackActivity(
@@ -107,11 +98,8 @@ export class Engine extends EventEmitter {
       this.git,
       this.publish,
       providers ??
-        ((_stage, provider, transform) =>
-          provider === "antigravity"
-            ? new AntigravityProvider(transform)
-            : new CodexProvider(transform)),
-      this.computers,
+        ((_stage, provider) =>
+          provider === "antigravity" ? new AntigravityProvider() : new CodexProvider()),
     );
 
     this.repositories = new RepositoryOperations(
@@ -131,11 +119,7 @@ export class Engine extends EventEmitter {
 
   static create = async (
     root: string,
-    providers?: (
-      stage: number,
-      provider?: "codex" | "antigravity",
-      transform?: ProcessTransform,
-    ) => AgentProvider,
+    providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
   ) => {
     root = await createLayout(root);
@@ -173,7 +157,6 @@ export class Engine extends EventEmitter {
       );
 
       engine.db.recover();
-      await engine.computers.recover();
       return engine;
     } catch (error) {
       database?.close();
@@ -189,8 +172,6 @@ export class Engine extends EventEmitter {
   changed = (id?: string) => this.publish({ event: "changed", session_id: id });
 
   isActive = (id: string) => this.state.active.has(id) || this.state.interactive.has(id);
-
-  isExecuting = (id: string) => this.state.active.has(id);
 
   hasActive = () => this.cleanupBlockers().length > 0;
 
@@ -225,7 +206,6 @@ export class Engine extends EventEmitter {
 
   beginShutdown = () => {
     this.state.closed = true;
-    this.computers.beginShutdown();
     this.state.repositoryController.abort();
     for (const a of this.state.active.values()) {
       a.controller.abort();
@@ -253,7 +233,6 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
         await this.repositoryIndex.close();
-        await this.computers.close();
       } finally {
         try {
           this.db.close();

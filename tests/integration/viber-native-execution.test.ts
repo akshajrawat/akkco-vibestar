@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 
 import type { CoreEvent } from "../../apps/core/domain";
 import { Rpc } from "../../apps/core/rpc";
@@ -12,17 +12,29 @@ import { AntigravityProvider } from "../../apps/core/execution/providers/antigra
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import type { ViberSession } from "../../apps/core/vibers/contracts";
 import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
-import { createFixtureEngine, fixtureRepository, FixtureProvider } from "../helpers/fixtures";
+import { createFixtureEngine, fixtureRepository, detectFixtureProvider } from "../helpers/fixtures";
+
+const fixture = vi.hoisted(() => ({ home: "" }));
+
+vi.mock("node:os", async (original) => {
+  const module = await original<typeof import("node:os")>();
+  return { ...module, homedir: () => fixture.home || module.homedir() };
+});
 
 it.each(["codex", "antigravity"] as const)(
-  "%s runs its native tool loop in an owned repository, resumes after restart and recovers explicitly",
+  "%s runs its native tool loop, recovers explicitly, and hands off across a restart",
   async (providerName) => {
     const directory = await mkdtemp(join(tmpdir(), "vibestar-native-session-"));
+    fixture.home = join(directory, "home");
+    const codexState = join(fixture.home, ".codex");
+    const geminiState = join(fixture.home, ".gemini");
+    const antigravityState = join(fixture.home, ".config", "antigravity");
     const requests: AgentRunRequest[] = [];
     const adapters = { codex: new CodexProvider(), antigravity: new AntigravityProvider() };
     let mode: "success" | "invalid" | "partial" | "truncated" | "wait" = "success";
     let sourcePath = "";
     let otherWorkspace = "";
+    let handoffThreadId: string | undefined;
     const events: string[] = [];
 
     const providers = (_stage: number, name: "codex" | "antigravity" = providerName) => {
@@ -30,26 +42,44 @@ it.each(["codex", "antigravity"] as const)(
       return {
         ...adapter,
         detect: async () => {
-          const detection = await new FixtureProvider().detect(directory);
+          const detection = { ...(await detectFixtureProvider()), provider: name };
           detection.models.push({ id: "other-model", supportedEfforts: ["low", "high"] });
           return detection;
         },
         invocation: (request: AgentRunRequest) => {
           requests.push(request);
           const invocation = adapter.invocation(request);
-          const nativeId = request.conversation?.threadId || request.runId;
+
+          const nativeId =
+            request.conversation?.threadId ||
+            (name === "antigravity" ? handoffThreadId : undefined) ||
+            request.runId;
 
           const script = `
             const fs = require('node:fs');
             const cp = require('node:child_process');
             const emit = value => console.log(JSON.stringify(value));
             const nativeId = ${JSON.stringify(nativeId)};
+            const resumeId = ${JSON.stringify(request.conversation?.threadId)};
+            const model = ${JSON.stringify(request.config.model)};
             const mode = ${JSON.stringify(mode)};
             const toolLoop = prompt => {
+              if (prompt !== ${JSON.stringify(request.prompt)}) throw Error('Wrong native prompt');
               if (mode === 'wait') { setInterval(() => {}, 1000); return; }
               for (const path of ${JSON.stringify([join(directory, "private.txt"), sourcePath, otherWorkspace].filter(Boolean))}) {
                 try { fs.readFileSync(path); throw Error('Host or sibling files were exposed: ' + path); }
                 catch (error) { if (!['ENOENT', 'EACCES'].includes(error.code)) throw error; }
+              }
+              const visible = ${JSON.stringify(name === "codex" ? [codexState] : [geminiState, antigravityState])};
+              const hidden = ${JSON.stringify(name === "codex" ? [geminiState, antigravityState] : [codexState])};
+              for (const path of visible) {
+                if (fs.readFileSync(path + '/fixture', 'utf8') !== 'synthetic state') throw Error('Selected provider state was not mounted');
+              }
+              for (const path of hidden) {
+                if (fs.existsSync(path + '/fixture')) throw Error('Unselected provider state was mounted');
+              }
+              if (${JSON.stringify(name)} === 'codex' && fs.readFileSync(${JSON.stringify(join(codexState, "config.toml"))}, 'utf8') !== '') {
+                throw Error('Codex config was not masked');
               }
               const before = fs.readFileSync('source.txt', 'utf8');
               fs.writeFileSync('source.txt', before + 'changed\\n');
@@ -78,16 +108,22 @@ it.each(["codex", "antigravity"] as const)(
                 const r=JSON.parse(line);
                 if(r.method==='initialize') emit({id:r.id,result:{}});
                 if(r.method==='thread/start' || r.method==='thread/resume') {
+                  if (r.method !== (resumeId ? 'thread/resume' : 'thread/start') || r.params.threadId !== resumeId) throw Error('Wrong native thread request');
                   if(mode === 'invalid') { emit({id:r.id,error:{message:'Native thread not found'}}); return; }
                   emit({id:r.id,result:{thread:{id:nativeId}}});
                 }
-                if(r.method==='turn/start') { emit({id:r.id,result:{turn:{id:'turn'}}}); toolLoop(r.params.input[0].text); }
+                if(r.method==='turn/start') {
+                  if (r.params.model !== model || r.params.threadId !== nativeId) throw Error('Wrong turn model or thread');
+                  emit({id:r.id,result:{turn:{id:'turn'}}});
+                  toolLoop(r.params.input[0].text);
+                }
               });
             } else {
               const args = process.argv.slice(1);
               if(args.includes('--json-schema')) throw Error('Unexpected output schema');
               const resume = args.indexOf('--conversation');
-              if(resume >= 0 && args[resume + 1] !== nativeId) throw Error('Wrong resume identity');
+              if ((resume === -1 ? undefined : args[resume + 1]) !== resumeId) throw Error('Wrong resume identity');
+              if (args[args.indexOf('--model') + 1] !== model) throw Error('Wrong turn model');
               if(mode === 'invalid') { console.error('Native thread not found'); process.exit(1); }
               let input='';
               process.stdin.on('data', chunk => input += chunk);
@@ -100,9 +136,7 @@ it.each(["codex", "antigravity"] as const)(
 
           return {
             ...invocation,
-            program: process.execPath,
             args: ["-e", script, "--", ...invocation.args],
-            isolateProviderConfig: false,
           };
         },
       };
@@ -111,6 +145,18 @@ it.each(["codex", "antigravity"] as const)(
     let engine = await createFixtureEngine(join(directory, "data"), providers);
     let rpc = new Rpc(engine);
     try {
+      const bin = join(fixture.home, ".local", "bin");
+      await mkdir(bin, { recursive: true });
+      for (const executable of ["codex", "agy"]) {
+        await writeFile(join(bin, executable), '#!/bin/sh\nexec node "$@"\n', { mode: 0o700 });
+      }
+
+      for (const state of [codexState, geminiState, antigravityState]) {
+        await mkdir(state, { recursive: true });
+        await writeFile(join(state, "fixture"), "synthetic state");
+      }
+
+      await writeFile(join(codexState, "config.toml"), "SYNTHETIC_CONFIG");
       await writeFile(join(directory, "private.txt"), "host-only");
       const { repo } = await fixtureRepository(engine, directory);
       sourcePath = join(repo.path, "source.txt");
@@ -138,20 +184,20 @@ it.each(["codex", "antigravity"] as const)(
           ...extra,
         });
 
-      const settled = async (status = "completed") => {
+      const settled = async (status = "completed", target = session) => {
         await expect
           .poll(
             () =>
               engine.viberSessions.store
-                .detail(session.id, profileId)
+                .detail(target.id, target.profile_id)
                 .messages.filter((message) => message.role === "user")
                 .at(-1)?.status,
             { timeout: 10000 },
           )
           .toBe(status);
 
-        await expect.poll(() => engine.isActive(`viber:${session.id}`)).toBe(false);
-        return engine.viberSessions.store.session(session.id, profileId);
+        await expect.poll(() => engine.isActive(`viber:${target.id}`)).toBe(false);
+        return engine.viberSessions.store.session(target.id, target.profile_id);
       };
 
       const onEvent = (event: CoreEvent) => {
@@ -204,16 +250,6 @@ it.each(["codex", "antigravity"] as const)(
       engine = await createFixtureEngine(join(directory, "data"), providers);
       rpc = new Rpc(engine);
       expect(requests).toHaveLength(1);
-      for (let index = 0; index < 60; index++) {
-        engine.db.run(
-          "INSERT INTO viber_messages(id,session_id,role,content,status,created_at) VALUES(?,?,'assistant',?,'completed',?)",
-          randomUUID(),
-          session.id,
-          `Retained message ${index}`,
-          new Date().toISOString(),
-        );
-      }
-
       await send({ content: "Continue with one new instruction" });
       await settled();
       expect(requests[1].conversation).toEqual({ threadId: first.thread?.thread_id });
@@ -241,14 +277,7 @@ it.each(["codex", "antigravity"] as const)(
         history_ids: [],
       });
 
-      await expect
-        .poll(
-          () =>
-            engine.viberSessions.store.detail(sibling.id, siblingProfileId).messages.at(-1)?.status,
-        )
-        .toBe("completed");
-
-      await expect.poll(() => engine.isActive(`viber:${sibling.id}`)).toBe(false);
+      await settled("completed", sibling);
 
       otherWorkspace = join(
         engine.viberSessions.store.workspace(sibling.id).worktree_path,
@@ -258,16 +287,59 @@ it.each(["codex", "antigravity"] as const)(
       expect(requests[2].conversation).toEqual({});
       expect(requests[2].cwd).not.toBe(workspace.worktree_path);
 
-      await send({ selection: { ...selection, model: "other-model", effort: "low" } });
+      const legacyThread = {
+        ...first.thread!,
+        configuration: createHash("sha256")
+          .update(
+            JSON.stringify({
+              provider: providerName,
+              model: providerName === "codex" ? selection.model : "",
+              access: profile.execution.access,
+              instructions: profile.instructions,
+            }),
+          )
+          .digest("hex"),
+      };
+
+      engine.db.run(
+        "UPDATE viber_sessions SET thread=?,threads=? WHERE id=?",
+        JSON.stringify(legacyThread),
+        JSON.stringify({ [providerName]: legacyThread }),
+        session.id,
+      );
+
+      const modelSwitch = "Continue on the newly selected model";
+
+      await send({
+        selection: { ...selection, model: "other-model", effort: "low" },
+        content: modelSwitch,
+      });
+
       const changed = await settled();
-      expect(requests[3].conversation).toEqual({});
-      expect(requests[3].prompt).not.toContain("Retained message");
-      expect(changed.thread?.thread_id).not.toBe(first.thread?.thread_id);
+
+      expect(requests[3]).toMatchObject({
+        conversation: { threadId: first.thread?.thread_id },
+        config: { model: "other-model", effort: "low" },
+        prompt: modelSwitch,
+      });
+
+      expect(changed.thread).toMatchObject({
+        thread_id: first.thread?.thread_id,
+        model: "other-model",
+      });
+
+      expect(changed.thread?.configuration).not.toBe(legacyThread.configuration);
       expect(changed.selection).toMatchObject({ model: "other-model", effort: "low" });
-      await send({ selection: { ...changed.selection, effort: "high" } });
+
+      await send({
+        selection: { ...changed.selection, effort: "high" },
+        content: "Continue after the model change",
+      });
+
       await settled();
       expect(requests[4].conversation).toEqual({ threadId: changed.thread?.thread_id });
       expect(requests[4].config.effort).toBe("high");
+      expect(requests[4].prompt).toBe("Continue after the model change");
 
       mode = "invalid";
       const before = await readFile(join(workspace.worktree_path, "source.txt"), "utf8");
@@ -282,6 +354,7 @@ it.each(["codex", "antigravity"] as const)(
       mode = "success";
 
       await send({
+        selection,
         new_thread: true,
         acknowledge_uncertain: true,
         content: "Inspect current files before the next edit",
@@ -360,24 +433,142 @@ it.each(["codex", "antigravity"] as const)(
       const previousSession = engine.viberSessions.store.session(session.id, profileId);
       const previousThread = previousSession.thread?.thread_id;
       const previousSelection = previousSession.selection;
+      expect(previousThread).toBeTruthy();
+      if (providerName === "codex") {
+        // Each provider owns its namespace and can issue the same opaque ID.
+        handoffThreadId = previousThread;
+      }
 
-      await send({ selection: { ...selection, provider: otherProvider } });
+      const detail = () => engine.viberSessions.store.detail(session.id, profileId);
+      const priorMessages = detail().messages;
+
+      const priorHistory = priorMessages
+        .filter(({ status }) => status === "completed")
+        .map(({ role, content }) => ({ role, content }));
+
+      const workspaceFile = join(workspace.worktree_path, "source.txt");
+      const beforeHandoff = await readFile(workspaceFile, "utf8");
+      const beforeHandoffCount = requests.length;
+
+      const handoff = {
+        request_id: randomUUID(),
+        selection: { ...selection, provider: otherProvider },
+        content: "Apply the first checkpoint with the other provider",
+      };
+
+      await send(handoff);
       const switched = await settled();
-      expect(requests.at(-1)?.conversation).toEqual({});
-      expect(switched.thread?.provider).toBe(otherProvider);
-      expect(switched.thread?.thread_id).not.toBe(previousThread);
-      await send({ selection: previousSelection });
+      const bootstrap = requests[beforeHandoffCount];
+      expect(bootstrap.conversation).toEqual({});
+      expect(bootstrap.cwd).toBe(workspace.worktree_path);
+
+      const priorHistoryText = priorHistory
+        .map((m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`)
+        .join("\n\n");
+
+      expect(JSON.parse(bootstrap.prompt.slice(bootstrap.prompt.indexOf("\n\n") + 2))).toEqual({
+        instructions: profile.instructions,
+        inputs: [
+          {
+            role: "context",
+            content: `[The following conversation occurred with another provider]:\n${priorHistoryText}`,
+          },
+          { role: "user", content: handoff.content },
+        ],
+      });
+
+      expect(switched.thread).toMatchObject({
+        provider: otherProvider,
+        thread_id: handoffThreadId || bootstrap.runId,
+        status: "ready",
+      });
+
+      const followUp = "Apply the second checkpoint with the other provider";
+      await send({ content: followUp });
       await settled();
-      expect(requests.at(-1)?.conversation).toEqual({ threadId: previousThread });
 
-      const beforeClear = await readFile(join(workspace.worktree_path, "source.txt"), "utf8");
-      expect(beforeClear).toContain("changed");
+      expect(requests[beforeHandoffCount + 1]).toMatchObject({
+        conversation: { threadId: switched.thread?.thread_id },
+        prompt: followUp,
+      });
 
-      await send({ content: "/clear" });
-      const clearedSession = engine.viberSessions.store.session(session.id, profileId);
-      expect(clearedSession.thread).toBeNull();
-      expect(clearedSession.threads).toEqual({});
-      expect(await readFile(join(workspace.worktree_path, "source.txt"), "utf8")).toBe(beforeClear);
+      const afterSwitch = detail();
+      await rpc.close();
+      await engine.close();
+      engine = await createFixtureEngine(join(directory, "data"), providers);
+      rpc = new Rpc(engine);
+
+      await send(handoff);
+      expect(detail()).toEqual(afterSwitch);
+      expect(requests).toHaveLength(beforeHandoffCount + 2);
+      expect(await readFile(workspaceFile, "utf8")).toBe(`${beforeHandoff}changed\nchanged\n`);
+
+      const returnTurn = {
+        request_id: randomUUID(),
+        selection: previousSelection,
+        content: "Apply the final checkpoint with the original provider",
+      };
+
+      await send(returnTurn);
+      const returned = await settled();
+      expect(returned.thread).toEqual(previousSession.thread);
+      const resumed = requests[beforeHandoffCount + 2];
+      expect(resumed.conversation).toEqual({ threadId: previousThread });
+      expect(resumed.cwd).toBe(workspace.worktree_path);
+
+      expect(resumed.prompt).toBe(
+        [
+          "[Reference only. The following conversation occurred with another provider since your last turn in this thread. Act only on the current user instruction.]:",
+          `User: ${handoff.content}`,
+          "",
+          "Assistant: Native agent verified the edit.",
+          "",
+          `User: ${followUp}`,
+          "",
+          "Assistant: Native agent verified the edit.",
+          "",
+          "[Current user instruction]:",
+          returnTurn.content,
+        ].join("\n"),
+      );
+
+      await send(returnTurn);
+      expect(requests).toHaveLength(beforeHandoffCount + 3);
+      const messages = detail().messages;
+      expect(messages.slice(0, priorMessages.length)).toEqual(priorMessages);
+
+      expect(
+        messages
+          .slice(priorMessages.length)
+          .map(({ role, content, status }) => ({ role, content, status })),
+      ).toEqual(
+        [handoff.content, followUp, returnTurn.content].flatMap((content) => [
+          { role: "user", content, status: "completed" },
+          { role: "assistant", content: "Native agent verified the edit.", status: "completed" },
+        ]),
+      );
+
+      const continued = "Continue after the round trip";
+      await send({ content: continued });
+      await settled();
+
+      expect(requests.at(-1)).toMatchObject({
+        conversation: { threadId: previousThread },
+        prompt: continued,
+      });
+
+      await send({ selection: handoff.selection, content: "Switch again" });
+      await settled();
+      const nextSwitch = requests.at(-1)!;
+      expect(nextSwitch.conversation).toEqual({ threadId: switched.thread?.thread_id });
+      expect(nextSwitch.prompt).toContain(returnTurn.content);
+      expect(nextSwitch.prompt).toContain(continued);
+      expect(nextSwitch.prompt).not.toContain(handoff.content);
+      expect(nextSwitch.prompt).not.toContain(followUp);
+
+      expect(await readFile(workspaceFile, "utf8")).toBe(
+        `${beforeHandoff}${"changed\n".repeat(5)}`,
+      );
 
       expect(engine.vibers.profile(profileId)).toEqual(profile);
       expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
@@ -395,6 +586,7 @@ it.each(["codex", "antigravity"] as const)(
     } finally {
       await rpc.close();
       await engine.close();
+      fixture.home = "";
       await rm(directory, { recursive: true, force: true });
     }
   },

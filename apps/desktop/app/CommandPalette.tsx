@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useDialogFocus } from "../hooks/useDialogFocus";
 
-export interface PaletteAction {
+interface PaletteAction {
   id: string;
   label: string;
   detail?: string;

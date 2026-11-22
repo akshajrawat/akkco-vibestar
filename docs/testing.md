@@ -11,7 +11,7 @@ Routine tests use disposable data roots, local Git repositories and inert constr
 | `npm run lint`             | ESLint, type-only imports and React hook rules                |
 | `npm run typecheck`        | TypeScript typechecking (`tsc --noEmit`)                      |
 | `npm test`                 | Unit and component regressions (`unit` project)               |
-| `npm run test:integration` | Integration tests for Viber sessions, computers, and runtime  |
+| `npm run test:integration` | Integration tests for Viber sessions, workspaces, and runtime |
 | `npm run test:security`    | Deterministic sandbox, ownership, persistence and Git safety  |
 | `npm run test:regression`  | All deterministic test projects (unit, integration, security) |
 | `npm run check`            | Formatting, lint, typecheck and unit tests                    |
@@ -20,7 +20,7 @@ Routine tests use disposable data roots, local Git repositories and inert constr
 
 `vitest.config.ts` declares three named test projects:
 
-- `unit`: Unit and feature tests under `tests/unit/` and `tests/workspace/`.
+- `unit`: Unit and feature tests under `tests/unit/`.
 - `integration`: Multi-component and container/workspace integration tests under `tests/integration/`.
 - `security`: Filesystem isolation, sandbox manifests, redaction, and Git safety tests under `tests/security/`.
 

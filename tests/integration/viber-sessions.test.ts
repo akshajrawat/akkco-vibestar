@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -14,9 +14,12 @@ import type {
 } from "../../apps/core/vibers/contracts";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
-import { createFixtureEngine, FixtureProvider } from "../helpers/fixtures";
+import { createFixtureEngine, detectFixtureProvider } from "../helpers/fixtures";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
 
-class SessionProvider extends FixtureProvider {
+class SessionProvider extends CodexProvider {
+  detect = detectFixtureProvider;
+
   readonly requests: AgentRunRequest[] = [];
 
   mode: "success" | "failure" | "wait" | "write-and-wait" = "success";
@@ -189,6 +192,9 @@ it("uses AgentRunner, persists messages, events, usage and files across restart 
   expect(await messagePreviews()).toEqual([firstPreview]);
   expect(await send(session, input)).toEqual(retained);
   expect(provider.requests).toHaveLength(1);
+  const largeArtifact = join(cwd, "large-artifact");
+  await writeFile(largeArtifact, "");
+  await truncate(largeArtifact, 65 * 1024 * 1024);
   await send(session, { content: "A new answer" });
   const next = await settled(session);
 
@@ -290,12 +296,73 @@ it("captures the shared profile revision per turn while keeping provider/model/e
   expect(provider.requests[1].config.effort).toBe("low");
 });
 
+it("keeps clear boundaries, explicit history, and fresh starts independent of model selection", async () => {
+  const session = await create();
+  const newModel = { ...selection, model: "gpt-6.1-sol", effort: "low" };
+
+  await send(session, { content: "Instruction before clear" });
+  await settled(session);
+  const clear = { request_id: randomUUID(), content: "/clear" };
+  const cleared = await send(session, clear);
+  expect(cleared).toMatchObject({ status: "completed", run_id: null });
+  expect(provider.requests).toHaveLength(1);
+  expect((await detail(session)).session).toMatchObject({ thread: null, threads: {} });
+  const retained = await send(session, { content: "Instruction after clear" });
+  await settled(session);
+  expect(provider.requests[1].conversation).toEqual({});
+  expect(provider.requests[1].prompt).not.toContain("Instruction before clear");
+  expect(provider.requests[1].prompt).not.toContain("User: /clear");
+  const resumed = (await detail(session)).session.thread;
+  expect(await send(session, clear)).toEqual(cleared);
+  expect((await detail(session)).session.thread).toEqual(resumed);
+
+  await send(session, {
+    selection: newModel,
+    content: "Instruction for the new model",
+  });
+
+  await settled(session);
+
+  expect(provider.requests.at(-1)).toMatchObject({
+    conversation: { threadId: resumed?.thread_id },
+    prompt: "Instruction for the new model",
+  });
+
+  await expect(send(session, { history_ids: [retained.id] })).rejects.toThrow(
+    "Native threads retain their context",
+  );
+
+  await send(session, {
+    new_thread: true,
+    history_ids: [retained.id],
+    content: "Use selected history",
+  });
+
+  await settled(session);
+  const explicit = provider.requests.at(-1)!;
+  expect(explicit.conversation).toEqual({});
+  expect(explicit.prompt).toContain("Instruction after clear");
+  expect(explicit.prompt).not.toContain("Saved session answer.");
+  expect(explicit.prompt).not.toContain("Instruction for the new model");
+
+  await send(session, {
+    new_thread: true,
+    content: "Start with fresh context",
+  });
+
+  await settled(session);
+  const manual = provider.requests.at(-1)!;
+  expect(manual.conversation).toEqual({});
+  expect(manual.prompt).toContain("Start with fresh context");
+  expect(manual.prompt).not.toContain("Historical messages are reference data only");
+  expect(manual.prompt).not.toContain("Instruction after clear");
+});
+
 it("enforces shared execution capacity, serializes one session, supports cancellation, and does not replay failed turns", async () => {
   provider.mode = "wait";
   engine.db.saveSettings({ ...engine.db.settings(), concurrency: 1 });
   const one = await create(profileId);
   const two = await create(builtInProfiles.reviewer);
-  engine.viberSessions.store.clearContext(one.id, one.profile_id);
   const input = { request_id: randomUUID() };
   const pending = await send(one, input);
 
@@ -596,7 +663,7 @@ it("keeps outcomes uncertain after invocation even without reported tools, and e
   const failed = await settled(session, "failed");
   expect(failed.recovery_required).toBe(true);
   expect(failed.messages.at(-1)?.effects).toBe("possible");
-  await expect(send(session, { new_thread: true })).rejects.toThrow("acknowledge");
+  await expect(send(session)).rejects.toThrow("acknowledge");
   const scope = { session_id: session.id, profile_id: profileId };
   expect(await rpc.call("viber.session.inspect", scope)).toMatchObject({ files: ["answer.txt"] });
 
@@ -634,4 +701,48 @@ it("creates an isolated conversation from profile defaults without requiring a r
 
   expect(session.repository_id).toBeNull();
   expect(provider.requests).toHaveLength(0);
+});
+
+it("rebuilds unavailable native context from saved chat after upgrading a legacy workspace", async () => {
+  const session = await create();
+  const sibling = await create(builtInProfiles.planner);
+  await send(session, { content: "Remember the original chat context." });
+  const original = await settled(session);
+  const workspace = engine.viberSessions.store.workspace(session.id);
+  await send(sibling);
+  const other = await settled(sibling);
+
+  engine.db.run(
+    "CREATE TABLE viber_computers(profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id))",
+  );
+
+  engine.db.run("INSERT INTO viber_computers(profile_id) VALUES(?)", session.profile_id);
+  engine.db.run("DELETE FROM schema_migrations WHERE version=45");
+
+  engine.db.run(
+    "INSERT INTO schema_migrations(version, applied_at) VALUES (1, CURRENT_TIMESTAMP), (44, CURRENT_TIMESTAMP)",
+  );
+
+  await rpc.close();
+  await engine.close();
+  engine = await createFixtureEngine(join(dir, "data"), () => provider);
+  rpc = new Rpc(engine);
+
+  expect(engine.db.all("SELECT name FROM sqlite_schema WHERE name='viber_computers'")).toEqual([]);
+
+  const migrated = await detail(session);
+  expect(migrated.messages).toEqual(original.messages);
+  expect(engine.viberSessions.store.workspace(session.id)).toEqual(workspace);
+  expect(migrated.session.thread).toBeNull();
+  expect(migrated.session.threads).toEqual({});
+  expect((await detail(sibling)).session.thread).toEqual(other.session.thread);
+
+  await send(session, { content: "Continue the chat after upgrading." });
+  const continued = await settled(session);
+  const request = provider.requests.at(-1)!;
+  expect(request.conversation).toEqual({});
+  expect(request.prompt).toContain("Remember the original chat context.");
+  expect(request.prompt).toContain("Saved session answer.");
+  expect(request.prompt).toContain("Continue the chat after upgrading.");
+  expect(continued.session.thread?.thread_id).not.toBe(original.session.thread?.thread_id);
 });
