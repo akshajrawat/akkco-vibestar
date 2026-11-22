@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, realpath, rm } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import { join, relative } from "node:path";
 
 import { AdeError, type WorkspaceAssignment } from "../domain";
@@ -18,7 +18,7 @@ const location = async (root: string, task: WorkspaceAssignment) => {
     throw new AdeError("ownership", "This task is not an owned repository-free workspace.");
   }
 
-  const owner = await managedPath(root, join("workspaces", task.id));
+  const owner = join(await managedPath(root, "workspaces"), task.id);
   const files = join(owner, "files");
   if (task.worktree_path && task.worktree_path !== files) {
     throw new AdeError("ownership", "The managed task workspace identity changed.");
@@ -44,7 +44,7 @@ export const prepareManagedWorkspace = async <T extends WorkspaceAssignment>(
   await mkdir(join(root, "workspaces"), { recursive: true, mode: 0o700 });
   let created = false;
   try {
-    await mkdir(owner, { mode: 0o700 });
+    await mkdir(await managedPath(root, owner), { mode: 0o700 });
     created = true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
@@ -80,6 +80,7 @@ export const prepareManagedWorkspace = async <T extends WorkspaceAssignment>(
 export const assertManagedWorkspace = async (root: string, task: WorkspaceAssignment) => {
   assertUsable(task);
   const { owner, files } = await location(root, task);
+  await managedPath(root, owner);
   if (
     task.worktree_path !== files ||
     (await readWorktreeOwner(owner, "vibestar-task-owner")) !== task.id
@@ -95,14 +96,15 @@ export const assertManagedWorkspace = async (root: string, task: WorkspaceAssign
   return files;
 };
 
-const directoryIdentity = async (path: string) => {
+const directoryIdentity = async (path: string, legacy = false) => {
   try {
     const entry = await lstat(path, { bigint: true });
     if (!entry.isDirectory()) {
       throw new AdeError("ownership", "Managed workspace removal requires its original directory.");
     }
 
-    return `${entry.dev}:${entry.ino}:${entry.birthtimeNs}`;
+    const identity = `${entry.dev}:${entry.ino}`;
+    return legacy ? `${identity}:${entry.birthtimeNs}` : identity;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;
@@ -122,25 +124,92 @@ export const removeManagedWorkspace = async (
     throw new AdeError("ownership", "The managed task workspace identity changed.");
   }
 
-  if (task.managed_removal_identity === undefined) {
-    const identity = await directoryIdentity(owner);
-    await assertManagedWorkspace(root, task);
-    if (identity === null) {
-      throw new AdeError("ownership", "Managed workspace directory changed during removal.");
+  const changed = () =>
+    new AdeError("ownership", "Managed workspace directory changed during removal.");
+
+  const pending = task.managed_removal_identity;
+
+  const checkpoint =
+    /^(moving|quarantined):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9]+:[0-9]+)$/.exec(
+      pending ?? "",
+    );
+
+  let phase = checkpoint?.[1] ?? "moving";
+  let token = checkpoint?.[2];
+  let identity = checkpoint?.[3];
+
+  const record = () => {
+    task.managed_removal_identity = `${phase}:${token}:${identity}`;
+    save();
+  };
+
+  if (!checkpoint) {
+    const current = await directoryIdentity(await managedPath(root, owner));
+    if (
+      current === null ||
+      (pending !== undefined &&
+        pending !== (await directoryIdentity(await managedPath(root, owner), true)))
+    ) {
+      throw changed();
     }
 
-    // Recursive removal can unlink the owner marker before it finishes.
-    task.managed_removal_identity = identity;
-    save();
+    // An older checkpoint did not have a quarantine. Re-prove ownership; a
+    // legacy partial removal which already lost its marker must fail closed.
+    await assertManagedWorkspace(root, { ...task, managed_removal_identity: undefined });
+    identity = current;
+    token = randomUUID();
   }
 
-  const current = await directoryIdentity(await managedPath(root, owner));
-  if (current !== null) {
-    if (current !== task.managed_removal_identity) {
-      throw new AdeError("ownership", "Managed workspace directory changed during removal.");
+  // The target is under the same filesystem by construction (rename never
+  // falls back to copying), outside the
+  // directory exposed writable to a provider. Never recurse at the live path.
+  const pendingDirectory = await managedPath(root, join("workspaces", "pending-delete"));
+  await mkdir(pendingDirectory, { recursive: true, mode: 0o700 });
+  const quarantine = join(pendingDirectory, `${task.id}-${token}`);
+  let quarantined = await directoryIdentity(await managedPath(root, quarantine));
+  if (quarantined !== null && (!checkpoint || quarantined !== identity)) {
+    throw changed();
+  }
+
+  if (!checkpoint) {
+    record();
+  }
+
+  if (phase === "moving") {
+    if (quarantined === null) {
+      if ((await directoryIdentity(await managedPath(root, owner))) !== identity) {
+        throw changed();
+      }
+
+      // Also require the marker and live files before retrying a move which
+      // never happened. An old inode value alone does not prove ownership.
+      await assertManagedWorkspace(root, { ...task, managed_removal_identity: undefined });
+      if (
+        (await directoryIdentity(await managedPath(root, quarantine))) !== null ||
+        (await directoryIdentity(await managedPath(root, owner))) !== identity
+      ) {
+        throw changed();
+      }
+
+      await rename(owner, quarantine);
+      quarantined = await directoryIdentity(await managedPath(root, quarantine));
+      if (quarantined !== identity) {
+        throw changed();
+      }
     }
 
-    await rm(owner, { recursive: true, force: true });
+    // Persist the move before removing any contents. After this point a
+    // recreated original path is irrelevant, even if cleanup already ended.
+    phase = "quarantined";
+    record();
+  }
+
+  if (quarantined !== null) {
+    if ((await directoryIdentity(await managedPath(root, quarantine))) !== identity) {
+      throw changed();
+    }
+
+    await rm(quarantine, { recursive: true, force: true });
   }
 
   task.worktree_path = "";
