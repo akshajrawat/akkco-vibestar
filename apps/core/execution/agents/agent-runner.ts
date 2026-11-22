@@ -294,8 +294,8 @@ export class AgentRunner {
       if (options.viberSession && options.conversation?.threadId) {
         new ViberSessionStore(this.db).assertThread(
           options.viberSession.sessionId,
+          selectedConfig.provider,
           options.conversation.threadId,
-          selectedConfig.model,
         );
       }
 

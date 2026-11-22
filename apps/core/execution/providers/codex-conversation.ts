@@ -74,7 +74,7 @@ export const codexConversation = (request: AgentRunRequest) => {
         if (threadId && returnedId !== threadId) {
           throw new AdeError(
             "provider_failed",
-            "Codex resumed a different thread before the turn was dispatched. Choose a different model to start a new thread.",
+            "Codex resumed a different thread before the turn was dispatched. Send /clear to start a new thread.",
           );
         }
 

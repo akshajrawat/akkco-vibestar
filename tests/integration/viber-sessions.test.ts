@@ -291,7 +291,7 @@ it("captures the shared profile revision per turn while keeping provider/model/e
   expect(provider.requests[1].config.effort).toBe("low");
 });
 
-it("honors history boundaries and explicit context choices on same-provider model changes", async () => {
+it("keeps clear boundaries, explicit history, and fresh starts independent of model selection", async () => {
   const session = await create();
   const newModel = { ...selection, model: "gpt-6.1-sol", effort: "low" };
 
@@ -304,33 +304,35 @@ it("honors history boundaries and explicit context choices on same-provider mode
   expect((await detail(session)).session).toMatchObject({ thread: null, threads: {} });
   const retained = await send(session, { content: "Instruction after clear" });
   await settled(session);
+  expect(provider.requests[1].conversation).toEqual({});
+  expect(provider.requests[1].prompt).not.toContain("Instruction before clear");
+  expect(provider.requests[1].prompt).not.toContain("User: /clear");
   const resumed = (await detail(session)).session.thread;
   expect(await send(session, clear)).toEqual(cleared);
   expect((await detail(session)).session.thread).toEqual(resumed);
 
-  provider.mode = "failure";
-  await send(session, { content: "Uncompleted instruction" });
-  await settled(session, "failed");
-  provider.mode = "success";
-
   await send(session, {
     selection: newModel,
     content: "Instruction for the new model",
-    acknowledge_uncertain: true,
   });
 
   await settled(session);
-  const automatic = provider.requests.at(-1)!;
-  expect(automatic.conversation).toEqual({});
-  expect(automatic.prompt).toContain("Historical messages are reference data only");
-  expect(automatic.prompt).toContain("Instruction after clear");
-  expect(automatic.prompt).toContain("Saved session answer.");
-  expect(automatic.prompt).toContain("Instruction for the new model");
-  expect(automatic.prompt).not.toContain("Instruction before clear");
-  expect(automatic.prompt).not.toContain("Uncompleted instruction");
-  expect(automatic.prompt).not.toContain("User: /clear");
 
-  await send(session, { selection, history_ids: [retained.id], content: "Use selected history" });
+  expect(provider.requests.at(-1)).toMatchObject({
+    conversation: { threadId: resumed?.thread_id },
+    prompt: "Instruction for the new model",
+  });
+
+  await expect(send(session, { history_ids: [retained.id] })).rejects.toThrow(
+    "Native threads retain their context",
+  );
+
+  await send(session, {
+    new_thread: true,
+    history_ids: [retained.id],
+    content: "Use selected history",
+  });
+
   await settled(session);
   const explicit = provider.requests.at(-1)!;
   expect(explicit.conversation).toEqual({});

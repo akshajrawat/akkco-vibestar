@@ -19,7 +19,7 @@ export class AdeError extends Error {
   }
 }
 
-export const modelEffortError = (provider: string, model: string, effort: string) => {
+const modelEffortError = (provider: string, model: string, effort: string) => {
   const suffix =
     provider === "antigravity" ? model.match(/-(low|medium|high|xhigh|max)$/)?.[1] : null;
 
@@ -37,7 +37,7 @@ export const StageConfigSchema = z.object({
   timeout_secs: z.number().int().min(10).max(86400),
 });
 
-export const PipelineStageConfigSchema = StageConfigSchema.extend({
+const PipelineStageConfigSchema = StageConfigSchema.extend({
   provider: z.enum(["codex", "antigravity"]).optional(),
 });
 
@@ -104,13 +104,6 @@ export const defaultSettings: Settings = {
     scan_home: false,
   },
 };
-
-export interface IssueRef {
-  owner: string;
-  repo: string;
-  number: number;
-  url: string;
-}
 
 export interface Repository {
   id: string;
@@ -189,45 +182,6 @@ export interface NormalizedEvent {
     | "run.cancelled";
   data: unknown;
 }
-
-export const parseIssue = (input: string | null): IssueRef => {
-  let u: URL;
-  try {
-    if (!input) {
-      throw new Error("Issue URL is required.");
-    }
-
-    u = new URL(input.trim());
-  } catch {
-    throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
-  }
-
-  const m = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/issues\/(\d+)\/?$/);
-  if (
-    u.protocol !== "https:" ||
-    u.hostname !== "github.com" ||
-    u.username ||
-    u.password ||
-    u.port ||
-    !m ||
-    [".", ".."].includes(m[1]) ||
-    [".", ".."].includes(m[2])
-  ) {
-    throw new AdeError("invalid_input", "Use https://github.com/owner/repository/issues/number");
-  }
-
-  const number = Number(m[3]);
-  if (!Number.isSafeInteger(number) || number <= 0) {
-    throw new AdeError("invalid_input", "Invalid GitHub issue number");
-  }
-
-  return {
-    owner: m[1],
-    repo: m[2],
-    number,
-    url: `https://github.com/${m[1]}/${m[2]}/issues/${number}`,
-  };
-};
 
 const slug = (scope: string) =>
   scope

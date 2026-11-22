@@ -8,7 +8,6 @@ import { ChatSurface } from "../../apps/desktop/features/chat/ChatSurface";
 import { UserMessageBody } from "../../apps/desktop/features/chat/UserMessageBody";
 import { RunError } from "../../apps/desktop/features/chat/RunError";
 import { agentEntries, toolState } from "../../apps/desktop/features/chat/output/activity";
-import { useConversationEvents } from "../../apps/desktop/features/chat/output/useConversationEvents";
 import { streamingSummary } from "../../apps/desktop/features/chat/output/response";
 import type { AgentEvent, Run } from "../../apps/desktop/lib/types";
 
@@ -225,9 +224,9 @@ it("reveals a new run error after dismissing an earlier one", () => {
   expect(screen.getByLabelText("Run failure")).toBeTruthy();
 });
 
-it("points native thread recovery to the model picker", () => {
+it("guides users to /clear when native thread recovery fails", () => {
   render(<RunError error="Native thread not found" conversation />);
-  expect(screen.getByText(/choose a different model to start a new thread/i)).toBeTruthy();
+  expect(screen.getByText(/send \/clear to start a new thread/i)).toBeTruthy();
 });
 
 it("keeps changed files with implementation when a later conversation starts", () => {
@@ -400,87 +399,6 @@ it.each([1, 2])("keeps stage %s structured plans folded in the conversation", (s
   expect(ui.container.querySelector<HTMLDetailsElement>(".agent-response details")?.open).toBe(
     false,
   );
-});
-
-const StreamedConversation = ({ id = "viber", events }: { id?: string; events: AgentEvent[] }) => {
-  const complete = useConversationEvents(id, "viber", events, vi.fn());
-  return <AgentTimeline runs={[run]} events={complete} />;
-};
-
-it("preserves the answer and its identity when the detail window drops earlier deltas", () => {
-  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc: vi.fn() } });
-
-  const ui = render(
-    <StreamedConversation
-      events={[event(1, "message", { call_id: "answer", text_delta: '{"summary":"First' })]}
-    />,
-  );
-
-  const row = ui.container.querySelector(".message-event");
-
-  ui.rerender(
-    <StreamedConversation
-      events={[event(2, "message", { call_id: "answer", text_delta: " and second" })]}
-    />,
-  );
-
-  expect(screen.getByText("First and second")).toBeTruthy();
-  expect(ui.container.querySelector(".message-event")).toBe(row);
-
-  ui.rerender(
-    <StreamedConversation
-      id="another-task"
-      events={[
-        event(3, "message", { call_id: "answer", text_delta: '{"summary":"Another answer' }),
-      ]}
-    />,
-  );
-
-  expect(screen.getByText("Another answer")).toBeTruthy();
-  expect(screen.queryByText("First and second")).toBeNull();
-});
-
-it("recovers a long streaming prefix after refresh through existing owner-checked event pages", async () => {
-  const records = [
-    event(1, "message", { call_id: "answer", text_delta: '{"summary":"First' }),
-    ...Array.from({ length: 2999 }, (_, i) =>
-      event(i + 2, "message", { call_id: "answer", text_delta: "x" }),
-    ),
-  ];
-
-  const rpc = vi.fn(async (_method: string, params: { after: number }) => {
-    const rows = records.filter((row) => row.id > params.after);
-    return { events: rows.slice(0, 500), more: rows.length > 500 };
-  });
-
-  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
-  render(<StreamedConversation events={records.slice(-2000)} />);
-  expect(await screen.findByText(`First${"x".repeat(2999)}`)).toBeTruthy();
-  expect(rpc).toHaveBeenCalledWith("viber.events", { id: "viber", run_id: run.id, after: 0 });
-  expect(rpc).toHaveBeenCalledTimes(6);
-  expect(screen.getAllByText(`First${"x".repeat(2999)}`)).toHaveLength(1);
-});
-
-it("holds the visible answer while recovering a burst that outruns the detail window", async () => {
-  const records = [
-    event(1, "message", { call_id: "answer", text_delta: '{"summary":"First' }),
-    ...Array.from({ length: 4999 }, (_, i) =>
-      event(i + 2, "message", { call_id: "answer", text_delta: "x" }),
-    ),
-  ];
-
-  const rpc = vi.fn(async (_method: string, params: { after: number }) => {
-    const rows = records.filter((row) => row.id > params.after);
-    return { events: rows.slice(0, 500), more: rows.length > 500 };
-  });
-
-  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
-  const ui = render(<StreamedConversation events={records.slice(0, 1999)} />);
-  const row = ui.container.querySelector(".message-event");
-  ui.rerender(<StreamedConversation events={records.slice(-2000)} />);
-  expect(screen.getByText(`First${"x".repeat(1998)}`)).toBeTruthy();
-  expect(await screen.findByText(`First${"x".repeat(4999)}`)).toBeTruthy();
-  expect(ui.container.querySelector(".message-event")).toBe(row);
 });
 
 it("shows plan briefs as user messages and keeps the complete plan in the reply", () => {

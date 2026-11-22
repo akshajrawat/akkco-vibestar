@@ -17,7 +17,7 @@ sequenceDiagram
     Chat->>Codex: Resume thread with Antigravity exchange and new message
     Codex-->>Chat: Reply
     User->>Chat: Choose another Codex model and send
-    Chat->>Codex: Start a new thread with completed history since the last /clear
+    Chat->>Codex: Resume the same thread with the new model
     Codex-->>Chat: Reply
     User->>Chat: Change reasoning effort and send
     Chat->>Codex: Resume the thread with the new effort

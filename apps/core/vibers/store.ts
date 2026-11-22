@@ -25,12 +25,16 @@ import {
 
 const identity = z.string().uuid();
 
-const threadConfiguration = (execution: AgentExecution, instructions: string) =>
+const threadConfiguration = (
+  execution: AgentExecution,
+  instructions: string,
+  legacyModel?: string,
+) =>
   createHash("sha256")
     .update(
       JSON.stringify({
         provider: execution.provider,
-        model: execution.model,
+        model: legacyModel,
         access: execution.access,
         instructions,
       }),
@@ -40,8 +44,6 @@ const threadConfiguration = (execution: AgentExecution, instructions: string) =>
 /** Viber profiles and appearances store. */
 export class ViberStore {
   constructor(private readonly db: Database) {}
-
-  initialize = () => initializeProfiles(this.db);
 
   saveProfile = (input: AgentProfile, expectedRevision: number | null) => {
     const profile = AgentProfileSchema.parse(input);
@@ -513,10 +515,16 @@ export class ViberSessionStore {
         );
       }
 
-      const thread =
-        !input.new_thread && candidateThread?.configuration === configuration
-          ? candidateThread
-          : null;
+      // Older threads include the selected model (or an empty default) in their configuration hash.
+      const compatibleThread =
+        candidateThread &&
+        (candidateThread.configuration === configuration ||
+          candidateThread.configuration ===
+            threadConfiguration(execution, profile.instructions, candidateThread.model) ||
+          candidateThread.configuration ===
+            threadConfiguration(execution, profile.instructions, ""));
+
+      const thread = !input.new_thread && compatibleThread ? candidateThread : null;
 
       const conversation = thread ? { threadId: thread.thread_id } : {};
 
@@ -527,10 +535,6 @@ export class ViberSessionStore {
 
       const previousProvider = lastRun?.provider || session.thread?.provider;
       const isProviderSwitch = !!(previousProvider && previousProvider !== targetProvider);
-
-      const isModelSwitch =
-        session.selection.provider === targetProvider &&
-        session.selection.model !== execution.model;
 
       const lastClear = this.db.all<{ rowid: number }>(
         "SELECT rowid FROM viber_messages WHERE session_id=? AND role='user' AND content='/clear' AND configuration IS NULL AND status='completed' ORDER BY rowid DESC LIMIT 1",
@@ -571,11 +575,7 @@ export class ViberSessionStore {
             "Selected bootstrap context exceeds 64,000 characters. Select less history or send a concise handoff.",
           );
         }
-      } else if (
-        !thread &&
-        !input.new_thread &&
-        (isProviderSwitch || isModelSwitch || !candidateThread)
-      ) {
+      } else if (!thread && !input.new_thread && (isProviderSwitch || !candidateThread)) {
         const rows = this.db.all<{ role: string; content: string }>(
           "SELECT role,content FROM viber_messages WHERE session_id=? AND status='completed' AND role IN ('user','assistant') AND rowid>? ORDER BY rowid ASC",
           session.id,
@@ -714,31 +714,17 @@ export class ViberSessionStore {
     }
   };
 
-  assertThread = (sessionId: string, threadId: string, model: string) => {
-    const row = this.db.all<{ thread: string | null; threads: string | null }>(
-      "SELECT thread, threads FROM viber_sessions WHERE id=?",
+  assertThread = (sessionId: string, provider: AgentExecution["provider"], threadId: string) => {
+    const row = this.db.all<{ thread: string | null }>(
+      "SELECT thread FROM viber_sessions WHERE id=?",
       sessionId,
     )[0];
 
     const thread = row?.thread ? ViberThreadSchema.parse(JSON.parse(row.thread)) : null;
-    let threads: Record<string, z.infer<typeof ViberThreadSchema>> = {};
-    if (row?.threads) {
-      try {
-        threads = JSON.parse(row.threads);
-      } catch {
-        threads = {};
-      }
-    }
-
-    const matchingThread =
-      thread && thread.thread_id === threadId
-        ? thread
-        : Object.values(threads).find((t) => t.thread_id === threadId);
-
-    if (!matchingThread || matchingThread.model !== model) {
+    if (thread?.provider !== provider || thread.thread_id !== threadId) {
       throw new AdeError(
         "recovery",
-        "The native thread or default model changed. Choose a different model to start a new thread.",
+        "The native thread changed. Send /clear to start a new thread.",
       );
     }
   };
@@ -765,7 +751,7 @@ export class ViberSessionStore {
     if (expected && expected !== threadId) {
       throw new AdeError(
         "provider_failed",
-        "Provider returned a different native thread. Choose a different model to start a new thread.",
+        "Provider returned a different native thread. Send /clear to start a new thread.",
       );
     }
 
@@ -879,6 +865,3 @@ export class ViberSessionStore {
       }
     });
 }
-
-/** No built-in presets seeded; Viber creation requires only name and appearance. */
-export const initializeProfiles = (_db?: Database) => {};

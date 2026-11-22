@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,6 +61,7 @@ it.each(["codex", "antigravity"] as const)(
             const emit = value => console.log(JSON.stringify(value));
             const nativeId = ${JSON.stringify(nativeId)};
             const resumeId = ${JSON.stringify(request.conversation?.threadId)};
+            const model = ${JSON.stringify(request.config.model)};
             const mode = ${JSON.stringify(mode)};
             const toolLoop = prompt => {
               if (prompt !== ${JSON.stringify(request.prompt)}) throw Error('Wrong native prompt');
@@ -111,13 +112,18 @@ it.each(["codex", "antigravity"] as const)(
                   if(mode === 'invalid') { emit({id:r.id,error:{message:'Native thread not found'}}); return; }
                   emit({id:r.id,result:{thread:{id:nativeId}}});
                 }
-                if(r.method==='turn/start') { emit({id:r.id,result:{turn:{id:'turn'}}}); toolLoop(r.params.input[0].text); }
+                if(r.method==='turn/start') {
+                  if (r.params.model !== model || r.params.threadId !== nativeId) throw Error('Wrong turn model or thread');
+                  emit({id:r.id,result:{turn:{id:'turn'}}});
+                  toolLoop(r.params.input[0].text);
+                }
               });
             } else {
               const args = process.argv.slice(1);
               if(args.includes('--json-schema')) throw Error('Unexpected output schema');
               const resume = args.indexOf('--conversation');
               if ((resume === -1 ? undefined : args[resume + 1]) !== resumeId) throw Error('Wrong resume identity');
+              if (args[args.indexOf('--model') + 1] !== model) throw Error('Wrong turn model');
               if(mode === 'invalid') { console.error('Native thread not found'); process.exit(1); }
               let input='';
               process.stdin.on('data', chunk => input += chunk);
@@ -244,16 +250,6 @@ it.each(["codex", "antigravity"] as const)(
       engine = await createFixtureEngine(join(directory, "data"), providers);
       rpc = new Rpc(engine);
       expect(requests).toHaveLength(1);
-      for (let index = 0; index < 60; index++) {
-        engine.db.run(
-          "INSERT INTO viber_messages(id,session_id,role,content,status,created_at) VALUES(?,?,'assistant',?,'completed',?)",
-          randomUUID(),
-          session.id,
-          `Retained message ${index}`,
-          new Date().toISOString(),
-        );
-      }
-
       await send({ content: "Continue with one new instruction" });
       await settled();
       expect(requests[1].conversation).toEqual({ threadId: first.thread?.thread_id });
@@ -291,15 +287,48 @@ it.each(["codex", "antigravity"] as const)(
       expect(requests[2].conversation).toEqual({});
       expect(requests[2].cwd).not.toBe(workspace.worktree_path);
 
-      await send({ selection: { ...selection, model: "other-model", effort: "low" } });
+      const legacyThread = {
+        ...first.thread!,
+        configuration: createHash("sha256")
+          .update(
+            JSON.stringify({
+              provider: providerName,
+              model: providerName === "codex" ? selection.model : "",
+              access: profile.execution.access,
+              instructions: profile.instructions,
+            }),
+          )
+          .digest("hex"),
+      };
+
+      engine.db.run(
+        "UPDATE viber_sessions SET thread=?,threads=? WHERE id=?",
+        JSON.stringify(legacyThread),
+        JSON.stringify({ [providerName]: legacyThread }),
+        session.id,
+      );
+
+      const modelSwitch = "Continue on the newly selected model";
+
+      await send({
+        selection: { ...selection, model: "other-model", effort: "low" },
+        content: modelSwitch,
+      });
+
       const changed = await settled();
-      expect(requests[3].conversation).toEqual({});
-      expect(requests[3].prompt).toContain("Historical messages are reference data only");
-      expect(requests[3].prompt).toContain("Edit source and verify it");
-      expect(requests[3].prompt).toContain("Native agent verified the edit.");
-      expect(requests[3].prompt).toContain("Retained message 59");
-      expect(requests[3].prompt).not.toContain("Sibling edit");
-      expect(changed.thread?.thread_id).not.toBe(first.thread?.thread_id);
+
+      expect(requests[3]).toMatchObject({
+        conversation: { threadId: first.thread?.thread_id },
+        config: { model: "other-model", effort: "low" },
+        prompt: modelSwitch,
+      });
+
+      expect(changed.thread).toMatchObject({
+        thread_id: first.thread?.thread_id,
+        model: "other-model",
+      });
+
+      expect(changed.thread?.configuration).not.toBe(legacyThread.configuration);
       expect(changed.selection).toMatchObject({ model: "other-model", effort: "low" });
 
       await send({
@@ -326,6 +355,7 @@ it.each(["codex", "antigravity"] as const)(
 
       await send({
         selection,
+        new_thread: true,
         acknowledge_uncertain: true,
         content: "Inspect current files before the next edit",
       });

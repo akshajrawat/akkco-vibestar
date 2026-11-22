@@ -3,7 +3,6 @@ import { mkdtemp, writeFile, mkdir, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  parseIssue,
   branchName,
   remoteIdentity,
   defaultSettings,
@@ -14,20 +13,6 @@ import { Database } from "../../apps/core/storage/database";
 import { migrations } from "../../apps/core/storage/migrations";
 
 describe("domain and persistence", () => {
-  it("parses GitHub issue URLs and rejects unrelated input", () => {
-    expect(parseIssue("https://github.com/vibestar/vibestar/issues/26831").number).toBe(26831);
-    for (const url of [
-      "http://github.com/a/b/issues/1",
-      "https://evil.com/a/b/issues/1",
-      "https://github.com/a/b/pull/1",
-      "https://github.com/a/b/issues/0",
-      "https://user@github.com/a/b/issues/1",
-      "https://github.com/a/b/issues/9007199254740993",
-    ]) {
-      expect(() => parseIssue(url)).toThrow();
-    }
-  });
-
   it("generates valid branches and deterministic collisions", () => {
     expect(branchName(26831, "check-improvements-tab.spec.ts")).toBe(
       "akkco/26831-check-improvements-tab",
