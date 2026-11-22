@@ -72,7 +72,7 @@ export interface AgentRunRequest {
   schemaPath: string;
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
-  conversation?: { threadId?: string };
+  conversation?: { threadId?: string; confirmResume?: true };
 }
 
 export interface AgentProvider {

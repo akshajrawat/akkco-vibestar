@@ -65,7 +65,7 @@ export class ViberSessions {
     }
 
     const key = `viber:${input.session_id}`;
-    if (input.content === "/clear") {
+    if (input.content === "/clear" && !input.continue_message_id) {
       if (this.host.isActive(key)) {
         throw new AdeError(
           "busy",
@@ -101,6 +101,7 @@ export class ViberSessions {
               purpose: `${snapshot.profile.name} session`,
               workspace,
               conversation: snapshot.conversation,
+              originalPrompt: snapshot.originalPrompt,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
             },
           );

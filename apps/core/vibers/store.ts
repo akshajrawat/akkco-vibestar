@@ -17,6 +17,7 @@ import {
   ViberThreadSchema,
   ViberWorkspaceSchema,
   agentPrompt,
+  continueLabel,
   type AgentProfile,
   type ViberMessagePreview,
   type ViberSessionDetail,
@@ -24,6 +25,9 @@ import {
 } from "./contracts";
 
 const identity = z.string().uuid();
+
+const freshContinuationPrompt = (originalPrompt: string) =>
+  `Original user prompt:\n${originalPrompt}\n\nThe previous thread couldn’t be resumed. Inspect the current workspace and any partial edits, then continue from where it left off.`;
 
 const threadConfiguration = (
   execution: AgentExecution,
@@ -365,7 +369,10 @@ export class ViberSessionStore {
       session,
       recovery_required: this.requiresRecovery(sessionId, profileId),
       messages: this.db
-        .all("SELECT * FROM viber_messages WHERE session_id=? ORDER BY rowid", sessionId)
+        .all(
+          "SELECT *,json_extract(configuration,'$.request.continue_message_id') AS continue_message_id FROM viber_messages WHERE session_id=? ORDER BY rowid",
+          sessionId,
+        )
         .map((row) => ViberMessageSchema.parse(row)),
     };
   };
@@ -400,7 +407,10 @@ export class ViberSessionStore {
       role: string;
       content: string;
       status: string;
-    }>("SELECT * FROM viber_messages WHERE id=?", input.request_id)[0];
+    }>(
+      "SELECT *,json_extract(configuration,'$.request.continue_message_id') AS continue_message_id FROM viber_messages WHERE id=?",
+      input.request_id,
+    )[0];
 
     if (!row) {
       return null;
@@ -412,7 +422,8 @@ export class ViberSessionStore {
       row.role === "user" &&
       row.status === "completed" &&
       row.content === "/clear" &&
-      input.content === "/clear"
+      input.content === "/clear" &&
+      !input.continue_message_id
     ) {
       return ViberMessageSchema.parse(row);
     }
@@ -491,6 +502,43 @@ export class ViberSessionStore {
       const input = ViberSessionSendSchema.parse(raw);
       const session = this.writableSession(input.session_id, input.profile_id);
 
+      let interrupted;
+      if (input.continue_message_id) {
+        const previous = this.db.all<{
+          id: string;
+          status: string;
+          content: string;
+          configuration: string | null;
+          conversation_id: string | null;
+        }>(
+          "SELECT m.id,m.status,m.content,m.configuration,r.conversation_id FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id WHERE m.session_id=? AND m.role='user' ORDER BY m.rowid DESC LIMIT 1",
+          session.id,
+        )[0];
+
+        if (
+          previous?.id !== input.continue_message_id ||
+          !["cancelled", "interrupted"].includes(previous.status) ||
+          input.content !== continueLabel ||
+          input.history_ids.length ||
+          input.new_thread ||
+          input.selection
+        ) {
+          throw new AdeError(
+            "recovery",
+            "Continue must target the latest stopped or interrupted turn.",
+          );
+        }
+
+        const previousSnapshot = previous.configuration
+          ? ViberMessageSnapshotSchema.parse(JSON.parse(previous.configuration))
+          : null;
+
+        interrupted = {
+          originalPrompt: previousSnapshot?.originalPrompt ?? previous.content,
+          threadId: previous.conversation_id,
+        };
+      }
+
       const profile = this.profiles.profile(session.profile_id);
       const selection = input.selection || session.selection;
       const execution = { ...profile.execution, ...selection, output: "conversation" as const };
@@ -524,7 +572,12 @@ export class ViberSessionStore {
           candidateThread.configuration ===
             threadConfiguration(execution, profile.instructions, ""));
 
-      const thread = !input.new_thread && compatibleThread ? candidateThread : null;
+      const thread =
+        !input.new_thread &&
+        compatibleThread &&
+        (!interrupted || interrupted.threadId === candidateThread.thread_id)
+          ? candidateThread
+          : null;
 
       const conversation = thread ? { threadId: thread.thread_id } : {};
 
@@ -575,7 +628,12 @@ export class ViberSessionStore {
             "Selected bootstrap context exceeds 64,000 characters. Select less history or send a concise handoff.",
           );
         }
-      } else if (!thread && !input.new_thread && (isProviderSwitch || !candidateThread)) {
+      } else if (
+        !interrupted &&
+        !thread &&
+        !input.new_thread &&
+        (isProviderSwitch || !candidateThread)
+      ) {
         const rows = this.db.all<{ role: string; content: string }>(
           "SELECT role,content FROM viber_messages WHERE session_id=? AND status='completed' AND role IN ('user','assistant') AND rowid>? ORDER BY rowid ASC",
           session.id,
@@ -589,7 +647,7 @@ export class ViberSessionStore {
       }
 
       let missedMessages: { role: string; content: string }[] = [];
-      if (thread && isProviderSwitch) {
+      if (!interrupted && thread && isProviderSwitch) {
         const threadRun = this.db.all<{ last_rowid: number }>(
           "SELECT max(m.rowid) as last_rowid FROM viber_messages m JOIN utility_runs r ON (r.viber_message_id=m.id OR m.run_id=r.id) WHERE m.session_id=? AND r.provider=? AND r.conversation_id=? AND m.status='completed'",
           session.id,
@@ -607,7 +665,11 @@ export class ViberSessionStore {
       }
 
       let prompt: string;
-      if (thread) {
+      if (interrupted) {
+        prompt = thread
+          ? `${continueLabel} Check what already changed before editing.`
+          : freshContinuationPrompt(interrupted.originalPrompt);
+      } else if (thread) {
         if (missedMessages.length > 0) {
           const missedItems = missedMessages.map(
             (m) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`,
@@ -649,6 +711,7 @@ export class ViberSessionStore {
         execution,
         prompt,
         conversation,
+        originalPrompt: interrupted?.originalPrompt,
       });
 
       this.db.run(
@@ -693,6 +756,7 @@ export class ViberSessionStore {
     execution: AgentExecution,
     prompt: string,
     conversation: { threadId?: string } = {},
+    originalPrompt?: string,
   ) => {
     const row = this.db.all<{ configuration: string }>(
       "SELECT configuration FROM viber_messages WHERE id=? AND session_id=? AND role='user' AND status='pending' AND run_id IS NULL",
@@ -705,7 +769,8 @@ export class ViberSessionStore {
       !snapshot ||
       JSON.stringify(snapshot.execution) !== JSON.stringify(execution) ||
       snapshot.prompt !== prompt ||
-      snapshot.conversation.threadId !== conversation.threadId
+      snapshot.conversation.threadId !== conversation.threadId ||
+      snapshot.originalPrompt !== originalPrompt
     ) {
       throw new AdeError(
         "isolation",
@@ -713,6 +778,36 @@ export class ViberSessionStore {
       );
     }
   };
+
+  startFreshContinuation = (sessionId: string, messageId: string) =>
+    this.db.transaction(() => {
+      const row = this.db.all<{ configuration: string; run_id: string }>(
+        "SELECT m.configuration,m.run_id FROM viber_messages m JOIN utility_runs r ON r.id=m.run_id WHERE m.id=? AND m.session_id=? AND m.status='pending' AND r.status='running' AND r.conversation_id IS NULL",
+        messageId,
+        sessionId,
+      )[0];
+
+      const snapshot = row && ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration));
+      if (!snapshot?.conversation.threadId || snapshot.originalPrompt === undefined) {
+        throw new AdeError("recovery", "A fresh thread requires a pending continuation.");
+      }
+
+      const session = this.session(sessionId, snapshot.profile.id);
+      this.assertThread(sessionId, snapshot.execution.provider, snapshot.conversation.threadId);
+      const threads = { ...session.threads };
+      delete threads[snapshot.execution.provider];
+      const prompt = freshContinuationPrompt(snapshot.originalPrompt);
+
+      this.db.run("UPDATE utility_runs SET prompt=? WHERE id=?", prompt, row.run_id);
+
+      this.db.run(
+        "UPDATE viber_sessions SET thread=NULL,threads=? WHERE id=?",
+        JSON.stringify(threads),
+        sessionId,
+      );
+
+      return prompt;
+    });
 
   assertThread = (sessionId: string, provider: AgentExecution["provider"], threadId: string) => {
     const row = this.db.all<{ thread: string | null }>(
@@ -730,8 +825,8 @@ export class ViberSessionStore {
   };
 
   recordThread = (sessionId: string, messageId: string, threadId: string, model: string) => {
-    const row = this.db.all<{ configuration: string; run_id: string }>(
-      "SELECT configuration,run_id FROM viber_messages WHERE id=? AND session_id=? AND status='pending'",
+    const row = this.db.all<{ configuration: string; run_id: string; prompt: string }>(
+      "SELECT m.configuration,m.run_id,r.prompt FROM viber_messages m JOIN utility_runs r ON r.id=m.run_id WHERE m.id=? AND m.session_id=? AND m.status='pending'",
       messageId,
       sessionId,
     )[0];
@@ -743,8 +838,14 @@ export class ViberSessionStore {
     const snapshot = ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration));
     const currentSession = this.session(sessionId, snapshot.profile.id);
 
+    const resumedThread =
+      snapshot.originalPrompt !== undefined &&
+      row.prompt === freshContinuationPrompt(snapshot.originalPrompt)
+        ? undefined
+        : snapshot.conversation.threadId;
+
     const expected =
-      snapshot.conversation.threadId ||
+      resumedThread ||
       currentSession.threads?.[snapshot.execution.provider]?.thread_id ||
       currentSession.thread?.thread_id;
 
@@ -762,7 +863,7 @@ export class ViberSessionStore {
         snapshot.execution.provider,
         row.run_id,
         sessionId,
-        snapshot.conversation.threadId || null,
+        resumedThread || null,
       ).length
     ) {
       throw new AdeError(

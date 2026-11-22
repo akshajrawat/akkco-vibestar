@@ -31,7 +31,8 @@ it.each(["codex", "antigravity"] as const)(
     const antigravityState = join(fixture.home, ".config", "antigravity");
     const requests: AgentRunRequest[] = [];
     const adapters = { codex: new CodexProvider(), antigravity: new AntigravityProvider() };
-    let mode: "success" | "invalid" | "partial" | "truncated" | "wait" = "success";
+    let mode: "success" | "invalid" | "partial" | "truncated" | "wait" | "resume-rejected" =
+      "success";
     let sourcePath = "";
     let otherWorkspace = "";
     let handoffThreadId: string | undefined;
@@ -109,7 +110,10 @@ it.each(["codex", "antigravity"] as const)(
                 if(r.method==='initialize') emit({id:r.id,result:{}});
                 if(r.method==='thread/start' || r.method==='thread/resume') {
                   if (r.method !== (resumeId ? 'thread/resume' : 'thread/start') || r.params.threadId !== resumeId) throw Error('Wrong native thread request');
-                  if(mode === 'invalid') { emit({id:r.id,error:{message:'Native thread not found'}}); return; }
+                  if(mode === 'invalid' || (mode === 'resume-rejected' && resumeId)) {
+                    emit({id:r.id,error:{message:'Native thread not found'}});
+                    return;
+                  }
                   emit({id:r.id,result:{thread:{id:nativeId}}});
                 }
                 if(r.method==='turn/start') {
@@ -125,10 +129,12 @@ it.each(["codex", "antigravity"] as const)(
               if ((resume === -1 ? undefined : args[resume + 1]) !== resumeId) throw Error('Wrong resume identity');
               if (args[args.indexOf('--model') + 1] !== model) throw Error('Wrong turn model');
               if(mode === 'invalid') { console.error('Native thread not found'); process.exit(1); }
+              const rejected = mode === 'resume-rejected' && resumeId;
+              emit({event:'init',conversation_id:rejected ? 'unexpected-thread' : nativeId,init:{model}});
               let input='';
               process.stdin.on('data', chunk => input += chunk);
               process.stdin.on('end', () => {
-                emit({event:'init',init:{conversation_id:nativeId,model:${JSON.stringify(request.config.model)}}});
+                if (rejected) throw Error('Prompt sent before the thread was confirmed');
                 toolLoop(JSON.parse(input).message.content);
               });
             }
@@ -191,10 +197,10 @@ it.each(["codex", "antigravity"] as const)(
               engine.viberSessions.store
                 .detail(target.id, target.profile_id)
                 .messages.filter((message) => message.role === "user")
-                .at(-1)?.status,
+                .at(-1),
             { timeout: 10000 },
           )
-          .toBe(status);
+          .toMatchObject({ status });
 
         await expect.poll(() => engine.isActive(`viber:${target.id}`)).toBe(false);
         return engine.viberSessions.store.session(target.id, target.profile_id);
@@ -395,7 +401,14 @@ it.each(["codex", "antigravity"] as const)(
       ).toContain("completed native turn");
 
       mode = "wait";
-      await send({ acknowledge_uncertain: true });
+
+      const interrupted = {
+        request_id: randomUUID(),
+        content: "Finish the original edit",
+        acknowledge_uncertain: true,
+      };
+
+      await send(interrupted);
 
       await expect
         .poll(
@@ -407,6 +420,14 @@ it.each(["codex", "antigravity"] as const)(
         )
         .toBeGreaterThan(1);
 
+      const nativeIdFor = (messageId: string) =>
+        engine.db.all<{ conversation_id: string | null }>(
+          "SELECT conversation_id FROM utility_runs WHERE viber_message_id=?",
+          messageId,
+        )[0]?.conversation_id;
+
+      await expect.poll(() => nativeIdFor(interrupted.request_id)).toBeTruthy();
+      const interruptedThread = nativeIdFor(interrupted.request_id);
       const count = requests.length;
       await rpc.close();
       await engine.close();
@@ -421,13 +442,60 @@ it.each(["codex", "antigravity"] as const)(
       await expect(send()).rejects.toThrow("acknowledge");
       mode = "success";
 
-      await send({
+      const continueRequest = (messageId: string) => ({
         acknowledge_uncertain: true,
-        content: "Continue after inspecting interrupted activity",
+        content: "Continue where you left off.",
+        continue_message_id: messageId,
       });
 
-      await settled();
-      expect(requests.at(-1)?.conversation?.threadId).toBeTruthy();
+      const resumePrompt =
+        "Continue where you left off. Check what already changed before editing.";
+
+      const freshPrompt = (original: string) =>
+        `Original user prompt:\n${original}\n\nThe previous thread couldn’t be resumed. Inspect the current workspace and any partial edits, then continue from where it left off.`;
+
+      await send(continueRequest(interrupted.request_id));
+      const continuedSession = await settled();
+      expect(requests).toHaveLength(count + 1);
+
+      const stopTurn = async (content: string) => {
+        mode = "wait";
+        const request = { request_id: randomUUID(), content, selection };
+        await send(request);
+        await expect.poll(() => nativeIdFor(request.request_id)).toBeTruthy();
+        await rpc.call("viber.session.cancel", { session_id: session.id, profile_id: profileId });
+        await settled("cancelled");
+        return request;
+      };
+
+      expect(requests[count]).toMatchObject({
+        conversation: { threadId: interruptedThread, confirmResume: true },
+        prompt: resumePrompt,
+      });
+
+      expect(continuedSession.thread?.thread_id).toBe(interruptedThread);
+
+      const stopped = await stopTurn("Continue this edit if the native thread is gone");
+      const beforeFallback = requests.length;
+      const file = join(workspace.worktree_path, "source.txt");
+      const beforeEdit = await readFile(file, "utf8");
+      mode = "resume-rejected";
+      await send(continueRequest(stopped.request_id));
+      const fresh = await settled();
+
+      expect(requests.slice(beforeFallback)).toMatchObject([
+        {
+          conversation: { threadId: interruptedThread, confirmResume: true },
+          prompt: resumePrompt,
+        },
+        { conversation: {}, prompt: freshPrompt(stopped.content) },
+      ]);
+
+      expect(requests[beforeFallback].runId).toBe(requests[beforeFallback + 1].runId);
+      expect(fresh.thread?.thread_id).not.toBe(interruptedThread);
+      expect(await readFile(file, "utf8")).toBe(beforeEdit + "changed\n");
+      mode = "success";
+
       const otherProvider = providerName === "codex" ? "antigravity" : "codex";
 
       const previousSession = engine.viberSessions.store.session(session.id, profileId);
@@ -569,6 +637,15 @@ it.each(["codex", "antigravity"] as const)(
       expect(await readFile(workspaceFile, "utf8")).toBe(
         `${beforeHandoff}${"changed\n".repeat(5)}`,
       );
+
+      const stoppedAgain = await stopTurn("Do not repeat an edit after an ambiguous result");
+      const beforeTruncated = requests.length;
+      const beforeTruncatedEdit = await readFile(workspaceFile, "utf8");
+      mode = "truncated";
+      await send(continueRequest(stoppedAgain.request_id));
+      await settled("failed");
+      expect(requests).toHaveLength(beforeTruncated + 1);
+      expect(await readFile(workspaceFile, "utf8")).toBe(beforeTruncatedEdit + "changed\n");
 
       expect(engine.vibers.profile(profileId)).toEqual(profile);
       expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);

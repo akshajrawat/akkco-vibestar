@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { AdeError, now, type CoreEvent, type NormalizedEvent } from "../../domain";
 import type { Database } from "../../storage/database";
 import type { GitWorkspace } from "../../workspace/git";
-import { execute, redact } from "../runtime/process";
+import { execute, redact, type ProcessRequest } from "../runtime/process";
 import { BoundedWriter } from "../output/bounded-output";
 import { AgentExecutionSchema, type AgentExecution } from "../contracts";
 import { executionSchema } from "./execution-output";
@@ -16,6 +16,7 @@ import { ViberSessionStore } from "../../vibers/store";
 import {
   object,
   type AgentProvider,
+  type AgentRunRequest,
   configurationError,
   type ProviderDetection,
 } from "../providers/contracts";
@@ -27,6 +28,7 @@ interface AgentRunOptions {
   schema?: z.ZodType;
   contextPaths?: string[];
   conversation?: { threadId?: string };
+  originalPrompt?: string;
   viberSession?: { sessionId: string; messageId: string };
 }
 
@@ -103,6 +105,7 @@ export class AgentRunner {
         execution,
         options.prompt,
         options.conversation,
+        options.originalPrompt,
       );
     }
 
@@ -322,33 +325,45 @@ export class AgentRunner {
 
       const contextPaths = options.contextPaths?.length ? options.contextPaths : undefined;
 
-      const directInvocation = provider.invocation({
-        runId: id,
-        cwd,
-        stage: 0,
-        access: execution.access,
-        config: selectedConfig,
-        prompt,
-        schemaPath,
-        schema: outputSchema,
-        workspaceType: "utility",
-        ...(conversation ? { conversation: options.conversation || {} } : {}),
-      });
+      const prepareInvocation = (text: string, thread: AgentRunRequest["conversation"]) => {
+        const directInvocation = provider.invocation({
+          runId: id,
+          cwd,
+          stage: 0,
+          access: execution.access,
+          config: selectedConfig,
+          prompt: text,
+          schemaPath,
+          schema: outputSchema,
+          workspaceType: "utility",
+          conversation: thread,
+        });
 
-      const invocation = await sandboxInvocation(
-        this.root,
-        this.db,
-        assignment,
-        directInvocation,
-        execution.access === "read-only",
-        conversation ? undefined : schemaPath,
-        (detection.provider === "codex" && directInvocation.program === "codex") ||
-          (detection.provider === "antigravity" && directInvocation.program === "agy")
-          ? detection.provider
+        return sandboxInvocation(
+          this.root,
+          this.db,
+          assignment,
+          directInvocation,
+          execution.access === "read-only",
+          conversation ? undefined : schemaPath,
+          (detection.provider === "codex" && directInvocation.program === "codex") ||
+            (detection.provider === "antigravity" && directInvocation.program === "agy")
+            ? detection.provider
+            : undefined,
+          options.workspace,
+          contextPaths,
+          options.viberSession?.sessionId,
+        );
+      };
+
+      const confirmResume =
+        options.originalPrompt !== undefined && !!options.conversation?.threadId;
+
+      const invocation = await prepareInvocation(
+        prompt,
+        conversation
+          ? { ...options.conversation, ...(confirmResume ? { confirmResume: true } : {}) }
           : undefined,
-        options.workspace,
-        contextPaths,
-        options.viberSession?.sessionId,
       );
 
       stdout = await open(join(dir, `${id}.jsonl`), "a", 0o600);
@@ -371,11 +386,9 @@ export class AgentRunner {
 
       invoked = true;
 
-      const output = await execute({
-        ...invocation,
+      const processOptions: Omit<ProcessRequest, "program" | "args"> = {
         cwd,
         signal: runSignal,
-        timeoutMs: config.timeout_secs * 1000,
         onSpawn: (pid, identity) => {
           this.db.run(`UPDATE ${table} SET pid=?,process_identity=? WHERE id=?`, pid, identity, id);
         },
@@ -467,7 +480,40 @@ export class AgentRunner {
             utilityEvent(event, line, stream);
           }
         },
-      });
+      };
+
+      const deadline = Date.now() + config.timeout_secs * 1000;
+
+      const run = (next: typeof invocation) =>
+        execute({ ...processOptions, ...next, timeoutMs: Math.max(1, deadline - Date.now()) });
+
+      let output;
+      try {
+        output = await run(invocation);
+      } catch (error) {
+        if (
+          !confirmResume ||
+          !options.viberSession ||
+          !(error instanceof AdeError) ||
+          error.kind !== "thread_resume_rejected"
+        ) {
+          throw error;
+        }
+
+        runSignal.throwIfAborted();
+        if (Date.now() >= deadline || nativeThreadId) {
+          throw error;
+        }
+
+        const freshPrompt = new ViberSessionStore(this.db).startFreshContinuation(
+          options.viberSession.sessionId,
+          options.viberSession.messageId,
+        );
+
+        const freshInvocation = await prepareInvocation(freshPrompt, {});
+        runSignal.throwIfAborted();
+        output = await run(freshInvocation);
+      }
 
       await writes.drain();
       if (signal.aborted) {

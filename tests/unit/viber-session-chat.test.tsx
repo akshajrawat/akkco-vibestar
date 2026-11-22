@@ -125,7 +125,7 @@ it("restores the saved model and retries a send with the picker selection and no
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
   render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
   await screen.findByText("Previous answer");
-  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 
   const draft = screen.getByRole("textbox", {
     name: `Message ${viberProfile.name}`,
@@ -268,12 +268,14 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
     }),
   );
 
+  const interruptedId = crypto.randomUUID();
+
   rpc.mockImplementation(async () => ({
     ...stored,
     messages: [
       ...stored.messages,
       {
-        id: crypto.randomUUID(),
+        id: interruptedId,
         role: "user",
         content: "Interrupted question",
         status: "interrupted",
@@ -293,21 +295,22 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
   expect(rpc.mock.calls.filter(([method]) => method === "viber.session.send")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("dialog")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue where you left off." }));
   fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
 
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
       "viber.session.send",
       expect.objectContaining({
-        content: "Interrupted question",
+        content: "Continue where you left off.",
+        continue_message_id: interruptedId,
         acknowledge_uncertain: true,
       }),
     ),
   );
 });
 
-it("waits for explicit Retry and recovery confirmation after stopping a file-changing turn", async () => {
+it("waits for explicit Continue and recovery confirmation after stopping a file-changing turn", async () => {
   const turnId: string = crypto.randomUUID();
 
   const turn = {
@@ -340,21 +343,21 @@ it("waits for explicit Retry and recovery confirmation after stopping a file-cha
   render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
-  const retry = await screen.findByRole("button", { name: "Retry" });
+  const resume = await screen.findByRole("button", { name: "Continue where you left off." });
   expect(rpc).toHaveBeenCalledWith("viber.session.cancel", scope);
   expect(screen.queryByRole("button", { name: "Stop response" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   const sends = () => rpc.mock.calls.filter(([method]) => method === "viber.session.send");
   expect(sends()).toHaveLength(0);
 
-  fireEvent.click(retry);
+  fireEvent.click(resume);
   await screen.findByRole("dialog", { name: "Review previous work" });
   expect(sends()).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(sends()).toHaveLength(0);
 
-  fireEvent.click(retry);
+  fireEvent.click(resume);
   fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
   await screen.findByRole("button", { name: "Stop response" });
 
@@ -363,7 +366,8 @@ it("waits for explicit Retry and recovery confirmation after stopping a file-cha
       "viber.session.send",
       expect.objectContaining({
         ...scope,
-        content: turn.content,
+        content: "Continue where you left off.",
+        continue_message_id: turn.id,
         request_id: expect.any(String),
         acknowledge_uncertain: true,
       }),

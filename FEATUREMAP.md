@@ -5,6 +5,7 @@ sequenceDiagram
     participant Codex as Codex thread
     participant AGY as Antigravity thread
 
+    participant Provider as Turn provider
     Note over Chat: History scrolls beneath the fading black header
     User->>Chat: Send avatar-colored message to Codex
     Chat->>Codex: Start thread with message
@@ -21,6 +22,15 @@ sequenceDiagram
     Codex-->>Chat: Reply
     User->>Chat: Change reasoning effort and send
     Chat->>Codex: Resume the thread with the new effort
+    User->>Chat: Stop response
+    Chat->>Provider: Cancel the active turn
+    Chat-->>User: Show Continue where you left off
+    User->>Chat: Continue where you left off
+    alt Provider confirms the saved thread
+        Chat->>Provider: Continue in the saved thread
+    else Saved thread cannot be safely resumed
+        Chat->>Provider: Start a new thread with the original prompt and workspace instructions
+    end
     Codex-->>Chat: Reply
     User->>Chat: Send /clear
     alt Viber has an active turn

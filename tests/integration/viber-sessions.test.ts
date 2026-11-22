@@ -428,6 +428,8 @@ it("stops only the current turn in the requested Viber session and preserves com
   const scope = { session_id: one.id, profile_id: one.profile_id };
   await send(one, { content: "Finish the first turn" });
   const completed = await settled(one);
+  const inspect = () => rpc.call("viber.session.inspect", { ...scope, path: "answer.txt" });
+  expect(await inspect()).toMatchObject({ text: "Session file" });
   expect(completed.runs[0].status).toBe("completed");
   expect(await rpc.call("viber.session.cancel", scope)).toEqual(completed);
 
@@ -455,6 +457,7 @@ it("stops only the current turn in the requested Viber session and preserves com
   expect(cancelled.messages.slice(0, -1)).toEqual(completed.messages);
   expect(cancelled.messages.at(-1)).toMatchObject({ id: current.id, status: "cancelled" });
   expect(cancelled.runs.map(({ status }) => status)).toEqual(["completed", "cancelled"]);
+  expect(await inspect()).toMatchObject({ text: "Session file" });
 
   expect(cancelled.events.filter(({ run_id }) => run_id === completed.runs[0].id)).toEqual(
     completed.events,
@@ -467,7 +470,7 @@ it("stops only the current turn in the requested Viber session and preserves com
 });
 
 it.each(["cancelled", "interrupted"] as const)(
-  "preserves a %s file-changing turn without replay and requires an explicit acknowledged retry",
+  "preserves a %s file-changing turn and continues it only on explicit acknowledgement",
   async (status) => {
     provider.mode = "write-and-wait";
     const session = await create();
@@ -506,29 +509,47 @@ it.each(["cancelled", "interrupted"] as const)(
     expect(recovered.runs).toHaveLength(1);
 
     expect(await send(session, request)).toEqual(recovered.messages[0]);
-    const retry = { ...request, request_id: randomUUID() };
-    await expect(send(session, retry)).rejects.toThrow("acknowledge");
+
+    const continuation = {
+      request_id: randomUUID(),
+      content: "Continue where you left off.",
+      continue_message_id: request.request_id,
+    };
+
+    await expect(send(session, continuation)).rejects.toThrow("acknowledge");
     expect(await detail(session)).toEqual(recovered);
     expect(engine.hasActive()).toBe(false);
     expect(provider.requests).toHaveLength(1);
     expect(await inspect()).toMatchObject({ text: "Partial edit\n" });
 
     provider.mode = "success";
-    const acknowledgedRetry = { ...retry, acknowledge_uncertain: true };
-    await send(session, acknowledgedRetry);
+    const acknowledged = { ...continuation, acknowledge_uncertain: true };
+    const admitted = await send(session, acknowledged);
+    expect(await send(session, acknowledged)).toEqual(admitted);
     const completed = await settled(session);
     expect(completed.recovery_required).toBe(false);
 
     expect(completed.messages.filter(({ role }) => role === "user")).toMatchObject([
       { id: request.request_id, status },
-      { id: retry.request_id, status: "completed" },
+      { id: continuation.request_id, status: "completed" },
     ]);
 
     expect(completed.runs).toMatchObject([recovered.runs[0], { status: "completed" }]);
-    expect(await send(session, acknowledgedRetry)).toEqual(completed.messages[1]);
+    expect(await send(session, acknowledged)).toEqual(completed.messages[1]);
+
+    await expect(send(session, { ...acknowledged, request_id: randomUUID() })).rejects.toThrow(
+      "latest stopped or interrupted turn",
+    );
+
     expect(await detail(session)).toEqual(completed);
     expect(provider.requests).toHaveLength(2);
-    expect(provider.requests[1].prompt).toBe(request.content);
+
+    expect(provider.requests[1]).toMatchObject({
+      conversation: { threadId: recovered.session.thread?.thread_id, confirmResume: true },
+      prompt: "Continue where you left off. Check what already changed before editing.",
+    });
+
+    expect(await inspect()).toMatchObject({ text: "Partial edit\n" });
   },
 );
 
@@ -564,6 +585,24 @@ it("marks shutdown and recovered pending turns interrupted without automatically
 
   expect(provider.requests).toHaveLength(1);
   expect(engine.hasActive()).toBe(false);
+
+  provider.mode = "success";
+  const stopped = (await detail(crashed)).messages[0];
+
+  await send(crashed, {
+    content: "Continue where you left off.",
+    continue_message_id: stopped.id,
+  });
+
+  await settled(crashed);
+
+  expect(provider.requests).toHaveLength(2);
+
+  expect(provider.requests[1]).toMatchObject({
+    conversation: {},
+    prompt:
+      "Original user prompt:\nCrash before invocation\n\nThe previous thread couldn’t be resumed. Inspect the current workspace and any partial edits, then continue from where it left off.",
+  });
 });
 
 it("rejects symlinked session workspaces and mismatched runner snapshots before invocation", async () => {

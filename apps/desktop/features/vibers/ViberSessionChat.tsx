@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AgentProfile } from "../../../core/vibers/contracts";
-import type { ViberSessionDetail } from "../../../core/vibers/contracts";
+import {
+  continueLabel,
+  type AgentProfile,
+  type ViberSessionDetail,
+} from "../../../core/vibers/contracts";
 import type { AgentEvent, Run } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
@@ -39,7 +42,7 @@ const SessionChat = ({
   const [error, setError] = useState<{ message: string; requestId?: string }>();
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [recovery, setRecovery] = useState<string>();
+  const [recovery, setRecovery] = useState<{ content: string; continueMessageId?: string }>();
   const sending = useRef(false);
   const cancelling = useRef(false);
   const requested = useRef({ sequence: 0 });
@@ -82,6 +85,9 @@ const SessionChat = ({
 
   const previousTurn = data?.messages.filter((message) => message.role === "user").at(-1);
 
+  const canContinue =
+    previousTurn?.status === "cancelled" || previousTurn?.status === "interrupted";
+
   const uncertain =
     data?.recovery_required ??
     (data?.session.thread?.status === "uncertain" ||
@@ -101,12 +107,16 @@ const SessionChat = ({
       ? error.message
       : "";
 
-  const send = async (content = composerContent(getTaskView(id)), acknowledged = false) => {
+  const send = async (
+    content = composerContent(getTaskView(id)),
+    acknowledged = false,
+    continueMessageId?: string,
+  ) => {
     if (
       sending.current ||
       !data ||
       active ||
-      (invalid && content.trim() !== "/clear") ||
+      (invalid && !continueMessageId && content.trim() !== "/clear") ||
       !content.trim() ||
       content.length > 32000
     ) {
@@ -114,7 +124,7 @@ const SessionChat = ({
     }
 
     if (uncertain && !acknowledged) {
-      setRecovery(content);
+      setRecovery({ content, continueMessageId });
       return;
     }
 
@@ -129,7 +139,7 @@ const SessionChat = ({
         content,
         history_ids: [],
         ...(acknowledge ? { acknowledge_uncertain: true } : {}),
-        selection,
+        ...(continueMessageId ? { continue_message_id: continueMessageId } : { selection }),
       });
 
       const previous = getTaskView(id).messageRequest;
@@ -159,7 +169,9 @@ const SessionChat = ({
       await rpc("viber.session.send", { ...input, request_id: request.id });
 
       updateTaskView(id, {
-        ...(composerContent(getTaskView(id)) === content ? { draft: "", draftContext: [] } : {}),
+        ...(!continueMessageId && composerContent(getTaskView(id)) === content
+          ? { draft: "", draftContext: [] }
+          : {}),
         messageRequest: null,
       });
 
@@ -240,13 +252,20 @@ const SessionChat = ({
         actions={
           !active &&
           !busy &&
-          !invalid &&
           previousTurn &&
-          ["failed", "cancelled", "interrupted"].includes(previousTurn.status) ? (
+          (canContinue ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void send(continueLabel, false, previousTurn.id)}
+            >
+              {continueLabel}
+            </Button>
+          ) : !invalid && previousTurn.status === "failed" && !previousTurn.continue_message_id ? (
             <Button variant="ghost" size="sm" onClick={() => void send(previousTurn.content)}>
               Retry
             </Button>
-          ) : null
+          ) : null)
         }
         composer={
           <Composer
@@ -291,7 +310,7 @@ const SessionChat = ({
           cancel={() => setRecovery(undefined)}
           confirm={() => {
             setRecovery(undefined);
-            void send(recovery, true);
+            void send(recovery.content, true, recovery.continueMessageId);
           }}
         />
       )}

@@ -9,6 +9,7 @@ import { OutputBudget } from "../output/bounded-output";
 
 export interface ProcessInputProtocol {
   start: (send: (message: unknown) => void, end: () => void) => void;
+  validate?: (line: string) => void;
   receive: (line: string) => void;
 }
 
@@ -164,6 +165,10 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       try {
         const safe = redact(value);
+        if (stream === "stdout") {
+          r.inputProtocol?.validate?.(safe);
+        }
+
         r.onLine?.(stream, safe);
         if (stream === "stdout") {
           r.inputProtocol?.receive(safe);

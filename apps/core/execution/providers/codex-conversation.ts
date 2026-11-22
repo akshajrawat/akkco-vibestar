@@ -23,6 +23,22 @@ export const codexConversation = (request: AgentRunRequest) => {
         },
       });
     },
+    validate: request.conversation?.confirmResume
+      ? (line) => {
+          const response = object(JSON.parse(line));
+          if (phase !== "thread" || response.id !== 1 || response.method !== undefined) {
+            return;
+          }
+
+          const thread = object(object(response.result).thread);
+          if (response.error || thread.id !== threadId || object(thread.status).type === "active") {
+            throw new AdeError(
+              "thread_resume_rejected",
+              "Codex could not confirm the saved thread.",
+            );
+          }
+        }
+      : undefined,
     receive: (line) => {
       const response = object(JSON.parse(line));
       if (phase === "finished") {
