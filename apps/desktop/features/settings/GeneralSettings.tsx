@@ -1,3 +1,4 @@
+import { defaultViberMemorySettings } from "../../../core/vibers/memory-contracts";
 import type { Settings } from "../../lib/types";
 import { Select } from "../../components/ui/Select";
 
@@ -74,6 +75,50 @@ export const GeneralSettings = ({
             ]}
           />
         </label>
+      </div>
+    </section>
+    <section
+      className="settings-section p-[8px_0_24px] settings-general-section"
+      aria-labelledby="enable-memory"
+    >
+      <h2 id="enable-memory">Enable Memory</h2>
+      <div className="settings-card">
+        <div className="settings-row grid-cols-[minmax(0,1fr)_auto]!">
+          <p id="enable-memory-description" className="font-normal text-ink-muted">
+            Viber remembers important things from your chats and gets better at helping you over
+            time.
+          </p>
+          <button
+            type="button"
+            role="switch"
+            aria-labelledby="enable-memory"
+            aria-describedby="enable-memory-description"
+            aria-checked={value.viber_memory.automatic_saving || value.viber_memory.recall}
+            className="group relative h-6 w-11 shrink-0 rounded-full bg-neutral-950 aria-checked:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            onClick={() => {
+              const enabled = !(value.viber_memory.automatic_saving || value.viber_memory.recall);
+
+              setValue({
+                ...value,
+                viber_memory: {
+                  ...value.viber_memory,
+                  automatic_saving: enabled,
+                  recall: enabled,
+                  embedding_model:
+                    enabled && !value.viber_memory.embedding_model
+                      ? defaultViberMemorySettings.embedding_model
+                      : value.viber_memory.embedding_model,
+                  suggestion_model:
+                    enabled && !value.viber_memory.suggestion_model
+                      ? defaultViberMemorySettings.suggestion_model
+                      : value.viber_memory.suggestion_model,
+                },
+              });
+            }}
+          >
+            <span className="absolute top-0.5 left-0.5 size-5 rounded-full bg-neutral-500 transition-transform group-aria-checked:translate-x-5 group-aria-checked:bg-neutral-400 motion-reduce:transition-none" />
+          </button>
+        </div>
       </div>
     </section>
   </>

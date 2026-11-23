@@ -135,7 +135,7 @@ export function extractTokens(node) {
 
 export function checkCssBorders(
   context,
-  { target, utility, declaration: invalidDeclaration, messageId },
+  { target, utility, declaration: invalidDeclaration, messageId, inheritsTarget = () => true },
 ) {
   const { sourceCode } = context;
 
@@ -181,7 +181,7 @@ export function checkCssBorders(
       checkDeclarations(text.slice(0, selectorStart), parent);
 
       rules.push({
-        target: parent?.target || target.test(selector),
+        target: target.test(selector) || (parent?.target && inheritsTarget(selector)),
         inState: parent?.inState || hasState(selector),
         loc: sourceCode.getLocFromIndex(start + selectorStart + Math.max(0, selector.search(/\S/))),
       });

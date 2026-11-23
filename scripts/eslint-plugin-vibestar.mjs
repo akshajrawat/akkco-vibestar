@@ -1,4 +1,5 @@
 import { noDropdownBorder } from "./eslint-rules/no-dropdown-border.mjs";
+import { noButtonBorder } from "./eslint-rules/no-button-border.mjs";
 import { noInputBorderWithoutHover } from "./eslint-rules/no-input-border-without-hover.mjs";
 import { noInputBorderOnClick } from "./eslint-rules/no-input-border-on-click.mjs";
 import { noPnpm } from "./eslint-rules/no-pnpm.mjs";
@@ -35,6 +36,7 @@ const plugin = {
     "no-input-border-without-hover": noInputBorderWithoutHover,
     "no-input-border-on-click": noInputBorderOnClick,
     "no-dropdown-border": noDropdownBorder,
+    "no-button-border": noButtonBorder,
     "no-pnpm": noPnpm,
   },
 };

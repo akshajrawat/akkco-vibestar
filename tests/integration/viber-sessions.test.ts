@@ -338,7 +338,8 @@ it("seals legacy prompts in place and recovers exact instructions after restart"
     );
   }
 
-  engine.db.run("DELETE FROM schema_migrations WHERE version=?", viberSnapshotVersion);
+  engine.db.run("DROP TABLE viber_memory_facts");
+  engine.db.run("DELETE FROM schema_migrations WHERE version>=?", viberSnapshotVersion);
   const state = join(engine.root, "state");
   const dbPath = join(state, "vibestar.sqlite");
   const keyPath = viberSnapshotKeyPath(dbPath);

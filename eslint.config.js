@@ -35,6 +35,7 @@ export default tseslint.config(
       "vibestar/no-input-border-without-hover": "error",
       "vibestar/no-input-border-on-click": "error",
       "vibestar/no-dropdown-border": "error",
+      "vibestar/no-button-border": "error",
       "@typescript-eslint/consistent-type-imports": ["error", { disallowTypeAnnotations: false }],
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -56,6 +57,7 @@ export default tseslint.config(
       "vibestar/no-input-border-without-hover": "error",
       "vibestar/no-input-border-on-click": "error",
       "vibestar/no-dropdown-border": "error",
+      "vibestar/no-button-border": "error",
     },
   },
   {

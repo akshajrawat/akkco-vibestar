@@ -187,4 +187,69 @@ DROP TABLE IF EXISTS viber_computers;
 `,
   },
   { version: viberSnapshotVersion, sql: viberSnapshotTrigger },
+  {
+    version: 47,
+    sql: `
+CREATE TABLE IF NOT EXISTS viber_memory_facts(
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+  id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY(profile_id, id)
+);
+`,
+  },
+  {
+    version: 48,
+    sql: `
+CREATE TABLE IF NOT EXISTS viber_memory_details(
+  profile_id TEXT NOT NULL,
+  fact_id TEXT NOT NULL,
+  repository_id TEXT,
+  topic TEXT,
+  revision INTEGER NOT NULL DEFAULT 1,
+  source_message_id TEXT,
+  source_session_id TEXT,
+  source_at TEXT,
+  evidence TEXT,
+  subject TEXT,
+  needs_review INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(profile_id,fact_id),
+  FOREIGN KEY(profile_id,fact_id) REFERENCES viber_memory_facts(profile_id,id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS viber_memory_scope ON viber_memory_details(profile_id,repository_id,topic);
+
+CREATE TABLE IF NOT EXISTS viber_memory_vectors(
+  profile_id TEXT NOT NULL,
+  fact_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  model TEXT NOT NULL,
+  digest TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  vector BLOB NOT NULL,
+  topic_vector BLOB,
+  PRIMARY KEY(profile_id,fact_id),
+  FOREIGN KEY(profile_id,fact_id) REFERENCES viber_memory_details(profile_id,fact_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS viber_memory_shares(
+  profile_id TEXT NOT NULL,
+  fact_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  session_id TEXT NOT NULL REFERENCES viber_sessions(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  sent_at TEXT NOT NULL,
+  in_context INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY(profile_id,fact_id,revision,session_id,provider,thread_id),
+  FOREIGN KEY(profile_id,fact_id) REFERENCES viber_memory_facts(profile_id,id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS viber_memory_share_thread ON viber_memory_shares(session_id,provider,thread_id);
+
+CREATE TABLE IF NOT EXISTS viber_memory_private_runs(
+  run_id TEXT PRIMARY KEY REFERENCES utility_runs(id) ON DELETE CASCADE
+);
+
+DELETE FROM viber_memory_facts WHERE profile_id IN (SELECT profile_id FROM retired_viber_profiles);
+`,
+  },
 ];

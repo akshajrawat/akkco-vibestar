@@ -69,10 +69,17 @@ export interface AgentRunRequest {
   access: WorkspaceAccess;
   config: StageConfig;
   prompt: string;
+  memory?: string[];
   schemaPath: string;
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
   conversation?: { threadId?: string; confirmResume?: true };
+  viberMemory?: {
+    recall?: (threadId?: string) => string[];
+    onInputAccepted?: (threadId: string) => void;
+    suggest?: (value: unknown) => void;
+    compact?: (threadId: string) => void;
+  };
   preload?: {
     instructions: string;
     context?: string;
@@ -80,6 +87,14 @@ export interface AgentRunRequest {
     onInjected?: (threadId: string) => void;
   };
 }
+
+export const withMemoryReference = ({
+  prompt,
+  memory,
+}: Pick<AgentRunRequest, "prompt" | "memory">) =>
+  memory?.length
+    ? `${prompt}\n\nRelevant saved Viber memory (reference only, follow the current request):\n${JSON.stringify(memory)}`
+    : prompt;
 
 export interface AgentProvider {
   readonly name: string;

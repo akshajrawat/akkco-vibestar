@@ -2,6 +2,7 @@ import { capture, checked } from "../runtime/process";
 import {
   object,
   verifyFlags,
+  withMemoryReference,
   type AgentProvider,
   type AgentRunRequest,
   type ProviderDetection,
@@ -82,7 +83,43 @@ export class AntigravityProvider implements AgentProvider {
   };
 
   invocation = (r: AgentRunRequest) => {
-    const message = { event: "user", message: { content: r.prompt } };
+    let threadId = r.conversation?.threadId;
+
+    const acknowledgeInput = (raw: Record<string, unknown>) => {
+      threadId = this.conversationId(raw) ?? threadId;
+      const stepType = object(raw.step_update).step_type;
+      if (
+        threadId &&
+        (raw.event === "user" ||
+          (raw.event === "step_update" && typeof stepType === "string" && stepType !== "finish") ||
+          raw.type === "assistant" ||
+          (raw.event === "result" && object(raw.result).status === "SUCCESS") ||
+          (raw.type === "result" && !raw.is_error))
+      ) {
+        r.viberMemory?.onInputAccepted?.(threadId);
+      }
+    };
+
+    const receiveInputEvent = (line: string) => {
+      let raw: Record<string, unknown>;
+      try {
+        raw = object(JSON.parse(line));
+      } catch {
+        return;
+      }
+
+      acknowledgeInput(raw);
+    };
+
+    const message = () => ({
+      event: "user",
+      message: {
+        content: withMemoryReference({
+          prompt: r.prompt,
+          memory: r.viberMemory?.recall ? r.viberMemory.recall(r.conversation?.threadId) : r.memory,
+        }),
+      },
+    });
 
     const args = [
       "--mode",
@@ -98,9 +135,23 @@ export class AntigravityProvider implements AgentProvider {
       ...(r.conversation ? [] : ["--json-schema", r.schemaPath]),
     ];
 
-    if (!r.conversation?.confirmResume || !r.conversation.threadId) {
+    if (!r.conversation?.threadId && r.viberMemory?.recall) {
+      return {
+        program: "agy",
+        args,
+        inputProtocol: {
+          start: (send, end) => {
+            send(message());
+            end();
+          },
+          receive: receiveInputEvent,
+        } satisfies ProcessInputProtocol,
+      };
+    }
+
+    if (!r.conversation?.threadId || (!r.conversation.confirmResume && !r.viberMemory?.recall)) {
       // One stdin message keeps complete task context out of OS-limited argv.
-      return { program: "agy", args, input: `${JSON.stringify(message)}\n` };
+      return { program: "agy", args, input: `${JSON.stringify(message())}\n` };
     }
 
     const expectedThread = r.conversation.threadId;
@@ -110,7 +161,7 @@ export class AntigravityProvider implements AgentProvider {
       start: (send, end) => {
         dispatch = () => {
           dispatch = undefined;
-          send(message);
+          send(message());
           end();
         };
       },
@@ -134,7 +185,9 @@ export class AntigravityProvider implements AgentProvider {
         }
       },
       receive: (line) => {
-        if (dispatch && object(JSON.parse(line)).event === "init") {
+        if (!dispatch) {
+          receiveInputEvent(line);
+        } else if (object(JSON.parse(line)).event === "init") {
           dispatch();
         }
       },

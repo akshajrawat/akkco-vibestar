@@ -9,6 +9,7 @@ import { Database } from "../storage/database";
 import { RepositoryIndex } from "../workspace/discovery";
 import { GitWorkspace } from "../workspace/git";
 import { createLayout } from "../workspace/paths";
+import { ViberMemory } from "../vibers/memory";
 import { AgentRunner } from "./agents/agent-runner";
 import { RepositoryOperations } from "./engine/repositories";
 import { EngineScheduling } from "./engine/scheduling";
@@ -36,6 +37,8 @@ export class Engine extends EventEmitter {
   readonly viberSessions: ViberSessions;
 
   readonly vibers: ViberStore;
+
+  readonly memory: ViberMemory;
 
   private readonly runner: AgentRunner;
 
@@ -78,6 +81,7 @@ export class Engine extends EventEmitter {
     super();
     this.db = database;
     this.vibers = new ViberStore(database);
+    this.memory = new ViberMemory(database);
     this.git = new GitWorkspace(root, (id) => this.db.repository(id), gitTransport);
 
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>
@@ -157,6 +161,7 @@ export class Engine extends EventEmitter {
       );
 
       engine.db.recover();
+      engine.memory.queueIndex();
       return engine;
     } catch (error) {
       database?.close();
@@ -232,6 +237,7 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.active.values()].map((a) => a.promise));
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
+        await this.memory.close();
         await this.repositoryIndex.close();
       } finally {
         try {

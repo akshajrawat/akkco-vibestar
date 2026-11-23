@@ -33,9 +33,12 @@ export const SettingsNavigation = ({
 
   const visible = groups.map((group) => ({
     ...group,
-    items: group.items.filter((item) =>
-      `${group.label} ${item.name}`.toLowerCase().includes(query.trim().toLowerCase()),
-    ),
+    items: group.items.filter((item) => {
+      const labels = item.name === "General" ? "Enable Memory" : "";
+      return `${group.label} ${item.name} ${labels}`
+        .toLowerCase()
+        .includes(query.trim().toLowerCase());
+    }),
   }));
 
   return (

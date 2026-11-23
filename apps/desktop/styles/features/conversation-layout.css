@@ -117,9 +117,9 @@
   @apply mt-2 bg-transparent cursor-pointer;
 }
 
-.scroll-to-latest {
+button.scroll-to-latest {
   @apply absolute bottom-[calc(var(--composer-height,_140px)_+_12px)];
-  @apply left-[50%] rounded-[999px] w-9 h-9 p-0 border border-border-strong bg-surface-panel;
+  @apply left-[50%] rounded-[999px] w-9 h-9 p-0 bg-surface-selected;
 }
 
 .agent-turn-heading {

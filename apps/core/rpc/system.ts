@@ -88,10 +88,14 @@ export const callSystem = async (
         .filter((r) => !p.session_id || r.viber_session_id === p.session_id);
     }
 
-    case "settings.save":
-      e.db.saveSettings(SettingsSchema.parse(input));
+    case "settings.save": {
+      const before = e.db.displaySettings();
+      const after = SettingsSchema.parse(input);
+      e.db.saveSettings(after);
+      e.memory.reconfigure(before.viber_memory, after.viber_memory);
       e.changed();
-      return e.db.settings();
+      return after;
+    }
 
     case "providers.detect":
       return e.providers();

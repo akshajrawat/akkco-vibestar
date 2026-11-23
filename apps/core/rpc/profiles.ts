@@ -65,6 +65,8 @@ export const callProfiles = async (
             input.profile_id,
           );
 
+          engine.db.run("DELETE FROM viber_memory_facts WHERE profile_id=?", input.profile_id);
+
           engine.db.run(
             "UPDATE viber_sessions SET thread=NULL,threads=NULL WHERE profile_id=?",
             input.profile_id,

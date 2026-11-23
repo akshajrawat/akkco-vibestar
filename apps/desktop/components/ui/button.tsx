@@ -6,20 +6,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
 const variants = cva(
-  "button inline-flex min-h-8 items-center justify-center gap-[7px] whitespace-nowrap border px-3 py-[7px] text-[12px] font-medium [transition:background-color_var(--motion-fast),border-color_var(--motion-fast),color_var(--motion-fast),transform_var(--motion-fast)] [&:active:not(:disabled)]:transform-[translateY(1px)] aria-busy:cursor-progress aria-busy:opacity-80",
+  "button inline-flex min-h-8 items-center justify-center gap-[7px] whitespace-nowrap border-0 px-3 py-[7px] text-[12px] font-medium [transition:background-color_var(--motion-fast),color_var(--motion-fast),transform_var(--motion-fast)] [&:active:not(:disabled)]:transform-[translateY(1px)] aria-busy:cursor-progress aria-busy:opacity-80",
   {
     variants: {
       variant: {
         default:
-          "primary border-button-primary bg-button-primary text-ink-on-accent [&:hover:not(:disabled)]:border-button-primary-hover [&:hover:not(:disabled)]:bg-button-primary-hover [&:active:not(:disabled)]:bg-button-primary-active [&:hover:active:not(:disabled)]:bg-button-primary-active",
-        secondary:
-          "border-border-default bg-surface-elevated [&:hover:not(:disabled)]:border-border-strong [&:hover:not(:disabled)]:bg-surface-hover",
-        ghost:
-          "ghost border-transparent bg-transparent [&:hover]:bg-surface-hover [&:hover:not(:disabled)]:border-border-strong",
-        outline:
-          "outline border-border-strong bg-transparent [&:hover:not(:disabled)]:bg-surface-hover",
+          "primary bg-button-primary text-ink-on-accent [&:hover:not(:disabled)]:bg-button-primary-hover [&:active:not(:disabled)]:bg-button-primary-active [&:hover:active:not(:disabled)]:bg-button-primary-active",
+        secondary: "bg-surface-elevated [&:hover:not(:disabled)]:bg-surface-hover",
+        ghost: "ghost bg-transparent [&:hover]:bg-surface-hover",
         destructive:
-          "destructive border-transparent bg-transparent text-accent-red [&:hover:not(:disabled)]:border-accent-red [&:hover:not(:disabled)]:bg-surface-error",
+          "destructive bg-transparent text-accent-red [&:hover:not(:disabled)]:bg-surface-error",
       },
       size: {
         default: "",
