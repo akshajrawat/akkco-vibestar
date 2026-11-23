@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   AgentProfileSchema,
+  ViberContinuationPrepareSchema,
   ViberSessionCreateSchema,
   ViberSessionScopeSchema,
   ViberSessionSendSchema,
@@ -18,6 +19,7 @@ export const viberSessionMethods = [
   "viber.session.list",
   "viber.session.detail",
   "viber.session.send",
+  "viber.session.prepareContinuation",
   "viber.session.cancel",
   "viber.session.inspect",
 ] as const;
@@ -74,6 +76,9 @@ export const callViberSessions = async (
 
     case "viber.session.send":
       return sessions.send(ViberSessionSendSchema.parse(raw));
+
+    case "viber.session.prepareContinuation":
+      return sessions.prepareContinuation(ViberContinuationPrepareSchema.parse(raw));
 
     case "viber.session.inspect": {
       const input = ViberSessionScopeSchema.extend({ path: z.string().min(1).max(2000).optional() })

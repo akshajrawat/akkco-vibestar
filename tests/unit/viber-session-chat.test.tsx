@@ -377,6 +377,63 @@ it("waits for explicit Continue and recovery confirmation after stopping a file-
   expect(sends()[0][1].request_id).not.toBe(turn.id);
 });
 
+it("prepares a switched thread before allowing Continue to send", async () => {
+  const turn = { id: userId, role: "user", content: "Stopped question", status: "cancelled" };
+  let detail = {
+    ...stored,
+    session: {
+      ...stored.session,
+      selection: { provider: "antigravity", model: "gemini-3.8-flash-high", effort: "high" },
+    },
+    recovery_required: false,
+    messages: [turn],
+  };
+  let completePreparation!: () => void;
+
+  const preparing = new Promise<void>((resolve) => {
+    completePreparation = resolve;
+  });
+
+  rpc.mockImplementation(async (method: string) => {
+    if (method === "viber.session.prepareContinuation") {
+      await preparing;
+      detail = { ...detail, session: stored.session };
+    }
+
+    return detail;
+  });
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
+  await screen.findByText(turn.content);
+  fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
+  fireEvent.click(screen.getByRole("button", { name: "Codex" }));
+  fireEvent.click(screen.getByRole("option", { name: "Persisted Model" }));
+  fireEvent.keyDown(screen.getByRole("combobox", { name: "Search model" }), { key: "Escape" });
+
+  expect(rpc).toHaveBeenCalledWith("viber.session.prepareContinuation", {
+    session_id: sessionId,
+    profile_id: viberProfile.id,
+    continue_message_id: turn.id,
+    selection: stored.session.selection,
+  });
+
+  expect(screen.queryByRole("button", { name: "Continue where you left off." })).toBeNull();
+  expect(rpc.mock.calls.some(([method]) => method === "viber.session.send")).toBe(false);
+
+  completePreparation();
+  fireEvent.click(await screen.findByRole("button", { name: "Continue where you left off." }));
+
+  expect(rpc).toHaveBeenCalledWith("viber.session.send", {
+    session_id: sessionId,
+    profile_id: viberProfile.id,
+    request_id: expect.any(String),
+    content: "Continue where you left off.",
+    history_ids: [],
+    continue_message_id: turn.id,
+  });
+});
+
 it("sends beyond 50 saved messages using native context", async () => {
   const messages = Array.from({ length: 60 }, (_, index) => ({
     id: crypto.randomUUID(),

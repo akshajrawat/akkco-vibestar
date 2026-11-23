@@ -117,7 +117,16 @@ export class AntigravityProvider implements AgentProvider {
       validate: (line) => {
         const raw = object(JSON.parse(line));
         // Print mode can initialize a different conversation when the saved ID is missing.
-        if (dispatch && raw.event === "init" && this.conversationId(raw) !== expectedThread) {
+        if (!dispatch || raw.event !== "init") {
+          return;
+        }
+
+        const id = this.conversationId(raw);
+        if (!id) {
+          throw new AdeError("provider_failed", "Antigravity returned no conversation identity.");
+        }
+
+        if (id !== expectedThread) {
           throw new AdeError(
             "thread_resume_rejected",
             "Antigravity could not confirm the saved thread.",

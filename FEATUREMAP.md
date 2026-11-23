@@ -25,13 +25,30 @@ sequenceDiagram
     User->>Chat: Stop response
     Chat->>Provider: Cancel the active turn
     Chat-->>User: Show Continue where you left off
+    opt User selects another provider for the stopped turn
+        alt Target is Codex
+            Chat->>Codex: Append unseen redacted history to the target thread without a turn
+            Codex-->>Chat: Confirm the prepared thread
+        else Target is Antigravity
+            Chat-->>User: Context-only preload is unavailable. Keep the original provider selected
+        end
+    end
     User->>Chat: Continue where you left off
+    opt Previous turn may have changed files or run commands
+        Chat-->>User: Show activity and request acknowledgment
+        User->>Chat: Acknowledge the possible effects
+    end
     alt Provider confirms the saved thread
-        Chat->>Provider: Continue in the saved thread
+        Chat->>Provider: Send only Continue where you left off to the saved or prepared thread
         Provider-->>Chat: Reply
     else No usable saved thread or explicit rejection before dispatch
-        Chat->>Provider: Start a new thread with Viber instructions, recent chat after /clear, and the original prompt
-        Note over Provider: Inspect workspace files and partial edits before continuing
+        alt Original provider
+            Chat->>Provider: Start a fresh thread with Viber instructions and the exact interrupted request
+            Note over Provider: Inspect workspace files and partial edits before continuing
+        else Prepared Codex thread is missing
+            Chat->>Codex: Start a fresh thread and append redacted reference history
+            Chat->>Codex: Send only Continue where you left off
+        end
         Provider-->>Chat: Reply
     else Resume outcome is uncertain
         Chat-->>User: Show the failure for inspection

@@ -40,7 +40,7 @@ const SessionChat = ({
   const { providers } = useProviders();
   const [data, setData] = useState<SessionDetail>();
   const [error, setError] = useState<{ message: string; requestId?: string }>();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"sending" | "preparing">();
   const [stopping, setStopping] = useState(false);
   const [recovery, setRecovery] = useState<{ content: string; continueMessageId?: string }>();
   const sending = useRef(false);
@@ -89,9 +89,10 @@ const SessionChat = ({
     previousTurn?.status === "cancelled" || previousTurn?.status === "interrupted";
 
   const uncertain =
-    data?.recovery_required ??
-    (data?.session.thread?.status === "uncertain" ||
-      !!(previousTurn && ["failed", "cancelled", "interrupted"].includes(previousTurn.status)));
+    data?.session.threads?.[selection.provider]?.status === "uncertain" ||
+    (data?.recovery_required ??
+      (data?.session.thread?.status === "uncertain" ||
+        !!(previousTurn && ["failed", "cancelled", "interrupted"].includes(previousTurn.status))));
 
   const active = data?.messages.some((message) => message.status === "pending");
   const provider = providers.find((provider) => provider.provider === selection.provider);
@@ -129,7 +130,7 @@ const SessionChat = ({
     }
 
     sending.current = true;
-    setBusy(true);
+    setBusy("sending");
     setError(undefined);
     let requestId: string | undefined;
     try {
@@ -180,7 +181,7 @@ const SessionChat = ({
       setError({ message: errorMessage(reason), requestId });
     } finally {
       sending.current = false;
-      setBusy(false);
+      setBusy(undefined);
     }
   };
 
@@ -199,6 +200,43 @@ const SessionChat = ({
     } finally {
       cancelling.current = false;
       setStopping(false);
+    }
+  };
+
+  const changeModel = async (execution: AgentProfile["execution"]) => {
+    const { provider, model, effort } = execution;
+    if (!canContinue) {
+      updateTaskView(id, {
+        followupProvider: provider,
+        followupModel: model,
+        followupEffort: effort,
+      });
+
+      return;
+    }
+
+    if (sending.current || active) {
+      return;
+    }
+
+    sending.current = true;
+    setBusy("preparing");
+    setError(undefined);
+    try {
+      await rpc("viber.session.prepareContinuation", {
+        session_id: sessionId,
+        profile_id: profile.id,
+        continue_message_id: previousTurn.id,
+        selection: { provider, model, effort },
+      });
+
+      updateTaskView(id, { followupProvider: null, followupModel: null, followupEffort: null });
+      await refresh();
+    } catch (reason) {
+      setError({ message: errorMessage(reason) });
+    } finally {
+      sending.current = false;
+      setBusy(undefined);
     }
   };
 
@@ -244,7 +282,7 @@ const SessionChat = ({
                 className="working-shimmer inline-block text-ink-secondary animate-[working-shine_2s_linear_infinite] [@media(prefers-reduced-motion:reduce)]:animate-[none]"
                 role="status"
               >
-                Working…
+                {busy === "preparing" ? "Preparing conversation…" : "Working…"}
               </p>
             )}
           </>
@@ -282,20 +320,14 @@ const SessionChat = ({
                 load: async (text) => ({ label: "Attached text", text }),
               },
             ]}
-            busy={busy || active || stopping}
+            busy={!!busy || active || stopping}
             disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
             stop={active ? () => void stop() : undefined}
             model={
               <ViberModelPicker
                 execution={{ ...profile.execution, ...selection }}
-                disabled={busy || active}
-                change={(execution) =>
-                  updateTaskView(id, {
-                    followupProvider: execution.provider,
-                    followupModel: execution.model,
-                    followupEffort: execution.effort,
-                  })
-                }
+                disabled={!!busy || active}
+                change={(execution) => void changeModel(execution)}
               />
             }
             hint="Message your Viber."

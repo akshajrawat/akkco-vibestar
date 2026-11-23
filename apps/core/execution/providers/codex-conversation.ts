@@ -2,13 +2,39 @@ import { AdeError } from "../../domain";
 import type { ProcessInputProtocol } from "../runtime/process";
 import { object, type AgentRunRequest } from "./contracts";
 
-/** One authorized turn on the official app-server protocol; EOF ends the owned process. */
+/** Append reference context or dispatch one authorized turn, then close the owned process. */
 export const codexConversation = (request: AgentRunRequest) => {
   const writable = request.access === "workspace-write";
   let send: (message: unknown) => void;
   let end: () => void;
-  let phase: "initialize" | "thread" | "turn" | "finished" = "initialize";
+  let phase: "initialize" | "thread" | "inject" | "turn" | "finished" = "initialize";
   let threadId = request.conversation?.threadId;
+
+  const dispatch = () => {
+    if (request.preload?.only) {
+      phase = "finished";
+      end();
+      return;
+    }
+
+    phase = "turn";
+
+    send({
+      id: 2,
+      method: "turn/start",
+      params: {
+        threadId,
+        cwd: request.cwd,
+        model: request.config.model || null,
+        effort: request.config.effort,
+        approvalPolicy: "never",
+        sandboxPolicy: writable
+          ? { type: "workspaceWrite", writableRoots: [request.cwd], networkAccess: true }
+          : { type: "readOnly" },
+        input: [{ type: "text", text: request.prompt }],
+      },
+    });
+  };
 
   const inputProtocol: ProcessInputProtocol = {
     start: (write, close) => {
@@ -20,6 +46,7 @@ export const codexConversation = (request: AgentRunRequest) => {
         method: "initialize",
         params: {
           clientInfo: { name: "vibestar", title: "Akkco Vibestar", version: "0.1.0" },
+          ...(request.preload?.context ? { capabilities: { experimentalApi: true } } : {}),
         },
       });
     },
@@ -36,14 +63,26 @@ export const codexConversation = (request: AgentRunRequest) => {
             object(response.error).message === `no rollout found for thread id ${threadId}`;
 
           const unusable =
-            typeof thread.id === "string" &&
-            thread.id !== "" &&
-            (thread.id !== threadId || object(thread.status).type === "active");
+            typeof thread.id === "string" && thread.id !== "" && thread.id !== threadId;
 
           if (missing || unusable) {
             throw new AdeError(
               "thread_resume_rejected",
               "Codex could not confirm the saved thread.",
+            );
+          }
+
+          if (object(thread.status).type === "active") {
+            throw new AdeError("provider_failed", "Codex reported the saved thread is active.");
+          }
+        }
+      : undefined,
+    validateExit: request.preload?.only
+      ? () => {
+          if (phase !== "finished") {
+            throw new AdeError(
+              "provider_failed",
+              "Codex exited without confirming context preload.",
             );
           }
         }
@@ -87,6 +126,7 @@ export const codexConversation = (request: AgentRunRequest) => {
             model: request.config.model || null,
             approvalPolicy: "never",
             sandbox: writable ? "workspace-write" : "read-only",
+            developerInstructions: request.preload?.instructions,
             config: { project_doc_max_bytes: 0 },
           },
         });
@@ -105,23 +145,33 @@ export const codexConversation = (request: AgentRunRequest) => {
 
         threadId = returnedId;
 
-        phase = "turn";
+        if (request.preload?.context) {
+          phase = "inject";
 
-        send({
-          id: 2,
-          method: "turn/start",
-          params: {
-            threadId,
-            cwd: request.cwd,
-            model: request.config.model || null,
-            effort: request.config.effort,
-            approvalPolicy: "never",
-            sandboxPolicy: writable
-              ? { type: "workspaceWrite", writableRoots: [request.cwd], networkAccess: true }
-              : { type: "readOnly" },
-            input: [{ type: "text", text: request.prompt }],
-          },
-        });
+          send({
+            id: 3,
+            method: "thread/inject_items",
+            params: {
+              threadId,
+              items: [
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: request.preload.context }],
+                },
+              ],
+            },
+          });
+        } else {
+          dispatch();
+        }
+      } else if (response.id === 3 && phase === "inject") {
+        if (!response.result || typeof response.result !== "object" || !threadId) {
+          throw new AdeError("provider_failed", "Codex did not confirm context preload.");
+        }
+
+        request.preload?.onInjected?.(threadId);
+        dispatch();
       } else if (response.method === "turn/completed" && phase === "turn") {
         const turn = object(object(response.params).turn);
         if (!["completed", "failed", "interrupted"].includes(String(turn.status))) {

@@ -73,6 +73,12 @@ export interface AgentRunRequest {
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
   conversation?: { threadId?: string; confirmResume?: true };
+  preload?: {
+    instructions: string;
+    context?: string;
+    only?: true;
+    onInjected?: (threadId: string) => void;
+  };
 }
 
 export interface AgentProvider {

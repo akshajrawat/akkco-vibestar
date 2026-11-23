@@ -116,12 +116,19 @@ export const ViberSessionSendSchema = ViberSessionScopeSchema.extend({
 
 export const continueLabel = "Continue where you left off.";
 
+export const ViberContinuationPrepareSchema = ViberSessionScopeSchema.extend({
+  continue_message_id: identity,
+  selection: ConversationSelectionSchema,
+}).strict();
+
 export const ViberThreadSchema = z.object({
   thread_id: z.string().min(1).max(500),
   provider: AgentExecutionSchema.shape.provider,
   model: z.string().default(""),
   configuration: z.string(),
   status: z.enum(["ready", "uncertain"]),
+  history_rowid: z.number().int().positive().optional(),
+  prepared_for: identity.optional(),
 });
 
 export const ViberSessionSchema = z.object({
@@ -141,8 +148,16 @@ export const ViberMessageSnapshotSchema = z.object({
   profile: AgentProfileSchema,
   execution: AgentExecutionSchema,
   prompt: z.string(),
-  conversation: z.object({ threadId: z.string().min(1).max(500).optional() }).default({}),
+  conversation: z
+    .object({
+      threadId: z.string().min(1).max(500).optional(),
+      instructions: z.string().optional(),
+      context: z.string().optional(),
+    })
+    .default({}),
   originalPrompt: z.string().optional(),
+  referenceOnly: z.literal(true).optional(),
+  historyRowid: z.number().int().positive().optional(),
 });
 
 export const ViberMessageSchema = z.object({

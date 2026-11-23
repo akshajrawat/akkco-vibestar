@@ -546,7 +546,7 @@ it.each(["cancelled", "interrupted"] as const)(
 
     expect(provider.requests[1]).toMatchObject({
       conversation: { threadId: recovered.session.thread?.thread_id, confirmResume: true },
-      prompt: "Continue where you left off. Check what already changed before editing.",
+      prompt: "Continue where you left off.",
     });
 
     expect(await inspect()).toMatchObject({ text: "Partial edit\n" });

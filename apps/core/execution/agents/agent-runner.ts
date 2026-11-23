@@ -27,7 +27,7 @@ interface AgentRunOptions {
   workspace?: string;
   schema?: z.ZodType;
   contextPaths?: string[];
-  conversation?: { threadId?: string };
+  conversation?: { threadId?: string; instructions?: string; context?: string };
   originalPrompt?: string;
   viberSession?: { sessionId: string; messageId: string };
 }
@@ -76,6 +76,95 @@ export class AgentRunner {
     execution: AgentExecution,
     options: AgentRunOptions,
   ) => this.execute(owner, signal, execution, options);
+
+  preloadViberThread = async (
+    sessionId: string,
+    workspace: string,
+    preparation: NonNullable<ReturnType<ViberSessionStore["continuationPreparation"]>>,
+    signal: AbortSignal,
+  ) => {
+    const { execution, thread, context, instructions } = preparation;
+    const provider = this.providers(0, "codex");
+    const detection = await this.detect(provider, signal);
+    const invalid = configurationError(detection, execution);
+    const model = execution.model || detection.models.find((entry) => entry.isDefault)?.id;
+    if (!detection.connected || !detection.capabilities.includes("native-conversations")) {
+      throw new AdeError(
+        "context",
+        "Connect Codex with native conversation support to preload history.",
+      );
+    }
+
+    if (invalid || !model) {
+      throw new AdeError("model", invalid || "Choose a Codex model before preloading history.");
+    }
+
+    if (thread && !context) {
+      return { threadId: thread.thread_id, model };
+    }
+
+    const store = new ViberSessionStore(this.db);
+    const assignment = store.workspace(sessionId);
+    const cwd = await this.git.assertOwnedTask(assignment);
+    if (cwd !== workspace) {
+      throw new AdeError("isolation", "Viber workspace does not match its saved session.");
+    }
+
+    const direct = provider.invocation({
+      runId: randomUUID(),
+      cwd,
+      stage: 0,
+      access: execution.access,
+      config: { ...execution, model },
+      prompt: "",
+      schema: {},
+      schemaPath: "",
+      workspaceType: "utility",
+      conversation: { threadId: thread?.thread_id, confirmResume: thread ? true : undefined },
+      preload: { instructions, context, only: true },
+    });
+
+    if (direct.program !== "codex" || !direct.inputProtocol) {
+      throw new AdeError("context", "Codex context-only preload is unavailable.");
+    }
+
+    const invocation = await sandboxInvocation(
+      this.root,
+      this.db,
+      assignment,
+      direct,
+      true,
+      undefined,
+      "codex",
+      workspace,
+      [],
+      sessionId,
+    );
+
+    let threadId: string | null = null;
+
+    const output = await execute({
+      ...invocation,
+      cwd,
+      signal,
+      timeoutMs: execution.timeout_secs * 1000,
+      onLine: (stream, line) => {
+        if (stream === "stdout") {
+          const id = provider.conversationId(object(JSON.parse(line)));
+          if (id) {
+            store.assertUnsharedThread(sessionId, execution.provider, id);
+            threadId = id;
+          }
+        }
+      },
+    });
+
+    if (output.code !== 0 || !threadId || (thread && threadId !== thread.thread_id)) {
+      throw new AdeError("context", "Codex did not prepare the requested thread.");
+    }
+
+    return { threadId, model };
+  };
 
   private execute = async (
     t: { id: string },
@@ -327,7 +416,32 @@ export class AgentRunner {
 
       const contextPaths = options.contextPaths?.length ? options.contextPaths : undefined;
 
-      const prepareInvocation = (text: string, thread: AgentRunRequest["conversation"]) => {
+      const recordConversation = (conversationId: string, injectedThrough?: number) => {
+        if (options.viberSession) {
+          new ViberSessionStore(this.db).recordThread(
+            options.viberSession.sessionId,
+            options.viberSession.messageId,
+            conversationId,
+            selectedConfig.model,
+            injectedThrough,
+          );
+        }
+
+        nativeThreadId = conversationId;
+        this.db.run("UPDATE ai_usage SET provider_session_id=? WHERE id=?", conversationId, id);
+        this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
+      };
+
+      let awaitingContext = false;
+
+      const prepareInvocation = (
+        text: string,
+        thread: AgentRunRequest["conversation"],
+        preload?: AgentRunRequest["preload"],
+        historyRowid?: number,
+      ) => {
+        awaitingContext = !!preload?.context;
+
         const directInvocation = provider.invocation({
           runId: id,
           cwd,
@@ -339,6 +453,15 @@ export class AgentRunner {
           schema: outputSchema,
           workspaceType: "utility",
           conversation: thread,
+          preload: preload?.context
+            ? {
+                ...preload,
+                onInjected: (threadId) => {
+                  recordConversation(threadId, historyRowid);
+                  awaitingContext = false;
+                },
+              }
+            : preload,
         });
 
         return sandboxInvocation(
@@ -359,11 +482,21 @@ export class AgentRunner {
       };
 
       const confirmResume = options.originalPrompt !== undefined && resumeThreadId !== null;
+      const deadline = Date.now() + config.timeout_secs * 1000;
 
       const invocation = await prepareInvocation(
         prompt,
         conversation
-          ? { ...options.conversation, ...(confirmResume ? { confirmResume: true } : {}) }
+          ? {
+              ...(resumeThreadId ? { threadId: resumeThreadId } : {}),
+              ...(confirmResume ? { confirmResume: true } : {}),
+            }
+          : undefined,
+        options.conversation?.instructions !== undefined
+          ? {
+              instructions: options.conversation.instructions,
+              context: options.conversation.context,
+            }
           : undefined,
       );
 
@@ -380,12 +513,6 @@ export class AgentRunner {
           : null;
 
       this.emit({ event: "changed", session_id: options.viberSession?.sessionId });
-      signal.throwIfAborted();
-      if (options.viberSession) {
-        new ViberSessionStore(this.db).markInvocation(options.viberSession.messageId);
-      }
-
-      invoked = true;
 
       const processOptions: Omit<ProcessRequest, "program" | "args"> = {
         cwd,
@@ -434,19 +561,8 @@ export class AgentRunner {
             session_id: options.viberSession?.sessionId,
           });
 
-          if (conversationId) {
-            if (options.viberSession) {
-              new ViberSessionStore(this.db).recordThread(
-                options.viberSession.sessionId,
-                options.viberSession.messageId,
-                conversationId,
-                selectedConfig.model,
-              );
-            }
-
-            nativeThreadId = conversationId;
-            this.db.run("UPDATE ai_usage SET provider_session_id=? WHERE id=?", conversationId, id);
-            this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
+          if (conversationId && !awaitingContext) {
+            recordConversation(conversationId);
           }
 
           const result = stream === "stdout" ? provider.result(raw, conversation) : undefined;
@@ -483,10 +599,23 @@ export class AgentRunner {
         },
       };
 
-      const deadline = Date.now() + config.timeout_secs * 1000;
+      const run = (next: typeof invocation) => {
+        runSignal.throwIfAborted();
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) {
+          throw new AdeError(
+            "timeout",
+            "The shared execution deadline expired before provider dispatch.",
+          );
+        }
 
-      const run = (next: typeof invocation) =>
-        execute({ ...processOptions, ...next, timeoutMs: Math.max(1, deadline - Date.now()) });
+        if (options.viberSession) {
+          new ViberSessionStore(this.db).markInvocation(options.viberSession.messageId);
+        }
+
+        invoked = true;
+        return execute({ ...processOptions, ...next, timeoutMs: remaining });
+      };
 
       let output;
       try {
@@ -506,13 +635,18 @@ export class AgentRunner {
           throw error;
         }
 
-        const freshPrompt = new ViberSessionStore(this.db).startFreshContinuation(
+        const fresh = new ViberSessionStore(this.db).startFreshContinuation(
           options.viberSession.sessionId,
           options.viberSession.messageId,
         );
 
-        const freshInvocation = await prepareInvocation(freshPrompt, {});
-        runSignal.throwIfAborted();
+        const freshInvocation = await prepareInvocation(
+          fresh.prompt,
+          {},
+          fresh.preload,
+          fresh.historyRowid,
+        );
+
         failure = undefined;
         final = undefined;
         completedTurn = false;
