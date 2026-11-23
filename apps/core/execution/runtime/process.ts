@@ -9,7 +9,9 @@ import { OutputBudget } from "../output/bounded-output";
 
 export interface ProcessInputProtocol {
   start: (send: (message: unknown) => void, end: () => void) => void;
+  validate?: (line: string) => void;
   receive: (line: string) => void;
+  validateExit?: (output: ProcessOutput) => void;
 }
 
 export interface ProcessRequest {
@@ -21,10 +23,12 @@ export interface ProcessRequest {
   input?: string;
   inputProtocol?: ProcessInputProtocol;
   timeoutMs?: number;
+  deadline?: number;
   progressLines?: boolean;
   wslInterop?: boolean;
   signal?: AbortSignal;
   onLine?: (stream: "stdout" | "stderr", line: string) => void;
+  beforeSpawn?: () => void;
   onSpawn?: (pid: number, identity: string) => void;
 }
 
@@ -105,15 +109,25 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     throw new AdeError("invalid_input", "Invalid executable or argv");
   }
 
-  if (r.signal?.aborted) {
-    throw new AdeError("cancelled", "Run cancelled");
-  }
+  const checkDispatch = (now = Date.now()) => {
+    if (r.signal?.aborted) {
+      throw new AdeError("cancelled", "Run cancelled");
+    }
 
+    if (r.deadline !== undefined && now >= r.deadline) {
+      throw new AdeError(
+        "timeout",
+        "The shared execution deadline expired before provider dispatch.",
+      );
+    }
+  };
+
+  checkDispatch();
   const cwd = await realpath(r.cwd);
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
+  checkDispatch();
 
-    const child = spawn(r.program, r.args, {
+  return new Promise((resolve, reject) => {
+    const options = {
       cwd,
       env: {
         ...cleanEnvironment(),
@@ -133,8 +147,13 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       },
       shell: false,
       detached: process.platform !== "win32",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+      stdio: "pipe",
+    } as const;
+
+    r.beforeSpawn?.();
+    const start = Date.now();
+    checkDispatch(start);
+    const child = spawn(r.program, r.args, options);
 
     let settled = false;
     let aborted: Error | undefined;
@@ -164,6 +183,10 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       try {
         const safe = redact(value);
+        if (stream === "stdout") {
+          r.inputProtocol?.validate?.(safe);
+        }
+
         r.onLine?.(stream, safe);
         if (stream === "stdout") {
           r.inputProtocol?.receive(safe);
@@ -279,13 +302,18 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     const abort = () => interrupt(new AdeError("cancelled", "Run cancelled"));
     r.signal?.addEventListener("abort", abort, { once: true });
 
-    const timer = setTimeout(
-      () =>
-        interrupt(
-          new AdeError("timeout", `Run exceeded ${(r.timeoutMs ?? 120000) / 1000}s timeout`),
+    const timeout = r.deadline === undefined ? (r.timeoutMs ?? 120000) : r.deadline - Date.now();
+
+    const timer = setTimeout(() => {
+      interrupt(
+        new AdeError(
+          "timeout",
+          r.deadline === undefined
+            ? `Run exceeded ${timeout / 1000}s timeout`
+            : "Run exceeded the shared execution deadline.",
         ),
-      r.timeoutMs ?? 120000,
-    );
+      );
+    }, timeout);
 
     timer.unref();
 
@@ -372,15 +400,23 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       if (aborted) {
         reject(aborted);
-      } else {
-        resolve({
-          code: code ?? -1,
-          stdout: r.rawStdoutForIntegrity ? stdout : redact(stdout),
-          stderr: redact(stderr),
-          duration_ms: Date.now() - start,
-          ...(truncated.stdout ? { stdout_truncated: true } : {}),
-          ...(truncated.stderr ? { stderr_truncated: true } : {}),
-        });
+        return;
+      }
+
+      const output = {
+        code: code ?? -1,
+        stdout: r.rawStdoutForIntegrity ? stdout : redact(stdout),
+        stderr: redact(stderr),
+        duration_ms: Date.now() - start,
+        ...(truncated.stdout ? { stdout_truncated: true } : {}),
+        ...(truncated.stderr ? { stderr_truncated: true } : {}),
+      };
+
+      try {
+        r.inputProtocol?.validateExit?.(output);
+        resolve(output);
+      } catch (error) {
+        reject(error);
       }
     });
   });

@@ -125,7 +125,7 @@ it("restores the saved model and retries a send with the picker selection and no
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
   render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
   await screen.findByText("Previous answer");
-  expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 
   const draft = screen.getByRole("textbox", {
     name: `Message ${viberProfile.name}`,
@@ -268,12 +268,14 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
     }),
   );
 
+  const interruptedId = crypto.randomUUID();
+
   rpc.mockImplementation(async () => ({
     ...stored,
     messages: [
       ...stored.messages,
       {
-        id: crypto.randomUUID(),
+        id: interruptedId,
         role: "user",
         content: "Interrupted question",
         status: "interrupted",
@@ -293,18 +295,143 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
   expect(rpc.mock.calls.filter(([method]) => method === "viber.session.send")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("dialog")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue where you left off." }));
   fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
 
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
       "viber.session.send",
       expect.objectContaining({
-        content: "Interrupted question",
+        content: "Continue where you left off.",
+        continue_message_id: interruptedId,
         acknowledge_uncertain: true,
       }),
     ),
   );
+});
+
+it("waits for explicit Continue and recovery confirmation after stopping a file-changing turn", async () => {
+  const turnId: string = crypto.randomUUID();
+
+  const turn = {
+    id: turnId,
+    role: "user",
+    content: "Edit the fixture workspace",
+    status: "pending",
+  };
+
+  const scope = { session_id: sessionId, profile_id: viberProfile.id };
+  let detail = { ...stored, recovery_required: false, messages: [turn] };
+
+  rpc.mockImplementation(async (method: string, input: { request_id: string }) => {
+    if (method === "viber.session.cancel") {
+      detail = {
+        ...detail,
+        recovery_required: true,
+        messages: [{ ...turn, status: "cancelled" }],
+      };
+    }
+
+    if (method === "viber.session.send") {
+      detail = { ...detail, messages: [...detail.messages, { ...turn, id: input.request_id }] };
+    }
+
+    return detail;
+  });
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
+  const resume = await screen.findByRole("button", { name: "Continue where you left off." });
+  expect(rpc).toHaveBeenCalledWith("viber.session.cancel", scope);
+  expect(screen.queryByRole("button", { name: "Stop response" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  const sends = () => rpc.mock.calls.filter(([method]) => method === "viber.session.send");
+  expect(sends()).toHaveLength(0);
+
+  fireEvent.click(resume);
+  await screen.findByRole("dialog", { name: "Review previous work" });
+  expect(sends()).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(sends()).toHaveLength(0);
+
+  fireEvent.click(resume);
+  fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
+  await screen.findByRole("button", { name: "Stop response" });
+
+  expect(sends()).toEqual([
+    [
+      "viber.session.send",
+      expect.objectContaining({
+        ...scope,
+        content: "Continue where you left off.",
+        continue_message_id: turn.id,
+        request_id: expect.any(String),
+        acknowledge_uncertain: true,
+      }),
+    ],
+  ]);
+
+  expect(sends()[0][1].request_id).not.toBe(turn.id);
+});
+
+it("prepares a switched thread before allowing Continue to send", async () => {
+  const turn = { id: userId, role: "user", content: "Stopped question", status: "cancelled" };
+  let detail = {
+    ...stored,
+    session: {
+      ...stored.session,
+      selection: { provider: "antigravity", model: "gemini-3.8-flash-high", effort: "high" },
+    },
+    recovery_required: false,
+    messages: [turn],
+  };
+  let completePreparation!: () => void;
+
+  const preparing = new Promise<void>((resolve) => {
+    completePreparation = resolve;
+  });
+
+  rpc.mockImplementation(async (method: string) => {
+    if (method === "viber.session.prepareContinuation") {
+      await preparing;
+      detail = { ...detail, session: stored.session };
+    }
+
+    return detail;
+  });
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberSessionChat sessionId={sessionId} profile={viberProfile} revision={0} />);
+  await screen.findByText(turn.content);
+  fireEvent.click(screen.getByRole("combobox", { name: "Model" }));
+  fireEvent.click(screen.getByRole("button", { name: "Codex" }));
+  fireEvent.click(screen.getByRole("option", { name: "Persisted Model" }));
+  fireEvent.keyDown(screen.getByRole("combobox", { name: "Search model" }), { key: "Escape" });
+
+  expect(rpc).toHaveBeenCalledWith("viber.session.prepareContinuation", {
+    session_id: sessionId,
+    profile_id: viberProfile.id,
+    continue_message_id: turn.id,
+    selection: stored.session.selection,
+  });
+
+  expect(screen.queryByRole("button", { name: "Continue where you left off." })).toBeNull();
+  expect(rpc.mock.calls.some(([method]) => method === "viber.session.send")).toBe(false);
+
+  completePreparation();
+  fireEvent.click(await screen.findByRole("button", { name: "Continue where you left off." }));
+
+  expect(rpc).toHaveBeenCalledWith("viber.session.send", {
+    session_id: sessionId,
+    profile_id: viberProfile.id,
+    request_id: expect.any(String),
+    content: "Continue where you left off.",
+    history_ids: [],
+    continue_message_id: turn.id,
+  });
 });
 
 it("sends beyond 50 saved messages using native context", async () => {

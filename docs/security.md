@@ -50,7 +50,11 @@ Integrity fingerprints use exact content, modes, index and Git identifiers rathe
 redacted or truncated display output. Oversized integrity evidence fails explicitly.
 Content changes invalidate pending review, discard authority.
 
-SQLite upgrades take a private backup and validate foreign keys transactionally.
+SQLite upgrades normally take a private backup and validate foreign keys transactionally.
+The Viber snapshot upgrade encrypts existing snapshots in place and compacts the
+database to avoid creating a new plaintext backup. Older backups may still contain
+plaintext snapshots. Exact recovery from a database backup requires its matching
+owner-only snapshot key, which database-only backups omit.
 Invalid collection records are isolated with payload-free diagnostics while original
 bytes remain. Exact unsafe reads fail. Display fallbacks cannot authorize execution.
 Root migration preserves staged journals, imported-worktree boundaries and recovery.

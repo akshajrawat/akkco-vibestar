@@ -1,8 +1,22 @@
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 
 import { tmpdir } from "node:os";
 
 import { execute, cleanEnvironment, redact } from "../../apps/core/execution/runtime/process";
+
+const filesystem = vi.hoisted(() => ({ afterRealpath: vi.fn() }));
+
+vi.mock("node:fs/promises", async (original) => {
+  const module = await original<typeof import("node:fs/promises")>();
+  return {
+    ...module,
+    realpath: async (path: string) => {
+      const resolved = await module.realpath(path);
+      filesystem.afterRealpath();
+      return resolved;
+    },
+  };
+});
 
 it("passes shell metacharacters literally through argv", async () => {
   const value = 'a ; $(touch /tmp/vibestar-injection)\n "quoted"';
@@ -74,12 +88,62 @@ it("preserves UTF-8 split across independent stdout/stderr chunks before redacti
 });
 
 it("enforces process timeout", async () => {
+  const validateExit = vi.fn();
+
   await expect(
     execute({
       program: process.execPath,
       args: ["-e", "setInterval(()=>{},1000)"],
       cwd: tmpdir(),
       timeoutMs: 50,
+      inputProtocol: { start: () => {}, receive: () => {}, validateExit },
     }),
   ).rejects.toThrow("timeout");
+
+  expect(validateExit).not.toHaveBeenCalled();
 });
+
+it.each([
+  { deadline: 1000, timeout: undefined },
+  { deadline: 2000, timeout: 1000 },
+  { deadline: undefined, timeout: 1500 },
+])(
+  "charges cwd resolution only against an absolute deadline (%j)",
+  async ({ deadline, timeout }) => {
+    let now = 500;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    const beforeSpawn = vi.fn();
+    filesystem.afterRealpath.mockClear();
+
+    filesystem.afterRealpath.mockImplementation(() => {
+      now = 1000;
+    });
+
+    try {
+      const run = execute({
+        program: process.execPath,
+        args: ["-e", "process.stdout.write('dispatched')"],
+        cwd: tmpdir(),
+        deadline,
+        timeoutMs: 1500,
+        beforeSpawn,
+      });
+
+      if (timeout === undefined) {
+        await expect(run).rejects.toThrow("deadline expired before provider dispatch");
+        expect(beforeSpawn).not.toHaveBeenCalled();
+      } else {
+        await expect(run).resolves.toMatchObject({ stdout: "dispatched" });
+        expect(beforeSpawn).toHaveBeenCalledOnce();
+        expect(timer).toHaveBeenCalledWith(expect.any(Function), timeout);
+      }
+
+      expect(filesystem.afterRealpath).toHaveBeenCalledOnce();
+    } finally {
+      filesystem.afterRealpath.mockReset();
+      timer.mockRestore();
+      clock.mockRestore();
+    }
+  },
+);

@@ -111,6 +111,14 @@ export const ViberSessionSendSchema = ViberSessionScopeSchema.extend({
   selection: ConversationSelectionSchema.optional(),
   new_thread: z.literal(true).optional(),
   acknowledge_uncertain: z.literal(true).optional(),
+  continue_message_id: identity.optional(),
+}).strict();
+
+export const continueLabel = "Continue where you left off.";
+
+export const ViberContinuationPrepareSchema = ViberSessionScopeSchema.extend({
+  continue_message_id: identity,
+  selection: ConversationSelectionSchema,
 }).strict();
 
 export const ViberThreadSchema = z.object({
@@ -119,6 +127,8 @@ export const ViberThreadSchema = z.object({
   model: z.string().default(""),
   configuration: z.string(),
   status: z.enum(["ready", "uncertain"]),
+  history_rowid: z.number().int().positive().optional(),
+  prepared_for: identity.optional(),
 });
 
 export const ViberSessionSchema = z.object({
@@ -138,7 +148,16 @@ export const ViberMessageSnapshotSchema = z.object({
   profile: AgentProfileSchema,
   execution: AgentExecutionSchema,
   prompt: z.string(),
-  conversation: z.object({ threadId: z.string().min(1).max(500).optional() }).default({}),
+  conversation: z
+    .object({
+      threadId: z.string().min(1).max(500).optional(),
+      instructions: z.string().optional(),
+      context: z.string().optional(),
+    })
+    .default({}),
+  originalPrompt: z.string().optional(),
+  referenceOnly: z.literal(true).optional(),
+  historyRowid: z.number().int().positive().optional(),
 });
 
 export const ViberMessageSchema = z.object({
@@ -151,6 +170,7 @@ export const ViberMessageSchema = z.object({
   created_at: z.string(),
   error: z.string().nullable(),
   effects: z.enum(["none", "possible"]).default("possible"),
+  continue_message_id: z.preprocess((value) => value ?? undefined, identity.optional()),
 });
 
 export type ViberSession = z.infer<typeof ViberSessionSchema>;

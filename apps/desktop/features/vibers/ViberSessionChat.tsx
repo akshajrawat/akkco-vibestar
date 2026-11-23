@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { AgentProfile } from "../../../core/vibers/contracts";
-import type { ViberSessionDetail } from "../../../core/vibers/contracts";
+import {
+  continueLabel,
+  type AgentProfile,
+  type ViberSessionDetail,
+} from "../../../core/vibers/contracts";
 import type { AgentEvent, Run } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
@@ -37,9 +40,9 @@ const SessionChat = ({
   const { providers } = useProviders();
   const [data, setData] = useState<SessionDetail>();
   const [error, setError] = useState<{ message: string; requestId?: string }>();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"sending" | "preparing">();
   const [stopping, setStopping] = useState(false);
-  const [recovery, setRecovery] = useState<string>();
+  const [recovery, setRecovery] = useState<{ content: string; continueMessageId?: string }>();
   const sending = useRef(false);
   const cancelling = useRef(false);
   const requested = useRef({ sequence: 0 });
@@ -82,10 +85,14 @@ const SessionChat = ({
 
   const previousTurn = data?.messages.filter((message) => message.role === "user").at(-1);
 
+  const canContinue =
+    previousTurn?.status === "cancelled" || previousTurn?.status === "interrupted";
+
   const uncertain =
-    data?.recovery_required ??
-    (data?.session.thread?.status === "uncertain" ||
-      !!(previousTurn && ["failed", "cancelled", "interrupted"].includes(previousTurn.status)));
+    data?.session.threads?.[selection.provider]?.status === "uncertain" ||
+    (data?.recovery_required ??
+      (data?.session.thread?.status === "uncertain" ||
+        !!(previousTurn && ["failed", "cancelled", "interrupted"].includes(previousTurn.status))));
 
   const active = data?.messages.some((message) => message.status === "pending");
   const provider = providers.find((provider) => provider.provider === selection.provider);
@@ -101,12 +108,16 @@ const SessionChat = ({
       ? error.message
       : "";
 
-  const send = async (content = composerContent(getTaskView(id)), acknowledged = false) => {
+  const send = async (
+    content = composerContent(getTaskView(id)),
+    acknowledged = false,
+    continueMessageId?: string,
+  ) => {
     if (
       sending.current ||
       !data ||
       active ||
-      (invalid && content.trim() !== "/clear") ||
+      (invalid && !continueMessageId && content.trim() !== "/clear") ||
       !content.trim() ||
       content.length > 32000
     ) {
@@ -114,12 +125,12 @@ const SessionChat = ({
     }
 
     if (uncertain && !acknowledged) {
-      setRecovery(content);
+      setRecovery({ content, continueMessageId });
       return;
     }
 
     sending.current = true;
-    setBusy(true);
+    setBusy("sending");
     setError(undefined);
     let requestId: string | undefined;
     try {
@@ -129,7 +140,7 @@ const SessionChat = ({
         content,
         history_ids: [],
         ...(acknowledge ? { acknowledge_uncertain: true } : {}),
-        selection,
+        ...(continueMessageId ? { continue_message_id: continueMessageId } : { selection }),
       });
 
       const previous = getTaskView(id).messageRequest;
@@ -159,7 +170,9 @@ const SessionChat = ({
       await rpc("viber.session.send", { ...input, request_id: request.id });
 
       updateTaskView(id, {
-        ...(composerContent(getTaskView(id)) === content ? { draft: "", draftContext: [] } : {}),
+        ...(!continueMessageId && composerContent(getTaskView(id)) === content
+          ? { draft: "", draftContext: [] }
+          : {}),
         messageRequest: null,
       });
 
@@ -168,7 +181,7 @@ const SessionChat = ({
       setError({ message: errorMessage(reason), requestId });
     } finally {
       sending.current = false;
-      setBusy(false);
+      setBusy(undefined);
     }
   };
 
@@ -187,6 +200,43 @@ const SessionChat = ({
     } finally {
       cancelling.current = false;
       setStopping(false);
+    }
+  };
+
+  const changeModel = async (execution: AgentProfile["execution"]) => {
+    const { provider, model, effort } = execution;
+    if (!canContinue) {
+      updateTaskView(id, {
+        followupProvider: provider,
+        followupModel: model,
+        followupEffort: effort,
+      });
+
+      return;
+    }
+
+    if (sending.current || active) {
+      return;
+    }
+
+    sending.current = true;
+    setBusy("preparing");
+    setError(undefined);
+    try {
+      await rpc("viber.session.prepareContinuation", {
+        session_id: sessionId,
+        profile_id: profile.id,
+        continue_message_id: previousTurn.id,
+        selection: { provider, model, effort },
+      });
+
+      updateTaskView(id, { followupProvider: null, followupModel: null, followupEffort: null });
+      await refresh();
+    } catch (reason) {
+      setError({ message: errorMessage(reason) });
+    } finally {
+      sending.current = false;
+      setBusy(undefined);
     }
   };
 
@@ -232,7 +282,7 @@ const SessionChat = ({
                 className="working-shimmer inline-block text-ink-secondary animate-[working-shine_2s_linear_infinite] [@media(prefers-reduced-motion:reduce)]:animate-[none]"
                 role="status"
               >
-                Working…
+                {busy === "preparing" ? "Preparing conversation…" : "Working…"}
               </p>
             )}
           </>
@@ -240,13 +290,20 @@ const SessionChat = ({
         actions={
           !active &&
           !busy &&
-          !invalid &&
           previousTurn &&
-          ["failed", "cancelled", "interrupted"].includes(previousTurn.status) ? (
+          (canContinue ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void send(continueLabel, false, previousTurn.id)}
+            >
+              {continueLabel}
+            </Button>
+          ) : !invalid && previousTurn.status === "failed" && !previousTurn.continue_message_id ? (
             <Button variant="ghost" size="sm" onClick={() => void send(previousTurn.content)}>
               Retry
             </Button>
-          ) : null
+          ) : null)
         }
         composer={
           <Composer
@@ -263,20 +320,14 @@ const SessionChat = ({
                 load: async (text) => ({ label: "Attached text", text }),
               },
             ]}
-            busy={busy || active || stopping}
+            busy={!!busy || active || stopping}
             disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
             stop={active ? () => void stop() : undefined}
             model={
               <ViberModelPicker
                 execution={{ ...profile.execution, ...selection }}
-                disabled={busy || active}
-                change={(execution) =>
-                  updateTaskView(id, {
-                    followupProvider: execution.provider,
-                    followupModel: execution.model,
-                    followupEffort: execution.effort,
-                  })
-                }
+                disabled={!!busy || active}
+                change={(execution) => void changeModel(execution)}
               />
             }
             hint="Message your Viber."
@@ -291,7 +342,7 @@ const SessionChat = ({
           cancel={() => setRecovery(undefined)}
           confirm={() => {
             setRecovery(undefined);
-            void send(recovery, true);
+            void send(recovery.content, true, recovery.continueMessageId);
           }}
         />
       )}

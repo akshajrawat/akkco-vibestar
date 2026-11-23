@@ -5,10 +5,10 @@ import type { AgentRunner } from "../agents/agent-runner";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 import { ViberSessionStore } from "../../vibers/store";
+import type { ViberContinuationPrepareSchema } from "../../vibers/contracts";
 import { ViberSessionSendSchema } from "../../vibers/contracts";
 import { prepareManagedWorkspace } from "../../workspace/managed";
 import { AdeError } from "../../domain";
-import { redact } from "../runtime/process";
 
 /** Explicit turns use the same foreground admission, cancellation and runner as other executions. */
 export class ViberSessions {
@@ -54,9 +54,64 @@ export class ViberSessions {
     return this.host.git.assertOwnedTask(assignment);
   };
 
+  prepareContinuation = async (input: z.output<typeof ViberContinuationPrepareSchema>) => {
+    const key = `viber:${input.session_id}`;
+
+    await this.operations.withExecutionSlot(
+      key,
+      "Prepare Viber continuation",
+      this.state.repositoryController.signal,
+      async (signal) => {
+        let preparation = this.store.continuationPreparation(input);
+        if (!preparation) {
+          this.store.finishContinuationPreparation(input);
+          return;
+        }
+
+        if (preparation.execution.provider !== "codex") {
+          throw new AdeError(
+            "context",
+            "Antigravity cannot preload conversation history without starting a turn. Continue with the original provider.",
+          );
+        }
+
+        const workspace = await this.prepareWorkspace(input.session_id, input.profile_id, signal);
+
+        const preload = (plan: NonNullable<typeof preparation>) =>
+          this.runner.preloadViberThread(input.session_id, workspace, plan, signal);
+
+        let prepared;
+        try {
+          prepared = await preload(preparation);
+        } catch (error) {
+          if (
+            !preparation.thread ||
+            !(error instanceof AdeError) ||
+            error.kind !== "thread_resume_rejected"
+          ) {
+            throw error;
+          }
+
+          // The selected target is missing. Prepare a replacement without starting a turn.
+          preparation = this.store.continuationPreparation(input, true);
+          if (!preparation) {
+            throw error;
+          }
+
+          prepared = await preload(preparation);
+        }
+
+        signal.throwIfAborted();
+        this.store.finishContinuationPreparation(input, { ...preparation, ...prepared });
+      },
+    );
+
+    this.host.changed();
+    return this.detail(input.session_id, input.profile_id);
+  };
+
   send = (raw: z.input<typeof ViberSessionSendSchema>) => {
-    const parsed = ViberSessionSendSchema.parse(raw);
-    const input = { ...parsed, content: redact(parsed.content) };
+    const input = ViberSessionSendSchema.parse(raw);
     this.host.assertAvailable();
 
     const previous = this.store.previous(input);
@@ -65,7 +120,7 @@ export class ViberSessions {
     }
 
     const key = `viber:${input.session_id}`;
-    if (input.content === "/clear") {
+    if (input.content === "/clear" && !input.continue_message_id) {
       if (this.host.isActive(key)) {
         throw new AdeError(
           "busy",
@@ -101,6 +156,7 @@ export class ViberSessions {
               purpose: `${snapshot.profile.name} session`,
               workspace,
               conversation: snapshot.conversation,
+              originalPrompt: snapshot.originalPrompt,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
             },
           );

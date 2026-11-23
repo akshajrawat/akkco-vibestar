@@ -6,7 +6,8 @@ import {
   type AgentRunRequest,
   type ProviderDetection,
 } from "./contracts";
-import type { NormalizedEvent } from "../../domain";
+import { AdeError, type NormalizedEvent } from "../../domain";
+import type { ProcessInputProtocol } from "../runtime/process";
 
 // The CLI exposes these models with provider-managed reasoning and rejects --effort.
 // Unknown unsuffixed models stay unavailable until their capabilities are known.
@@ -80,9 +81,10 @@ export class AntigravityProvider implements AgentProvider {
     return d;
   };
 
-  invocation = (r: AgentRunRequest) => ({
-    program: "agy",
-    args: [
+  invocation = (r: AgentRunRequest) => {
+    const message = { event: "user", message: { content: r.prompt } };
+
+    const args = [
       "--mode",
       r.access === "workspace-write" ? "accept-edits" : "plan",
       "--sandbox",
@@ -94,10 +96,67 @@ export class AntigravityProvider implements AgentProvider {
       ...(r.config.model ? ["--model", r.config.model] : []),
       ...(r.conversation?.threadId ? ["--conversation", r.conversation.threadId] : []),
       ...(r.conversation ? [] : ["--json-schema", r.schemaPath]),
-    ],
-    // One stdin message keeps complete task context out of OS-limited argv.
-    input: `${JSON.stringify({ event: "user", message: { content: r.prompt } })}\n`,
-  });
+    ];
+
+    if (!r.conversation?.confirmResume || !r.conversation.threadId) {
+      // One stdin message keeps complete task context out of OS-limited argv.
+      return { program: "agy", args, input: `${JSON.stringify(message)}\n` };
+    }
+
+    const expectedThread = r.conversation.threadId;
+    let dispatch: (() => void) | undefined;
+
+    const inputProtocol: ProcessInputProtocol = {
+      start: (send, end) => {
+        dispatch = () => {
+          dispatch = undefined;
+          send(message);
+          end();
+        };
+      },
+      validate: (line) => {
+        const raw = object(JSON.parse(line));
+        // Print mode can initialize a different conversation when the saved ID is missing.
+        if (!dispatch || raw.event !== "init") {
+          return;
+        }
+
+        const id = this.conversationId(raw);
+        if (!id) {
+          throw new AdeError("provider_failed", "Antigravity returned no conversation identity.");
+        }
+
+        if (id !== expectedThread) {
+          throw new AdeError(
+            "thread_resume_rejected",
+            "Antigravity could not confirm the saved thread.",
+          );
+        }
+      },
+      receive: (line) => {
+        if (dispatch && object(JSON.parse(line)).event === "init") {
+          dispatch();
+        }
+      },
+      validateExit: ({ code, stderr }) => {
+        const missing = `conversation ${JSON.stringify(expectedThread)} not found`;
+        if (
+          dispatch &&
+          code > 0 &&
+          stderr
+            .split("\n")
+            .some((line) => line.trim().replace(/^(?:warning|error):\s*/i, "") === missing)
+        ) {
+          throw new AdeError(
+            "thread_resume_rejected",
+            "Antigravity could not find the saved thread.",
+          );
+        }
+      },
+    };
+
+    return { program: "agy", args, inputProtocol };
+  };
 
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {
     if (raw.event === "init") {
