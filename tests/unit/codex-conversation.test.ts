@@ -1,6 +1,9 @@
 import { expect, it } from "vitest";
 
-import { codexConversation } from "../../apps/core/execution/providers/codex-conversation";
+import {
+  codexConversation,
+  codexMemoryEvent,
+} from "../../apps/core/execution/providers/codex-conversation";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import { execute } from "../../apps/core/execution/runtime/process";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
@@ -16,6 +19,94 @@ const request: AgentRunRequest = {
   schema: { type: "object" },
   conversation: {},
 };
+
+it.each([undefined, "saved-thread"])(
+  "keeps save suggestions and recall separate from a Codex reply (%s)",
+  (resume) => {
+    const sent: unknown[] = [];
+    const suggestions: unknown[] = [];
+    const compacted: string[] = [];
+    const id = resume ?? "new-thread";
+    const fact = "Use Java for DSA examples.";
+
+    const invocation = codexConversation({
+      ...request,
+      conversation: { threadId: resume },
+      viberMemory: {
+        recall: (threadId) => (threadId === id ? [fact] : []),
+        suggest: (value) => suggestions.push(value),
+        compact: (threadId) => compacted.push(threadId),
+      },
+    });
+
+    invocation.inputProtocol.start(
+      (message) => sent.push(message),
+      () => {},
+    );
+
+    const receive = (event: unknown) => invocation.inputProtocol.receive(JSON.stringify(event));
+    receive({ id: 0, result: {} });
+    if (resume) {
+      expect(sent[2]).toMatchObject({ method: "thread/resume", params: { threadId: resume } });
+      expect(JSON.stringify(sent[2])).not.toContain("dynamicTools");
+    } else {
+      expect(sent[2]).toMatchObject({
+        method: "thread/start",
+        params: { dynamicTools: [{ type: "function", name: "save_memory" }] },
+      });
+    }
+
+    receive({ id: 1, result: { thread: { id } } });
+
+    expect(sent[3]).toMatchObject({
+      method: "turn/start",
+      params: {
+        threadId: id,
+        input: [{ type: "text", text: expect.stringContaining(JSON.stringify([fact])) }],
+      },
+    });
+
+    receive({ id: 2, result: { turn: { id: "turn" } } });
+
+    const arguments_ = {
+      text: fact,
+      evidence: "For DSA examples, use Java from now on.",
+      topic: "DSA",
+    };
+
+    const tool = {
+      id: 10,
+      method: "item/tool/call",
+      params: {
+        tool: "save_memory",
+        namespace: null,
+        threadId: id,
+        turnId: "turn",
+        arguments: arguments_,
+      },
+    };
+
+    receive({ ...tool, params: { ...tool.params, threadId: "other" } });
+    expect(sent.at(-1)).toMatchObject({ error: { code: -32601 } });
+    expect(suggestions).toEqual([]);
+    expect(codexMemoryEvent(tool)).toBe(true);
+    receive(tool);
+
+    expect(sent.at(-1)).toMatchObject({
+      id: 10,
+      result: { success: true, contentItems: [{ type: "inputText" }] },
+    });
+
+    expect(suggestions).toEqual([{ ...arguments_, action: "save_memory" }]);
+
+    receive({
+      method: "item/completed",
+      params: { threadId: id, item: { type: "contextCompaction" } },
+    });
+
+    expect(compacted).toEqual([id]);
+  },
+);
 
 it.each([undefined, "saved-thread"])(
   "starts or resumes exactly one authorized chat turn (%s)",

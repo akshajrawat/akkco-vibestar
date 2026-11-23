@@ -56,6 +56,10 @@ export class CodexProvider implements AgentProvider {
 
       if (rootHelp.includes("app-server")) {
         d.capabilities.push("native-conversations");
+        const version = d.version.match(/^codex-cli (\d+)\.(\d+)\./);
+        if (version && (Number(version[1]) > 0 || Number(version[2]) >= 171)) {
+          d.capabilities.push("native-memory-suggestions");
+        }
       }
 
       const login = await capture("codex", ["login", "status"], cwd, signal);

@@ -73,6 +73,11 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     Viber["Selected Viber"] --> Memory["Private memory"]
-    Memory --> Facts["Save · Inspect · Correct · Forget"]
-    Facts --> Storage["Local SQLite · Viber profile scope"]
+    Memory --> Facts["Save · Check source and sharing · Correct · Forget"]
+    Settings["General Settings · Viber Memory"] --> Learn["Opt-in automatic saving"]
+    Settings --> Recall["Opt-in recall · Provider permissions"]
+    Learn --> Evidence["Validate user evidence"] --> Facts
+    Facts --> Storage["Local SQLite · Viber and repository/topic scope"]
+    Storage --> Ollama["Local Ollama search"]
+    Recall --> Ollama --> Share["Up to 3 fact texts · Existing provider thread"]
 ```

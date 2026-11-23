@@ -591,6 +591,7 @@ export class ViberSessionStore {
               json_extract(m.configuration,'$.continue_message_id') AS continuation
        FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id
        WHERE m.session_id=? AND m.rowid>? AND m.id<>? AND m.status IN ('completed','cancelled','interrupted')
+         AND (m.role<>'assistant' OR NOT EXISTS (SELECT 1 FROM viber_memory_private_runs p WHERE p.run_id=m.run_id))
          AND (? IS NULL OR r.conversation_id IS NULL OR r.conversation_id<>? OR r.provider<>?)
        ORDER BY m.rowid`,
         sessionId,
@@ -858,7 +859,8 @@ export class ViberSessionStore {
 
         history = input.history_ids.map((id) => {
           const row = this.db.all<HistoryMessage>(
-            "SELECT role,content FROM viber_messages WHERE id=? AND session_id=? AND status='completed'",
+            `SELECT role,content FROM viber_messages m WHERE id=? AND session_id=? AND status='completed'
+             AND (role<>'assistant' OR NOT EXISTS (SELECT 1 FROM viber_memory_private_runs p WHERE p.run_id=m.run_id))`,
             id,
             session.id,
           )[0];

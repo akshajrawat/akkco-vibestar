@@ -4,7 +4,15 @@ import { Button } from "../../components/ui/button";
 import { WorkspaceOverlay } from "../../components/ui/WorkspaceOverlay";
 import { errorMessage, viberMemoryRpc } from "../../lib/api";
 
-export const ViberMemoryControl = ({ profileId, name }: { profileId: string; name: string }) => {
+export const ViberMemoryControl = ({
+  profileId,
+  name,
+  repositoryId,
+}: {
+  profileId: string;
+  name: string;
+  repositoryId?: string | null;
+}) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -12,7 +20,14 @@ export const ViberMemoryControl = ({ profileId, name }: { profileId: string; nam
       <Button size="sm" variant="ghost" aria-haspopup="dialog" onClick={() => setOpen(true)}>
         Private memory
       </Button>
-      {open && <ViberMemory profileId={profileId} name={name} close={() => setOpen(false)} />}
+      {open && (
+        <ViberMemory
+          profileId={profileId}
+          name={name}
+          repositoryId={repositoryId}
+          close={() => setOpen(false)}
+        />
+      )}
     </div>
   );
 };
@@ -20,21 +35,27 @@ export const ViberMemoryControl = ({ profileId, name }: { profileId: string; nam
 const ViberMemory = ({
   profileId,
   name,
+  repositoryId,
   close,
 }: {
   profileId: string;
   name: string;
+  repositoryId?: string | null;
   close: () => void;
 }) => {
   const [facts, setFacts] = useState<ViberMemoryFact[]>();
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [error, setError] = useState("");
   const [text, setText] = useState("");
+  const [topic, setTopic] = useState("");
+  const [repoScope, setRepoScope] = useState<string | null>(repositoryId ?? null);
   const [editing, setEditing] = useState<string>();
   const [forgetting, setForgetting] = useState<string>();
   const [busy, setBusy] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const scope = { profile_id: profileId };
+  const editingFact = facts?.find(({ id }) => id === editing);
+  const availableRepo = editingFact?.repository_id ?? repositoryId;
   const title = `Private memory for ${name}`;
 
   useEffect(() => {
@@ -76,16 +97,19 @@ const ViberMemory = ({
     }
 
     void mutate(async () => {
+      const body = { ...scope, text, topic: topic.trim() || null, repository_id: repoScope };
       if (editing) {
-        const saved = await viberMemoryRpc("viber.memory.update", { ...scope, id: editing, text });
+        const saved = await viberMemoryRpc("viber.memory.update", { ...body, id: editing });
         setFacts(facts.map((fact) => (fact.id === saved.id ? saved : fact)));
       } else {
-        const saved = await viberMemoryRpc("viber.memory.create", { ...scope, text });
+        const saved = await viberMemoryRpc("viber.memory.create", body);
         setFacts([...facts, saved]);
       }
 
       setEditing(undefined);
       setText("");
+      setTopic("");
+      setRepoScope(repositoryId ?? null);
     });
   };
 
@@ -133,6 +157,25 @@ const ViberMemory = ({
               disabled={busy || !!forgetting}
               onChange={(event) => setText(event.target.value)}
             />
+            <label htmlFor="viber-memory-topic">Topic for recall (optional)</label>
+            <input
+              id="viber-memory-topic"
+              value={topic}
+              maxLength={80}
+              disabled={busy || !!forgetting}
+              onChange={(event) => setTopic(event.target.value)}
+            />
+            {availableRepo && (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={repoScope === availableRepo}
+                  disabled={busy || !!forgetting}
+                  onChange={(event) => setRepoScope(event.target.checked ? availableRepo : null)}
+                />
+                Limit recall to {editingFact?.repository_label ?? "this repository"}
+              </label>
+            )}
             <div className="flex gap-2">
               <Button
                 type="submit"
@@ -148,6 +191,8 @@ const ViberMemory = ({
                   onClick={() => {
                     setEditing(undefined);
                     setText("");
+                    setTopic("");
+                    setRepoScope(repositoryId ?? null);
                     setError("");
                   }}
                 >
@@ -161,6 +206,35 @@ const ViberMemory = ({
               {facts.map((fact) => (
                 <li key={fact.id} className="grid gap-2 border-t border-border-default pt-2">
                   <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{fact.text}</p>
+                  <p className="text-sm text-ink-muted">
+                    {fact.needs_review
+                      ? "Possible conflict · excluded from recall"
+                      : [
+                          fact.repository_label ??
+                            (fact.repository_id ? "Saved repository" : undefined),
+                          fact.topic,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Private panel only"}
+                  </p>
+                  {fact.source && (
+                    <details className="text-sm text-ink-muted">
+                      <summary>
+                        Learned from your message on{" "}
+                        {new Date(fact.source.created_at).toLocaleDateString()}
+                      </summary>
+                      <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                        {fact.source.evidence}
+                      </p>
+                    </details>
+                  )}
+                  {fact.shared?.map(({ provider, at, earlier_revision }) => (
+                    <p className="text-sm text-ink-muted" key={`${provider}:${earlier_revision}`}>
+                      {earlier_revision ? "Earlier version shared" : "Shared"} with{" "}
+                      {provider === "codex" ? "Codex" : "Antigravity"} on{" "}
+                      {new Date(at).toLocaleDateString()}
+                    </p>
+                  ))}
                   <div className="flex flex-wrap items-center gap-2">
                     {forgetting === fact.id ? (
                       <>
@@ -191,6 +265,8 @@ const ViberMemory = ({
                           disabled={busy || !!editing || !!forgetting}
                           onClick={() => {
                             setText(fact.text);
+                            setTopic(fact.topic ?? "");
+                            setRepoScope(fact.repository_id ?? null);
                             setEditing(fact.id);
                             setError("");
                             field.current?.focus();

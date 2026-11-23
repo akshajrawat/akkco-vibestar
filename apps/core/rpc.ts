@@ -8,7 +8,6 @@ import { callSystem, systemMethods } from "./rpc/system";
 import { callViberSessions, viberSessionMethods } from "./rpc/viber-sessions";
 import { callProfiles, profileMethods } from "./rpc/profiles";
 import { StorageService } from "./storage/service";
-import { ViberMemory } from "./vibers/memory";
 
 export class Rpc {
   private readonly handlers = new Map<
@@ -52,7 +51,7 @@ export class Rpc {
       }
     }
 
-    const memory = new ViberMemory(engine.db);
+    const { memory } = engine;
     for (const [method, handle] of Object.entries({
       "viber.memory.list": memory.list,
       "viber.memory.create": memory.create,

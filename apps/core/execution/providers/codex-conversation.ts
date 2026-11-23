@@ -1,6 +1,35 @@
 import { AdeError } from "../../domain";
+import { memorySuggestionInstructions } from "../../vibers/memory-local";
 import type { ProcessInputProtocol } from "../runtime/process";
-import { object, type AgentRunRequest } from "./contracts";
+import { object, withMemoryReference, type AgentRunRequest } from "./contracts";
+
+const saveMemoryTool = {
+  type: "function",
+  name: "save_memory",
+  description: memorySuggestionInstructions,
+  inputSchema: {
+    type: "object",
+    properties: {
+      text: { type: "string" },
+      evidence: { type: "string" },
+      topic: { type: ["string", "null"] },
+    },
+    required: ["text", "evidence", "topic"],
+    additionalProperties: false,
+  },
+};
+
+const isSaveMemoryTool = (item: Record<string, unknown>) =>
+  item.tool === saveMemoryTool.name && item.namespace == null;
+
+export const codexMemoryEvent = (raw: Record<string, unknown>) => {
+  const params = object(raw.params);
+  const item = object(params.item);
+  return (
+    (raw.method === "item/tool/call" && isSaveMemoryTool(params)) ||
+    (item.type === "dynamicToolCall" && isSaveMemoryTool(item))
+  );
+};
 
 /** Append reference context or dispatch one authorized turn, then close the owned process. */
 export const codexConversation = (request: AgentRunRequest) => {
@@ -9,6 +38,8 @@ export const codexConversation = (request: AgentRunRequest) => {
   let end: () => void;
   let phase: "initialize" | "thread" | "inject" | "turn" | "finished" = "initialize";
   let threadId = request.conversation?.threadId;
+  let turnId: string | undefined;
+  const registerMemoryTool = !threadId && !!request.viberMemory?.suggest;
 
   const dispatch = () => {
     if (request.preload?.only) {
@@ -31,7 +62,17 @@ export const codexConversation = (request: AgentRunRequest) => {
         sandboxPolicy: writable
           ? { type: "workspaceWrite", writableRoots: [request.cwd], networkAccess: true }
           : { type: "readOnly" },
-        input: [{ type: "text", text: request.prompt }],
+        input: [
+          {
+            type: "text",
+            text: withMemoryReference({
+              prompt: request.prompt,
+              memory: request.viberMemory?.recall
+                ? request.viberMemory.recall(threadId)
+                : request.memory,
+            }),
+          },
+        ],
       },
     });
   };
@@ -46,7 +87,9 @@ export const codexConversation = (request: AgentRunRequest) => {
         method: "initialize",
         params: {
           clientInfo: { name: "vibestar", title: "Akkco Vibestar", version: "0.1.0" },
-          ...(request.preload?.context ? { capabilities: { experimentalApi: true } } : {}),
+          ...(request.preload?.context || registerMemoryTool
+            ? { capabilities: { experimentalApi: true } }
+            : {}),
         },
       });
     },
@@ -100,7 +143,31 @@ export const codexConversation = (request: AgentRunRequest) => {
         );
       }
 
-      // Approval and dynamic-tool requests cannot extend the host-authorized workspace.
+      const params = object(response.params);
+      // This tool can only suggest text for the current turn. It has no workspace permissions.
+      if (
+        response.id != null &&
+        response.method === "item/tool/call" &&
+        isSaveMemoryTool(params) &&
+        phase === "turn" &&
+        params.threadId === threadId &&
+        turnId &&
+        params.turnId === turnId
+      ) {
+        request.viberMemory?.suggest?.({ ...object(params.arguments), action: "save_memory" });
+
+        send({
+          id: response.id,
+          result: {
+            success: true,
+            contentItems: [{ type: "inputText", text: "Continue answering the user normally." }],
+          },
+        });
+
+        return;
+      }
+
+      // Approval and all other tool requests cannot extend the host-authorized workspace.
       if (response.id != null && typeof response.method === "string") {
         send({
           id: response.id,
@@ -127,6 +194,7 @@ export const codexConversation = (request: AgentRunRequest) => {
             approvalPolicy: "never",
             sandbox: writable ? "workspace-write" : "read-only",
             developerInstructions: request.preload?.instructions,
+            ...(registerMemoryTool ? { dynamicTools: [saveMemoryTool] } : {}),
             config: { project_doc_max_bytes: 0 },
           },
         });
@@ -172,6 +240,22 @@ export const codexConversation = (request: AgentRunRequest) => {
 
         request.preload?.onInjected?.(threadId);
         dispatch();
+      } else if (
+        phase === "turn" &&
+        (response.id === 2 || (response.method === "turn/started" && params.threadId === threadId))
+      ) {
+        const id = object(response.id === 2 ? object(response.result).turn : params.turn).id;
+        if (typeof id === "string" && id) {
+          turnId = id;
+        }
+      } else if (
+        phase === "turn" &&
+        response.method === "item/completed" &&
+        params.threadId === threadId &&
+        object(params.item).type === "contextCompaction" &&
+        threadId
+      ) {
+        request.viberMemory?.compact?.(threadId);
       } else if (response.method === "turn/completed" && phase === "turn") {
         const turn = object(object(response.params).turn);
         if (!["completed", "failed", "interrupted"].includes(String(turn.status))) {

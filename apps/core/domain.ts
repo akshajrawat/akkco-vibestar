@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { defaultViberMemorySettings, ViberMemorySettingsSchema } from "./vibers/memory-contracts";
 
 export interface ActivityBlocker {
   id: string;
@@ -58,6 +59,7 @@ export const SettingsSchema = z
     codex_implementation: PipelineStageConfigSchema,
     default_editor: z.enum(["", "code", "cursor", "windsurf", "codium"]).default(""),
     notification_preference: z.enum(["necessary", "all"]).default("necessary"),
+    viber_memory: ViberMemorySettingsSchema.default(defaultViberMemorySettings),
     repository_discovery: z
       .object({
         roots: z.array(z.string().min(1).max(2000)).max(30),
@@ -95,6 +97,7 @@ export const defaultSettings: Settings = {
   concurrency: 2,
   default_editor: "",
   notification_preference: "necessary",
+  viber_memory: defaultViberMemorySettings,
   antigravity: { model: "", effort: "high", timeout_secs: 1800 },
   codex_plan: { model: "", effort: "high", timeout_secs: 1800 },
   codex_implementation: { model: "", effort: "high", timeout_secs: 3600 },

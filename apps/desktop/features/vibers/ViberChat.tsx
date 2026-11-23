@@ -25,7 +25,8 @@ const messageTextColor = (color: string) => {
 };
 
 export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revision: number }) => {
-  const [sessionId, setSessionId] = useState<string>();
+  const [session, setSession] = useState<ViberSession>();
+  const sessionId = session?.id;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const request = useRef({ signature: "", id: "", session: null as ViberSession | null });
@@ -54,7 +55,7 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
     void rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id })
       .then(([session]) => {
         if (active && session) {
-          setSessionId(session.id);
+          setSession(session);
         }
       })
       .catch((reason) => {
@@ -130,7 +131,7 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
         messageRequest: null,
       });
 
-      setSessionId(session.id);
+      setSession(session);
       request.current = { signature: "", id: "", session: null };
     } catch (reason) {
       setError(errorMessage(reason));
@@ -167,7 +168,12 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
         } as CSSProperties
       }
     >
-      <ViberMemoryControl key={profile.id} profileId={profile.id} name={profile.name} />
+      <ViberMemoryControl
+        key={profile.id}
+        profileId={profile.id}
+        name={profile.name}
+        repositoryId={session?.repository_id}
+      />
       {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
       {sessionId ? (
         <ViberSessionChat

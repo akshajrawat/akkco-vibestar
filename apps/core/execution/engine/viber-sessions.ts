@@ -17,7 +17,7 @@ export class ViberSessions {
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive"
+      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -145,6 +145,27 @@ export class ViberSessions {
         try {
           const workspace = await this.prepareWorkspace(input.session_id, input.profile_id, signal);
 
+          const memory = this.host.memory;
+
+          const scope = {
+            profileId: input.profile_id,
+            sessionId: input.session_id,
+            messageId: input.request_id,
+            repositoryId: this.store.session(input.session_id, input.profile_id).repository_id,
+            provider: snapshot.execution.provider,
+          };
+
+          const userMessage =
+            !input.continue_message_id && !/^\s*\/[\w-]+(?:\s|$)/.test(input.content);
+
+          const suggestionSignal = userMessage ? memory.suggestionSignal(input.content) : undefined;
+
+          const recall = userMessage
+            ? await memory.prepareRecall(scope, input.content, signal)
+            : undefined;
+
+          const suggestions: unknown[] = [];
+
           signal.throwIfAborted();
 
           const output = await this.runner.runConfigured(
@@ -158,10 +179,25 @@ export class ViberSessions {
               conversation: snapshot.conversation,
               originalPrompt: snapshot.originalPrompt,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
+              memory: {
+                service: memory,
+                scope,
+                recall,
+                suggest: suggestionSignal
+                  ? (value) => {
+                      if (!suggestionSignal.aborted && suggestions.length < 3) {
+                        suggestions.push(value);
+                      }
+                    }
+                  : undefined,
+              },
             },
           );
 
           this.store.finish(input.request_id, "completed", output);
+          if (suggestionSignal) {
+            memory.learn(scope, input.content, suggestions, suggestionSignal);
+          }
         } catch (error) {
           this.store.finish(
             input.request_id,

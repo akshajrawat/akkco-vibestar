@@ -13,6 +13,9 @@ import { BoundedWriter } from "../output/bounded-output";
 import { AgentExecutionSchema, type AgentExecution } from "../contracts";
 import { executionSchema } from "./execution-output";
 import { ViberSessionStore } from "../../vibers/store";
+import type { ViberMemory } from "../../vibers/memory";
+import type { MemoryMatch, MemoryTurnScope } from "../../vibers/memory-index";
+import { codexMemoryEvent } from "../providers/codex-conversation";
 import {
   object,
   type AgentProvider,
@@ -30,6 +33,12 @@ interface AgentRunOptions {
   conversation?: { threadId?: string; instructions?: string; context?: string };
   originalPrompt?: string;
   viberSession?: { sessionId: string; messageId: string };
+  memory?: {
+    service: ViberMemory;
+    scope: MemoryTurnScope;
+    recall?: (threadId?: string) => MemoryMatch[];
+    suggest?: (value: unknown) => void;
+  };
 }
 
 export class AgentRunner {
@@ -330,8 +339,25 @@ export class AgentRunner {
     let officialCodex = false;
     let completedTurn = false;
     let nativeThreadId: string | null = null;
+    let privateContext = false;
+    let unsavedShares: MemoryMatch[] = [];
+    const memory = options.memory;
+
+    const markPrivate = () => {
+      memory?.service.markPrivateRun(id);
+      privateContext = true;
+    };
+
     const schemaPath = join(this.root, "artifacts", `${id}-schema.json`);
     try {
+      if (
+        memory &&
+        resumeThreadId &&
+        memory.service.wasPrivateThread(memory.scope, resumeThreadId)
+      ) {
+        markPrivate();
+      }
+
       cwd = viberWorkspace ? await this.git.assertOwnedTask(viberWorkspace) : options!.workspace!;
 
       const detection = await this.detect(provider, signal);
@@ -430,6 +456,10 @@ export class AgentRunner {
         nativeThreadId = conversationId;
         this.db.run("UPDATE ai_usage SET provider_session_id=? WHERE id=?", conversationId, id);
         this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
+        if (memory && unsavedShares.length) {
+          memory.service.recordShares(memory.scope, conversationId, unsavedShares);
+          unsavedShares = [];
+        }
       };
 
       let awaitingContext = false;
@@ -453,6 +483,38 @@ export class AgentRunner {
           schema: outputSchema,
           workspaceType: "utility",
           conversation: thread,
+          viberMemory:
+            memory && ["codex", "antigravity"].includes(detection.provider)
+              ? {
+                  recall: memory.recall
+                    ? (threadId) => {
+                        if (runSignal.aborted) {
+                          return [];
+                        }
+
+                        try {
+                          const facts = memory.recall?.(threadId) ?? [];
+                          if (facts.length) {
+                            markPrivate();
+                            if (threadId) {
+                              memory.service.recordShares(memory.scope, threadId, facts);
+                            } else {
+                              unsavedShares = facts;
+                            }
+                          }
+
+                          return facts.map(({ text }) => text);
+                        } catch {
+                          return [];
+                        }
+                      }
+                    : undefined,
+                  suggest: detection.capabilities.includes("native-memory-suggestions")
+                    ? memory.suggest
+                    : undefined,
+                  compact: (threadId) => memory.service.compact(memory.scope, threadId),
+                }
+              : undefined,
           preload: preload?.context
             ? {
                 ...preload,
@@ -529,15 +591,21 @@ export class AgentRunner {
           this.db.run(`UPDATE ${table} SET pid=?,process_identity=? WHERE id=?`, pid, identity, id);
         },
         onLine: (stream, line) => {
-          writes.write(`${line}\n`, (value) =>
-            (stream === "stdout" ? stdout : stderr)!.write(value),
-          );
-
           let raw: Record<string, unknown>;
           try {
             raw = object(JSON.parse(line));
           } catch {
             raw = { unparsed: line };
+          }
+
+          if (officialCodex && codexMemoryEvent(raw)) {
+            return;
+          }
+
+          if (!privateContext) {
+            writes.write(`${line}\n`, (value) =>
+              (stream === "stdout" ? stdout : stderr)!.write(value),
+            );
           }
 
           const conversationId = stream === "stdout" ? provider.conversationId(raw) : null;
@@ -602,7 +670,11 @@ export class AgentRunner {
               completedTurn = true;
             }
 
-            utilityEvent(event, line, stream);
+            if (!privateContext) {
+              utilityEvent(event, line, stream);
+            } else if (event.kind === "run.started" || event.kind === "run.completed") {
+              utilityEvent({ kind: event.kind, data: null }, "", stream);
+            }
           }
         },
       };
@@ -655,7 +727,9 @@ export class AgentRunner {
       if (code !== 0 || failure) {
         throw new AdeError(
           "provider_failed",
-          `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
+          privateContext
+            ? `${provider.name} failed to complete this turn (exit ${code}).`
+            : `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
           { provider: provider.name, stage: 0, code },
         );
       }
@@ -706,7 +780,7 @@ export class AgentRunner {
         `UPDATE ${table} SET status='completed',ended_at=?,exit_code=?,output=? WHERE id=?`,
         now(),
         code,
-        JSON.stringify(result),
+        privateContext ? null : JSON.stringify(result),
         id,
       );
 
@@ -715,12 +789,18 @@ export class AgentRunner {
     } catch (error) {
       this.detections.delete(provider.name);
 
+      const e = privateContext
+        ? new AdeError(
+            error instanceof AdeError ? error.kind : "provider_failed",
+            signal.aborted ? "Run cancelled" : "The provider did not complete the Viber turn.",
+          )
+        : outputFailure || error;
+
       utilityEvent({
         kind: signal.aborted ? "run.cancelled" : "run.failed",
-        data: { message: redact(String(error)) },
+        data: { message: redact(String(e)) },
       });
 
-      const e = outputFailure || error;
       const status = signal.aborted ? "cancelled" : "failed";
       usage.finish(id, started, status, redact(e instanceof Error ? e.message : String(e)));
 
@@ -729,7 +809,7 @@ export class AgentRunner {
         status,
         now(),
         code,
-        final === undefined ? null : JSON.stringify(final),
+        privateContext || final === undefined ? null : JSON.stringify(final),
         redact(String(e)),
         id,
       );

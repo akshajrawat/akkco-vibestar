@@ -113,6 +113,48 @@ it("saves setting changes automatically across categories", async () => {
   expect(screen.queryByText("Local repository discovery")).toBeNull();
 });
 
+it("keeps Viber memory saving, recall and provider sharing independently opt-in", async () => {
+  open();
+  const automatic = screen.getByRole<HTMLInputElement>("checkbox", { name: "Automatic saving" });
+  const recall = screen.getByRole<HTMLInputElement>("checkbox", { name: "Recall" });
+
+  const codex = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: "Share recalled facts with Codex",
+  });
+
+  const antigravity = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: "Share recalled facts with Antigravity",
+  });
+
+  expect([automatic, recall, codex, antigravity].map(({ checked }) => checked)).toEqual([
+    false,
+    false,
+    false,
+    false,
+  ]);
+
+  await act(async () => fireEvent.click(automatic));
+  await act(async () => fireEvent.click(codex));
+
+  expect([automatic, recall, codex, antigravity].map(({ checked }) => checked)).toEqual([
+    true,
+    false,
+    true,
+    false,
+  ]);
+
+  expect(rpc).toHaveBeenLastCalledWith(
+    "settings.save",
+    expect.objectContaining({
+      viber_memory: expect.objectContaining({
+        automatic_saving: true,
+        recall: false,
+        share_with: { codex: true, antigravity: false },
+      }),
+    }),
+  );
+});
+
 it("tracks desktop changes automatically and displays error if core save fails", async () => {
   open();
   fireEvent.click(screen.getByRole("button", { name: "Execution" }));
