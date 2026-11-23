@@ -190,7 +190,10 @@ it("uses one Memory switch and keeps each provider's sharing permission separate
 });
 
 it("tracks desktop changes automatically and displays error if core save fails", async () => {
-  open();
+  await act(async () => {
+    open();
+  });
+
   fireEvent.click(screen.getByRole("button", { name: "Execution" }));
   const path = await screen.findByPlaceholderText("Default: ~/.akkco-vibestar");
   fireEvent.change(path, { target: { value: "/new/data" } });

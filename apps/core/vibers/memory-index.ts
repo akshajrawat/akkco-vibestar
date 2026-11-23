@@ -1,7 +1,7 @@
 import type { Settings } from "../domain";
 import type { Database } from "../storage/database";
 import { memoryTextKey } from "./memory-evidence";
-import type { localMemoryModels } from "./memory-local";
+import { EmbeddingInputRejected, type localMemoryModels } from "./memory-local";
 
 export interface MemoryTurnScope {
   profileId: string;
@@ -70,7 +70,7 @@ export class ViberMemoryIndex {
     private readonly models: Models,
   ) {}
 
-  rebuild = async (signal: AbortSignal) => {
+  rebuild = async (signal: AbortSignal, pass: { skipped: Set<string>; progress: boolean }) => {
     const { recall, embedding_model: model } = this.settings();
     if (!recall || !model) {
       return;
@@ -92,28 +92,51 @@ export class ViberMemoryIndex {
     );
 
     for (const { profile_id, id, text, revision, topic } of rows) {
+      if (signal.aborted) {
+        return;
+      }
+
+      const key = JSON.stringify([model, digest, profile_id, id, revision]);
+      if (pass.skipped.has(key)) {
+        continue;
+      }
+
       const timeout = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
 
-      const [vector, topicVector] = await this.models.embed(
-        model,
-        [text, ...(topic ? [topicDescription(topic)] : [])].map((value) =>
-          embeddingInput(model, value),
-        ),
-        timeout,
-      );
+      let vectors: number[][];
+      try {
+        vectors = await this.models.embed(
+          model,
+          [text, ...(topic ? [topicDescription(topic)] : [])].map((value) =>
+            embeddingInput(model, value),
+          ),
+          timeout,
+        );
+      } catch (error) {
+        if (timeout.aborted || !(error instanceof EmbeddingInputRejected)) {
+          throw error;
+        }
 
+        pass.skipped.add(key);
+        pass.progress = true;
+        continue;
+      }
+
+      const [vector, topicVector] = vectors;
       const normalized = normalize(vector);
       const normalizedTopic = topicVector ? normalize(topicVector) : null;
       const current = this.settings();
-      if (signal.aborted || !current.recall || current.embedding_model !== model) {
+      if (timeout.aborted || !current.recall || current.embedding_model !== model) {
         return;
       }
 
       if (!normalized || (topic && normalizedTopic?.length !== normalized.length)) {
+        pass.skipped.add(key);
+        pass.progress = true;
         continue;
       }
 
-      if ((await this.models.identify(model, timeout)) !== digest || signal.aborted) {
+      if ((await this.models.identify(model, timeout)) !== digest || timeout.aborted) {
         return;
       }
 
@@ -129,6 +152,8 @@ export class ViberMemoryIndex {
         id,
         revision,
       );
+
+      pass.progress = true;
     }
   };
 
@@ -164,7 +189,12 @@ export class ViberMemoryIndex {
 
     const [query] = await this.models.embed(model, [embeddingInput(model, prompt, true)], signal);
     const vector = normalize(query);
-    if (!vector || signal.aborted) {
+    if (
+      !vector ||
+      signal.aborted ||
+      (await this.models.identify(model, signal)) !== digest ||
+      signal.aborted
+    ) {
       return null;
     }
 

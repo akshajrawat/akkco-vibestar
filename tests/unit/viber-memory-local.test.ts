@@ -2,15 +2,17 @@ import { EventEmitter } from "node:events";
 import { request } from "node:http";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { localMemoryModels } from "../../apps/core/vibers/memory-local";
+import { EmbeddingInputRejected, localMemoryModels } from "../../apps/core/vibers/memory-local";
 
 vi.mock("node:http", () => ({ request: vi.fn() }));
 
 const responses = new Map<string, unknown>();
+const statuses = new Map<string, number>();
 const received = new Map<string, unknown>();
 
 beforeEach(() => {
   responses.clear();
+  statuses.clear();
   received.clear();
   vi.mocked(request).mockReset();
 
@@ -26,7 +28,7 @@ beforeEach(() => {
         received.set(path, body === undefined ? undefined : JSON.parse(body));
 
         const response = Object.assign(new EventEmitter(), {
-          statusCode: responses.has(path) ? 200 : 302,
+          statusCode: statuses.get(path) ?? (responses.has(path) ? 200 : 302),
           destroy: () => {},
           setEncoding: () => {},
         });
@@ -41,6 +43,27 @@ beforeEach(() => {
 
     return req as ReturnType<typeof request>;
   });
+});
+
+it("classifies model context rejection separately from service and request errors", async () => {
+  statuses.set("/api/embed", 400);
+  responses.set("/api/embed", { error: "the input length exceeds the context length" });
+
+  await expect(localMemoryModels.embed("fixture", ["Long fact"], signal())).rejects.toBeInstanceOf(
+    EmbeddingInputRejected,
+  );
+
+  responses.set("/api/embed", { error: "invalid options" });
+
+  await expect(localMemoryModels.embed("fixture", ["Valid fact"], signal())).rejects.toThrow(
+    "unavailable",
+  );
+
+  statuses.set("/api/embed", 503);
+
+  await expect(localMemoryModels.embed("fixture", ["Valid fact"], signal())).rejects.toThrow(
+    "unavailable",
+  );
 });
 
 const signal = () => new AbortController().signal;

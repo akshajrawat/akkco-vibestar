@@ -8,39 +8,109 @@ import {
 
 const buttonClass = /^\.(?:[\w-]+-)?button\b(?!-)/;
 
+const splitSelector = (selector, delimiter) => {
+  const parts = [];
+  let start = 0;
+  let depth = 0;
+  let quote = "";
+  for (let i = 0; i < selector.length; i++) {
+    const char = selector[i];
+    if (char === "\\") {
+      i++;
+    } else if (quote) {
+      if (char === quote) {
+        quote = "";
+      }
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === "[" || char === "(") {
+      depth++;
+    } else if (char === "]" || char === ")") {
+      depth--;
+    } else if (depth === 0 && delimiter.test(char)) {
+      parts.push(selector.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+
+  return [...parts, selector.slice(start).trim()].filter(Boolean);
+};
+
+const lastCompound = (selector) => splitSelector(selector, /[\s>+~]/).at(-1) ?? "";
+
 const buttonSelector = {
   test(selector) {
-    return selector
-      .replace(/\[role\s*=\s*["']?(?:button|switch)["']?\s*\]/g, ".button")
-      .replace(/\[[^\]]*\]|\([^()]*\)/g, "")
-      .split(",")
-      .some((item) => {
-        const element = item
-          .trim()
-          .split(/[\s>+~]+/)
-          .at(-1);
+    return splitSelector(selector, /,/).some((item) => {
+      const element = lastCompound(item)
+        .replace(/\[role\s*=\s*["']?(?:button|switch)["']?\s*\]/g, ".button")
+        .replace(/\[[^\]]*\]|\((?:[^()]|\([^()]*\))*\)/g, "");
 
-        return (
-          /^button\b(?!-)/.test(element) ||
-          element.split(/(?=\.)/).some((part) => buttonClass.test(part))
-        );
-      });
+      return (
+        /^button\b(?!-)/.test(element) ||
+        element.split(/(?=\.)/).some((part) => buttonClass.test(part))
+      );
+    });
   },
 };
 
+const targetsOtherElement = (variant) => {
+  if (variant === "*" || variant === "**") {
+    return true;
+  }
+
+  if (!variant.startsWith("[") || variant.startsWith("[@")) {
+    return false;
+  }
+
+  const selectors = splitSelector(
+    variant.slice(1, -1).replace(/\\_|_/g, (char) => (char === "_" ? " " : char)),
+    /,/,
+  );
+
+  return (
+    selectors.length > 0 &&
+    selectors.every(
+      (selector) =>
+        /^[>+~]/.test(selector) ||
+        (selector.startsWith("&") && !lastCompound(selector).startsWith("&")),
+    )
+  );
+};
+
 const isBorder = (token) => {
-  const base = splitVariants(token).at(-1).replace(/^!|!$/g, "");
-  return /^\[?border(?:$|[-:])/.test(base) && hasBorderUtility(base);
+  const parts = splitVariants(token);
+  const base = parts.pop().replace(/^!|!$/g, "");
+  return (
+    /^\[?border(?:$|[-:])/.test(base) && hasBorderUtility(base) && !parts.some(targetsOtherElement)
+  );
 };
 
 const visibleBorder = (name, value) => /^border\b/i.test(name) && showsBorder(name, value);
 
-const variantTokens = (node) =>
-  node?.type === "ObjectExpression"
-    ? node.properties.flatMap((property) => variantTokens(property.value))
-    : node?.type === "ArrayExpression"
-      ? node.elements.flatMap(variantTokens)
-      : extractTokens(node);
+const properties = (node) => (node?.type === "ObjectExpression" ? node.properties : []);
+const propertyName = (property) => property.key?.name ?? property.key?.value;
+
+const variantTokens = (config) =>
+  properties(config).flatMap((property) => {
+    if (propertyName(property) === "variants") {
+      return properties(property.value).flatMap((variant) =>
+        properties(variant.value).flatMap((choice) => extractTokens(choice.value)),
+      );
+    }
+
+    if (
+      propertyName(property) === "compoundVariants" &&
+      property.value.type === "ArrayExpression"
+    ) {
+      return property.value.elements.flatMap((compound) =>
+        properties(compound)
+          .filter((field) => ["class", "className"].includes(propertyName(field)))
+          .flatMap((field) => extractTokens(field.value)),
+      );
+    }
+
+    return [];
+  });
 
 export const noButtonBorder = {
   meta: {
@@ -59,7 +129,8 @@ export const noButtonBorder = {
             declaration: visibleBorder,
             messageId,
             inheritsTarget: (selector) =>
-              /^\s*@/.test(selector) || /^\s*&[^\s>+~]*\s*$/.test(selector),
+              /^\s*@/.test(selector) ||
+              splitSelector(selector, /,/).some((item) => lastCompound(item).startsWith("&")),
           });
         },
       };

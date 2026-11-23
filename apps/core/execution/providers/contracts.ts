@@ -76,6 +76,7 @@ export interface AgentRunRequest {
   conversation?: { threadId?: string; confirmResume?: true };
   viberMemory?: {
     recall?: (threadId?: string) => string[];
+    onInputAccepted?: (threadId: string) => void;
     suggest?: (value: unknown) => void;
     compact?: (threadId: string) => void;
   };

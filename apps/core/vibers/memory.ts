@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { now, type Settings } from "../domain";
 import type { Database } from "../storage/database";
 import {
@@ -12,6 +13,7 @@ import {
   canExtractMemory,
   memoryTextKey,
   memoryValue,
+  storedMemorySubject,
   validateMemorySuggestion,
 } from "./memory-evidence";
 
@@ -19,6 +21,8 @@ interface FactRow extends MemoryMatch {
   topic: string | null;
   subject: string | null;
   needs_review: number;
+  source_at: string | null;
+  source_order: number | null;
 }
 
 type SettingsValue = Settings["viber_memory"];
@@ -83,11 +87,33 @@ export class ViberMemory {
 
     this.track(
       Promise.resolve().then(async () => {
+        let skipped = new Set<string>();
+        let retryDelay = 1000;
         try {
           while (this.indexPending && !this.closed) {
             this.indexPending = false;
-            const signal = AbortSignal.any([this.config.signal, AbortSignal.timeout(120_000)]);
-            await this.index.rebuild(signal).catch(() => {});
+            const config = this.config.signal;
+            const budget = AbortSignal.timeout(120_000);
+            const pass = { skipped, progress: false };
+            await this.index.rebuild(AbortSignal.any([config, budget]), pass).catch(() => {});
+
+            if (config.aborted || !budget.aborted) {
+              skipped = new Set();
+              retryDelay = 1000;
+              continue;
+            }
+
+            this.indexPending = true;
+            if (pass.progress) {
+              retryDelay = 1000;
+            } else {
+              await delay(retryDelay, undefined, { signal: config, ref: false }).catch(() => {});
+              retryDelay = Math.min(retryDelay * 2, 30_000);
+              if (config.aborted) {
+                skipped = new Set();
+                retryDelay = 1000;
+              }
+            }
           }
         } finally {
           this.indexing = false;
@@ -240,8 +266,8 @@ export class ViberMemory {
         }
 
         const saved = this.db.transaction(() => {
-          const source = this.db.all<{ created_at: string }>(
-            `SELECT m.created_at FROM viber_messages m JOIN viber_sessions s ON s.id=m.session_id
+          const source = this.db.all<{ created_at: string; submission_order: number }>(
+            `SELECT m.created_at,m.rowid AS submission_order FROM viber_messages m JOIN viber_sessions s ON s.id=m.session_id
            WHERE m.id=? AND m.session_id=? AND s.profile_id=? AND s.repository_id IS ? AND m.content=?
              AND m.role='user' AND m.status='completed' AND s.profile_id NOT IN (SELECT profile_id FROM retired_viber_profiles)`,
             scope.messageId,
@@ -259,7 +285,7 @@ export class ViberMemory {
           for (const raw of suggestions.slice(0, 3)) {
             const suggestion = validateMemorySuggestion(message, raw);
             if (suggestion) {
-              added = this.saveSuggestion(scope, source.created_at, suggestion) || added;
+              added = this.saveSuggestion(scope, source, suggestion) || added;
             }
           }
 
@@ -285,15 +311,16 @@ export class ViberMemory {
 
   private saveSuggestion = (
     scope: MemoryTurnScope,
-    timestamp: string,
+    source: { created_at: string; submission_order: number },
     suggestion: NonNullable<ReturnType<typeof validateMemorySuggestion>>,
   ) => {
     const topic = suggestion.topic && memoryTextKey(suggestion.topic);
 
     const current = this.db
       .all<FactRow>(
-        `SELECT f.id,f.text,d.topic,d.revision,d.subject,d.needs_review
+        `SELECT f.id,f.text,d.topic,d.revision,d.subject,d.needs_review,d.source_at,m.rowid AS source_order
          FROM viber_memory_facts f JOIN viber_memory_details d ON d.profile_id=f.profile_id AND d.fact_id=f.id
+         LEFT JOIN viber_messages m ON m.id=d.source_message_id
          WHERE f.profile_id=? AND d.repository_id IS ? ORDER BY f.rowid`,
         scope.profileId,
         scope.repositoryId,
@@ -301,14 +328,36 @@ export class ViberMemory {
       .filter((row) => (row.topic && memoryTextKey(row.topic)) === topic);
 
     const related = suggestion.subject
-      ? current.filter((row) => row.subject === suggestion.subject)
+      ? current.filter((row) => storedMemorySubject(row.subject, row.topic) === suggestion.subject)
       : [];
 
     const duplicate =
       current.find((row) => memoryTextKey(row.text) === memoryTextKey(suggestion.text)) ??
-      related.find((row) => memoryValue(row.text) === suggestion.value);
+      (suggestion.subject ? related : current).find(
+        (row) => memoryValue(row.text) === suggestion.value,
+      );
+
+    const newer = (row: FactRow) =>
+      row.source_order === null
+        ? row.source_at !== null && row.source_at > source.created_at
+        : row.source_order > source.submission_order;
+
+    if ((duplicate && newer(duplicate)) || related.some(newer)) {
+      return false;
+    }
 
     if (duplicate && (!suggestion.correction || !duplicate.needs_review)) {
+      this.db.run(
+        `UPDATE viber_memory_details SET source_message_id=?,source_session_id=?,source_at=?,evidence=?
+         WHERE profile_id=? AND fact_id=?`,
+        scope.messageId,
+        scope.sessionId,
+        source.created_at,
+        suggestion.evidence,
+        scope.profileId,
+        duplicate.id,
+      );
+
       return false;
     }
 
@@ -368,7 +417,7 @@ export class ViberMemory {
       (replacement?.revision ?? 0) + 1,
       scope.messageId,
       scope.sessionId,
-      timestamp,
+      source.created_at,
       suggestion.evidence,
       suggestion.subject,
       Number(review),

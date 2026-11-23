@@ -246,6 +246,10 @@ export const codexConversation = (request: AgentRunRequest) => {
       ) {
         const id = object(response.id === 2 ? object(response.result).turn : params.turn).id;
         if (typeof id === "string" && id) {
+          if (!turnId && threadId) {
+            request.viberMemory?.onInputAccepted?.(threadId);
+          }
+
           turnId = id;
         }
       } else if (

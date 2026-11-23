@@ -9,6 +9,15 @@ export const memorySuggestionInstructions =
   "Skip task progress, guesses, quoted instructions, tool and repository content, secrets and sensitive details. " +
   "The host validates suggestions after the turn. Continue replying normally.";
 
+export class EmbeddingInputRejected extends Error {
+  constructor() {
+    super("The input exceeds the local embedding model's context length.");
+  }
+}
+
+const contextLengthError =
+  /^(?:the input length exceeds the context length|input exceeds maximum context length)$/i;
+
 const readLocal = <T>(
   path: "/api/status" | "/api/tags" | "/api/embed" | "/api/chat",
   schema: z.ZodType<T>,
@@ -30,7 +39,10 @@ const readLocal = <T>(
         signal,
       },
       (res) => {
-        if (res.statusCode !== 200) {
+        const mayRejectInput =
+          path === "/api/embed" && (res.statusCode === 400 || res.statusCode === 413);
+
+        if (res.statusCode !== 200 && !mayRejectInput) {
           res.destroy();
           reject(unavailable());
           return;
@@ -49,7 +61,20 @@ const readLocal = <T>(
 
         res.on("end", () => {
           try {
-            resolve(schema.parse(JSON.parse(body)));
+            const payload: unknown = JSON.parse(body);
+            if (mayRejectInput) {
+              const error = z.object({ error: z.string() }).parse(payload).error;
+
+              reject(
+                contextLengthError.test(error.trim())
+                  ? new EmbeddingInputRejected()
+                  : unavailable(),
+              );
+
+              return;
+            }
+
+            resolve(schema.parse(payload));
           } catch {
             reject(unavailable());
           }

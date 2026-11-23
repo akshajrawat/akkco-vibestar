@@ -29,6 +29,10 @@ it.each([
   '<input type="submit" className="[border:1px_solid_red]" />',
   '<div role="switch" style={{ borderWidth: 2 }} />',
   'const styles = cva("button min-h-8", { variants: { variant: { ghost: "focus-visible:border-2" } } });',
+  '<button className="[&:is(.a,_p)]:border" />',
+  '<button className="[&_p,&:hover]:border" />',
+  'cva("button", { compoundVariants: [{ variant: "ghost", class: "border" }] });',
+  'cva("button", { compoundVariants: [{ variant: "ghost", className: "hover:border" }] });',
 ])("rejects button borders in %s", (code) => {
   expect(lint(code)).toEqual([rule]);
 });
@@ -43,6 +47,20 @@ it("allows border resets, rounding and keyboard focus outlines", () => {
   expect(lint('<div className="border"><button className="rounded-md" /></div>')).toEqual([]);
 });
 
+it("allows descendant borders and CVA selection values named border", () => {
+  expect(lint('<Button className="[&_p]:border [&>svg]:border *:border **:border-2" />')).toEqual(
+    [],
+  );
+
+  expect(
+    lint(`cva("button", {
+      variants: { variant: { border: ["rounded", "[&_p]:border"] } },
+      defaultVariants: { variant: "border" },
+      compoundVariants: [{ variant: ["border", "other"], className: "rounded" }],
+    });`),
+  ).toEqual([]);
+});
+
 it("rejects CSS button borders while allowing borders on descendants and surfaces", () => {
   expect(
     lint(
@@ -53,6 +71,21 @@ it("rejects CSS button borders while allowing borders on descendants and surface
     .card { border: 1px solid; }
     button:focus-visible { outline: 2px solid; border-radius: 4px; }
   `,
+      "test.css",
+    ),
+  ).toEqual([rule, rule]);
+});
+
+it("splits nested selector lists only at top-level commas", () => {
+  expect(
+    lint(
+      `
+      button {
+        & > svg, &:is(:not(.x, .y), [data-value="a,b"]) { border: 1px solid; }
+        & > :is(svg, path), & > [data-selector=", &"] { border: 1px solid; }
+        &:has(> span, > img) { @apply border; }
+      }
+    `,
       "test.css",
     ),
   ).toEqual([rule, rule]);

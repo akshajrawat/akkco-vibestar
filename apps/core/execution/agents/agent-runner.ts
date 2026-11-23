@@ -456,10 +456,6 @@ export class AgentRunner {
         nativeThreadId = conversationId;
         this.db.run("UPDATE ai_usage SET provider_session_id=? WHERE id=?", conversationId, id);
         this.db.run(`UPDATE ${table} SET conversation_id=? WHERE id=?`, conversationId, id);
-        if (memory && unsavedShares.length) {
-          memory.service.recordShares(memory.scope, conversationId, unsavedShares);
-          unsavedShares = [];
-        }
       };
 
       let awaitingContext = false;
@@ -471,6 +467,7 @@ export class AgentRunner {
         historyRowid?: number,
       ) => {
         awaitingContext = !!preload?.context;
+        unsavedShares = [];
 
         const directInvocation = provider.invocation({
           runId: id,
@@ -496,11 +493,7 @@ export class AgentRunner {
                           const facts = memory.recall?.(threadId) ?? [];
                           if (facts.length) {
                             markPrivate();
-                            if (threadId) {
-                              memory.service.recordShares(memory.scope, threadId, facts);
-                            } else {
-                              unsavedShares = facts;
-                            }
+                            unsavedShares = facts;
                           }
 
                           return facts.map(({ text }) => text);
@@ -509,6 +502,10 @@ export class AgentRunner {
                         }
                       }
                     : undefined,
+                  onInputAccepted: (threadId) => {
+                    memory.service.recordShares(memory.scope, threadId, unsavedShares);
+                    unsavedShares = [];
+                  },
                   suggest: detection.capabilities.includes("native-memory-suggestions")
                     ? memory.suggest
                     : undefined,

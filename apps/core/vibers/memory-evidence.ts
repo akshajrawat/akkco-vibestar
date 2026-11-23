@@ -17,6 +17,9 @@ export const memoryTextKey = (text: string) =>
 export const canExtractMemory = (text: string) =>
   text.length <= 8000 && !otherSource.test(text) && !sensitive.test(text) && redact(text) === text;
 
+const preferenceValue = (verb: string, value: string) =>
+  `preference:${/avoid|never|not|n['’]t/i.test(verb) ? "against" : "for"}:${memoryTextKey(value)}`;
+
 const evidenceShape = (evidence: string) => {
   const correction = /^(?:actually|correction|update|instead)[:,]\s*/i;
   const text = evidence.replace(correction, "").trim();
@@ -28,10 +31,10 @@ const evidenceShape = (evidence: string) => {
 
   const scopedPreference =
     directive.match(
-      /^(?:for|when working on) (.{2,80}?),\s*(?:please )?(?:always )?(use|prefer|avoid) (.+)$/i,
+      /^(?:for|when working on) (.{2,80}?),\s*(?:please )?(?:always )?(use|prefer|avoid|never use|do not use|don['’]t use) (.+)$/i,
     ) ??
     directive.match(
-      /^(?:please )?(?:always )?(use|prefer|avoid) (.+?) (?:for|when working on) (.{2,80})$/i,
+      /^(?:please )?(?:always )?(use|prefer|avoid|never use|do not use|don['’]t use) (.+?) (?:for|when working on) (.{2,80})$/i,
     );
 
   if (scopedPreference) {
@@ -43,15 +46,18 @@ const evidenceShape = (evidence: string) => {
       text,
       topic,
       subject: `preference:${memoryTextKey(topic)}`,
-      value: memoryTextKey(`${verb} ${prefix ? third : second}`),
+      value: preferenceValue(verb, prefix ? third : second),
       correction: correction.test(evidence),
     };
   }
 
   const preference =
     directive.match(
-      /^(?:i (?:generally |usually )?prefer|i always use|always use|always prefer|always avoid|my default is) (.+)$/i,
-    ) ?? (durable.test(text) ? directive.match(/^(?:please )?(?:use|prefer|avoid) (.+)$/i) : null);
+      /^(?:please )?(i (?:generally |usually )?prefer|(?:i )?always (?:use|prefer|avoid)|(?:i )?never use|my default is) (.+)$/i,
+    ) ??
+    (durable.test(text)
+      ? directive.match(/^(?:please )?(use|prefer|avoid|do not use|don['’]t use) (.+)$/i)
+      : null);
 
   const project = directive.match(
     /^(?:this|our|the current) (?:project|repo|repository|codebase) (uses|requires|runs on|defaults to|targets|stores) (.+)$/i,
@@ -65,14 +71,17 @@ const evidenceShape = (evidence: string) => {
     return {
       text,
       topic: null,
-      subject: `project:${memoryTextKey(project[1])}`,
-      value: memoryTextKey(project[2]),
+      subject: null,
+      value: `project:${memoryTextKey(`${project[1]} ${project[2]}`)}`,
       correction: correction.test(evidence),
     };
   }
 
   if (preference || decision) {
-    const value = memoryTextKey((preference ?? decision)![1]);
+    const value = preference
+      ? preferenceValue(preference[1], preference[2])
+      : `decision:${memoryTextKey(decision![1])}`;
+
     return { text, topic: null, subject: null, value, correction: correction.test(evidence) };
   }
 
@@ -114,8 +123,15 @@ export const validateMemorySuggestion = (message: string, raw: unknown) => {
     ...shaped,
     evidence,
     topic,
-    subject: shaped.subject ?? (topic ? `topic:${memoryTextKey(topic)}` : null),
+    subject:
+      shaped.subject ??
+      (topic
+        ? `${shaped.value.startsWith("project:") ? "project" : "topic"}:${memoryTextKey(topic)}`
+        : null),
   };
 };
 
 export const memoryValue = (text: string) => evidenceShape(text)?.value ?? memoryTextKey(text);
+
+export const storedMemorySubject = (subject: string | null, topic: string | null) =>
+  subject?.startsWith("project:") ? (topic ? `project:${memoryTextKey(topic)}` : null) : subject;

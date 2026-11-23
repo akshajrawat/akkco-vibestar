@@ -10,7 +10,7 @@ import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import type { Settings } from "../../apps/core/domain";
 import type { ViberSession } from "../../apps/core/vibers/contracts";
-import { localMemoryModels } from "../../apps/core/vibers/memory-local";
+import { EmbeddingInputRejected, localMemoryModels } from "../../apps/core/vibers/memory-local";
 import { createFixtureEngine, detectFixtureProvider, fixtureRepository } from "../helpers/fixtures";
 import { testProfileIds } from "../helpers/viber-fixtures";
 
@@ -91,6 +91,8 @@ const send = async (
   session: ViberSession,
   content: string,
   provider = session.selection.provider,
+  status = "completed",
+  acknowledgeUncertain = false,
 ) => {
   const request_id = randomUUID();
 
@@ -100,6 +102,7 @@ const send = async (
     request_id,
     content,
     history_ids: [],
+    ...(acknowledgeUncertain ? { acknowledge_uncertain: true } : {}),
     selection: { ...session.selection, provider },
   });
 
@@ -110,7 +113,7 @@ const send = async (
           .detail(session.id, profileId)
           .messages.find(({ id }) => id === request_id)?.status,
     )
-    .toBe("completed");
+    .toBe(status);
 
   await expect.poll(() => engine.isActive(`viber:${session.id}`)).toBe(false);
   return request_id;
@@ -201,6 +204,116 @@ it("gates lookup locally, ranks within the Viber and repo or topic, and rechecks
 
   expect(pick()).toEqual([]);
   expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
+});
+
+it("discards a query vector when the installed model changes during embedding", async () => {
+  let digest = "initial";
+  vi.spyOn(localMemoryModels, "identify").mockImplementation(async () => digest);
+
+  const embed = vi
+    .spyOn(localMemoryModels, "embed")
+    .mockImplementation(async (_model, inputs) => inputs.map(() => [1, 0]));
+
+  await start();
+  const session = await create();
+  seedFact("Fixture fact", "fixture topic");
+  await configure({ recall: true, share_with: codexSharing, embedding_model: "fixture" });
+  await expect.poll(vectorCount).toBe(1);
+
+  embed.mockImplementationOnce(async () => {
+    digest = "updated";
+    return [[1, 0]];
+  });
+
+  const recall = () =>
+    engine.memory.prepareRecall(turn(session), "Fixture query", new AbortController().signal);
+
+  expect(await recall()).toBeUndefined();
+
+  await expect
+    .poll(() => engine.db.all("SELECT digest FROM viber_memory_vectors"))
+    .toEqual([{ digest: "updated" }]);
+
+  expect((await recall())?.("thread")).toEqual([expect.objectContaining({ text: "Fixture fact" })]);
+});
+
+it("continues indexing after a budget expires without repeating rejected or committed facts", async () => {
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  const budget = new AbortController();
+
+  vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) =>
+    ms === 120_000 && !budget.signal.aborted ? budget.signal : timeout(ms),
+  );
+
+  vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest");
+  let interrupted = false;
+
+  const embed = vi
+    .spyOn(localMemoryModels, "embed")
+    .mockImplementation(async (_model, inputs, signal) => {
+      if (inputs[0] === "Long fact") {
+        throw new EmbeddingInputRejected();
+      }
+
+      if (inputs[0] === "Last fact" && !interrupted) {
+        interrupted = true;
+        budget.abort();
+        signal.throwIfAborted();
+      }
+
+      return inputs.map(() => [1, 0]);
+    });
+
+  await start();
+  seedFact("Long fact", "fixture topic");
+  const first = seedFact("Valid fact", "fixture topic");
+  const last = seedFact("Last fact", "other topic", undefined, testProfileIds.reviewer);
+
+  await configure({ recall: true, embedding_model: "fixture" });
+
+  await expect
+    .poll(() => engine.db.all("SELECT fact_id FROM viber_memory_vectors ORDER BY rowid"))
+    .toEqual([{ fact_id: first }, { fact_id: last }]);
+
+  expect(embed.mock.calls.map(([, inputs]) => inputs[0])).toEqual([
+    "Long fact",
+    "Valid fact",
+    "Last fact",
+    "Last fact",
+  ]);
+});
+
+it("backs off when the index budget expires before any progress", async () => {
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  const budget = new AbortController();
+
+  vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) =>
+    ms === 120_000 && !budget.signal.aborted ? budget.signal : timeout(ms),
+  );
+
+  let expiredAt = 0;
+
+  const identify = vi
+    .spyOn(localMemoryModels, "identify")
+    .mockImplementationOnce(async (_model, signal) => {
+      expiredAt = performance.now();
+      budget.abort();
+      signal.throwIfAborted();
+      return "digest";
+    })
+    .mockResolvedValue("digest");
+
+  vi.spyOn(localMemoryModels, "embed").mockResolvedValue([
+    [1, 0],
+    [1, 0],
+  ]);
+
+  await start();
+  seedFact("Valid fact", "fixture topic");
+  await configure({ recall: true, embedding_model: "fixture" });
+  await expect.poll(vectorCount, { timeout: 3000 }).toBe(1);
+  expect(identify).toHaveBeenCalledTimes(3);
+  expect(performance.now() - expiredAt).toBeGreaterThanOrEqual(950);
 });
 
 it("learns from completed user evidence, corrects an explicit replacement and withholds ambiguous changes", async () => {
@@ -407,6 +520,83 @@ read(() => emit({ event: 'result', result: { status: 'SUCCESS', response: reply,
   },
 );
 
+it("learns independent project facts and polarity while honoring submission order", async () => {
+  await start();
+  const { repo } = await fixtureRepository(engine, dir);
+  const session = await create(repo.id);
+  await configure({ automatic_saving: true });
+
+  const capture = (content: string, topic: string | null = null) => {
+    const scope = turn(session);
+
+    engine.viberSessions.store.capture({
+      session_id: session.id,
+      profile_id: profileId,
+      request_id: scope.messageId,
+      content,
+      history_ids: [],
+    });
+
+    engine.viberSessions.store.finish(scope.messageId, "completed", { summary: "Fixture" });
+
+    const learn = () => {
+      engine.memory.learn(
+        scope,
+        content,
+        [{ action: "save_memory", text: content, evidence: content, topic }],
+        engine.memory.suggestionSignal(content)!,
+      );
+    };
+
+    return { learn, id: scope.messageId };
+  };
+
+  capture("This project uses React.").learn();
+  capture("This project uses SQLite.").learn();
+  const recursion = "recursion";
+  capture("Always use recursion.", recursion).learn();
+  await expect.poll(() => facts().map(({ needs_review }) => needs_review)).toEqual([0, 0, 0]);
+
+  const initial = facts()[2].id;
+  const older = capture("Correction: Always use recursion.", recursion);
+  const newer = capture("Actually, always avoid recursion.", recursion);
+  newer.learn();
+
+  await expect
+    .poll(() => facts()[2])
+    .toMatchObject({
+      id: initial,
+      text: "always avoid recursion.",
+      revision: 2,
+      source_message_id: newer.id,
+    });
+
+  older.learn();
+  const stale = capture("Actually, always use recursion.", recursion);
+  const equivalent = capture("Never use recursion.", recursion);
+  equivalent.learn();
+
+  await expect
+    .poll(() => facts()[2])
+    .toMatchObject({
+      text: "always avoid recursion.",
+      revision: 2,
+      source_message_id: equivalent.id,
+    });
+
+  stale.learn();
+  capture("This project targets Linux.").learn();
+  await expect.poll(() => facts()).toHaveLength(4);
+
+  expect(facts()[2]).toMatchObject({
+    id: initial,
+    text: "always avoid recursion.",
+    revision: 2,
+    needs_review: 0,
+    source_message_id: equivalent.id,
+  });
+});
+
 it("cannot re-index a retired Viber's facts when a pending embedding returns", async () => {
   vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest");
   let finishEmbedding: (value: number[][]) => void = () => {};
@@ -448,6 +638,67 @@ it("cannot re-index a retired Viber's facts when a pending embedding returns", a
   }
 });
 
+it.each(["reject", "accept-then-fail"])(
+  "retries a failed Codex turn with the same thread after %s",
+  async (failure) => {
+    const adapter = new CodexProvider();
+    const fact = "Always use Java.";
+    const prompt = "Give me an example.";
+    let attempt = 0;
+    vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest");
+
+    vi.spyOn(localMemoryModels, "embed").mockImplementation(async (_model, inputs) =>
+      inputs.map(() => [1, 0]),
+    );
+
+    await start(() => ({
+      ...adapter,
+      detect: detectFixtureProvider,
+      invocation: (request) => {
+        const invocation = adapter.invocation(request);
+        const run = attempt++;
+        const expected = run === 1 || (run === 2 && failure === "reject");
+
+        const script = `
+const emit = value => console.log(JSON.stringify(value));
+require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+  const message = JSON.parse(line);
+  if (message.method === 'initialize') emit({ id: 0, result: {} });
+  if (message.method === 'thread/start' || message.method === 'thread/resume') {
+    if (message.params.threadId !== ${run === 0 ? "undefined" : "'thread'"}) process.exit(4);
+    emit({ id: 1, result: { thread: { id: 'thread' } } });
+  }
+  if (message.method === 'turn/start') {
+    if (message.params.input[0].text.includes(${JSON.stringify(fact)}) !== ${expected}) process.exit(4);
+    if (${run === 1 && failure === "reject"}) {
+      emit({ id: 2, error: { message: 'Admission rejected' } });
+      return;
+    }
+    emit({ id: 2, result: { turn: { id: 'turn' } } });
+    emit({ method: 'item/completed', params: { item: { id: 'reply', type: 'agentMessage', text: 'Reply' } } });
+    emit({ method: 'turn/completed', params: { turn: { status: ${JSON.stringify(run === 1 ? "failed" : "completed")} } } });
+  }
+});`;
+
+        return { ...invocation, program: process.execPath, args: ["-e", script] };
+      },
+    }));
+
+    const session = await create();
+    await send(session, "Start a session.");
+    seedFact(fact, "coding examples");
+    await configure({ recall: true, share_with: codexSharing, embedding_model: "fixture" });
+    await expect.poll(vectorCount).toBe(1);
+
+    const shares = () => engine.db.all("SELECT thread_id,in_context FROM viber_memory_shares");
+    await send(session, prompt, "codex", "failed");
+    expect(shares()).toEqual(failure === "reject" ? [] : [{ thread_id: "thread", in_context: 1 }]);
+
+    await send(session, prompt, "codex", "completed", true);
+    expect(shares()).toEqual([{ thread_id: "thread", in_context: 1 }]);
+  },
+);
+
 it("dispatches isolated Antigravity reference text and keeps replies out of logs and provider handoffs", async () => {
   const adapter = new AntigravityProvider();
   const fact = "Use Java for coding examples.";
@@ -483,9 +734,9 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
   if (content.includes(fact) !== expected) process.exit(4);
   if (expected) {
     emit({event:'user',message:{content}});
-    console.error(fact);
   }
-  emit({event:'result',result:{status:'SUCCESS',response:expected ? fact : 'Normal response',conversation_id:thread}});
+  if (thread === ${JSON.stringify(requests[0].runId)}) console.error(fact);
+  emit({event:'result',result:{status:'SUCCESS',response:thread === ${JSON.stringify(requests[0].runId)} ? fact : 'Normal response',conversation_id:thread}});
 });`;
 
       cliInputs.push(request.runId);
@@ -511,17 +762,24 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
   expect(requests[0].prompt).not.toContain(fact);
   expect(JSON.stringify(detail.events)).not.toContain(fact);
   expect(JSON.stringify(detail.runs)).not.toContain(fact);
-  for (const suffix of [".jsonl", ".stderr.log"]) {
-    expect(
-      await readFile(
-        join(engine.root, "logs", `viber-${session.id}`, `${requests[0].runId}${suffix}`),
-        "utf8",
-      ),
-    ).not.toContain(fact);
-  }
+
+  const expectPrivateLogs = async (runId: string) => {
+    for (const suffix of [".jsonl", ".stderr.log"]) {
+      expect(
+        await readFile(
+          join(engine.root, "logs", `viber-${session.id}`, `${runId}${suffix}`),
+          "utf8",
+        ),
+      ).not.toContain(fact);
+    }
+  };
+
+  await expectPrivateLogs(requests[0].runId);
 
   await send(session, "A related follow-up.");
   expect(requests[1].conversation?.threadId).toBe(requests[0].runId);
+  expect(engine.viberSessions.detail(session.id, profileId).messages.at(-1)?.content).toBe(fact);
+  await expectPrivateLogs(requests[1].runId);
   await send(session, "Continue with the other provider.", "codex");
   expect(requests[2].prompt).not.toContain(fact);
 

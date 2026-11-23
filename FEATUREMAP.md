@@ -79,5 +79,6 @@ flowchart LR
     Learn --> Suggest --> Evidence["Validate user evidence"]
     Evidence --> Storage["Local SQLite · Viber and repository/topic scope"]
     Storage --> Ollama["Local Ollama search"]
-    Recall --> Ollama --> Share["Up to 3 fact texts · Existing provider thread"]
+    Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
+    Share --> Accept["Provider accepts turn input"] --> Record["Record facts in thread context"]
 ```

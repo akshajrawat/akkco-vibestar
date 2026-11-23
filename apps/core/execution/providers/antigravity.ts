@@ -83,6 +83,34 @@ export class AntigravityProvider implements AgentProvider {
   };
 
   invocation = (r: AgentRunRequest) => {
+    let threadId = r.conversation?.threadId;
+
+    const acknowledgeInput = (raw: Record<string, unknown>) => {
+      threadId = this.conversationId(raw) ?? threadId;
+      const stepType = object(raw.step_update).step_type;
+      if (
+        threadId &&
+        (raw.event === "user" ||
+          (raw.event === "step_update" && typeof stepType === "string" && stepType !== "finish") ||
+          raw.type === "assistant" ||
+          (raw.event === "result" && object(raw.result).status === "SUCCESS") ||
+          (raw.type === "result" && !raw.is_error))
+      ) {
+        r.viberMemory?.onInputAccepted?.(threadId);
+      }
+    };
+
+    const receiveInputEvent = (line: string) => {
+      let raw: Record<string, unknown>;
+      try {
+        raw = object(JSON.parse(line));
+      } catch {
+        return;
+      }
+
+      acknowledgeInput(raw);
+    };
+
     const message = () => ({
       event: "user",
       message: {
@@ -116,7 +144,7 @@ export class AntigravityProvider implements AgentProvider {
             send(message());
             end();
           },
-          receive: () => {},
+          receive: receiveInputEvent,
         } satisfies ProcessInputProtocol,
       };
     }
@@ -157,7 +185,9 @@ export class AntigravityProvider implements AgentProvider {
         }
       },
       receive: (line) => {
-        if (dispatch && object(JSON.parse(line)).event === "init") {
+        if (!dispatch) {
+          receiveInputEvent(line);
+        } else if (object(JSON.parse(line)).event === "init") {
           dispatch();
         }
       },
