@@ -230,7 +230,7 @@ it("keeps stdin open through the real process transport and closes after one com
 it("counts only this turn's reported usage when a resumed thread has older totals", async () => {
   const { Database } = await import("../../apps/core/storage/database");
   const { Usage } = await import("../../apps/core/execution/output/usage");
-  const db = new Database(":memory:");
+  const db = await Database.open(":memory:");
   try {
     const usage = new Usage(db);
 

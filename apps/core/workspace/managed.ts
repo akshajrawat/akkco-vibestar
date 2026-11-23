@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, realpath } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import { join, relative } from "node:path";
 
 import { AdeError, type WorkspaceAssignment } from "../domain";
@@ -18,7 +18,7 @@ const location = async (root: string, task: WorkspaceAssignment) => {
     throw new AdeError("ownership", "This task is not an owned repository-free workspace.");
   }
 
-  const owner = await managedPath(root, join("workspaces", task.id));
+  const owner = join(await managedPath(root, "workspaces"), task.id);
   const files = join(owner, "files");
   if (task.worktree_path && task.worktree_path !== files) {
     throw new AdeError("ownership", "The managed task workspace identity changed.");
@@ -27,17 +27,24 @@ const location = async (root: string, task: WorkspaceAssignment) => {
   return { owner, files };
 };
 
+const assertUsable = (task: WorkspaceAssignment) => {
+  if (task.managed_removal_identity !== undefined) {
+    throw new AdeError("recovery", "Managed workspace removal is pending. Retry Viber deletion.");
+  }
+};
+
 /** The owner marker stays outside the directory mounted writable for the agent. */
 export const prepareManagedWorkspace = async <T extends WorkspaceAssignment>(
   root: string,
   task: T,
 ): Promise<T> => {
+  assertUsable(task);
   const { owner, files } = await location(root, task);
   await managedPath(root, "workspaces");
   await mkdir(join(root, "workspaces"), { recursive: true, mode: 0o700 });
   let created = false;
   try {
-    await mkdir(owner, { mode: 0o700 });
+    await mkdir(await managedPath(root, owner), { mode: 0o700 });
     created = true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
@@ -71,7 +78,9 @@ export const prepareManagedWorkspace = async <T extends WorkspaceAssignment>(
 };
 
 export const assertManagedWorkspace = async (root: string, task: WorkspaceAssignment) => {
+  assertUsable(task);
   const { owner, files } = await location(root, task);
+  await managedPath(root, owner);
   if (
     task.worktree_path !== files ||
     (await readWorktreeOwner(owner, "vibestar-task-owner")) !== task.id
@@ -87,10 +96,133 @@ export const assertManagedWorkspace = async (root: string, task: WorkspaceAssign
   return files;
 };
 
-/** Bounded source integrity for workspaces without Git; links and unsupported files fail closed. */
-export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceAssignment) => {
+const directoryIdentity = async (path: string, legacy = false) => {
+  try {
+    const entry = await lstat(path, { bigint: true });
+    if (!entry.isDirectory()) {
+      throw new AdeError("ownership", "Managed workspace removal requires its original directory.");
+    }
+
+    const identity = `${entry.dev}:${entry.ino}`;
+    return legacy ? `${identity}:${entry.birthtimeNs}` : identity;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+
+    throw error;
+  }
+};
+
+export const removeManagedWorkspace = async (
+  root: string,
+  task: WorkspaceAssignment,
+  save: () => void,
+) => {
+  const { owner, files } = await location(root, task);
+  if (task.worktree_path !== files) {
+    throw new AdeError("ownership", "The managed task workspace identity changed.");
+  }
+
+  const changed = () =>
+    new AdeError("ownership", "Managed workspace directory changed during removal.");
+
+  const pending = task.managed_removal_identity;
+
+  const checkpoint =
+    /^(moving|quarantined):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9]+:[0-9]+)$/.exec(
+      pending ?? "",
+    );
+
+  let phase = checkpoint?.[1] ?? "moving";
+  let token = checkpoint?.[2];
+  let identity = checkpoint?.[3];
+
+  const record = () => {
+    task.managed_removal_identity = `${phase}:${token}:${identity}`;
+    save();
+  };
+
+  if (!checkpoint) {
+    const current = await directoryIdentity(await managedPath(root, owner));
+    if (
+      current === null ||
+      (pending !== undefined &&
+        pending !== (await directoryIdentity(await managedPath(root, owner), true)))
+    ) {
+      throw changed();
+    }
+
+    // An older checkpoint did not have a quarantine. Re-prove ownership; a
+    // legacy partial removal which already lost its marker must fail closed.
+    await assertManagedWorkspace(root, { ...task, managed_removal_identity: undefined });
+    identity = current;
+    token = randomUUID();
+  }
+
+  // The target is under the same filesystem by construction (rename never
+  // falls back to copying), outside the
+  // directory exposed writable to a provider. Never recurse at the live path.
+  const pendingDirectory = await managedPath(root, join("workspaces", "pending-delete"));
+  await mkdir(pendingDirectory, { recursive: true, mode: 0o700 });
+  const quarantine = join(pendingDirectory, `${task.id}-${token}`);
+  let quarantined = await directoryIdentity(await managedPath(root, quarantine));
+  if (quarantined !== null && (!checkpoint || quarantined !== identity)) {
+    throw changed();
+  }
+
+  if (!checkpoint) {
+    record();
+  }
+
+  if (phase === "moving") {
+    if (quarantined === null) {
+      if ((await directoryIdentity(await managedPath(root, owner))) !== identity) {
+        throw changed();
+      }
+
+      // Also require the marker and live files before retrying a move which
+      // never happened. An old inode value alone does not prove ownership.
+      await assertManagedWorkspace(root, { ...task, managed_removal_identity: undefined });
+      if (
+        (await directoryIdentity(await managedPath(root, quarantine))) !== null ||
+        (await directoryIdentity(await managedPath(root, owner))) !== identity
+      ) {
+        throw changed();
+      }
+
+      await rename(owner, quarantine);
+      quarantined = await directoryIdentity(await managedPath(root, quarantine));
+      if (quarantined !== identity) {
+        throw changed();
+      }
+    }
+
+    // Persist the move before removing any contents. After this point a
+    // recreated original path is irrelevant, even if cleanup already ended.
+    phase = "quarantined";
+    record();
+  }
+
+  if (quarantined !== null) {
+    if ((await directoryIdentity(await managedPath(root, quarantine))) !== identity) {
+      throw changed();
+    }
+
+    await rm(quarantine, { recursive: true, force: true });
+  }
+
+  task.worktree_path = "";
+  task.managed_removal_identity = undefined;
+  save();
+};
+
+const inspectManagedWorkspace = async (
+  root: string,
+  task: WorkspaceAssignment,
+  hash?: ReturnType<typeof createHash>,
+) => {
   const cwd = await assertManagedWorkspace(root, task);
-  const hash = createHash("sha256").update(task.id);
   let entries = 0;
   let bytes = 0;
 
@@ -107,7 +239,7 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
 
       const path = await managedPath(root, join(directory, name));
       const metadata = await lstat(path, { bigint: true });
-      hash.update(JSON.stringify([relative(cwd, path), String(metadata.mode)]));
+      hash?.update(JSON.stringify([relative(cwd, path), String(metadata.mode)]));
       if (metadata.isDirectory()) {
         await visit(path);
         continue;
@@ -120,16 +252,7 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
         );
       }
 
-      bytes += Number(metadata.size);
-      if (bytes > 64 * 1024 * 1024) {
-        throw new AdeError(
-          "fingerprint",
-          "Managed workspace exceeds the 64 MiB integrity limit. Reduce its contents before running an agent.",
-        );
-      }
-
       const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-      const fileHash = createHash("sha256");
       try {
         const before = await handle.stat({ bigint: true });
         if (
@@ -141,6 +264,19 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
           throw new AdeError("ownership", "A workspace file changed identity during inspection.");
         }
 
+        if (!hash) {
+          continue;
+        }
+
+        bytes += Number(metadata.size);
+        if (bytes > 64 * 1024 * 1024) {
+          throw new AdeError(
+            "fingerprint",
+            "Managed workspace exceeds the 64 MiB integrity limit. Reduce its contents before running an agent.",
+          );
+        }
+
+        const fileHash = createHash("sha256");
         const buffer = Buffer.alloc(65536);
         let count = 0;
         while (true) {
@@ -180,5 +316,14 @@ export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceA
 
   await visit(cwd);
   await assertManagedWorkspace(root, task);
+};
+
+export const assertManagedWorkspaceEntries = (root: string, task: WorkspaceAssignment) =>
+  inspectManagedWorkspace(root, task);
+
+/** Bounded source integrity for workspaces without Git; links and unsupported files fail closed. */
+export const managedWorkspaceFingerprint = async (root: string, task: WorkspaceAssignment) => {
+  const hash = createHash("sha256").update(task.id);
+  await inspectManagedWorkspace(root, task, hash);
   return `managed-v1:${hash.digest("hex")}`;
 };

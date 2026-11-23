@@ -132,8 +132,7 @@ export const migrateDataRoot = async (source: string, target: string) => {
     if (
       db.all(
         "SELECT id FROM viber_sessions WHERE workspace IS NOT NULL AND json_extract(workspace,'$.worktree_path')<>''",
-      ).length ||
-      db.all("SELECT profile_id FROM viber_computers").length
+      ).length
     ) {
       throw new AdeError(
         "migration",

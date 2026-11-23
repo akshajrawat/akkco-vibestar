@@ -52,8 +52,7 @@ export const callSystem = async (
         root: e.root,
         capabilities: {
           viber_conversations: 1,
-          viber_sessions: 2,
-          viber_computers: 1,
+          viber_sessions: 3,
         },
         execution_environment: {
           distro: process.env.WSL_DISTRO_NAME || "Linux",

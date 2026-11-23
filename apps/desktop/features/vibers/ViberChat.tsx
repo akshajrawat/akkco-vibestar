@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { defaultAppearance } from "../../../core/vibers/appearance";
 import type { AgentProfile } from "../../../core/vibers/contracts";
 import type { ViberSession } from "../../../core/vibers/contracts";
 import { rpc, errorMessage } from "../../lib/api";
@@ -11,22 +12,19 @@ import { ViberMemoryControl } from "./ViberMemory";
 import { ViberSessionChat } from "./ViberSessionChat";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
-import { ComputerPanel } from "../computer/ComputerPanel";
-import { ResizeHandle } from "../../components/shared/ResizeHandle";
-import { usePaneSize } from "../../hooks/usePaneSize";
 import { configurationError } from "../../../core/execution/providers/contracts";
 
-export const ViberChat = ({
-  profile,
-  revision,
-  computerOpen = false,
-  hideComputer = () => {},
-}: {
-  profile: AgentProfile;
-  revision: number;
-  computerOpen?: boolean;
-  hideComputer?: () => void;
-}) => {
+const messageTextColor = (color: string) => {
+  const [red, green, blue] = [1, 3, 5].map((index) => {
+    const channel = Number.parseInt(color.slice(index, index + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return luminance > 0.179 ? "#000" : "#fff";
+};
+
+export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revision: number }) => {
   const [sessionId, setSessionId] = useState<string>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,8 +32,7 @@ export const ViberChat = ({
   const starting = useRef(false);
   const draftId = `viber:${profile.id}:new-chat`;
   const view = useTaskView(draftId);
-  const { providers, refresh: refreshProviders } = useProviders(profile.id);
-  const [computerWidth, setComputerWidth] = usePaneSize("computerWidth", 410, 300, 720);
+  const { providers } = useProviders();
 
   const selection = {
     provider: view.followupProvider || profile.execution.provider,
@@ -145,7 +142,6 @@ export const ViberChat = ({
 
   const modelControl = (
     <ViberModelPicker
-      profileId={profile.id}
       execution={{ ...profile.execution, ...selection }}
       disabled={busy}
       change={(execution) => {
@@ -158,82 +154,62 @@ export const ViberChat = ({
     />
   );
 
+  const color = profile.appearance?.color ?? defaultAppearance().color;
+
   return (
-    <div className="computer-workspace overflow-hidden flex flex-1 min-h-0 min-w-0">
-      <section
-        className="viber-chat-page flex flex-1 flex-col min-h-0 min-w-[260px] chat-workspace"
-        aria-label={`Chat with ${profile.name}`}
-      >
-        <ViberMemoryControl key={profile.id} profileId={profile.id} name={profile.name} />
-        {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
-        {sessionId ? (
-          <ViberSessionChat
-            key={sessionId}
-            sessionId={sessionId}
-            profile={profile}
-            revision={revision}
-          />
-        ) : (
-          <ChatSurface
-            id={draftId}
-            revision={revision}
-            empty
-            activity={null}
-            conversation={
-              <div className="chat-welcome py-[0_24px] text-center viber-chat-welcome">
-                <ViberFace profile={profile} animated />
-                <h1>Ready when you are.</h1>
-              </div>
-            }
-            composer={
-              <Composer
-                compact
-                id={draftId}
-                label={`Message ${profile.name}`}
-                placeholder={`Ask ${profile.name} anything…`}
-                sendLabel="Send message"
-                onSend={() => void start()}
-                context={[
-                  {
-                    label: "Text",
-                    input: "Context text",
-                    load: async (text) => ({ label: "Attached text", text }),
-                  },
-                ]}
-                busy={busy}
-                disabled={!!invalid}
-                model={modelControl}
-                hint="Each Viber uses its own workspace."
-              />
-            }
-          />
-        )}
-      </section>
-      {computerOpen && (
-        <ResizeHandle
-          label="Resize computer panel"
-          value={computerWidth}
-          onChange={setComputerWidth}
-          min={300}
-          max={720}
-          reverse
+    <section
+      className="viber-chat-page flex flex-1 flex-col min-h-0 min-w-[260px] chat-workspace"
+      aria-label={`Chat with ${profile.name}`}
+      style={
+        {
+          "--viber-message-bg": color,
+          "--viber-message-ink": messageTextColor(color),
+        } as CSSProperties
+      }
+    >
+      <ViberMemoryControl key={profile.id} profileId={profile.id} name={profile.name} />
+      {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
+      {sessionId ? (
+        <ViberSessionChat
+          key={sessionId}
+          sessionId={sessionId}
+          profile={profile}
+          revision={revision}
+        />
+      ) : (
+        <ChatSurface
+          id={draftId}
+          revision={revision}
+          empty
+          conversation={
+            <div className="chat-welcome py-[0_24px] text-center viber-chat-welcome">
+              <ViberFace profile={profile} animated />
+              <h1>Ready when you are.</h1>
+            </div>
+          }
+          composer={
+            <Composer
+              compact
+              id={draftId}
+              label={`Message ${profile.name}`}
+              placeholder={`Ask ${profile.name} anything…`}
+              sendLabel="Send message"
+              onSend={() => void start()}
+              context={[
+                {
+                  label: "Text",
+                  input: "Context text",
+                  load: async (text) => ({ label: "Attached text", text }),
+                },
+              ]}
+              busy={busy}
+              disabled={!!invalid}
+              model={modelControl}
+              hint="Each Viber uses its own workspace."
+            />
+          }
         />
       )}
-      <div
-        className="shrink-0 max-w-[calc(100%_-_265px)] min-w-[280px]"
-        hidden={!computerOpen}
-        style={{ width: computerWidth }}
-      >
-        {computerOpen && (
-          <ComputerPanel
-            profileId={profile.id}
-            sessionId={sessionId}
-            visible={computerOpen}
-            hide={hideComputer}
-            refreshProviders={refreshProviders}
-          />
-        )}
-      </div>
-    </div>
+    </section>
   );
 };

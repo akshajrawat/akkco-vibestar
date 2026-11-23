@@ -158,7 +158,7 @@ it("sends complete Antigravity prompts as one stdin message and references the m
 
   expect(invocation.args).not.toContain("-p");
   expect(invocation.args).not.toContain(prompt);
-  const lines = invocation.input.trimEnd().split("\n");
+  const lines = invocation.input?.trimEnd().split("\n") ?? [];
   expect(lines).toHaveLength(1);
   expect(JSON.parse(lines[0])).toEqual({ event: "user", message: { content: prompt } });
 });

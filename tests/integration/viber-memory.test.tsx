@@ -10,6 +10,7 @@ import BetterSqlite3 from "better-sqlite3";
 import { Rpc } from "../../apps/core/rpc";
 import { Database } from "../../apps/core/storage/database";
 import { migrations } from "../../apps/core/storage/migrations";
+import { viberSnapshotVersion } from "../../apps/core/storage/viber-snapshots";
 import { ViberMemory } from "../../apps/core/vibers/memory";
 import type { ViberMemoryFact } from "../../apps/core/vibers/memory-contracts";
 import { ViberMemoryControl } from "../../apps/desktop/features/vibers/ViberMemory";
@@ -122,40 +123,47 @@ it("rejects invalid inputs and unavailable profiles for each memory operation", 
   }
 });
 
-it("adds private memory to a version-zero database with an existing Viber", async () => {
-  const path = join(dir, "version-zero.sqlite");
-  const old = new BetterSqlite3(path);
-  const timestamp = "2026-01-01T00:00:00.000Z";
-  try {
-    old.exec(migrations[0].sql);
+it.each([0, viberSnapshotVersion])(
+  "adds private memory to a version-%i database with an existing Viber",
+  async (version) => {
+    const path = join(dir, "before-memory.sqlite");
+    const old = new BetterSqlite3(path);
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    try {
+      old.transaction(() => {
+        for (const migration of migrations.filter((migration) => migration.version <= version)) {
+          old.exec(migration.sql);
 
-    old.transaction(() => {
-      old.prepare("INSERT INTO schema_migrations VALUES(0,?)").run(timestamp);
+          old
+            .prepare("INSERT INTO schema_migrations VALUES(?,?)")
+            .run(migration.version, timestamp);
+        }
 
-      old
-        .prepare("INSERT INTO agent_profiles VALUES(?,1,?,?)")
-        .run(viberProfile.id, timestamp, timestamp);
+        old
+          .prepare("INSERT INTO agent_profiles VALUES(?,1,?,?)")
+          .run(viberProfile.id, timestamp, timestamp);
 
-      old
-        .prepare("INSERT INTO agent_profile_revisions VALUES(?,1,?,?)")
-        .run(viberProfile.id, JSON.stringify(viberProfile), timestamp);
-    })();
-  } finally {
-    old.close();
-  }
+        old
+          .prepare("INSERT INTO agent_profile_revisions VALUES(?,1,?,?)")
+          .run(viberProfile.id, JSON.stringify(viberProfile), timestamp);
+      })();
+    } finally {
+      old.close();
+    }
 
-  const upgraded = await Database.open(path);
-  try {
-    const memory = new ViberMemory(upgraded);
-    const scope = { profile_id: viberProfile.id };
-    expect(memory.list(scope)).toEqual([]);
-    const saved = memory.create({ ...scope, text: "Fixture fact for an existing Viber" });
-    expect(memory.list(scope)).toEqual([saved]);
-    expect(upgraded.all("PRAGMA foreign_key_check")).toEqual([]);
-  } finally {
-    upgraded.close();
-  }
-});
+    const upgraded = await Database.open(path);
+    try {
+      const memory = new ViberMemory(upgraded);
+      const scope = { profile_id: viberProfile.id };
+      expect(memory.list(scope)).toEqual([]);
+      const saved = memory.create({ ...scope, text: "Fixture fact for an existing Viber" });
+      expect(memory.list(scope)).toEqual([saved]);
+      expect(upgraded.all("PRAGMA foreign_key_check")).toEqual([]);
+    } finally {
+      upgraded.close();
+    }
+  },
+);
 
 const openMemory = () => fireEvent.click(screen.getByRole("button", { name: "Private memory" }));
 

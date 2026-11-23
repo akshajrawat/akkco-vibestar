@@ -6,7 +6,7 @@ import { callRepositories, repositoriesMethods } from "./rpc/repositories";
 import { callStorage, storageMethods } from "./rpc/storage";
 import { callSystem, systemMethods } from "./rpc/system";
 import { callViberSessions, viberSessionMethods } from "./rpc/viber-sessions";
-import { callComputers, computerMethods } from "./rpc/computers";
+import { callProfiles, profileMethods } from "./rpc/profiles";
 import { StorageService } from "./storage/service";
 import { ViberMemory } from "./vibers/memory";
 
@@ -45,7 +45,7 @@ export class Rpc {
       [repositoriesMethods, callRepositories],
       [storageMethods, callStorage],
       [viberSessionMethods, callViberSessions],
-      [computerMethods, callComputers],
+      [profileMethods, callProfiles],
     ] as const) {
       for (const method of methods) {
         this.handlers.set(method, (method, input) => handler(services, method, input));

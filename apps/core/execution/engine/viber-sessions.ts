@@ -5,10 +5,10 @@ import type { AgentRunner } from "../agents/agent-runner";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 import { ViberSessionStore } from "../../vibers/store";
+import type { ViberContinuationPrepareSchema } from "../../vibers/contracts";
 import { ViberSessionSendSchema } from "../../vibers/contracts";
 import { prepareManagedWorkspace } from "../../workspace/managed";
 import { AdeError } from "../../domain";
-import { redact } from "../runtime/process";
 
 /** Explicit turns use the same foreground admission, cancellation and runner as other executions. */
 export class ViberSessions {
@@ -17,7 +17,7 @@ export class ViberSessions {
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "computers" | "publish"
+      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -54,21 +54,65 @@ export class ViberSessions {
     return this.host.git.assertOwnedTask(assignment);
   };
 
+  prepareContinuation = async (input: z.output<typeof ViberContinuationPrepareSchema>) => {
+    const key = `viber:${input.session_id}`;
+
+    await this.operations.withExecutionSlot(
+      key,
+      "Prepare Viber continuation",
+      this.state.repositoryController.signal,
+      async (signal) => {
+        let preparation = this.store.continuationPreparation(input);
+        if (!preparation) {
+          this.store.finishContinuationPreparation(input);
+          return;
+        }
+
+        if (preparation.execution.provider !== "codex") {
+          throw new AdeError(
+            "context",
+            "Antigravity cannot preload conversation history without starting a turn. Continue with the original provider.",
+          );
+        }
+
+        const workspace = await this.prepareWorkspace(input.session_id, input.profile_id, signal);
+
+        const preload = (plan: NonNullable<typeof preparation>) =>
+          this.runner.preloadViberThread(input.session_id, workspace, plan, signal);
+
+        let prepared;
+        try {
+          prepared = await preload(preparation);
+        } catch (error) {
+          if (
+            !preparation.thread ||
+            !(error instanceof AdeError) ||
+            error.kind !== "thread_resume_rejected"
+          ) {
+            throw error;
+          }
+
+          // The selected target is missing. Prepare a replacement without starting a turn.
+          preparation = this.store.continuationPreparation(input, true);
+          if (!preparation) {
+            throw error;
+          }
+
+          prepared = await preload(preparation);
+        }
+
+        signal.throwIfAborted();
+        this.store.finishContinuationPreparation(input, { ...preparation, ...prepared });
+      },
+    );
+
+    this.host.changed();
+    return this.detail(input.session_id, input.profile_id);
+  };
+
   send = (raw: z.input<typeof ViberSessionSendSchema>) => {
-    const parsed = ViberSessionSendSchema.parse(raw);
-    const input = { ...parsed, content: redact(parsed.content) };
+    const input = ViberSessionSendSchema.parse(raw);
     this.host.assertAvailable();
-
-    if (parsed.content.trim() === "/clear") {
-      const cleared = this.store.clearContext(
-        parsed.session_id,
-        parsed.profile_id,
-        parsed.request_id,
-      );
-
-      this.host.changed();
-      return cleared;
-    }
 
     const previous = this.store.previous(input);
     if (previous) {
@@ -76,19 +120,22 @@ export class ViberSessions {
     }
 
     const key = `viber:${input.session_id}`;
+    if (input.content === "/clear" && !input.continue_message_id) {
+      if (this.host.isActive(key)) {
+        throw new AdeError(
+          "busy",
+          "Wait for this Viber session to finish before clearing context.",
+        );
+      }
+
+      const cleared = this.store.clearContext(input.session_id, input.profile_id, input.request_id);
+      this.host.changed();
+      return cleared;
+    }
+
     this.operations.assertExecutionSlot(key);
 
-    const release = this.host.computers.acquire(input, "agent", () =>
-      this.cancel(input.session_id, input.profile_id).then(() => {}),
-    );
-
-    let snapshot: ReturnType<ViberSessionStore["capture"]>;
-    try {
-      snapshot = this.store.capture(input);
-    } catch (error) {
-      release();
-      throw error;
-    }
+    const snapshot = this.store.capture(input);
 
     const completed = this.operations.withExecutionSlot(
       key,
@@ -97,13 +144,6 @@ export class ViberSessions {
       async (signal) => {
         try {
           const workspace = await this.prepareWorkspace(input.session_id, input.profile_id, signal);
-
-          await this.host.computers.ensure(
-            input,
-            workspace,
-            snapshot.execution.access === "read-only",
-            signal,
-          );
 
           signal.throwIfAborted();
 
@@ -116,11 +156,11 @@ export class ViberSessions {
               purpose: `${snapshot.profile.name} session`,
               workspace,
               conversation: snapshot.conversation,
+              originalPrompt: snapshot.originalPrompt,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
             },
           );
 
-          await this.host.computers.finish(input.profile_id);
           this.store.finish(input.request_id, "completed", output);
         } catch (error) {
           this.store.finish(
@@ -130,14 +170,6 @@ export class ViberSessions {
             String(error),
           );
         } finally {
-          try {
-            await this.host.computers.finish(input.profile_id);
-          } catch (error) {
-            this.host.publish({ event: "computer.unavailable", text: redact(String(error)) });
-          } finally {
-            release();
-          }
-
           this.host.changed();
         }
       },
@@ -145,7 +177,6 @@ export class ViberSessions {
 
     // Admission is checked synchronously before the captured turn is persisted.
     void completed.catch((error) => {
-      release();
       this.store.finish(input.request_id, "failed", undefined, String(error));
       this.host.changed();
     });

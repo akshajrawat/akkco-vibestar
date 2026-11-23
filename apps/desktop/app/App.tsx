@@ -47,16 +47,6 @@ export const App = () => {
     () => localStorage.getItem("vibestar.activeViber") || "",
   );
 
-  const [computerOpen, setComputerOpen] = useState(
-    () => localStorage.getItem("vibestar.computerOpen") !== "false",
-  );
-
-  const toggleComputer = () =>
-    setComputerOpen((open) => {
-      localStorage.setItem("vibestar.computerOpen", String(!open));
-      return !open;
-    });
-
   const [newProfile, setNewProfile] = useState<AgentProfile>();
 
   const createViber = () => {
@@ -136,16 +126,10 @@ export const App = () => {
   }, []);
 
   const chatProfile = profiles.find((p) => p.id === selectedViber) || profiles[0];
-  const showingComputer = !!chatProfile && computerOpen;
 
-  // The open computer pane needs 280px alongside the 260px chat and its 3px handle.
   const availableSidebarWidth = Math.max(
     minSidebarWidth,
-    Math.min(
-      maxSidebarWidth,
-      Math.floor(windowWidth / 2),
-      windowWidth - (showingComputer ? 543 : 260),
-    ),
+    Math.min(maxSidebarWidth, Math.floor(windowWidth / 2), windowWidth - 260),
   );
 
   const visibleSidebarWidth = Math.min(sidebarWidth, availableSidebarWidth);
@@ -187,8 +171,6 @@ export const App = () => {
             onRuntimeStatus={setRuntimePhase}
           />
           <TitleBar
-            onComputer={chatProfile ? toggleComputer : undefined}
-            computerOpen={computerOpen}
             profile={chatProfile}
             onSidebar={sidebar ? undefined : toggleSidebar}
             toggleRef={sidebarToggle}
@@ -203,13 +185,7 @@ export const App = () => {
           )}
 
           {chatProfile ? (
-            <ViberChat
-              key={chatProfile.id}
-              profile={chatProfile}
-              computerOpen={computerOpen}
-              hideComputer={toggleComputer}
-              revision={revision}
-            />
+            <ViberChat key={chatProfile.id} profile={chatProfile} revision={revision} />
           ) : (
             <ViberWelcome
               create={createViber}

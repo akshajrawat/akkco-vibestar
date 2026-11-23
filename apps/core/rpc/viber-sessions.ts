@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   AgentProfileSchema,
+  ViberContinuationPrepareSchema,
   ViberSessionCreateSchema,
   ViberSessionScopeSchema,
   ViberSessionSendSchema,
@@ -18,9 +19,9 @@ export const viberSessionMethods = [
   "viber.session.list",
   "viber.session.detail",
   "viber.session.send",
+  "viber.session.prepareContinuation",
   "viber.session.cancel",
   "viber.session.inspect",
-  "viber.session.clear",
 ] as const;
 
 export const callViberSessions = async (
@@ -76,6 +77,9 @@ export const callViberSessions = async (
     case "viber.session.send":
       return sessions.send(ViberSessionSendSchema.parse(raw));
 
+    case "viber.session.prepareContinuation":
+      return sessions.prepareContinuation(ViberContinuationPrepareSchema.parse(raw));
+
     case "viber.session.inspect": {
       const input = ViberSessionScopeSchema.extend({ path: z.string().min(1).max(2000).optional() })
         .strict()
@@ -109,14 +113,6 @@ export const callViberSessions = async (
       engine.assertAvailable();
       const input = ViberSessionScopeSchema.parse(raw);
       return sessions.cancel(input.session_id, input.profile_id);
-    }
-
-    case "viber.session.clear": {
-      engine.assertAvailable();
-      const input = ViberSessionScopeSchema.parse(raw);
-      const res = sessions.store.clearContext(input.session_id, input.profile_id);
-      engine.changed();
-      return res;
     }
 
     default:

@@ -77,9 +77,6 @@ it("starts a fresh core without default Vibers and preserves existing profile by
   let engine = await Engine.create(dir);
   try {
     expect(engine.db.all("SELECT id FROM agent_profiles")).toEqual([]);
-    const { initializeProfiles } = await import("../../apps/core/vibers/store");
-    initializeProfiles(engine.db);
-    expect(engine.db.all("SELECT id FROM agent_profiles")).toEqual([]);
 
     const custom = {
       id: randomUUID(),

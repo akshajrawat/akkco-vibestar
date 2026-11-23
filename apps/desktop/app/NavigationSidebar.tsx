@@ -2,7 +2,6 @@ import { useState, type Ref } from "react";
 import { Plus, Search, PanelLeftClose, Activity, FolderGit2, Plug, Settings } from "lucide-react";
 import type { AgentProfile, ViberMessagePreview } from "../../core/vibers/contracts";
 import { ViberFace } from "../features/vibers/ViberFace";
-import vibestarLogo from "../../../assets/icon.svg";
 import type { Snapshot, WorkspaceTool } from "../lib/types";
 
 interface NavigationSidebarProps {
@@ -60,9 +59,10 @@ export const NavigationSidebar = ({
       aria-label="Workspace navigation"
     >
       <div className="sidebar-brand-header flex items-center justify-between flex-[0_0_42px] pt-2 pb-1">
-        <div className="sidebar-brand flex items-center min-w-0 text-[15px] font-semibold select-none flex-1">
-          <img src={vibestarLogo} width="26" height="26" alt="" />
-          <span>Vibestar</span>
+        <div className="sidebar-brand flex items-center min-w-0 select-none flex-1">
+          <span className="sidebar-brand-title">
+            <span className="sidebar-brand-v">V</span>ibestar
+          </span>
         </div>
         <button
           ref={toggleRef}

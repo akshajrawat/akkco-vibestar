@@ -1,3 +1,8 @@
+import { viberSnapshotVersion } from "./viber-snapshots";
+
+export const viberSnapshotTrigger =
+  "CREATE TRIGGER IF NOT EXISTS viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;";
+
 export const migrations = [
   {
     version: 0,
@@ -61,10 +66,6 @@ CREATE TABLE IF NOT EXISTS agent_profile_revisions(
 
 CREATE TABLE IF NOT EXISTS retired_viber_profiles(
   profile_id TEXT PRIMARY KEY
-);
-
-CREATE TABLE IF NOT EXISTS viber_computers(
-  profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id)
 );
 
 CREATE TABLE IF NOT EXISTS viber_sessions(
@@ -163,7 +164,7 @@ CREATE TABLE IF NOT EXISTS ai_usage(
 
 CREATE INDEX IF NOT EXISTS viber_usage ON ai_usage(viber_session_id, started_at);
 
-CREATE TRIGGER IF NOT EXISTS viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;
+${viberSnapshotTrigger}
 
 CREATE TRIGGER IF NOT EXISTS viber_repository_immutable BEFORE UPDATE OF repository_id ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber repository ownership is immutable'); END;
 
@@ -173,7 +174,21 @@ CREATE TRIGGER IF NOT EXISTS viber_workspace_owner_immutable BEFORE UPDATE OF wo
 `,
   },
   {
-    version: 1,
+    version: 45,
+    sql: `
+CREATE TABLE IF NOT EXISTS viber_computers(
+  profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id)
+);
+
+-- Provider threads saved in the retired execution environment are unavailable to the local CLIs.
+UPDATE viber_sessions SET thread=NULL, threads=NULL
+WHERE profile_id IN (SELECT profile_id FROM viber_computers);
+DROP TABLE IF EXISTS viber_computers;
+`,
+  },
+  { version: viberSnapshotVersion, sql: viberSnapshotTrigger },
+  {
+    version: 47,
     sql: `
 CREATE TABLE IF NOT EXISTS viber_memory_facts(
   profile_id TEXT NOT NULL REFERENCES agent_profiles(id),

@@ -88,3 +88,35 @@ it("shows one short standalone error and keeps complete diagnostics under Techni
   expect(screen.getByText("Technical details")).toBeTruthy();
   expect(screen.queryByText(/preparation failed|This stage/)).toBeNull();
 });
+
+it("hides empty message events between tools and shows text when a stream has content", () => {
+  const placeholder: AgentEvent = {
+    ...event,
+    id: 2,
+    kind: "message",
+    data: JSON.stringify({ call_id: "reply", text: " " }),
+  };
+
+  const view = render(
+    <AgentTimeline runs={[run]} events={[placeholder, event]} compact standalone />,
+  );
+
+  expect(screen.getByText("Running command")).toBeTruthy();
+  expect(view.container.querySelector(".message-event")).toBeNull();
+
+  view.rerender(
+    <AgentTimeline
+      runs={[run]}
+      events={[
+        event,
+        placeholder,
+        { ...placeholder, id: 3, data: JSON.stringify({ call_id: "reply", text_delta: "Reply" }) },
+      ]}
+      compact
+      standalone
+    />,
+  );
+
+  expect(screen.getByText("Reply")).toBeTruthy();
+  expect(view.container.querySelectorAll(".message-event")).toHaveLength(1);
+});

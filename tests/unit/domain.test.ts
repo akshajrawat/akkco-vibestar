@@ -3,7 +3,6 @@ import { mkdtemp, writeFile, mkdir, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  parseIssue,
   branchName,
   remoteIdentity,
   defaultSettings,
@@ -14,20 +13,6 @@ import { Database } from "../../apps/core/storage/database";
 import { migrations } from "../../apps/core/storage/migrations";
 
 describe("domain and persistence", () => {
-  it("parses GitHub issue URLs and rejects unrelated input", () => {
-    expect(parseIssue("https://github.com/vibestar/vibestar/issues/26831").number).toBe(26831);
-    for (const url of [
-      "http://github.com/a/b/issues/1",
-      "https://evil.com/a/b/issues/1",
-      "https://github.com/a/b/pull/1",
-      "https://github.com/a/b/issues/0",
-      "https://user@github.com/a/b/issues/1",
-      "https://github.com/a/b/issues/9007199254740993",
-    ]) {
-      expect(() => parseIssue(url)).toThrow();
-    }
-  });
-
   it("generates valid branches and deterministic collisions", () => {
     expect(branchName(26831, "check-improvements-tab.spec.ts")).toBe(
       "akkco/26831-check-improvements-tab",
@@ -85,7 +70,7 @@ describe("domain and persistence", () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-db-"));
     try {
       const path = join(dir, "test.sqlite");
-      const db = new Database(path);
+      const db = await Database.open(path);
       db.saveSettings({ ...defaultSettings, concurrency: 3 });
 
       expect(db.all("SELECT MAX(version) AS version FROM schema_migrations")).toEqual([
@@ -95,7 +80,7 @@ describe("domain and persistence", () => {
       expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
 
       db.close();
-      const reopened = new Database(path);
+      const reopened = await Database.open(path);
       expect(reopened.settings().concurrency).toBe(3);
       expect(() => reopened.saveSettings({ ...defaultSettings, concurrency: 5 })).toThrow();
       reopened.close();

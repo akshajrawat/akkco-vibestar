@@ -7,7 +7,6 @@ export const testProfileIds = {
   implementer: "e1bc5ab8-3a96-4d53-96c5-3103cf484503",
   reviewer: "e1bc5ab8-3a96-4d53-96c5-3103cf484504",
   planner: "e1bc5ab8-3a96-4d53-96c5-3103cf484501",
-  refiner: "e1bc5ab8-3a96-4d53-96c5-3103cf484502",
 } as const;
 
 export const createTestProfiles = (db: Database) => {
