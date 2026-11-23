@@ -9,12 +9,19 @@ import {
   viberSnapshotKeyPath,
 } from "../../apps/core/storage/viber-snapshots";
 
-const filesystem = vi.hoisted(() => ({ stage: vi.fn<(file: FileHandle) => void>() }));
+const filesystem = vi.hoisted(() => ({
+  stage: vi.fn<(file: FileHandle) => void>(),
+  publish: vi.fn<() => void>(),
+}));
 
 vi.mock("node:fs/promises", async (original) => {
   const fs = await original<typeof import("node:fs/promises")>();
   return {
     ...fs,
+    link: async (...args: Parameters<typeof fs.link>) => {
+      filesystem.publish();
+      return fs.link(...args);
+    },
     open: async (...args: Parameters<typeof fs.open>) => {
       const file = await fs.open(...args);
       if (args[1] === "wx") {
@@ -36,6 +43,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   filesystem.stage.mockReset();
+  filesystem.publish.mockReset();
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -56,6 +64,17 @@ it.each(["writeFile", "sync"] as const)("can retry after an interrupted key %s",
   const key = await loadViberSnapshotKey(keyPath, true);
   expect(key).toHaveLength(32);
   expect(await readFile(keyPath)).toEqual(key);
+});
+
+it("removes the staged key if publication fails", async () => {
+  const error = Object.assign(new Error("cannot publish key"), { code: "ENOSPC" });
+
+  filesystem.publish.mockImplementationOnce(() => {
+    throw error;
+  });
+
+  await expect(loadViberSnapshotKey(keyPath, true)).rejects.toBe(error);
+  expect(await readdir(dir)).toEqual([]);
 });
 
 it("publishes one synced key for concurrent creators", async () => {
@@ -128,9 +147,22 @@ it("preserves a preexisting private key and rejects additional hard links", asyn
 
   const alias = `${keyPath}.tmp-backup`;
   await link(keyPath, alias);
+  const otherStage = `${keyPath}.tmp-${randomUUID()}`;
+  const otherKey = Buffer.alloc(32, 43);
+  await writeFile(otherStage, otherKey, { mode: 0o600 });
+
   await expect(loadViberSnapshotKey(keyPath, true)).resolves.toBeUndefined();
   expect(await readFile(keyPath)).toEqual(key);
   expect(await readFile(alias)).toEqual(key);
+  expect(await readFile(otherStage)).toEqual(otherKey);
+});
+
+it.each([0, 16])("preserves an existing incomplete key of %i bytes", async (size) => {
+  const key = Buffer.alloc(size, 42);
+  await writeFile(keyPath, key, { mode: 0o600 });
+
+  await expect(loadViberSnapshotKey(keyPath, true)).resolves.toBeUndefined();
+  expect(await readFile(keyPath)).toEqual(key);
 });
 
 it.each([0o644, 0o400])("rejects and preserves an existing key with mode %i", async (mode) => {
