@@ -8,7 +8,7 @@ import {
 
 const buttonClass = /^\.(?:[\w-]+-)?button\b(?!-)/;
 
-const splitSelector = (selector, delimiter) => {
+const splitSelector = (selector, delimiter, keepDelimiter = false) => {
   const parts = [];
   let start = 0;
   let depth = 0;
@@ -23,13 +23,17 @@ const splitSelector = (selector, delimiter) => {
       }
     } else if (char === '"' || char === "'") {
       quote = char;
-    } else if (char === "[" || char === "(") {
-      depth++;
-    } else if (char === "]" || char === ")") {
-      depth--;
-    } else if (depth === 0 && delimiter.test(char)) {
-      parts.push(selector.slice(start, i).trim());
-      start = i + 1;
+    } else {
+      if (depth === 0 && delimiter.test(char)) {
+        parts.push(selector.slice(start, i).trim());
+        start = keepDelimiter ? i : i + 1;
+      }
+
+      if (char === "[" || char === "(") {
+        depth++;
+      } else if (char === "]" || char === ")") {
+        depth--;
+      }
     }
   }
 
@@ -38,20 +42,21 @@ const splitSelector = (selector, delimiter) => {
 
 const lastCompound = (selector) => splitSelector(selector, /[\s>+~]/).at(-1) ?? "";
 
-const buttonSelector = {
-  test(selector) {
-    return splitSelector(selector, /,/).some((item) => {
-      const element = lastCompound(item)
-        .replace(/\[role\s*=\s*["']?(?:button|switch)["']?\s*\]/g, ".button")
-        .replace(/\[[^\]]*\]|\((?:[^()]|\([^()]*\))*\)/g, "");
-
-      return (
-        /^button\b(?!-)/.test(element) ||
-        element.split(/(?=\.)/).some((part) => buttonClass.test(part))
-      );
-    });
-  },
-};
+const targetsButton = (selector) =>
+  splitSelector(selector, /,/).some((item) => {
+    const element = lastCompound(item);
+    return (
+      /^button\b(?!-)/.test(element) ||
+      splitSelector(element, /[.#:[]/, true).some((part) => {
+        const positive = part.match(/^:(?:is|where)\(([\s\S]*)\)$/i);
+        return (
+          buttonClass.test(part) ||
+          /^\[role\s*=\s*["']?(?:button|switch)["']?\s*\]$/.test(part) ||
+          (positive !== null && targetsButton(positive[1]))
+        );
+      })
+    );
+  });
 
 const targetsOtherElement = (variant) => {
   if (variant === "*" || variant === "**") {
@@ -124,7 +129,7 @@ export const noButtonBorder = {
       return {
         Program() {
           checkCssBorders(context, {
-            target: buttonSelector,
+            target: { test: targetsButton },
             utility: isBorder,
             declaration: visibleBorder,
             messageId,

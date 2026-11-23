@@ -20,6 +20,11 @@ export const canExtractMemory = (text: string) =>
 const preferenceValue = (verb: string, value: string) =>
   `preference:${/avoid|never|not|n['’]t/i.test(verb) ? "against" : "for"}:${memoryTextKey(value)}`;
 
+const projectProperty = (value: string) =>
+  /^project:defaults to (?:(?:\d+ )?(?:tabs?|spaces?)|.+ for indentation)$/.test(value)
+    ? "project-property:indentation"
+    : null;
+
 const evidenceShape = (evidence: string) => {
   const correction = /^(?:actually|correction|update|instead)[:,]\s*/i;
   const text = evidence.replace(correction, "").trim();
@@ -127,11 +132,16 @@ export const validateMemorySuggestion = (message: string, raw: unknown) => {
       shaped.subject ??
       (topic
         ? `${shaped.value.startsWith("project:") ? "project" : "topic"}:${memoryTextKey(topic)}`
-        : null),
+        : projectProperty(shaped.value)),
   };
 };
 
 export const memoryValue = (text: string) => evidenceShape(text)?.value ?? memoryTextKey(text);
 
-export const storedMemorySubject = (subject: string | null, topic: string | null) =>
-  subject?.startsWith("project:") ? (topic ? `project:${memoryTextKey(topic)}` : null) : subject;
+export const storedMemorySubject = (text: string, subject: string | null, topic: string | null) => {
+  if (subject && !subject.startsWith("project:")) {
+    return subject;
+  }
+
+  return topic ? subject && `project:${memoryTextKey(topic)}` : projectProperty(memoryValue(text));
+};

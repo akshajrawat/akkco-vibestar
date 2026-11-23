@@ -90,3 +90,22 @@ it("splits nested selector lists only at top-level commas", () => {
     ),
   ).toEqual([rule, rule]);
 });
+
+it.each([":is(button)", ":where(button)", ".dialog :is(a, :where(form > button))"])(
+  "rejects CSS borders on %s",
+  (selector) => {
+    expect(lint(`${selector} { border: 1px solid; }`, "test.css")).toEqual([rule]);
+  },
+);
+
+it.each([
+  ":not(button)",
+  ":has(button)",
+  "button > svg",
+  ":is(button > svg)",
+  ":where(button) > svg",
+  ":not(:where(button))",
+  '[data-selector=":is(button)"]',
+])("allows CSS borders on %s", (selector) => {
+  expect(lint(`${selector} { border: 1px solid; }`, "test.css")).toEqual([]);
+});

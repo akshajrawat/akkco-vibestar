@@ -328,7 +328,9 @@ export class ViberMemory {
       .filter((row) => (row.topic && memoryTextKey(row.topic)) === topic);
 
     const related = suggestion.subject
-      ? current.filter((row) => storedMemorySubject(row.subject, row.topic) === suggestion.subject)
+      ? current.filter(
+          (row) => storedMemorySubject(row.text, row.subject, row.topic) === suggestion.subject,
+        )
       : [];
 
     const duplicate =

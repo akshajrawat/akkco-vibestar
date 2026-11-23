@@ -78,6 +78,7 @@ flowchart LR
     Permissions["Provider Settings · Share recalled memories"] --> Recall
     Learn --> Suggest --> Evidence["Validate user evidence"]
     Evidence --> Storage["Local SQLite · Viber and repository/topic scope"]
+    Evidence -- "Correction to the repository's indentation default" --> Replace["Replace the previous fact"] --> Storage
     Storage --> Ollama["Local Ollama search"]
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
     Share --> Accept["Provider accepts turn input"] --> Record["Record facts in thread context"]

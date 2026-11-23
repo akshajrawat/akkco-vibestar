@@ -520,42 +520,109 @@ read(() => emit({ event: 'result', result: { status: 'SUCCESS', response: reply,
   },
 );
 
+const captureMemory = (session: ViberSession, content: string, topic: string | null = null) => {
+  const scope = turn(session);
+
+  engine.viberSessions.store.capture({
+    session_id: session.id,
+    profile_id: profileId,
+    request_id: scope.messageId,
+    content,
+    history_ids: [],
+  });
+
+  engine.viberSessions.store.finish(scope.messageId, "completed", { summary: "Fixture" });
+
+  const learn = () => {
+    engine.memory.learn(
+      scope,
+      content,
+      [{ action: "save_memory", text: content, evidence: content, topic }],
+      engine.memory.suggestionSignal(content)!,
+    );
+  };
+
+  return { learn, id: scope.messageId };
+};
+
+it.each(["learned", "legacy"])(
+  "recalls only the corrected topicless project default after replacing a %s fact",
+  async (source) => {
+    const original = "This project defaults to tabs.";
+    const corrected = "this project defaults to spaces.";
+    vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest");
+
+    vi.spyOn(localMemoryModels, "embed").mockImplementation(async (_model, inputs) => {
+      const vectors: Record<string, number[]> = {
+        [original]: [0.8, 0.6],
+        [corrected]: [0.8, -0.6],
+      };
+
+      return inputs.map((input) => vectors[input] ?? [1, 0]);
+    });
+
+    await start();
+    const { repo } = await fixtureRepository(engine, dir);
+    const otherRepo = { ...repo, id: randomUUID(), name: "another-repository" };
+    engine.db.saveRepository(otherRepo);
+    const session = await create(repo.id);
+    const otherId = seedFact(original, undefined, otherRepo.id);
+
+    await configure({
+      automatic_saving: true,
+      recall: true,
+      share_with: codexSharing,
+      embedding_model: "fixture",
+    });
+
+    if (source === "legacy") {
+      seedFact(original, undefined, repo.id);
+    } else {
+      captureMemory(session, original).learn();
+    }
+
+    const recall = async () => {
+      const pick = await engine.memory.prepareRecall(
+        turn(session),
+        "Which indentation should I use?",
+        new AbortController().signal,
+      );
+
+      return pick?.().map(({ text }) => text);
+    };
+
+    await expect.poll(recall).toEqual([original]);
+    const id = facts()[1].id;
+    captureMemory(session, "Actually, " + corrected).learn();
+
+    await expect.poll(recall).toEqual([corrected]);
+
+    expect(facts()).toEqual([
+      expect.objectContaining({ id: otherId, text: original, topic: null, revision: 1 }),
+      expect.objectContaining({ id, text: corrected, topic: null, revision: 2 }),
+    ]);
+  },
+);
+
 it("learns independent project facts and polarity while honoring submission order", async () => {
   await start();
   const { repo } = await fixtureRepository(engine, dir);
   const session = await create(repo.id);
   await configure({ automatic_saving: true });
 
-  const capture = (content: string, topic: string | null = null) => {
-    const scope = turn(session);
-
-    engine.viberSessions.store.capture({
-      session_id: session.id,
-      profile_id: profileId,
-      request_id: scope.messageId,
-      content,
-      history_ids: [],
-    });
-
-    engine.viberSessions.store.finish(scope.messageId, "completed", { summary: "Fixture" });
-
-    const learn = () => {
-      engine.memory.learn(
-        scope,
-        content,
-        [{ action: "save_memory", text: content, evidence: content, topic }],
-        engine.memory.suggestionSignal(content)!,
-      );
-    };
-
-    return { learn, id: scope.messageId };
-  };
+  const capture = (content: string, topic?: string) => captureMemory(session, content, topic);
 
   capture("This project uses React.").learn();
   capture("This project uses SQLite.").learn();
   const recursion = "recursion";
   capture("Always use recursion.", recursion).learn();
   await expect.poll(() => facts().map(({ needs_review }) => needs_review)).toEqual([0, 0, 0]);
+
+  expect(
+    facts()
+      .slice(0, 2)
+      .map(({ text }) => text),
+  ).toEqual(["This project uses React.", "This project uses SQLite."]);
 
   const initial = facts()[2].id;
   const older = capture("Correction: Always use recursion.", recursion);
