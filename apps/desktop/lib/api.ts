@@ -1,5 +1,3 @@
-import type { z } from "zod";
-import type { viberMemoryInputs, ViberMemoryResults } from "../../core/vibers/memory-contracts";
 import type { CoreEvent } from "./types";
 
 export const rpc = <T>(method: string, params: unknown = {}): Promise<T> =>
@@ -13,8 +11,3 @@ export const errorMessage = (error: unknown) =>
     .replace(/^Error invoking remote method ['"][^'"]+['"]:\s*/, "")
     .replace(/(?:AdeError:\s*)+/g, "")
     .replace(/^(?:Error:\s*)+/, "");
-
-export const viberMemoryRpc = <M extends keyof ViberMemoryResults>(
-  method: M,
-  params: z.input<(typeof viberMemoryInputs)[M]>,
-): Promise<ViberMemoryResults[M]> => rpc(method, params);

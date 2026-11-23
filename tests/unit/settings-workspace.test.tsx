@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 
 import { defaultSettings } from "../../apps/core/domain";
 import { SettingsPage } from "../../apps/desktop/features/settings/SettingsPage";
+import { useProviders } from "../../apps/desktop/hooks/useWorkspace";
 import { GlobalNotifications } from "../../apps/desktop/app/GlobalNotifications";
 import { notifications } from "../../apps/desktop/lib/notifications";
 import toast from "react-hot-toast";
@@ -14,7 +15,7 @@ import { selectValue } from "../helpers/select";
 import { mockDialog } from "../helpers/dialog";
 
 vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
-  useProviders: () => ({ providers: [] }),
+  useProviders: vi.fn(),
 }));
 
 const rpc = vi.fn();
@@ -25,6 +26,14 @@ const closeWindow = vi.fn();
 
 beforeEach(() => {
   mockDialog();
+
+  vi.mocked(useProviders).mockReturnValue({
+    providers: [],
+    loading: false,
+    error: "",
+    refresh: async () => {},
+  });
+
   notifications.dismiss("settings:settings");
   notifications.dismiss("settings:execution settings");
   notifications.setPreference("necessary");
@@ -113,41 +122,66 @@ it("saves setting changes automatically across categories", async () => {
   expect(screen.queryByText("Local repository discovery")).toBeNull();
 });
 
-it("keeps Viber memory saving, recall and provider sharing independently opt-in", async () => {
+it("uses one Memory switch and keeps each provider's sharing permission separate", async () => {
+  vi.mocked(useProviders).mockReturnValue({
+    providers: ["codex", "antigravity"].map((provider) => ({
+      provider,
+      installed: true,
+      connected: true,
+      version: "fixture",
+      models: [],
+      efforts: [],
+      capabilities: [],
+      error: null,
+    })),
+    loading: false,
+    error: "",
+    refresh: async () => {},
+  });
+
   open();
-  const automatic = screen.getByRole<HTMLInputElement>("checkbox", { name: "Automatic saving" });
-  const recall = screen.getByRole<HTMLInputElement>("checkbox", { name: "Recall" });
-
-  const codex = screen.getByRole<HTMLInputElement>("checkbox", {
-    name: "Share recalled facts with Codex",
-  });
-
-  const antigravity = screen.getByRole<HTMLInputElement>("checkbox", {
-    name: "Share recalled facts with Antigravity",
-  });
-
-  expect([automatic, recall, codex, antigravity].map(({ checked }) => checked)).toEqual([
-    false,
-    false,
-    false,
-    false,
-  ]);
-
-  await act(async () => fireEvent.click(automatic));
-  await act(async () => fireEvent.click(codex));
-
-  expect([automatic, recall, codex, antigravity].map(({ checked }) => checked)).toEqual([
-    true,
-    false,
-    true,
-    false,
-  ]);
+  const memory = screen.getByRole("switch", { name: "Enable Memory" });
+  expect(screen.getAllByRole("switch")).toHaveLength(1);
+  expect(memory.getAttribute("aria-checked")).toBe("false");
+  expect(screen.queryByRole("checkbox", { name: /share recalled memories/i })).toBeNull();
+  await act(async () => fireEvent.click(memory));
+  expect(memory.getAttribute("aria-checked")).toBe("true");
 
   expect(rpc).toHaveBeenLastCalledWith(
     "settings.save",
     expect.objectContaining({
       viber_memory: expect.objectContaining({
         automatic_saving: true,
+        recall: true,
+        share_with: { codex: false, antigravity: false },
+      }),
+    }),
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Providers" }));
+
+  const codex = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: "Share recalled memories with OpenAI Codex",
+  });
+
+  const antigravity = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: "Share recalled memories with Google Antigravity",
+  });
+
+  expect(codex.checked).toBe(false);
+  expect(antigravity.checked).toBe(false);
+  await act(async () => fireEvent.click(codex));
+  expect(antigravity.checked).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "General" }));
+  await act(async () => fireEvent.click(memory));
+  expect(memory.getAttribute("aria-checked")).toBe("false");
+
+  expect(rpc).toHaveBeenLastCalledWith(
+    "settings.save",
+    expect.objectContaining({
+      viber_memory: expect.objectContaining({
+        automatic_saving: false,
         recall: false,
         share_with: { codex: true, antigravity: false },
       }),

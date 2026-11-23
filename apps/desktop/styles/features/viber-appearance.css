@@ -118,7 +118,7 @@
 }
 
 .viber-create-overlay .avatar-options-heading .button:hover {
-  @apply border-transparent bg-white/10;
+  @apply bg-white/10;
 }
 
 .viber-create-overlay .avatar-options {

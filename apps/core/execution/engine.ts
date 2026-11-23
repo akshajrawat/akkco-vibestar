@@ -81,7 +81,7 @@ export class Engine extends EventEmitter {
     super();
     this.db = database;
     this.vibers = new ViberStore(database);
-    this.memory = new ViberMemory(database, this.changed);
+    this.memory = new ViberMemory(database);
     this.git = new GitWorkspace(root, (id) => this.db.repository(id), gitTransport);
 
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>

@@ -50,19 +50,6 @@ export class Rpc {
         this.handlers.set(method, (method, input) => handler(services, method, input));
       }
     }
-
-    const { memory } = engine;
-    for (const [method, handle] of Object.entries({
-      "viber.memory.list": memory.list,
-      "viber.memory.create": memory.create,
-      "viber.memory.update": memory.update,
-      "viber.memory.forget": memory.forget,
-    })) {
-      this.handlers.set(method, async (_method, input) => {
-        engine.assertAvailable();
-        return handle(input);
-      });
-    }
   }
 
   /** Keeps transport dispatch narrow; domain handlers retain validation and ownership checks. */

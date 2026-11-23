@@ -12,6 +12,7 @@ export interface VibestarPlugin {
     "no-input-border-without-hover": Rule.RuleModule;
     "no-input-border-on-click": Rule.RuleModule;
     "no-dropdown-border": Rule.RuleModule;
+    "no-button-border": Rule.RuleModule;
     "no-pnpm": Rule.RuleModule;
   };
 }

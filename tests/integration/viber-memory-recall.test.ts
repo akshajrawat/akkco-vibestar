@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { Rpc } from "../../apps/core/rpc";
 import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
+import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import type { Settings } from "../../apps/core/domain";
 import type { ViberSession } from "../../apps/core/vibers/contracts";
@@ -59,12 +60,61 @@ const turn = (session: ViberSession, messageId = randomUUID()) => ({
   provider: session.selection.provider,
 });
 
-const add = (text: string, topic?: string, repo?: string, profile_id: string = profileId) =>
-  engine.memory.create({ profile_id, text, repository_id: repo, topic });
+const seedFact = (text: string, topic?: string, repo?: string, owner: string = profileId) => {
+  const id = randomUUID();
+  engine.db.run("INSERT INTO viber_memory_facts VALUES(?,?,?)", owner, id, text);
+  if (topic || repo) {
+    engine.db.run(
+      "INSERT INTO viber_memory_details(profile_id,fact_id,repository_id,topic) VALUES(?,?,?,?)",
+      owner,
+      id,
+      repo ?? null,
+      topic ?? null,
+    );
+  }
 
-const facts = () => engine.memory.list({ profile_id: profileId });
+  return id;
+};
+
+const facts = () =>
+  engine.db.all<{ id: string; text: string; topic: string; needs_review: number }>(
+    `SELECT f.id,f.text,d.topic,d.revision,d.needs_review,d.source_message_id,d.source_session_id
+   FROM viber_memory_facts f JOIN viber_memory_details d ON d.profile_id=f.profile_id AND d.fact_id=f.id
+   WHERE f.profile_id=? ORDER BY f.rowid`,
+    profileId,
+  );
+
 const vectorCount = () => engine.db.all("SELECT 1 FROM viber_memory_vectors").length;
 const codexSharing = { codex: true, antigravity: false } as const;
+
+const send = async (
+  session: ViberSession,
+  content: string,
+  provider = session.selection.provider,
+) => {
+  const request_id = randomUUID();
+
+  await rpc.call("viber.session.send", {
+    session_id: session.id,
+    profile_id: profileId,
+    request_id,
+    content,
+    history_ids: [],
+    selection: { ...session.selection, provider },
+  });
+
+  await expect
+    .poll(
+      () =>
+        engine.viberSessions.store
+          .detail(session.id, profileId)
+          .messages.find(({ id }) => id === request_id)?.status,
+    )
+    .toBe("completed");
+
+  await expect.poll(() => engine.isActive(`viber:${session.id}`)).toBe(false);
+  return request_id;
+};
 
 it("gates lookup locally, ranks within the Viber and repo or topic, and rechecks consent, revisions and thread history", async () => {
   const identify = vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest-a");
@@ -91,16 +141,16 @@ it("gates lookup locally, ranks within the Viber and repo or topic, and rechecks
   const foreign = { ...repo, id: randomUUID(), name: "another-repository" };
   engine.db.saveRepository(foreign);
   const session = await create(repo.id);
-  const first = add("First useful fact", "tests");
-  add("First useful fact", undefined, repo.id);
-  add("Second useful fact", undefined, repo.id);
-  add("Third useful fact", "tests");
-  add("Fourth useful fact", undefined, repo.id);
-  add("Private elsewhere", undefined, foreign.id);
-  add("Private Viber", "tests", undefined, testProfileIds.reviewer);
-  add("Private topic", "off-topic");
-  add("Weak match", undefined, repo.id);
-  add("Panel-only fact");
+  const first = seedFact("First useful fact", "tests");
+  seedFact("First useful fact", undefined, repo.id);
+  seedFact("Second useful fact", undefined, repo.id);
+  seedFact("Third useful fact", "tests");
+  seedFact("Fourth useful fact", undefined, repo.id);
+  seedFact("Private elsewhere", undefined, foreign.id);
+  seedFact("Private Viber", "tests", undefined, testProfileIds.reviewer);
+  seedFact("Private topic", "off-topic");
+  seedFact("Weak match", undefined, repo.id);
+  seedFact("Unscoped legacy fact");
 
   const recall = (provider = session.selection.provider) =>
     engine.memory.prepareRecall(
@@ -132,14 +182,14 @@ it("gates lookup locally, ranks within the Viber and repo or topic, and rechecks
   expect(pick("native-thread").map(({ text }) => text)).toEqual(["Fourth useful fact"]);
   expect(pick("new-thread")).toEqual(matches);
 
-  expect(facts().find(({ id }) => id === first.id)?.shared).toEqual([
-    { provider: "codex", at: expect.any(String), earlier_revision: false },
-  ]);
+  expect(
+    engine.db.all("SELECT provider,revision FROM viber_memory_shares WHERE fact_id=?", first),
+  ).toEqual([{ provider: "codex", revision: 1 }]);
 
   engine.memory.compact(turn(session), "native-thread");
   expect(pick("native-thread")).toEqual(matches);
-  engine.memory.forget({ profile_id: profileId, id: first.id });
-  expect(pick().map(({ id }) => id)).not.toContain(first.id);
+  engine.db.run("DELETE FROM viber_memory_facts WHERE profile_id=? AND id=?", profileId, first);
+  expect(pick().map(({ id }) => id)).not.toContain(first);
   await configure({ share_with: { codex: false, antigravity: false } });
   expect(pick()).toEqual([]);
 
@@ -204,7 +254,7 @@ it("learns from completed user evidence, corrects an explicit replacement and wi
     expect.objectContaining({
       text: java,
       topic: "DSA examples",
-      source: expect.objectContaining({ message_id: message }),
+      source_message_id: message,
     }),
   ]);
 
@@ -218,8 +268,18 @@ it("learns from completed user evidence, corrects an explicit replacement and wi
     .toEqual([expect.objectContaining({ id, text: "For DSA examples, use Python from now on." })]);
 
   learn("For DSA examples, use C++ from now on.");
-  await expect.poll(() => facts().map((fact) => fact.needs_review)).toEqual([true, true]);
+  await expect.poll(() => facts().map((fact) => fact.needs_review)).toEqual([1, 1]);
   expect(vectorCount()).toBe(0);
+
+  learn("Correction: For DSA examples, use C++ from now on.");
+
+  await expect
+    .poll(() =>
+      facts()
+        .filter(({ needs_review }) => !needs_review)
+        .map(({ text }) => text),
+    )
+    .toEqual(["For DSA examples, use C++ from now on."]);
 
   learn("For database examples, use SQL from now on.", undefined, "completed", false);
   await expect.poll(() => propose.mock.calls.length).toBe(1);
@@ -231,7 +291,123 @@ it("learns from completed user evidence, corrects an explicit replacement and wi
   );
 });
 
-it("cannot re-index a forgotten fact when a pending embedding returns", async () => {
+it.each(["codex", "antigravity"] as const)(
+  "saves and indexes a fact after a simulated %s reply",
+  async (provider) => {
+    const evidence = "For DSA examples, use Java from now on.";
+    const reply = "I'll use Java for those examples.";
+
+    const suggestion = {
+      action: "save_memory",
+      text: "Use Java for DSA examples.",
+      evidence,
+      topic: "DSA",
+    };
+
+    const adapter = provider === "codex" ? new CodexProvider() : new AntigravityProvider();
+    const extract = vi.spyOn(localMemoryModels, "suggest").mockResolvedValue([suggestion]);
+    vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest");
+
+    vi.spyOn(localMemoryModels, "embed").mockImplementation(async (_model, inputs) =>
+      inputs.map(() => [1, 0]),
+    );
+
+    await start(() => ({
+      ...adapter,
+      detect: async () => {
+        const detected = await detectFixtureProvider();
+        if (provider === "codex") {
+          detected.capabilities.push("native-memory-suggestions");
+        }
+
+        return { ...detected, provider };
+      },
+      invocation: (request) => {
+        const invocation = adapter.invocation(request);
+
+        const setup = `
+const emit = value => console.log(JSON.stringify(value));
+const threadId = ${JSON.stringify(request.runId)};
+const reply = ${JSON.stringify(reply)};
+const read = handler => require('node:readline').createInterface({input:process.stdin}).on('line', line => handler(JSON.parse(line)));
+`;
+
+        const script =
+          provider === "codex"
+            ? `
+${setup}
+read(message => {
+  if (message.method === 'initialize') emit({ id: message.id, result: {} });
+  if (message.method === 'thread/start') {
+    if (message.params.dynamicTools?.[0]?.name !== 'save_memory') process.exit(4);
+    emit({ id: message.id, result: { thread: { id: threadId } } });
+  }
+  if (message.method === 'turn/start') {
+    emit({ id: message.id, result: { turn: { id: 'turn' } } });
+    const { action, ...args } = ${JSON.stringify(suggestion)};
+    emit({ id: 10, method: 'item/tool/call', params: { tool: action, threadId, turnId: 'turn', arguments: args } });
+  }
+  if (message.id === 10) {
+    if (message.result?.success !== true) process.exit(5);
+    emit({ method: 'item/completed', params: { item: { id: 'reply', type: 'agentMessage', text: reply } } });
+    emit({ method: 'turn/completed', params: { turn: { status: 'completed' } } });
+  }
+});`
+            : `
+${setup}
+emit({ event: 'init', conversation_id: threadId });
+read(() => emit({ event: 'result', result: { status: 'SUCCESS', response: reply, conversation_id: threadId } }));`;
+
+        return { ...invocation, program: process.execPath, args: ["-e", script] };
+      },
+    }));
+
+    await configure({
+      automatic_saving: true,
+      recall: true,
+      embedding_model: "fixture",
+      suggestion_model: "fixture-extractor",
+    });
+
+    const session = await create(undefined, provider);
+
+    await expect(
+      rpc.call("viber.memory.create", { profile_id: profileId, text: evidence }),
+    ).rejects.toMatchObject({ kind: "invalid_method" });
+
+    expect(facts()).toEqual([]);
+
+    const requestId = await send(session, evidence);
+
+    expect(
+      engine.viberSessions.detail(session.id, profileId).messages.map(({ content }) => content),
+    ).toEqual([evidence, reply]);
+
+    await expect.poll(facts).toEqual([
+      expect.objectContaining({
+        text: evidence,
+        topic: "DSA examples",
+        source_message_id: requestId,
+        source_session_id: session.id,
+      }),
+    ]);
+
+    await expect.poll(vectorCount).toBe(1);
+    if (provider === "antigravity") {
+      expect(extract).toHaveBeenCalledWith("fixture-extractor", evidence, expect.any(AbortSignal));
+    } else {
+      expect(extract).not.toHaveBeenCalled();
+    }
+
+    const saved = facts();
+    await rpc.close();
+    await engine.close();
+    await start();
+    expect(facts()).toEqual(saved);
+  },
+);
+
+it("cannot re-index a retired Viber's facts when a pending embedding returns", async () => {
   vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest");
   let finishEmbedding: (value: number[][]) => void = () => {};
 
@@ -245,12 +421,12 @@ it("cannot re-index a forgotten fact when a pending embedding returns", async ()
     .mockImplementation(async (_model, inputs) => inputs.map(() => [1, 0]));
 
   await start();
-  const forgotten = add("Use Python examples.", "coding");
+  seedFact("Use Python examples.", "coding");
+  const kept = seedFact("Use Java for exercises.", "coding", undefined, testProfileIds.reviewer);
   await configure({ recall: true, embedding_model: "fixture" });
   try {
     await expect.poll(() => embed.mock.calls.length).toBe(1);
-    engine.memory.forget({ profile_id: profileId, id: forgotten.id });
-    const kept = add("Use Java for exercises.", "coding");
+    await rpc.call("profile.delete", { profile_id: profileId, confirmed: true });
 
     finishEmbedding([
       [1, 0],
@@ -259,7 +435,11 @@ it("cannot re-index a forgotten fact when a pending embedding returns", async ()
 
     await expect
       .poll(() => engine.db.all("SELECT fact_id FROM viber_memory_vectors"))
-      .toEqual([{ fact_id: kept.id }]);
+      .toEqual([{ fact_id: kept }]);
+
+    expect(
+      engine.db.all("SELECT id FROM viber_memory_facts WHERE profile_id=?", profileId),
+    ).toEqual([]);
   } finally {
     finishEmbedding([
       [1, 0],
@@ -313,42 +493,19 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
     },
   }));
 
+  const id = seedFact(fact, "coding examples");
+
   await configure({
     recall: true,
     share_with: { codex: false, antigravity: true },
     embedding_model: "fixture",
   });
 
-  const { id } = add(fact, "coding examples");
   await expect.poll(vectorCount).toBe(1);
   const session = await create(undefined, "antigravity");
 
-  const send = async (content: string, provider = session.selection.provider) => {
-    const request_id = randomUUID();
-
-    await rpc.call("viber.session.send", {
-      session_id: session.id,
-      profile_id: profileId,
-      request_id,
-      content,
-      history_ids: [],
-      selection: { ...session.selection, provider },
-    });
-
-    await expect
-      .poll(
-        () =>
-          engine.viberSessions.store
-            .detail(session.id, profileId)
-            .messages.find(({ id }) => id === request_id)?.status,
-      )
-      .toBe("completed");
-
-    await expect.poll(() => engine.isActive(`viber:${session.id}`)).toBe(false);
-  };
-
   const prompt = "Walk me through Two Sum.";
-  await send(prompt);
+  await send(session, prompt);
   const detail = engine.viberSessions.detail(session.id, profileId);
   expect(detail.messages.map(({ content }) => content)).toEqual([prompt, fact]);
   expect(requests[0].prompt).not.toContain(fact);
@@ -363,19 +520,17 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
     ).not.toContain(fact);
   }
 
-  await send("A related follow-up.");
+  await send(session, "A related follow-up.");
   expect(requests[1].conversation?.threadId).toBe(requests[0].runId);
-  await send("Continue with the other provider.", "codex");
+  await send(session, "Continue with the other provider.", "codex");
   expect(requests[2].prompt).not.toContain(fact);
 
-  await send("/clear");
+  await send(session, "/clear");
   expect(requests).toHaveLength(3);
 
-  expect(facts()).toEqual([
-    expect.objectContaining({
-      id,
-      text: fact,
-      shared: [expect.objectContaining({ provider: "antigravity" })],
-    }),
+  expect(facts()).toEqual([expect.objectContaining({ id, text: fact })]);
+
+  expect(engine.db.all("SELECT provider FROM viber_memory_shares WHERE fact_id=?", id)).toEqual([
+    { provider: "antigravity" },
   ]);
 });

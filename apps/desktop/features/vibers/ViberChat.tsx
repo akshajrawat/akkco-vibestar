@@ -8,7 +8,6 @@ import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { ViberFace } from "./ViberFace";
-import { ViberMemoryControl } from "./ViberMemory";
 import { ViberSessionChat } from "./ViberSessionChat";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
@@ -25,8 +24,7 @@ const messageTextColor = (color: string) => {
 };
 
 export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revision: number }) => {
-  const [session, setSession] = useState<ViberSession>();
-  const sessionId = session?.id;
+  const [sessionId, setSessionId] = useState<string>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const request = useRef({ signature: "", id: "", session: null as ViberSession | null });
@@ -55,7 +53,7 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
     void rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id })
       .then(([session]) => {
         if (active && session) {
-          setSession(session);
+          setSessionId(session.id);
         }
       })
       .catch((reason) => {
@@ -131,7 +129,7 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
         messageRequest: null,
       });
 
-      setSession(session);
+      setSessionId(session.id);
       request.current = { signature: "", id: "", session: null };
     } catch (reason) {
       setError(errorMessage(reason));
@@ -168,12 +166,6 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
         } as CSSProperties
       }
     >
-      <ViberMemoryControl
-        key={profile.id}
-        profileId={profile.id}
-        name={profile.name}
-        repositoryId={session?.repository_id}
-      />
       {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
       {sessionId ? (
         <ViberSessionChat

@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { z } from "zod";
-
-import { AdeError, now, type Settings } from "../domain";
+import { now, type Settings } from "../domain";
 import type { Database } from "../storage/database";
-import { viberMemoryFactLimit, viberMemoryInputs, type ViberMemoryFact } from "./memory-contracts";
 import {
   ViberMemoryIndex,
   deduplicateMemory,
@@ -19,21 +16,12 @@ import {
 } from "./memory-evidence";
 
 interface FactRow extends MemoryMatch {
-  repository_id: string | null;
   topic: string | null;
-  source_message_id: string | null;
-  source_session_id: string | null;
-  source_at: string | null;
-  evidence: string | null;
   subject: string | null;
   needs_review: number;
 }
 
 type SettingsValue = Settings["viber_memory"];
-
-const factsSql = `SELECT f.id,f.text,d.repository_id,d.topic,COALESCE(d.revision,1) AS revision,
-  d.source_message_id,d.source_session_id,d.source_at,d.evidence,d.subject,d.needs_review
-  FROM viber_memory_facts f LEFT JOIN viber_memory_details d ON d.profile_id=f.profile_id AND d.fact_id=f.id`;
 
 export class ViberMemory {
   private readonly index: ViberMemoryIndex;
@@ -50,12 +38,8 @@ export class ViberMemory {
 
   private closed = false;
 
-  constructor(
-    private readonly db: Database,
-    private readonly changed: () => void = () => {},
-    private readonly models = localMemoryModels,
-  ) {
-    this.index = new ViberMemoryIndex(db, this.settings, models);
+  constructor(private readonly db: Database) {
+    this.index = new ViberMemoryIndex(db, this.settings, localMemoryModels);
   }
 
   private settings = () => this.db.displaySettings().viber_memory;
@@ -110,176 +94,6 @@ export class ViberMemory {
         }
       }),
     );
-  };
-
-  private present = (profileId: string, fact: FactRow): ViberMemoryFact => {
-    const shared = this.db.all<{ provider: "codex" | "antigravity"; at: string; revision: number }>(
-      `SELECT provider,sent_at AS at,revision FROM viber_memory_shares
-       WHERE profile_id=? AND fact_id=? ORDER BY sent_at DESC`,
-      profileId,
-      fact.id,
-    );
-
-    const repo =
-      fact.repository_id && this.db.repositories().find(({ id }) => id === fact.repository_id);
-
-    return {
-      id: fact.id,
-      text: fact.text,
-      ...(fact.repository_id ? { repository_id: fact.repository_id } : {}),
-      ...(repo ? { repository_label: `${repo.owner}/${repo.name}` } : {}),
-      ...(fact.topic ? { topic: fact.topic } : {}),
-      ...(fact.needs_review ? { needs_review: true } : {}),
-      ...(fact.source_message_id && fact.source_session_id && fact.source_at && fact.evidence
-        ? {
-            source: {
-              message_id: fact.source_message_id,
-              session_id: fact.source_session_id,
-              created_at: fact.source_at,
-              evidence: fact.evidence,
-            },
-          }
-        : {}),
-      ...(shared.length
-        ? {
-            shared: shared
-              .filter(
-                (row, index) =>
-                  shared.findIndex(
-                    (item) =>
-                      item.provider === row.provider &&
-                      (item.revision === fact.revision) === (row.revision === fact.revision),
-                  ) === index,
-              )
-              .map(({ provider, at, revision }) => ({
-                provider,
-                at,
-                earlier_revision: revision !== fact.revision,
-              })),
-          }
-        : {}),
-    };
-  };
-
-  list = (raw: unknown) => {
-    const { profile_id } = this.scope(viberMemoryInputs["viber.memory.list"], raw);
-    return this.db
-      .all<FactRow>(`${factsSql} WHERE f.profile_id=? ORDER BY f.rowid`, profile_id)
-      .map((row) => this.present(profile_id, row));
-  };
-
-  create = (raw: unknown) => {
-    const { profile_id, text, repository_id, topic } = this.scope(
-      viberMemoryInputs["viber.memory.create"],
-      raw,
-    );
-
-    const id = randomUUID();
-    this.checkRepository(repository_id);
-
-    this.db.transaction(() => {
-      this.db.run(
-        "INSERT INTO viber_memory_facts(profile_id,id,text) VALUES(?,?,?)",
-        profile_id,
-        id,
-        text,
-      );
-
-      if (repository_id || topic) {
-        this.db.run(
-          "INSERT INTO viber_memory_details(profile_id,fact_id,repository_id,topic) VALUES(?,?,?,?)",
-          profile_id,
-          id,
-          repository_id ?? null,
-          topic ?? null,
-        );
-      }
-    });
-
-    this.mutated();
-    return this.present(profile_id, this.fact(profile_id, id));
-  };
-
-  update = (raw: unknown) => {
-    const { profile_id, id, text, repository_id, topic } = this.scope(
-      viberMemoryInputs["viber.memory.update"],
-      raw,
-    );
-
-    this.checkRepository(repository_id);
-
-    this.db.transaction(() => {
-      const previous = this.fact(profile_id, id);
-
-      this.db.run(
-        "UPDATE viber_memory_facts SET text=? WHERE profile_id=? AND id=?",
-        text,
-        profile_id,
-        id,
-      );
-
-      this.db.run(
-        `INSERT INTO viber_memory_details(profile_id,fact_id,repository_id,topic,revision) VALUES(?,?,?,?,?)
-         ON CONFLICT(profile_id,fact_id) DO UPDATE SET repository_id=excluded.repository_id,
-         topic=excluded.topic,revision=excluded.revision,needs_review=0`,
-        profile_id,
-        id,
-        repository_id === undefined ? previous.repository_id : repository_id,
-        topic === undefined ? previous.topic : topic,
-        previous.revision + 1,
-      );
-
-      this.db.run(
-        "DELETE FROM viber_memory_vectors WHERE profile_id=? AND fact_id=?",
-        profile_id,
-        id,
-      );
-    });
-
-    this.mutated();
-    return this.present(profile_id, this.fact(profile_id, id));
-  };
-
-  forget = (raw: unknown) => {
-    const { profile_id, id } = this.scope(viberMemoryInputs["viber.memory.forget"], raw);
-
-    const result = this.db.run(
-      "DELETE FROM viber_memory_facts WHERE profile_id=? AND id=?",
-      profile_id,
-      id,
-    );
-
-    if (!result.changes) {
-      throw new AdeError("not_found", "This fact could not be found in this Viber’s memory.");
-    }
-
-    this.changed();
-    return null;
-  };
-
-  private checkRepository = (id?: string | null) => {
-    if (id) {
-      this.db.repository(id);
-    }
-  };
-
-  private fact = (profileId: string, id: string) => {
-    const row = this.db.all<FactRow>(
-      `${factsSql} WHERE f.profile_id=? AND f.id=?`,
-      profileId,
-      id,
-    )[0];
-
-    if (!row) {
-      throw new AdeError("not_found", "This fact could not be found in this Viber’s memory.");
-    }
-
-    return row;
-  };
-
-  private mutated = () => {
-    this.changed();
-    this.queueIndex();
   };
 
   private mayRecall = (scope: MemoryTurnScope, model: string) => {
@@ -414,7 +228,7 @@ export class ViberMemory {
         const model = this.settings().suggestion_model;
         let suggestions = providerSuggestions;
         if (!suggestions.length && model) {
-          suggestions = await this.models.suggest(
+          suggestions = await localMemoryModels.suggest(
             model,
             message,
             AbortSignal.any([config, AbortSignal.timeout(30_000)]),
@@ -453,7 +267,7 @@ export class ViberMemory {
         });
 
         if (saved) {
-          this.mutated();
+          this.queueIndex();
         }
       })
       .catch(() => {});
@@ -478,25 +292,30 @@ export class ViberMemory {
 
     const current = this.db
       .all<FactRow>(
-        `${factsSql} WHERE f.profile_id=? AND d.repository_id IS ?`,
+        `SELECT f.id,f.text,d.topic,d.revision,d.subject,d.needs_review
+         FROM viber_memory_facts f JOIN viber_memory_details d ON d.profile_id=f.profile_id AND d.fact_id=f.id
+         WHERE f.profile_id=? AND d.repository_id IS ? ORDER BY f.rowid`,
         scope.profileId,
         scope.repositoryId,
       )
       .filter((row) => (row.topic && memoryTextKey(row.topic)) === topic);
 
-    if (current.some((row) => memoryTextKey(row.text) === memoryTextKey(suggestion.text))) {
-      return false;
-    }
-
     const related = suggestion.subject
       ? current.filter((row) => row.subject === suggestion.subject)
       : [];
 
-    if (related.some((row) => memoryValue(row.text) === suggestion.value)) {
+    const duplicate =
+      current.find((row) => memoryTextKey(row.text) === memoryTextKey(suggestion.text)) ??
+      related.find((row) => memoryValue(row.text) === suggestion.value);
+
+    if (duplicate && (!suggestion.correction || !duplicate.needs_review)) {
       return false;
     }
 
-    const replacement = suggestion.correction && related.length === 1 ? related[0] : undefined;
+    const replacement = suggestion.correction
+      ? (duplicate ?? related.find((row) => !row.needs_review) ?? related[0])
+      : undefined;
+
     const id = replacement?.id ?? randomUUID();
     const review = !replacement && related.length > 0;
     if (replacement) {
@@ -521,8 +340,8 @@ export class ViberMemory {
       );
     }
 
-    if (review) {
-      for (const row of related) {
+    for (const row of related) {
+      if (row.id !== id && !row.needs_review) {
         this.db.run(
           "UPDATE viber_memory_details SET needs_review=1 WHERE profile_id=? AND fact_id=?",
           scope.profileId,
@@ -556,28 +375,5 @@ export class ViberMemory {
     );
 
     return true;
-  };
-
-  private scope = <T extends { profile_id: string }>(schema: z.ZodType<T>, raw: unknown): T => {
-    const parsed = schema.safeParse(raw);
-    if (!parsed.success) {
-      throw new AdeError(
-        "invalid_input",
-        parsed.error.issues.some((issue) => issue.path[0] === "text")
-          ? `Enter a fact between 1 and ${viberMemoryFactLimit} characters.`
-          : "Select a valid Viber, fact, repository or topic.",
-      );
-    }
-
-    if (
-      !this.db.all(
-        "SELECT id FROM agent_profiles WHERE id=? AND id NOT IN (SELECT profile_id FROM retired_viber_profiles)",
-        parsed.data.profile_id,
-      ).length
-    ) {
-      throw new AdeError("not_found", "This Viber is no longer available.");
-    }
-
-    return parsed.data;
   };
 }

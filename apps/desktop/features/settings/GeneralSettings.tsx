@@ -1,18 +1,6 @@
+import { defaultViberMemorySettings } from "../../../core/vibers/memory-contracts";
 import type { Settings } from "../../lib/types";
 import { Select } from "../../components/ui/Select";
-
-const memoryModels = [
-  {
-    key: "embedding_model",
-    label: "Local embedding model",
-    help: "Ranks related facts with Ollama on this computer.",
-  },
-  {
-    key: "suggestion_model",
-    label: "Local suggestion model",
-    help: "Optional. Used when the provider has no structured suggestion for the turn.",
-  },
-] as const;
 
 export const GeneralSettings = ({
   value,
@@ -89,100 +77,49 @@ export const GeneralSettings = ({
         </label>
       </div>
     </section>
-    <section className="settings-section p-[8px_0_24px] settings-general-section">
-      <h2>Viber Memory</h2>
+    <section
+      className="settings-section p-[8px_0_24px] settings-general-section"
+      aria-labelledby="enable-memory"
+    >
+      <h2 id="enable-memory">Enable Memory</h2>
       <div className="settings-card">
-        {(
-          [
-            [
-              "automatic_saving",
-              "Automatic saving",
-              "Remember useful facts you state in Viber conversations.",
-            ],
-            ["recall", "Recall", "Search saved facts locally before eligible turns."],
-          ] as const
-        ).map(([key, label, help]) => (
-          <label className="settings-row" key={key}>
-            <span>
-              {label}
-              <small>{help}</small>
-            </span>
-            <input
-              type="checkbox"
-              aria-label={label}
-              checked={value.viber_memory[key]}
-              onChange={(event) =>
-                setValue({
-                  ...value,
-                  viber_memory: { ...value.viber_memory, [key]: event.target.checked },
-                })
-              }
-            />
-          </label>
-        ))}
-        {(
-          [
-            ["codex", "Codex"],
-            ["antigravity", "Antigravity"],
-          ] as const
-        ).map(([provider, label]) => (
-          <label className="settings-row" key={provider}>
-            <span>
-              Share recalled facts with {label}
-              <small>Allow this provider to receive relevant facts when recall is enabled.</small>
-            </span>
-            <input
-              type="checkbox"
-              aria-label={`Share recalled facts with ${label}`}
-              checked={value.viber_memory.share_with[provider]}
-              onChange={(event) =>
-                setValue({
-                  ...value,
-                  viber_memory: {
-                    ...value.viber_memory,
-                    share_with: {
-                      ...value.viber_memory.share_with,
-                      [provider]: event.target.checked,
-                    },
-                  },
-                })
-              }
-            />
-          </label>
-        ))}
-        {memoryModels.map(({ key, label, help }) => (
-          <label className="settings-row" key={key}>
-            <span>
-              {label}
-              <small>{help}</small>
-            </span>
-            <input
-              type="text"
-              aria-label={label}
-              key={value.viber_memory[key]}
-              maxLength={128}
-              spellCheck={false}
-              className="min-w-0 rounded-control bg-surface-hover px-2 py-1 hover:bg-surface-selected"
-              defaultValue={value.viber_memory[key]}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.currentTarget.blur();
-                }
-              }}
-              onBlur={(event) => {
-                const model = event.currentTarget.value.trim();
-                if (model !== value.viber_memory[key]) {
-                  setValue({ ...value, viber_memory: { ...value.viber_memory, [key]: model } });
-                }
-              }}
-            />
-          </label>
-        ))}
+        <div className="settings-row grid-cols-[minmax(0,1fr)_auto]!">
+          <p id="enable-memory-description" className="font-normal text-ink-muted">
+            Viber remembers important things from your chats and gets better at helping you over
+            time.
+          </p>
+          <button
+            type="button"
+            role="switch"
+            aria-labelledby="enable-memory"
+            aria-describedby="enable-memory-description"
+            aria-checked={value.viber_memory.automatic_saving || value.viber_memory.recall}
+            className="group relative h-6 w-11 shrink-0 rounded-full bg-neutral-950 aria-checked:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            onClick={() => {
+              const enabled = !(value.viber_memory.automatic_saving || value.viber_memory.recall);
+
+              setValue({
+                ...value,
+                viber_memory: {
+                  ...value.viber_memory,
+                  automatic_saving: enabled,
+                  recall: enabled,
+                  embedding_model:
+                    enabled && !value.viber_memory.embedding_model
+                      ? defaultViberMemorySettings.embedding_model
+                      : value.viber_memory.embedding_model,
+                  suggestion_model:
+                    enabled && !value.viber_memory.suggestion_model
+                      ? defaultViberMemorySettings.suggestion_model
+                      : value.viber_memory.suggestion_model,
+                },
+              });
+            }}
+          >
+            <span className="absolute top-0.5 left-0.5 size-5 rounded-full bg-neutral-500 transition-transform group-aria-checked:translate-x-5 group-aria-checked:bg-neutral-400 motion-reduce:transition-none" />
+          </button>
+        </div>
       </div>
-      <p className="text-sm text-ink-muted">
-        Use installed models in Ollama with cloud features disabled. Start a fresh provider thread
-        to leave previously shared facts behind.
-      </p>
     </section>
   </>
 );
