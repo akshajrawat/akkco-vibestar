@@ -27,7 +27,14 @@ sequenceDiagram
     Chat-->>User: Show Continue where you left off
     opt User selects another provider for the stopped turn
         alt Target is Codex
-            Chat->>Codex: Append unseen redacted history to the target thread without a turn
+            opt Saved Codex target exists
+                Chat->>Codex: Resume the saved target
+            end
+            alt Saved target is confirmed
+                Chat->>Codex: Append unseen redacted history without a turn
+            else Saved target is absent or confirmed missing
+                Chat->>Codex: Start a fresh target and append redacted history without a turn
+            end
             Codex-->>Chat: Confirm the prepared thread
         else Target is Antigravity
             Chat-->>User: Context-only preload is unavailable. Keep the original provider selected

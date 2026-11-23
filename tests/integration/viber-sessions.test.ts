@@ -1,5 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  truncate,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -16,6 +25,10 @@ import type { AgentRunRequest } from "../../apps/core/execution/providers/contra
 import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
 import { createFixtureEngine, detectFixtureProvider } from "../helpers/fixtures";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
+import {
+  viberSnapshotKeyPath,
+  viberSnapshotVersion,
+} from "../../apps/core/storage/viber-snapshots";
 
 class SessionProvider extends CodexProvider {
   detect = detectFixtureProvider;
@@ -277,7 +290,7 @@ it("captures the shared profile revision per turn while keeping provider/model/e
     message.id,
   )[0];
 
-  expect(JSON.parse(snapshot.configuration)).toMatchObject({
+  expect(engine.db.viberSnapshots.read(snapshot.configuration, one.id, message.id)).toMatchObject({
     profile: { revision: profile.revision + 1, instructions: "Updated shared instructions" },
     execution: { ...changedSelection, output: "conversation" },
   });
@@ -294,6 +307,128 @@ it("captures the shared profile revision per turn while keeping provider/model/e
   await send(one);
   await settled(one);
   expect(provider.requests[1].config.effort).toBe("low");
+});
+
+it("seals legacy prompts in place and recovers exact instructions after restart", async () => {
+  const session = await create();
+  const secret = "sk-fixtureViberSnapshotSecret";
+  const original = { request_id: randomUUID(), content: `Use ${secret} for the stopped edit` };
+
+  const capture = (extra: Record<string, unknown>) =>
+    engine.viberSessions.store.capture({
+      session_id: session.id,
+      profile_id: profileId,
+      request_id: randomUUID(),
+      history_ids: [],
+      content: "Continue where you left off.",
+      ...extra,
+    });
+
+  const first = capture(original);
+  engine.viberSessions.store.finish(original.request_id, "cancelled");
+  const continued = capture({ continue_message_id: original.request_id });
+
+  // Reproduce the previous release's plaintext representation, including a pending continuation.
+  engine.db.run("DROP TRIGGER viber_message_snapshot_immutable");
+  for (const snapshot of [first, continued]) {
+    engine.db.run(
+      "UPDATE viber_messages SET configuration=? WHERE id=?",
+      JSON.stringify(snapshot),
+      snapshot.request.request_id,
+    );
+  }
+
+  engine.db.run("DELETE FROM schema_migrations WHERE version=?", viberSnapshotVersion);
+  const state = join(engine.root, "state");
+  const dbPath = join(state, "vibestar.sqlite");
+  const keyPath = viberSnapshotKeyPath(dbPath);
+  await rpc.close();
+  await engine.close();
+  expect((await readFile(dbPath)).includes(secret)).toBe(true);
+  await rm(keyPath);
+
+  engine = await createFixtureEngine(join(dir, "data"), () => provider);
+  rpc = new Rpc(engine);
+  const recovered = await detail(session);
+  expect(provider.requests).toHaveLength(0);
+
+  expect(recovered.messages).toMatchObject([
+    { status: "cancelled", content: "Use [REDACTED] for the stopped edit" },
+    { status: "interrupted", continue_message_id: original.request_id },
+  ]);
+
+  expect(JSON.stringify(recovered)).not.toContain(secret);
+  expect((await stat(keyPath)).mode & 0o777).toBe(0o600);
+  expect((await readdir(state)).filter((name) => name.includes(".before-v"))).toEqual([]);
+  for (const path of [dbPath, `${dbPath}-wal`]) {
+    expect((await readFile(path)).includes(secret)).toBe(false);
+  }
+
+  expect(await send(session, original)).toEqual(recovered.messages[0]);
+
+  await expect(
+    send(session, {
+      ...original,
+      content: original.content.replace(secret, "sk-differentFixtureSecret"),
+    }),
+  ).rejects.toThrow("another session or message");
+
+  await send(session, {
+    content: "Continue where you left off.",
+    continue_message_id: continued.request.request_id,
+  });
+
+  const finished = await settled(session);
+  expect(provider.requests).toHaveLength(1);
+  expect(provider.requests[0].prompt).toContain(original.content);
+  expect(JSON.stringify(finished)).not.toContain(secret);
+
+  expect(JSON.stringify(engine.db.all("SELECT configuration FROM viber_messages"))).not.toContain(
+    secret,
+  );
+
+  for (const name of await readdir(join(engine.root, "logs", `viber-${session.id}`))) {
+    expect(
+      (await readFile(join(engine.root, "logs", `viber-${session.id}`, name))).includes(secret),
+    ).toBe(false);
+  }
+});
+
+it("fails closed on a swapped Viber snapshot and on a missing key", async () => {
+  const session = await create();
+  const one = { request_id: randomUUID(), content: "Saved first instruction" };
+  const two = { request_id: randomUUID(), content: "Saved second instruction" };
+  await send(session, one);
+  await settled(session);
+  await send(session, two);
+  await settled(session);
+
+  expect(() =>
+    engine.db.run("UPDATE viber_messages SET configuration=NULL WHERE id=?", two.request_id),
+  ).toThrow("immutable");
+
+  engine.db.run("DROP TRIGGER viber_message_snapshot_immutable");
+
+  engine.db.run(
+    "UPDATE viber_messages SET configuration=(SELECT configuration FROM viber_messages WHERE id=?) WHERE id=?",
+    one.request_id,
+    two.request_id,
+  );
+
+  await expect(send(session, two)).rejects.toThrow("could not be verified");
+  expect(provider.requests).toHaveLength(2);
+
+  const keyPath = viberSnapshotKeyPath(join(engine.root, "state", "vibestar.sqlite"));
+  await rpc.close();
+  await engine.close();
+  await rm(keyPath);
+  engine = await createFixtureEngine(join(dir, "data"), () => provider);
+  rpc = new Rpc(engine);
+  expect((await detail(session)).messages).toHaveLength(4);
+  await expect(send(session, one)).rejects.toThrow("snapshot key is unavailable");
+  await expect(send(session)).rejects.toThrow("snapshot key is unavailable");
+  await expect(stat(keyPath)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(provider.requests).toHaveLength(2);
 });
 
 it("keeps clear boundaries, explicit history, and fresh starts independent of model selection", async () => {

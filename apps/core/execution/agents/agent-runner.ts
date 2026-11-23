@@ -517,6 +517,14 @@ export class AgentRunner {
       const processOptions: Omit<ProcessRequest, "program" | "args"> = {
         cwd,
         signal: runSignal,
+        deadline,
+        beforeSpawn: () => {
+          if (options.viberSession) {
+            new ViberSessionStore(this.db).markInvocation(options.viberSession.messageId);
+          }
+
+          invoked = true;
+        },
         onSpawn: (pid, identity) => {
           this.db.run(`UPDATE ${table} SET pid=?,process_identity=? WHERE id=?`, pid, identity, id);
         },
@@ -599,23 +607,7 @@ export class AgentRunner {
         },
       };
 
-      const run = (next: typeof invocation) => {
-        runSignal.throwIfAborted();
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) {
-          throw new AdeError(
-            "timeout",
-            "The shared execution deadline expired before provider dispatch.",
-          );
-        }
-
-        if (options.viberSession) {
-          new ViberSessionStore(this.db).markInvocation(options.viberSession.messageId);
-        }
-
-        invoked = true;
-        return execute({ ...processOptions, ...next, timeoutMs: remaining });
-      };
+      const run = (next: typeof invocation) => execute({ ...processOptions, ...next });
 
       let output;
       try {

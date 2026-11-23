@@ -82,7 +82,7 @@ it.each(["codex", "antigravity"] as const)(
             const toolLoop = prompt => {
               if (prompt !== ${JSON.stringify(request.prompt)}) throw Error('Wrong native prompt');
               if (mode === 'wait') { setInterval(() => {}, 1000); return; }
-              for (const path of ${JSON.stringify([join(directory, "private.txt"), sourcePath, otherWorkspace].filter(Boolean))}) {
+              for (const path of ${JSON.stringify([join(directory, "private.txt"), join(directory, "data", "state", "vibestar.sqlite.viber-key"), sourcePath, otherWorkspace].filter(Boolean))}) {
                 try { fs.readFileSync(path); throw Error('Host or sibling files were exposed: ' + path); }
                 catch (error) { if (!['ENOENT', 'EACCES'].includes(error.code)) throw error; }
               }
@@ -122,12 +122,23 @@ it.each(["codex", "antigravity"] as const)(
             if (mode === 'wait-before-init') {
               setInterval(() => {}, 1000);
             } else if (${JSON.stringify(name)} === 'codex') {
-              require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+              const expected = ${JSON.stringify(request.preload?.context)};
+              const preloadOnly = ${JSON.stringify(!!request.preload?.only)};
+              let confirmed = false;
+              let missing = false;
+              let injected = false;
+              const checkContext = () => {
+                if (!confirmed || (!!expected !== injected)) throw Error('Expected reference context before dispatch or preload exit');
+              };
+              require('node:readline').createInterface({input:process.stdin}).on('close', () => {
+                if (preloadOnly && !missing) checkContext();
+              }).on('line', line => {
                 const r=JSON.parse(line);
                 if(r.method==='initialize') emit({id:r.id,result:{}});
                 if(r.method==='thread/start' || r.method==='thread/resume') {
                   if (r.method !== (resumeId ? 'thread/resume' : 'thread/start') || r.params.threadId !== resumeId) throw Error('Wrong native thread request');
                   if(mode === 'invalid' || (mode === 'resume-rejected' && resumeId)) {
+                    missing = !!resumeId;
                     emit({id:r.id,error:{message:'no rollout found for thread id ' + resumeId}});
                     return;
                   }
@@ -135,17 +146,21 @@ it.each(["codex", "antigravity"] as const)(
                     emit({id:r.id,error:{message:'Backend unavailable'}});
                     return;
                   }
+                  confirmed = true;
                   emit({id:r.id,result:{thread:{id:nativeId}}});
                 }
                 if (r.method === 'thread/inject_items') {
-                  const expected = ${JSON.stringify(request.preload?.context)};
-                  if (r.params.threadId !== nativeId || r.params.items.length !== 1 ||
-                    r.params.items[0].role !== 'assistant' ||
-                    r.params.items[0].content[0].text !== expected) throw Error('Wrong reference context');
+                  const [item] = r.params.items;
+                  if (!confirmed || !expected || injected || r.params.threadId !== nativeId ||
+                    r.params.items.length !== 1 || item.type !== 'message' || item.role !== 'assistant' ||
+                    item.content.length !== 1 || item.content[0].type !== 'output_text' ||
+                    item.content[0].text !== expected) throw Error('Wrong reference context');
+                  injected = true;
                   emit({id:r.id,result:{}});
                 }
                 if(r.method==='turn/start') {
-                  if (${JSON.stringify(!!request.preload?.only)}) throw Error('Preload dispatched a turn');
+                  if (preloadOnly) throw Error('Preload dispatched a turn');
+                  checkContext();
                   if (r.params.model !== model || r.params.threadId !== nativeId) throw Error('Wrong turn model or thread');
                   emit({id:r.id,result:{turn:{id:'turn'}}});
                   toolLoop(r.params.input[0].text);

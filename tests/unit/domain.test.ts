@@ -70,7 +70,7 @@ describe("domain and persistence", () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-db-"));
     try {
       const path = join(dir, "test.sqlite");
-      const db = new Database(path);
+      const db = await Database.open(path);
       db.saveSettings({ ...defaultSettings, concurrency: 3 });
 
       expect(db.all("SELECT MAX(version) AS version FROM schema_migrations")).toEqual([
@@ -80,7 +80,7 @@ describe("domain and persistence", () => {
       expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
 
       db.close();
-      const reopened = new Database(path);
+      const reopened = await Database.open(path);
       expect(reopened.settings().concurrency).toBe(3);
       expect(() => reopened.saveSettings({ ...defaultSettings, concurrency: 5 })).toThrow();
       reopened.close();

@@ -1,3 +1,8 @@
+import { viberSnapshotVersion } from "./viber-snapshots";
+
+export const viberSnapshotTrigger =
+  "CREATE TRIGGER IF NOT EXISTS viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;";
+
 export const migrations = [
   {
     version: 0,
@@ -159,7 +164,7 @@ CREATE TABLE IF NOT EXISTS ai_usage(
 
 CREATE INDEX IF NOT EXISTS viber_usage ON ai_usage(viber_session_id, started_at);
 
-CREATE TRIGGER IF NOT EXISTS viber_message_snapshot_immutable BEFORE UPDATE OF id,session_id,role,content,configuration,created_at ON viber_messages BEGIN SELECT RAISE(ABORT,'Viber message snapshots are immutable'); END;
+${viberSnapshotTrigger}
 
 CREATE TRIGGER IF NOT EXISTS viber_repository_immutable BEFORE UPDATE OF repository_id ON viber_sessions BEGIN SELECT RAISE(ABORT,'Viber repository ownership is immutable'); END;
 
@@ -181,4 +186,5 @@ WHERE profile_id IN (SELECT profile_id FROM viber_computers);
 DROP TABLE IF EXISTS viber_computers;
 `,
   },
+  { version: viberSnapshotVersion, sql: viberSnapshotTrigger },
 ];

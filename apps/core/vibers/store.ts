@@ -438,7 +438,7 @@ export class ViberSessionStore {
       recovery_required: this.requiresRecovery(sessionId, profileId),
       messages: this.db
         .all(
-          "SELECT *,json_extract(configuration,'$.request.continue_message_id') AS continue_message_id FROM viber_messages WHERE session_id=? ORDER BY rowid",
+          "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id FROM viber_messages WHERE session_id=? ORDER BY rowid",
           sessionId,
         )
         .map((row) => ViberMessageSchema.parse(row)),
@@ -477,7 +477,7 @@ export class ViberSessionStore {
       content: string;
       status: string;
     }>(
-      "SELECT *,json_extract(configuration,'$.request.continue_message_id') AS continue_message_id FROM viber_messages WHERE id=?",
+      "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id FROM viber_messages WHERE id=?",
       input.request_id,
     )[0];
 
@@ -498,7 +498,7 @@ export class ViberSessionStore {
     }
 
     const snapshot = row.configuration
-      ? ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration))
+      ? this.db.viberSnapshots.read(row.configuration, row.session_id, input.request_id)
       : null;
 
     const savedRequest = snapshot && JSON.stringify(snapshot.request);
@@ -588,7 +588,7 @@ export class ViberSessionStore {
     this.db
       .all<HistoryMessage & { rowid: number; status: string; continuation: string | null }>(
         `SELECT m.rowid,m.role,m.content,m.status,
-              json_extract(m.configuration,'$.request.continue_message_id') AS continuation
+              json_extract(m.configuration,'$.continue_message_id') AS continuation
        FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id
        WHERE m.session_id=? AND m.rowid>? AND m.id<>? AND m.status IN ('completed','cancelled','interrupted')
          AND (? IS NULL OR r.conversation_id IS NULL OR r.conversation_id<>? OR r.provider<>?)
@@ -651,7 +651,7 @@ export class ViberSessionStore {
     }
 
     const snapshot = previous.configuration
-      ? ViberMessageSnapshotSchema.parse(JSON.parse(previous.configuration))
+      ? this.db.viberSnapshots.read(previous.configuration, session.id, messageId)
       : null;
 
     return {
@@ -939,7 +939,7 @@ export class ViberSessionStore {
         input.request_id,
         session.id,
         redact(input.content),
-        JSON.stringify(snapshot),
+        this.db.viberSnapshots.seal(snapshot),
         now(),
       );
 
@@ -984,7 +984,10 @@ export class ViberSessionStore {
       sessionId,
     )[0];
 
-    const snapshot = row ? ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration)) : null;
+    const snapshot = row
+      ? this.db.viberSnapshots.read(row.configuration, sessionId, messageId)
+      : null;
+
     if (
       !snapshot ||
       JSON.stringify(snapshot.execution) !== JSON.stringify(execution) ||
@@ -1007,7 +1010,7 @@ export class ViberSessionStore {
         sessionId,
       )[0];
 
-      const snapshot = row && ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration));
+      const snapshot = row && this.db.viberSnapshots.read(row.configuration, sessionId, messageId);
       if (
         !snapshot ||
         snapshot.conversation.threadId !== row.resume_thread_id ||
@@ -1091,7 +1094,7 @@ export class ViberSessionStore {
       throw new AdeError("isolation", "Thread identity requires a pending session turn.");
     }
 
-    const snapshot = ViberMessageSnapshotSchema.parse(JSON.parse(row.configuration));
+    const snapshot = this.db.viberSnapshots.read(row.configuration, sessionId, messageId);
     const currentSession = this.session(sessionId, snapshot.profile.id);
     const savedThread = currentSession.threads?.[snapshot.execution.provider];
 

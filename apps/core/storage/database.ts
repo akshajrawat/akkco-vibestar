@@ -1,10 +1,17 @@
 import { migrations } from "./migrations";
 import BetterSqlite3 from "better-sqlite3";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { chmod } from "node:fs/promises";
 import { exists } from "../workspace/paths";
 import { PersistedRecords } from "./records";
 import { RepositoryRecordSchema } from "./contracts";
+import { ViberMessageSnapshotSchema } from "../vibers/contracts";
+import {
+  ViberSnapshots,
+  loadViberSnapshotKey,
+  viberSnapshotKeyPath,
+  viberSnapshotVersion,
+} from "./viber-snapshots";
 import {
   defaultSettings,
   AdeError,
@@ -19,7 +26,11 @@ export class Database {
 
   readonly records = new PersistedRecords(this);
 
+  readonly viberSnapshots: ViberSnapshots;
+
   static open = async (path: string) => {
+    let scrubViberSnapshots = false;
+    let hasSealedSnapshots = false;
     if (path !== ":memory:" && (await exists(path))) {
       const source = new BetterSqlite3(path, {
         readonly: true,
@@ -39,7 +50,23 @@ export class Database {
             ).version ?? -1)
           : -1;
 
-        if (version < migrations.at(-1)!.version) {
+        const hasViberMessages = source
+          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='viber_messages'")
+          .get();
+
+        scrubViberSnapshots = Boolean(hasViberMessages && version < viberSnapshotVersion);
+
+        hasSealedSnapshots = Boolean(
+          hasViberMessages &&
+          source
+            .prepare(
+              "SELECT 1 FROM viber_messages WHERE json_type(configuration,'$.sealed') IS NOT NULL LIMIT 1",
+            )
+            .get(),
+        );
+
+        // A pre-encryption database can contain plaintext even in unused pages.
+        if (version < migrations.at(-1)!.version && !scrubViberSnapshots) {
           const backup = `${path}.before-v${version}-${randomUUID()}.sqlite`;
           await source.backup(backup);
           await chmod(backup, 0o600);
@@ -49,10 +76,16 @@ export class Database {
       }
     }
 
-    return new Database(path);
+    const key =
+      path === ":memory:"
+        ? undefined
+        : await loadViberSnapshotKey(viberSnapshotKeyPath(path), !hasSealedSnapshots);
+
+    return new Database(path, key, scrubViberSnapshots);
   };
 
-  constructor(path: string) {
+  private constructor(path: string, key?: Buffer, scrubViberSnapshots = false) {
+    this.viberSnapshots = new ViberSnapshots(path === ":memory:" ? randomBytes(32) : key);
     this.connection = new BetterSqlite3(path);
     try {
       this.connection.pragma("journal_mode = WAL");
@@ -69,6 +102,10 @@ export class Database {
             .prepare("SELECT version FROM schema_migrations WHERE version=?")
             .get(migration.version)
         ) {
+          if (migration.version === viberSnapshotVersion && scrubViberSnapshots) {
+            this.protectLegacyViberSnapshots(migration.sql);
+          }
+
           const rebuild = "foreign_keys_off" in migration && migration.foreign_keys_off;
           if (rebuild) {
             this.connection.pragma("foreign_keys = OFF");
@@ -102,6 +139,46 @@ export class Database {
       throw error;
     }
   }
+
+  private protectLegacyViberSnapshots = (trigger: string) => {
+    this.connection.pragma("secure_delete = ON");
+
+    this.connection.function(
+      "seal_viber_snapshot",
+      (source: string, id: string, sessionId: string) => {
+        const snapshot = ViberMessageSnapshotSchema.safeParse(JSON.parse(source));
+        if (
+          !snapshot.success ||
+          snapshot.data.request.request_id !== id ||
+          snapshot.data.request.session_id !== sessionId
+        ) {
+          throw new AdeError("snapshot_integrity", "The saved Viber turn could not be verified.");
+        }
+
+        return this.viberSnapshots.seal(snapshot.data);
+      },
+    );
+
+    this.transaction(() => {
+      this.connection.exec("DROP TRIGGER IF EXISTS viber_message_snapshot_immutable");
+
+      this.connection.exec(
+        "UPDATE viber_messages SET configuration=seal_viber_snapshot(configuration,id,session_id) WHERE configuration IS NOT NULL AND json_type(configuration,'$.sealed') IS NULL",
+      );
+
+      this.connection.exec(trigger);
+    });
+
+    // Compact old/free pages and retire the pre-upgrade WAL before recording the migration.
+    this.connection.exec("VACUUM");
+    const [result] = this.all<{ busy: number }>("PRAGMA wal_checkpoint(TRUNCATE)");
+    if (result.busy) {
+      throw new AdeError(
+        "migration",
+        "Close other database readers before protecting Viber snapshots.",
+      );
+    }
+  };
 
   run = (sql: string, ...params: unknown[]) => this.connection.prepare(sql).run(...params);
 

@@ -5,6 +5,7 @@ import { realpath, lstat, readlink, writeFile } from "node:fs/promises";
 import { AdeError, type WorkspaceAssignment } from "../../domain";
 import { exists, taskRoot, inside, managedPath } from "../../workspace/paths";
 import type { Database } from "../../storage/database";
+import { viberSnapshotKeyPath } from "../../storage/viber-snapshots";
 import { checked, cleanEnvironment } from "./process";
 import { taskRuntime } from "../../workspace/runtime";
 import type { ProcessInputProtocol } from "./process";
@@ -400,7 +401,19 @@ export const sandboxInvocation = async (
   }
 
   // File overlays follow directory mounts so a source mount cannot expose its project configuration again.
-  args.push(...configurationMounts, "--chdir", cwd, "--", invocation.program, ...invocation.args);
+  args.push(...configurationMounts);
+  const key = viberSnapshotKeyPath(join(root, "state", "vibestar.sqlite"));
+
+  const mounts = args.flatMap((arg, index) =>
+    arg === "--bind" || arg === "--ro-bind" ? [args[index + 1]] : [],
+  );
+
+  const mounted = await Promise.all(mounts.map((source) => realpath(source)));
+  if (mounted.some((source) => source === key || inside(source, key))) {
+    throw new AdeError("isolation", "A sandbox mount overlaps the private Viber snapshot key.");
+  }
+
+  args.push("--chdir", cwd, "--", invocation.program, ...invocation.args);
   return {
     program: "bwrap",
     args,
