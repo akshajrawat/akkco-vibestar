@@ -449,7 +449,7 @@ export class ViberSessionStore {
     const session = this.session(sessionId, profileId);
 
     const last = this.db.all<{ status: string; effects: string }>(
-      "SELECT status,effects FROM viber_messages WHERE session_id=? AND role='user' ORDER BY rowid DESC LIMIT 1",
+      "SELECT status,effects FROM viber_messages WHERE session_id=? AND role='user' AND coalesce(json_extract(configuration,'$.kind'),'')<>'pr_watch' ORDER BY rowid DESC LIMIT 1",
       sessionId,
     )[0];
 
@@ -495,6 +495,23 @@ export class ViberSessionStore {
       !input.continue_message_id
     ) {
       return ViberMessageSchema.parse(row);
+    }
+
+    if (
+      row.configuration !== null &&
+      row.session_id === input.session_id &&
+      row.role === "user" &&
+      row.status === "completed" &&
+      !input.continue_message_id
+    ) {
+      try {
+        const config = JSON.parse(row.configuration) as Record<string, unknown>;
+        if (config?.kind === "pr_watch") {
+          return ViberMessageSchema.parse(row);
+        }
+      } catch {
+        /* Not JSON config */
+      }
     }
 
     const snapshot = row.configuration
@@ -591,6 +608,7 @@ export class ViberSessionStore {
               json_extract(m.configuration,'$.continue_message_id') AS continuation
        FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id
        WHERE m.session_id=? AND m.rowid>? AND m.id<>? AND m.status IN ('completed','cancelled','interrupted')
+         AND coalesce(json_extract(m.configuration,'$.kind'),'')<>'pr_watch'
          AND (m.role<>'assistant' OR NOT EXISTS (SELECT 1 FROM viber_memory_private_runs p WHERE p.run_id=m.run_id))
          AND (? IS NULL OR r.conversation_id IS NULL OR r.conversation_id<>? OR r.provider<>?)
        ORDER BY m.rowid`,
@@ -640,7 +658,7 @@ export class ViberSessionStore {
       conversation_id: string | null;
       run_provider: string | null;
     }>(
-      "SELECT m.id,m.status,m.content,m.configuration,r.conversation_id,r.provider AS run_provider FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id WHERE m.session_id=? AND m.role='user' ORDER BY m.rowid DESC LIMIT 1",
+      "SELECT m.id,m.status,m.content,m.configuration,r.conversation_id,r.provider AS run_provider FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id WHERE m.session_id=? AND m.role='user' AND coalesce(json_extract(m.configuration,'$.kind'),'')<>'pr_watch' ORDER BY m.rowid DESC LIMIT 1",
       session.id,
     )[0];
 

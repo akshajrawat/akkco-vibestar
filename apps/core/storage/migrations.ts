@@ -252,4 +252,31 @@ CREATE TABLE IF NOT EXISTS viber_memory_private_runs(
 DELETE FROM viber_memory_facts WHERE profile_id IN (SELECT profile_id FROM retired_viber_profiles);
 `,
   },
+  {
+    version: 49,
+    sql: `
+CREATE TABLE IF NOT EXISTS viber_pr_watches(
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES viber_sessions(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  owner TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  pull_number INTEGER NOT NULL,
+  title TEXT,
+  status TEXT NOT NULL CHECK(status IN ('active','completed','cancelled','failed')),
+  cursor TEXT,
+  last_checked_at TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS viber_pr_watches_active_unique ON viber_pr_watches(
+  session_id,
+  lower(owner),
+  lower(repo),
+  pull_number
+) WHERE status='active';
+CREATE INDEX IF NOT EXISTS viber_pr_watches_session ON viber_pr_watches(session_id, status);
+`,
+  },
 ];

@@ -20,6 +20,8 @@ import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
 import { ViberSessions } from "./engine/viber-sessions";
 import { ViberStore } from "../vibers/store";
+import { PrWatchService } from "../github/pr-watches";
+import { GitHubClient } from "../github/client";
 
 export class Engine extends EventEmitter {
   private readonly state = new ExecutionState();
@@ -39,6 +41,8 @@ export class Engine extends EventEmitter {
   readonly vibers: ViberStore;
 
   readonly memory: ViberMemory;
+
+  readonly prWatches: PrWatchService;
 
   private readonly runner: AgentRunner;
 
@@ -77,12 +81,24 @@ export class Engine extends EventEmitter {
     database: Database,
     providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
+    gitHubClient?: GitHubClient,
   ) {
     super();
     this.db = database;
     this.vibers = new ViberStore(database);
     this.memory = new ViberMemory(database);
     this.git = new GitWorkspace(root, (id) => this.db.repository(id), gitTransport);
+
+    this.prWatches = new PrWatchService(
+      {
+        db: this.db,
+        changed: this.changed,
+        root,
+      },
+      gitHubClient ?? new GitHubClient(root),
+    );
+
+    this.prWatches.start();
 
     this.repositoryIndex = new RepositoryIndex(root, this.db, () =>
       this.trackActivity(
@@ -125,6 +141,7 @@ export class Engine extends EventEmitter {
     root: string,
     providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
+    gitHubClient?: GitHubClient,
   ) => {
     root = await createLayout(root);
     const path = join(root, "state", "core.lock");
@@ -139,7 +156,7 @@ export class Engine extends EventEmitter {
     let database: Database | undefined;
     try {
       database = await Database.open(join(root, "state", "vibestar.sqlite"));
-      const engine = new Engine(root, release, database, providers, gitTransport);
+      const engine = new Engine(root, release, database, providers, gitTransport, gitHubClient);
       for (const run of engine.db.all<{
         pid: number;
         process_identity: string;
@@ -237,6 +254,7 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.active.values()].map((a) => a.promise));
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
+        await this.prWatches.close();
         await this.memory.close();
         await this.repositoryIndex.close();
       } finally {

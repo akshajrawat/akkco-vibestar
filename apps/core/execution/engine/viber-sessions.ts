@@ -9,6 +9,7 @@ import type { ViberContinuationPrepareSchema } from "../../vibers/contracts";
 import { ViberSessionSendSchema } from "../../vibers/contracts";
 import { prepareManagedWorkspace } from "../../workspace/managed";
 import { AdeError } from "../../domain";
+import { parseWatchCommand } from "../../github/contracts";
 
 /** Explicit turns use the same foreground admission, cancellation and runner as other executions. */
 export class ViberSessions {
@@ -17,7 +18,7 @@ export class ViberSessions {
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory"
+      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory" | "prWatches"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -110,7 +111,7 @@ export class ViberSessions {
     return this.detail(input.session_id, input.profile_id);
   };
 
-  send = (raw: z.input<typeof ViberSessionSendSchema>) => {
+  send = async (raw: z.input<typeof ViberSessionSendSchema>) => {
     const input = ViberSessionSendSchema.parse(raw);
     this.host.assertAvailable();
 
@@ -131,6 +132,24 @@ export class ViberSessions {
       const cleared = this.store.clearContext(input.session_id, input.profile_id, input.request_id);
       this.host.changed();
       return cleared;
+    }
+
+    const watchCommand = !input.continue_message_id ? parseWatchCommand(input.content) : null;
+    if (watchCommand) {
+      if (this.host.isActive(key)) {
+        throw new AdeError(
+          "busy",
+          "Wait for this Viber session to finish before sending a watch command.",
+        );
+      }
+
+      return await this.host.prWatches.handleChatCommand(
+        input.session_id,
+        input.profile_id,
+        input.request_id,
+        input.content,
+        watchCommand,
+      );
     }
 
     this.operations.assertExecutionSlot(key);

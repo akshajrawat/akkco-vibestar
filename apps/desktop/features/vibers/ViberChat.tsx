@@ -23,6 +23,11 @@ const messageTextColor = (color: string) => {
   return luminance > 0.179 ? "#000" : "#fff";
 };
 
+const isChatCommand = (text: string) => {
+  const trimmed = text.trim();
+  return trimmed === "/clear" || /^\/(?:watch(?:es)?|unwatch)(?:\s|$)/i.test(trimmed);
+};
+
 export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revision: number }) => {
   const [sessionId, setSessionId] = useState<string>();
   const [error, setError] = useState("");
@@ -68,11 +73,11 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
   }, [profile.id, revision]);
 
   const start = async () => {
-    if (starting.current || invalid) {
+    const content = composerContent(getTaskView(draftId));
+    if (starting.current || (invalid && !isChatCommand(content))) {
       return;
     }
 
-    const content = composerContent(getTaskView(draftId));
     if (!content.trim() || content.length > 32000) {
       return;
     }
@@ -201,7 +206,7 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
                 },
               ]}
               busy={busy}
-              disabled={!!invalid}
+              disabled={!!invalid && !isChatCommand(composerContent(view))}
               model={modelControl}
               hint="Each Viber uses its own workspace."
             />

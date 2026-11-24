@@ -59,6 +59,8 @@ export const callProfiles = async (
           await rm(logs, { recursive: true, force: true });
         }
 
+        engine.prWatches.cancelForProfile(input.profile_id);
+
         engine.db.transaction(() => {
           engine.db.run(
             "INSERT OR IGNORE INTO retired_viber_profiles(profile_id) VALUES(?)",

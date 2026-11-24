@@ -83,3 +83,35 @@ flowchart LR
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
     Share --> Accept["Provider accepts turn input"] --> Record["Record facts in thread context"]
 ```
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Chat as Viber chat
+    participant Watches as PrWatchService
+    participant DB as SQLite viber_pr_watches
+    participant GH as GitHub GraphQL API
+
+    User->>Chat: Send /watch https://github.com/owner/repo/pull/123
+    Chat->>Watches: Parse command & canonicalize URL
+    Watches->>DB: Check active watch uniqueness
+    Watches->>GH: Read-only PR metadata & check rollup
+    GH-->>Watches: Initial PR state
+    Watches->>DB: Store baseline cursor & active watch
+    Watches-->>Chat: Confirm watching in session chat
+    loop Scheduled in-app polling
+        Watches->>DB: Query active non-retired watches
+        Watches->>GH: Fetch latest PR status
+        GH-->>Watches: Updated status
+        alt Meaningful change (review, check, conflict, lifecycle)
+            Watches->>DB: Atomic transaction (insert notification & update cursor)
+            Watches-->>Chat: Post [PR Watch] change notification
+        else Watch cancelled in-flight
+            Watches->>Watches: Drop late result without posting
+        end
+    end
+    User->>Chat: Send /unwatch https://github.com/owner/repo/pull/123
+    Chat->>Watches: Cancel active watch & abort in-flight fetch
+    Watches->>DB: Update status to cancelled
+    Watches-->>Chat: Confirm watch cancelled
+```

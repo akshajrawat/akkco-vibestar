@@ -104,6 +104,20 @@ it("allows a local context reset when the saved provider model is unavailable", 
       expect.objectContaining({ session_id: id, content: "/clear" }),
     ),
   );
+
+  fireEvent.change(draft, { target: { value: " /watch https://github.com/owner/repo/pull/1 " } });
+  expect(send.disabled).toBe(false);
+  fireEvent.click(send);
+
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith(
+      "viber.session.send",
+      expect.objectContaining({
+        session_id: id,
+        content: "/watch https://github.com/owner/repo/pull/1",
+      }),
+    ),
+  );
 });
 
 it("restores the saved model and retries a send with the picker selection and no history replay", async () => {

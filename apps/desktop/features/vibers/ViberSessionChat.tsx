@@ -20,6 +20,11 @@ import { configurationError } from "../../../core/execution/providers/contracts"
 
 type SessionDetail = ViberSessionDetail & { runs: Run[]; events: AgentEvent[] };
 
+const isChatCommand = (text: string) => {
+  const trimmed = text.trim();
+  return trimmed === "/clear" || /^\/(?:watch(?:es)?|unwatch)(?:\s|$)/i.test(trimmed);
+};
+
 export const ViberSessionChat = (props: {
   sessionId: string;
   profile: AgentProfile;
@@ -117,7 +122,7 @@ const SessionChat = ({
       sending.current ||
       !data ||
       active ||
-      (invalid && !continueMessageId && content.trim() !== "/clear") ||
+      (invalid && !continueMessageId && !isChatCommand(content)) ||
       !content.trim() ||
       content.length > 32000
     ) {
@@ -321,7 +326,7 @@ const SessionChat = ({
               },
             ]}
             busy={!!busy || active || stopping}
-            disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
+            disabled={!data || (!!invalid && !isChatCommand(composerContent(view)))}
             stop={active ? () => void stop() : undefined}
             model={
               <ViberModelPicker
