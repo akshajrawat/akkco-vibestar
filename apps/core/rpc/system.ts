@@ -61,9 +61,17 @@ export const callSystem = async (
       };
 
       const persistence = e.db.records.diagnostics();
+      let freshStart = null;
+      try {
+        freshStart = await e.freshStartInfo();
+      } catch {
+        freshStart = null;
+      }
+
       return {
         ...snapshot,
         persistence,
+        ...(freshStart ? { fresh_start: freshStart } : {}),
         ...(persistence.length
           ? {
               warning: `${persistence.length} saved record(s) need recovery. Original data is preserved; open Settings for persistence diagnostics.`,

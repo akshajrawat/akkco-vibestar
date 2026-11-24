@@ -341,7 +341,7 @@ it("seals legacy prompts in place and recovers exact instructions after restart"
   engine.db.run("DROP TABLE viber_memory_facts");
   engine.db.run("DELETE FROM schema_migrations WHERE version>=?", viberSnapshotVersion);
   const state = join(engine.root, "state");
-  const dbPath = join(state, "vibestar.sqlite");
+  const dbPath = join(state, "vibestar-v1.sqlite");
   const keyPath = viberSnapshotKeyPath(dbPath);
   await rpc.close();
   await engine.close();
@@ -419,7 +419,7 @@ it("fails closed on a swapped Viber snapshot and on a missing key", async () => 
   await expect(send(session, two)).rejects.toThrow("could not be verified");
   expect(provider.requests).toHaveLength(2);
 
-  const keyPath = viberSnapshotKeyPath(join(engine.root, "state", "vibestar.sqlite"));
+  const keyPath = viberSnapshotKeyPath(join(engine.root, "state", "vibestar-v1.sqlite"));
   await rpc.close();
   await engine.close();
   await rm(keyPath);

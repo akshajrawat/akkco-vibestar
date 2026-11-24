@@ -1,10 +1,12 @@
 import { migrations } from "./migrations";
 import BetterSqlite3 from "better-sqlite3";
 import { randomBytes, randomUUID } from "node:crypto";
-import { chmod } from "node:fs/promises";
+import { chmod, lstat, readlink, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join, resolve, basename } from "node:path";
 import { exists } from "../workspace/paths";
 import { PersistedRecords } from "./records";
-import { RepositoryRecordSchema } from "./contracts";
+import { RepositoryRecordSchema, LEGACY_VIBESTAR_DB_NAME, VIBESTAR_DB_NAME } from "./contracts";
 import { ViberMessageSnapshotSchema } from "../vibers/contracts";
 import {
   ViberSnapshots,
@@ -21,6 +23,8 @@ import {
   type Settings,
 } from "../domain";
 
+export { VIBESTAR_DB_NAME, LEGACY_VIBESTAR_DB_NAME } from "./contracts";
+
 export class Database {
   private readonly connection: BetterSqlite3.Database;
 
@@ -31,6 +35,98 @@ export class Database {
   static open = async (path: string) => {
     let scrubViberSnapshots = false;
     let hasSealedSnapshots = false;
+    if (path !== ":memory:") {
+      const activeFiles = [path, `${path}-wal`, `${path}-shm`, `${path}-journal`];
+      const activeEntries = new Map<string, { dev: number; ino: number }>();
+
+      for (const file of activeFiles) {
+        try {
+          const entry = await lstat(file);
+          if (entry.isSymbolicLink() || !entry.isFile() || entry.nlink > 1) {
+            throw new AdeError(
+              "isolation",
+              `Database file ${file} must be a regular non-symlink file without hard links.`,
+            );
+          }
+
+          activeEntries.set(file, { dev: entry.dev, ino: entry.ino });
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw e;
+          }
+        }
+      }
+
+      if (basename(path) === VIBESTAR_DB_NAME) {
+        const legacyDirs = [dirname(path)];
+        try {
+          const defaultOldDir = join(homedir(), ".akkco-ade", "state");
+          if (defaultOldDir !== dirname(path)) {
+            legacyDirs.push(defaultOldDir);
+          }
+        } catch {
+          // Ignore homedir resolution failures
+        }
+
+        for (const dir of legacyDirs) {
+          const legacyBase = join(dir, LEGACY_VIBESTAR_DB_NAME);
+
+          const legacyFiles = [
+            legacyBase,
+            `${legacyBase}-wal`,
+            `${legacyBase}-shm`,
+            `${legacyBase}-journal`,
+          ];
+
+          for (const legacyFile of legacyFiles) {
+            try {
+              const legacyLstat = await lstat(legacyFile);
+              if (legacyLstat.isSymbolicLink()) {
+                const linkTarget = await readlink(legacyFile).catch(() => null);
+                const resolvedTarget = linkTarget ? resolve(dirname(legacyFile), linkTarget) : null;
+                const canonicalTarget = await realpath(legacyFile).catch(() => null);
+
+                for (const activeFile of activeFiles) {
+                  const resolvedActive = resolve(activeFile);
+                  if (resolve(legacyFile) !== resolvedActive) {
+                    if (
+                      resolvedTarget === resolvedActive ||
+                      (canonicalTarget && resolve(canonicalTarget) === resolvedActive)
+                    ) {
+                      throw new AdeError(
+                        "isolation",
+                        `Legacy database file ${legacyFile} must not be a symlink to the active database.`,
+                      );
+                    }
+                  }
+                }
+              }
+
+              for (const [activeFile, activeStat] of activeEntries) {
+                if (
+                  resolve(legacyFile) !== resolve(activeFile) &&
+                  legacyLstat.dev === activeStat.dev &&
+                  legacyLstat.ino === activeStat.ino
+                ) {
+                  throw new AdeError(
+                    "isolation",
+                    `Legacy database file ${legacyFile} shares an inode with active file ${activeFile}.`,
+                  );
+                }
+              }
+            } catch (e) {
+              if (
+                (e as NodeJS.ErrnoException).code !== "ENOENT" &&
+                (e as NodeJS.ErrnoException).code !== "ENOTDIR"
+              ) {
+                throw e;
+              }
+            }
+          }
+        }
+      }
+    }
+
     if (path !== ":memory:" && (await exists(path))) {
       const source = new BetterSqlite3(path, {
         readonly: true,

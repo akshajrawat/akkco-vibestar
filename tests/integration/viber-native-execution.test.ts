@@ -12,6 +12,7 @@ import { AntigravityProvider } from "../../apps/core/execution/providers/antigra
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import type { ViberSession } from "../../apps/core/vibers/contracts";
 import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { exists } from "../../apps/core/workspace/paths";
 import { createFixtureEngine, fixtureRepository, detectFixtureProvider } from "../helpers/fixtures";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
@@ -82,7 +83,15 @@ it.each(["codex", "antigravity"] as const)(
             const toolLoop = prompt => {
               if (prompt !== ${JSON.stringify(request.prompt)}) throw Error('Wrong native prompt');
               if (mode === 'wait') { setInterval(() => {}, 1000); return; }
-              for (const path of ${JSON.stringify([join(directory, "private.txt"), join(directory, "data", "state", "vibestar.sqlite.viber-key"), sourcePath, otherWorkspace].filter(Boolean))}) {
+              for (const path of ${JSON.stringify(
+                [
+                  join(directory, "private.txt"),
+                  join(directory, "data", "state", "vibestar.sqlite.viber-key"),
+                  join(directory, "data", "state", "vibestar-v1.sqlite.viber-key"),
+                  sourcePath,
+                  otherWorkspace,
+                ].filter(Boolean),
+              )}) {
                 try { fs.readFileSync(path); throw Error('Host or sibling files were exposed: ' + path); }
                 catch (error) { if (!['ENOENT', 'EACCES'].includes(error.code)) throw error; }
               }
@@ -199,6 +208,11 @@ it.each(["codex", "antigravity"] as const)(
 
     let engine = await createFixtureEngine(join(directory, "data"), providers);
     let rpc = new Rpc(engine);
+
+    expect(await exists(join(directory, "data", "state", "vibestar-v1.sqlite.viber-key"))).toBe(
+      true,
+    );
+
     try {
       const bin = join(fixture.home, ".local", "bin");
       await mkdir(bin, { recursive: true });

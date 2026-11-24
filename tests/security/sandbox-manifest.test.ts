@@ -46,7 +46,7 @@ it("mounts only the selected provider state and toolchain from a home outside /h
       "/etc/hostname",
       "/etc/machine-id",
       socket,
-      join(engine.root, "state", "vibestar.sqlite"),
+      join(engine.root, "state", "vibestar-v1.sqlite"),
     ];
 
     const code = `#!/usr/bin/env node

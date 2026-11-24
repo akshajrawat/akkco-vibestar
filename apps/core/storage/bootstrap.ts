@@ -8,7 +8,6 @@ import { AdeError } from "../domain";
 
 export const dataRootChoice = async (home = homedir(), configured = process.env.VIBESTAR_HOME) => {
   const root = join(home, ".akkco-vibestar");
-  const old = join(home, ".akkco-ade");
   if (configured) {
     if (await exists(join(configured, "runtime", "migration-pending.json"))) {
       const actual = await realpath(configured);
@@ -21,33 +20,20 @@ export const dataRootChoice = async (home = homedir(), configured = process.env.
         throw new AdeError("migration", "Interrupted migration metadata could not be verified.");
       }
 
-      return {
-        root: actual,
-        migration: { old_root: journal.source as string, new_root: actual },
-      };
+      throw new AdeError(
+        "migration",
+        "An interrupted migration needs recovery. Please resolve migration-pending.json before starting.",
+      );
     }
 
     return { root: configured, migration: null };
   }
 
   if (await exists(join(root, "runtime", "migration-pending.json"))) {
-    return { root, migration: { old_root: old, new_root: root } };
-  }
-
-  if (await exists(join(root, "state", "vibestar.sqlite"))) {
-    return { root, migration: null };
-  }
-
-  if (await exists(join(old, "state", "vibestar.sqlite"))) {
-    const saved = await readFile(join(old, "state", "data-root-choice.json"), "utf8").catch(
-      () => "",
+    throw new AdeError(
+      "migration",
+      "An interrupted migration needs recovery. Please resolve migration-pending.json before starting.",
     );
-
-    if (saved === '"old"') {
-      return { root: old, migration: null };
-    }
-
-    return { root, migration: { old_root: old, new_root: root } };
   }
 
   return { root, migration: null };

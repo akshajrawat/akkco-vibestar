@@ -83,3 +83,17 @@ flowchart LR
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
     Share --> Accept["Provider accepts turn input"] --> Record["Record facts in thread context"]
 ```
+
+```mermaid
+flowchart TD
+    Start["Vibestar Startup"] --> InspectActive["Inspect Active SQLite Paths\n(state/vibestar-v1.sqlite, wal, shm, journal)"]
+    InspectActive --> VerifyActive["Verify regular files, non-symlink, single hardlink\nCheck for aliases/symlinks from legacy database paths"]
+    VerifyActive --> OpenActiveDB["Open Active Versioned SQLite\n(state/vibestar-v1.sqlite)"]
+    OpenActiveDB --> CoreReady["Core Engine Ready"]
+    CoreReady --> SnapshotRPC["Desktop Snapshot Request"]
+    SnapshotRPC --> CheckLegacy{"Legacy Database Detected?\n(state/vibestar.sqlite or ~/.akkco-ade)"}
+    CheckLegacy -- "Legacy Exists" --> AttachNotice["Attach FreshStartNotice to Snapshot\n(legacy paths + separate workspace note)"]
+    CheckLegacy -- "None" --> CleanSnapshot["Return Clean Snapshot"]
+    AttachNotice --> RenderBanner["Desktop Renders Persistent Notice Banner\n(below title bar)"]
+    CleanSnapshot --> NormalUI["Standard UI Without Banner"]
+```
