@@ -1,5 +1,14 @@
 import { useState, type Ref } from "react";
-import { Plus, Search, PanelLeftClose, Activity, FolderGit2, Plug, Settings } from "lucide-react";
+import {
+  Plus,
+  Search,
+  PanelLeftClose,
+  Activity,
+  FolderGit2,
+  Plug,
+  Settings,
+  Users,
+} from "lucide-react";
 import type { AgentProfile, ViberMessagePreview } from "../../core/vibers/contracts";
 import { ViberFace } from "../features/vibers/ViberFace";
 import type { Snapshot, WorkspaceTool } from "../lib/types";
@@ -13,6 +22,7 @@ interface NavigationSidebarProps {
   createViber: () => void;
   selectViber: (profile: AgentProfile) => void;
   selectedViber?: string;
+  openTeams?: () => void;
   openTool: (tool: WorkspaceTool) => void;
   toggleSidebar: () => void;
   toggleRef?: Ref<HTMLButtonElement>;
@@ -37,6 +47,7 @@ export const NavigationSidebar = ({
   createViber,
   selectViber,
   selectedViber,
+  openTeams,
   openTool,
   toggleSidebar,
   toggleRef,
@@ -107,6 +118,18 @@ export const NavigationSidebar = ({
             >
               <Plus size={18} aria-hidden="true" />
             </button>
+            {openTeams && (
+              <button
+                type="button"
+                className="sidebar-teams-btn grid place-items-center shrink-0 p-1 text-ink-muted hover:text-ink-primary transition-colors cursor-pointer"
+                aria-label="Manage Teams"
+                title="Viber Teams"
+                onClick={openTeams}
+                disabled={!snapshot}
+              >
+                <Users size={17} aria-hidden="true" />
+              </button>
+            )}
           </div>
         </div>
 

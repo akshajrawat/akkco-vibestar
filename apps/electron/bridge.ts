@@ -71,6 +71,8 @@ export class CoreBridge extends EventEmitter {
 
   private viberSessionsAvailable = false;
 
+  private viberTeamsAvailable = false;
+
   private pending = new Map<
     string,
     {
@@ -99,6 +101,7 @@ export class CoreBridge extends EventEmitter {
     this.notificationPreferencesAvailable = false;
     this.viberConversationsAvailable = false;
     this.viberSessionsAvailable = false;
+    this.viberTeamsAvailable = false;
     this.manualTerminalAvailable = false;
 
     this.checking = this.launch()
@@ -301,6 +304,7 @@ export class CoreBridge extends EventEmitter {
         build: string;
         viber_conversations?: number;
         viber_sessions?: number;
+        viber_teams?: number;
         manual_user_terminal?: number;
         runtime_restart?: number;
         notification_preferences?: number;
@@ -311,6 +315,7 @@ export class CoreBridge extends EventEmitter {
         this.notificationPreferencesAvailable = info.notification_preferences === 1;
         this.viberConversationsAvailable = info.viber_conversations === 1;
         this.viberSessionsAvailable = info.viber_sessions === 3;
+        this.viberTeamsAvailable = info.viber_teams === 1;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
 
         this.warning = !this.viberSessionsAvailable
@@ -364,6 +369,12 @@ export class CoreBridge extends EventEmitter {
       throw new Error("Update the execution helper before using standalone Viber sessions.");
     }
 
+    if (!this.viberTeamsAvailable && method.startsWith("viber.team.")) {
+      throw new Error(
+        "Update the execution helper before managing Viber teams or teammate handoffs.",
+      );
+    }
+
     if (
       !this.viberConversationsAvailable &&
       !method.startsWith("viber.session.") &&
@@ -405,6 +416,7 @@ export class CoreBridge extends EventEmitter {
           capabilities: {
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
             ...(this.viberSessionsAvailable ? { viber_sessions: 3 } : {}),
+            ...(this.viberTeamsAvailable ? { viber_teams: 1 } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };

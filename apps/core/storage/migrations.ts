@@ -252,4 +252,42 @@ CREATE TABLE IF NOT EXISTS viber_memory_private_runs(
 DELETE FROM viber_memory_facts WHERE profile_id IN (SELECT profile_id FROM retired_viber_profiles);
 `,
   },
+  {
+    version: 49,
+    sql: `
+CREATE TABLE IF NOT EXISTS viber_teams (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS viber_team_members (
+  team_id TEXT NOT NULL REFERENCES viber_teams(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE,
+  added_at TEXT NOT NULL,
+  PRIMARY KEY(team_id, profile_id)
+);
+CREATE INDEX IF NOT EXISTS viber_team_members_profile ON viber_team_members(profile_id);
+
+CREATE TABLE IF NOT EXISTS viber_team_handoffs (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES viber_teams(id) ON DELETE CASCADE,
+  source_profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE,
+  target_profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE,
+  source_session_id TEXT NOT NULL REFERENCES viber_sessions(id) ON DELETE CASCADE,
+  target_session_id TEXT NOT NULL REFERENCES viber_sessions(id) ON DELETE CASCADE,
+  target_message_id TEXT REFERENCES viber_messages(id) ON DELETE SET NULL,
+  context_snapshot TEXT NOT NULL,
+  instruction TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('prepared', 'dispatched', 'completed', 'cancelled', 'failed')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS viber_team_handoffs_source ON viber_team_handoffs(source_session_id, created_at);
+CREATE INDEX IF NOT EXISTS viber_team_handoffs_target ON viber_team_handoffs(target_session_id, created_at);
+`,
+  },
 ];
