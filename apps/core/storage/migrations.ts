@@ -252,4 +252,12 @@ CREATE TABLE IF NOT EXISTS viber_memory_private_runs(
 DELETE FROM viber_memory_facts WHERE profile_id IN (SELECT profile_id FROM retired_viber_profiles);
 `,
   },
+  {
+    version: 49,
+    sql: `
+CREATE TABLE IF NOT EXISTS dedicated_viber_computers(
+  profile_id TEXT PRIMARY KEY REFERENCES agent_profiles(id)
+);
+`,
+  },
 ];

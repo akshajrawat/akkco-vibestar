@@ -12,6 +12,8 @@ import { ViberSessionChat } from "./ViberSessionChat";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
 import { configurationError } from "../../../core/execution/providers/contracts";
+import { ResizeHandle } from "../../components/shared/ResizeHandle";
+import { ComputerPanel } from "../computer/ComputerPanel";
 
 const messageTextColor = (color: string) => {
   const [red, green, blue] = [1, 3, 5].map((index) => {
@@ -23,15 +25,31 @@ const messageTextColor = (color: string) => {
   return luminance > 0.179 ? "#000" : "#fff";
 };
 
-export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revision: number }) => {
+export const ViberChat = ({
+  profile,
+  revision,
+  computerOpen = false,
+  hideComputer = () => {},
+}: {
+  profile: AgentProfile;
+  revision: number;
+  computerOpen?: boolean;
+  hideComputer?: () => void;
+}) => {
   const [sessionId, setSessionId] = useState<string>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const [computerWidth, setComputerWidth] = useState(() => {
+    const previous = Number(localStorage.getItem("vibestar.computerWidth"));
+    return previous >= 300 && previous <= 720 ? previous : 360;
+  });
+
   const request = useRef({ signature: "", id: "", session: null as ViberSession | null });
   const starting = useRef(false);
   const draftId = `viber:${profile.id}:new-chat`;
   const view = useTaskView(draftId);
-  const { providers } = useProviders();
+  const { providers, refresh: refreshProviders } = useProviders();
 
   const selection = {
     provider: view.followupProvider || profile.execution.provider,
@@ -156,58 +174,88 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
   const color = profile.appearance?.color ?? defaultAppearance().color;
 
   return (
-    <section
-      className="viber-chat-page flex flex-1 flex-col min-h-0 min-w-[260px] chat-workspace"
-      aria-label={`Chat with ${profile.name}`}
-      style={
-        {
-          "--viber-message-bg": color,
-          "--viber-message-ink": messageTextColor(color),
-        } as CSSProperties
-      }
-    >
-      {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
-      {sessionId ? (
-        <ViberSessionChat
-          key={sessionId}
-          sessionId={sessionId}
-          profile={profile}
-          revision={revision}
-        />
-      ) : (
-        <ChatSurface
-          id={draftId}
-          revision={revision}
-          empty
-          conversation={
-            <div className="chat-welcome py-[0_24px] text-center viber-chat-welcome">
-              <ViberFace profile={profile} animated />
-              <h1>Ready when you are.</h1>
-            </div>
-          }
-          composer={
-            <Composer
-              compact
-              id={draftId}
-              label={`Message ${profile.name}`}
-              placeholder={`Ask ${profile.name} anything…`}
-              sendLabel="Send message"
-              onSend={() => void start()}
-              context={[
-                {
-                  label: "Text",
-                  input: "Context text",
-                  load: async (text) => ({ label: "Attached text", text }),
-                },
-              ]}
-              busy={busy}
-              disabled={!!invalid}
-              model={modelControl}
-              hint="Each Viber uses its own workspace."
-            />
-          }
+    <div className="computer-workspace overflow-hidden flex flex-1 min-h-0 min-w-0">
+      <section
+        className="viber-chat-page flex flex-1 flex-col min-h-0 min-w-[260px] chat-workspace"
+        aria-label={`Chat with ${profile.name}`}
+        style={
+          {
+            "--viber-message-bg": color,
+            "--viber-message-ink": messageTextColor(color),
+          } as CSSProperties
+        }
+      >
+        {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
+        {sessionId ? (
+          <ViberSessionChat
+            key={sessionId}
+            sessionId={sessionId}
+            profile={profile}
+            revision={revision}
+          />
+        ) : (
+          <ChatSurface
+            id={draftId}
+            revision={revision}
+            empty
+            conversation={
+              <div className="chat-welcome py-[0_24px] text-center viber-chat-welcome">
+                <ViberFace profile={profile} animated />
+                <h1>Ready when you are.</h1>
+              </div>
+            }
+            composer={
+              <Composer
+                compact
+                id={draftId}
+                label={`Message ${profile.name}`}
+                placeholder={`Ask ${profile.name} anything…`}
+                sendLabel="Send message"
+                onSend={() => void start()}
+                context={[
+                  {
+                    label: "Text",
+                    input: "Context text",
+                    load: async (text) => ({ label: "Attached text", text }),
+                  },
+                ]}
+                busy={busy}
+                disabled={!!invalid}
+                model={modelControl}
+                hint="Each Viber uses its own workspace."
+              />
+            }
+          />
+        )}
+      </section>
+      {computerOpen && (
+        <ResizeHandle
+          label="Resize computer panel"
+          value={computerWidth}
+          onChange={(w) => {
+            setComputerWidth(w);
+            localStorage.setItem("vibestar.computerWidth", String(w));
+          }}
+          min={300}
+          max={720}
+          reverse
         />
       )}
-    </section>
+      <div
+        className="shrink-0 max-w-[calc(100%_-_265px)] min-w-[280px]"
+        hidden={!computerOpen}
+        style={{ width: computerWidth }}
+      >
+        {computerOpen && (
+          <ComputerPanel
+            profileId={profile.id}
+            sessionId={sessionId}
+            visible={computerOpen}
+            hide={hideComputer}
+            refreshProviders={refreshProviders}
+          />
+        )}
+      </div>
+    </div>
   );
 };

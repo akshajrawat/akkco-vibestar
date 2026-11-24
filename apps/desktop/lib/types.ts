@@ -21,6 +21,7 @@ export interface Snapshot {
   capabilities?: {
     viber_conversations?: number;
     viber_sessions?: number;
+    viber_computers?: number;
   };
   persistence?: import("../../core/storage/records").PersistenceDiagnostic[];
   repositories: Repository[];

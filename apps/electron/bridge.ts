@@ -71,6 +71,8 @@ export class CoreBridge extends EventEmitter {
 
   private viberSessionsAvailable = false;
 
+  private computersAvailable = false;
+
   private pending = new Map<
     string,
     {
@@ -301,6 +303,7 @@ export class CoreBridge extends EventEmitter {
         build: string;
         viber_conversations?: number;
         viber_sessions?: number;
+        viber_computers?: number;
         manual_user_terminal?: number;
         runtime_restart?: number;
         notification_preferences?: number;
@@ -311,6 +314,7 @@ export class CoreBridge extends EventEmitter {
         this.notificationPreferencesAvailable = info.notification_preferences === 1;
         this.viberConversationsAvailable = info.viber_conversations === 1;
         this.viberSessionsAvailable = info.viber_sessions === 3;
+        this.computersAvailable = info.viber_computers === 1;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
 
         this.warning = !this.viberSessionsAvailable
@@ -380,6 +384,10 @@ export class CoreBridge extends EventEmitter {
       throw new Error("Update the execution helper before opening a manual user terminal.");
     }
 
+    if (!this.computersAvailable && method.startsWith("computer.")) {
+      throw new Error("Update the execution helper before using Viber computers.");
+    }
+
     const settings =
       method === "settings.save"
         ? params
@@ -405,6 +413,7 @@ export class CoreBridge extends EventEmitter {
           capabilities: {
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
             ...(this.viberSessionsAvailable ? { viber_sessions: 3 } : {}),
+            ...(this.computersAvailable ? { viber_computers: 1 } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };

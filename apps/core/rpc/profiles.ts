@@ -32,6 +32,7 @@ export const callProfiles = async (
       }
 
       await engine.withStorageMaintenance(async () => {
+        await engine.computers.remove(input).catch(() => {});
         for (const session of engine.viberSessions.store.list(input.profile_id)) {
           const row = engine.db.all<{ workspace: string | null }>(
             "SELECT workspace FROM viber_sessions WHERE id=?",

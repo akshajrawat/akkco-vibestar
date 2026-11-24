@@ -20,6 +20,7 @@ import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
 import { ViberSessions } from "./engine/viber-sessions";
 import { ViberStore } from "../vibers/store";
+import { Computers } from "../computers/service";
 
 export class Engine extends EventEmitter {
   private readonly state = new ExecutionState();
@@ -39,6 +40,8 @@ export class Engine extends EventEmitter {
   readonly vibers: ViberStore;
 
   readonly memory: ViberMemory;
+
+  readonly computers: Computers;
 
   private readonly runner: AgentRunner;
 
@@ -119,6 +122,8 @@ export class Engine extends EventEmitter {
       assertExecutionSlot: this.scheduling.assertExecutionSlot,
       stopActivity: this.stopActivity,
     });
+
+    this.computers = new Computers(this);
   }
 
   static create = async (
@@ -162,6 +167,7 @@ export class Engine extends EventEmitter {
 
       engine.db.recover();
       engine.memory.queueIndex();
+      await engine.computers.recover();
       return engine;
     } catch (error) {
       database?.close();
@@ -238,6 +244,7 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
         await this.memory.close();
+        await this.computers.close();
         await this.repositoryIndex.close();
       } finally {
         try {
