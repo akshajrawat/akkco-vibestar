@@ -50,6 +50,5 @@ npm start
 - [Security Boundaries](docs/security.md)
 - [Development Setup](docs/development.md)
 - [Testing Guide](docs/testing.md)
-- [Contributing](CONTRIBUTING.md)
 
 Project code is licensed under [MIT](LICENSE). Bundled fonts and third-party material retain their own terms; see [third-party notices](docs/third-party-notices.md).
