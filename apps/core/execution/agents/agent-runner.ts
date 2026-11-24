@@ -480,6 +480,7 @@ export class AgentRunner {
           schema: outputSchema,
           workspaceType: "utility",
           conversation: thread,
+          signal: runSignal,
           viberMemory:
             memory && ["codex", "antigravity"].includes(detection.provider)
               ? {
@@ -549,6 +550,7 @@ export class AgentRunner {
           ? {
               ...(resumeThreadId ? { threadId: resumeThreadId } : {}),
               ...(confirmResume ? { confirmResume: true } : {}),
+              ...(detection.capabilities.includes("acp") ? { protocol: "acp" as const } : {}),
             }
           : undefined,
         options.conversation?.instructions !== undefined
@@ -703,7 +705,9 @@ export class AgentRunner {
 
         const freshInvocation = await prepareInvocation(
           fresh.prompt,
-          {},
+          conversation
+            ? { ...(detection.capabilities.includes("acp") ? { protocol: "acp" as const } : {}) }
+            : {},
           fresh.preload,
           fresh.historyRowid,
         );

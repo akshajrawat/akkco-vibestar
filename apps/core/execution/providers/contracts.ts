@@ -73,7 +73,8 @@ export interface AgentRunRequest {
   schemaPath: string;
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
-  conversation?: { threadId?: string; confirmResume?: true };
+  conversation?: { threadId?: string; confirmResume?: true; protocol?: "acp" | "print" };
+  signal?: AbortSignal;
   viberMemory?: {
     recall?: (threadId?: string) => string[];
     onInputAccepted?: (threadId: string) => void;

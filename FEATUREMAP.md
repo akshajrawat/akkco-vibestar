@@ -3,7 +3,7 @@ sequenceDiagram
     actor User
     participant Chat as Viber chat
     participant Codex as Codex thread
-    participant AGY as Antigravity thread
+    participant AGY as Antigravity ACP thread
 
     participant Provider as Turn provider
     Note over Chat: History scrolls beneath the fading black header
@@ -12,18 +12,24 @@ sequenceDiagram
     Codex-->>Chat: Reply and tool activity
     Note over Chat: Tool activity shows only messages with text
     User->>Chat: Switch to Antigravity and send
-    Chat->>AGY: Start thread with saved chat context and new message
-    AGY-->>Chat: Reply
+    Chat->>AGY: Negotiate ACP v1 initialize and create session
+    AGY-->>Chat: Return session ID, set scoped mode and config
+    Chat->>AGY: Dispatch prompt with gated recalled facts
+    AGY-->>Chat: Stream message and tool call updates
     User->>Chat: Switch back to Codex and send
     Chat->>Codex: Resume thread with Antigravity exchange and new message
     Codex-->>Chat: Reply
-    User->>Chat: Choose another Codex model and send
-    Chat->>Codex: Resume the same thread with the new model
-    Codex-->>Chat: Reply
-    User->>Chat: Change reasoning effort and send
-    Chat->>Codex: Resume the thread with the new effort
+    User->>Chat: Switch to Antigravity and resume
+    Chat->>AGY: Resume confirmed session ID
+    AGY-->>Chat: Confirm resumed session
+    Chat->>AGY: Dispatch new prompt
+    AGY-->>Chat: Stream reply
+    User->>Chat: Choose another model or effort and send
+    Chat->>Provider: Set model and thought_level configuration
+    Provider-->>Chat: Confirm configuration
     User->>Chat: Stop response
-    Chat->>Provider: Cancel the active turn
+    Chat->>Provider: Send cancel notification and terminate turn
+    Provider-->>Chat: Turn cancelled cleanly without run.completed
     Chat-->>User: Show Continue where you left off
     opt User selects another provider for the stopped turn
         alt Target is Codex
@@ -81,5 +87,5 @@ flowchart LR
     Evidence -- "Correction to the repository's indentation default" --> Replace["Replace the previous fact"] --> Storage
     Storage --> Ollama["Local Ollama search"]
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
-    Share --> Accept["Provider accepts turn input"] --> Record["Record facts in thread context"]
+    Share --> Confirm["Confirm saved native thread identity"] --> Accept["Provider accepts turn input exactly once"] --> Record["Record facts in thread context"]
 ```

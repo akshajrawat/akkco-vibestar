@@ -11,6 +11,7 @@ export interface ProcessInputProtocol {
   start: (send: (message: unknown) => void, end: () => void) => void;
   validate?: (line: string) => void;
   receive: (line: string) => void;
+  cancel?: (send: (message: unknown) => void) => void;
   validateExit?: (output: ProcessOutput) => void;
 }
 
@@ -158,6 +159,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     let settled = false;
     let aborted: Error | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
     let stdout = "";
     let stderr = "";
     const truncated = { stdout: false, stderr: false };
@@ -185,12 +187,10 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         const safe = redact(value);
         if (stream === "stdout") {
           r.inputProtocol?.validate?.(safe);
+          r.inputProtocol?.receive(safe);
         }
 
         r.onLine?.(stream, safe);
-        if (stream === "stdout") {
-          r.inputProtocol?.receive(safe);
-        }
       } catch (e) {
         aborted = e instanceof Error ? e : new Error(String(e));
         if (child.pid) {
@@ -281,11 +281,11 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     };
 
     const interrupt = (error: Error) => {
-      if (settled || aborted) {
+      if (settled || killTimer) {
         return;
       }
 
-      aborted = error;
+      aborted ||= error;
       if (child.pid) {
         terminateGroup(child.pid);
 
@@ -299,7 +299,43 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       }
     };
 
-    const abort = () => interrupt(new AdeError("cancelled", "Run cancelled"));
+    const abort = () => {
+      if (settled || aborted) {
+        return;
+      }
+
+      let cancelSent = false;
+      if (r.inputProtocol?.cancel && child.pid) {
+        try {
+          r.inputProtocol.cancel((message) => {
+            try {
+              child.stdin.write(JSON.stringify(message) + "\n");
+              cancelSent = true;
+            } catch {
+              // Ignore stdin write error on abort
+            }
+          });
+        } catch {
+          // Ignore protocol cancel failure on abort
+        }
+      }
+
+      const cancelError = new AdeError("cancelled", "Run cancelled");
+      if (cancelSent && child.pid) {
+        aborted = cancelError;
+
+        graceTimer = setTimeout(() => {
+          if (!settled && child.pid) {
+            interrupt(cancelError);
+          }
+        }, 500);
+
+        graceTimer.unref();
+      } else {
+        interrupt(cancelError);
+      }
+    };
+
     r.signal?.addEventListener("abort", abort, { once: true });
 
     const timeout = r.deadline === undefined ? (r.timeoutMs ?? 120000) : r.deadline - Date.now();
@@ -322,6 +358,10 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       clearTimeout(timer);
       if (killTimer) {
         clearTimeout(killTimer);
+      }
+
+      if (graceTimer) {
+        clearTimeout(graceTimer);
       }
 
       r.signal?.removeEventListener("abort", abort);
