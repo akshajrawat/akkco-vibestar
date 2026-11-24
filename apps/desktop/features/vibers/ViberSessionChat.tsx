@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowRight } from "lucide-react";
 
 import {
   continueLabel,
@@ -15,6 +16,7 @@ import { AgentTimeline } from "../chat/AgentTimeline";
 import { RunError } from "../chat/RunError";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { ViberRecoveryDialog } from "./ViberRecoveryDialog";
+import { TeammateHandoffDialog } from "../teams/TeammateHandoffDialog";
 import { useProviders } from "../../hooks/useWorkspace";
 import { configurationError } from "../../../core/execution/providers/contracts";
 
@@ -24,16 +26,22 @@ export const ViberSessionChat = (props: {
   sessionId: string;
   profile: AgentProfile;
   revision: number;
+  profiles?: AgentProfile[];
+  selectViber?: (profile: AgentProfile) => void;
 }) => <SessionChat key={props.sessionId} {...props} />;
 
 const SessionChat = ({
   sessionId,
   profile,
   revision,
+  profiles,
+  selectViber,
 }: {
   sessionId: string;
   profile: AgentProfile;
   revision: number;
+  profiles?: AgentProfile[];
+  selectViber?: (profile: AgentProfile) => void;
 }) => {
   const id = `viber-session:${sessionId}`;
   const view = useTaskView(id);
@@ -42,6 +50,7 @@ const SessionChat = ({
   const [error, setError] = useState<{ message: string; requestId?: string }>();
   const [busy, setBusy] = useState<"sending" | "preparing">();
   const [stopping, setStopping] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const [recovery, setRecovery] = useState<{ content: string; continueMessageId?: string }>();
   const sending = useRef(false);
   const cancelling = useRef(false);
@@ -289,21 +298,37 @@ const SessionChat = ({
         }
         actions={
           !active &&
-          !busy &&
-          previousTurn &&
-          (canContinue ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void send(continueLabel, false, previousTurn.id)}
-            >
-              {continueLabel}
-            </Button>
-          ) : !invalid && previousTurn.status === "failed" && !previousTurn.continue_message_id ? (
-            <Button variant="ghost" size="sm" onClick={() => void send(previousTurn.content)}>
-              Retry
-            </Button>
-          ) : null)
+          !busy && (
+            <div className="flex items-center gap-2">
+              {previousTurn &&
+                (canContinue ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void send(continueLabel, false, previousTurn.id)}
+                  >
+                    {continueLabel}
+                  </Button>
+                ) : !invalid &&
+                  previousTurn.status === "failed" &&
+                  !previousTurn.continue_message_id ? (
+                  <Button variant="ghost" size="sm" onClick={() => void send(previousTurn.content)}>
+                    Retry
+                  </Button>
+                ) : null)}
+              {profiles && profiles.length > 1 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setHandoffOpen(true)}
+                  title="Handoff to teammate"
+                >
+                  <ArrowRight size={13} aria-hidden="true" />
+                  Handoff
+                </Button>
+              )}
+            </div>
+          )
         }
         composer={
           <Composer
@@ -343,6 +368,17 @@ const SessionChat = ({
           confirm={() => {
             setRecovery(undefined);
             void send(recovery.content, true, recovery.continueMessageId);
+          }}
+        />
+      )}
+      {handoffOpen && profiles && (
+        <TeammateHandoffDialog
+          sourceProfile={profile}
+          sourceSessionId={sessionId}
+          profiles={profiles}
+          close={() => setHandoffOpen(false)}
+          onHandoffComplete={(target) => {
+            selectViber?.(target);
           }}
         />
       )}

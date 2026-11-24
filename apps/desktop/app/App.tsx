@@ -16,6 +16,7 @@ import { DataMigration } from "./DataMigration";
 import { notifications as notify } from "../lib/notifications";
 import { GlobalNotifications } from "./GlobalNotifications";
 import { ToolOverlay } from "./ToolOverlay";
+import { TeamsDialog } from "../features/teams/TeamsDialog";
 
 const minSidebarWidth = 200;
 const maxSidebarWidth = 320;
@@ -73,6 +74,7 @@ export const App = () => {
 
   const [runtimePhase, setRuntimePhase] = useState<string>();
   const [tool, openTool] = useState<WorkspaceTool>();
+  const [teamsOpen, setTeamsOpen] = useState(false);
   const [palette, setPalette] = useState(false);
   const [sidebar, setSidebar] = useState(true);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
@@ -150,6 +152,7 @@ export const App = () => {
             createViber={createViber}
             selectViber={openViber}
             selectedViber={chatProfile?.id}
+            openTeams={() => setTeamsOpen(true)}
             openTool={openTool}
           />
         )}
@@ -185,7 +188,13 @@ export const App = () => {
           )}
 
           {chatProfile ? (
-            <ViberChat key={chatProfile.id} profile={chatProfile} revision={revision} />
+            <ViberChat
+              key={chatProfile.id}
+              profile={chatProfile}
+              revision={revision}
+              profiles={profiles}
+              selectViber={openViber}
+            />
           ) : (
             <ViberWelcome
               create={createViber}
@@ -220,6 +229,8 @@ export const App = () => {
           />
         )}
 
+        {teamsOpen && <TeamsDialog profiles={profiles} close={() => setTeamsOpen(false)} />}
+
         {palette && (
           <CommandPalette
             close={() => setPalette(false)}
@@ -229,6 +240,12 @@ export const App = () => {
                 label: "Create Viber",
                 detail: "AI employee",
                 run: createViber,
+              },
+              {
+                id: "teams",
+                label: "Viber Teams",
+                detail: "Manage teams and teammates",
+                run: () => setTeamsOpen(true),
               },
               ...profiles.map((p) => ({
                 id: `viber-${p.id}`,

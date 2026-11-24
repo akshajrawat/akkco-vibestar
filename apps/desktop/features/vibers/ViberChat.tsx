@@ -23,7 +23,17 @@ const messageTextColor = (color: string) => {
   return luminance > 0.179 ? "#000" : "#fff";
 };
 
-export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revision: number }) => {
+export const ViberChat = ({
+  profile,
+  revision,
+  profiles,
+  selectViber,
+}: {
+  profile: AgentProfile;
+  revision: number;
+  profiles?: AgentProfile[];
+  selectViber?: (profile: AgentProfile) => void;
+}) => {
   const [sessionId, setSessionId] = useState<string>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -173,6 +183,8 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
           sessionId={sessionId}
           profile={profile}
           revision={revision}
+          profiles={profiles}
+          selectViber={selectViber}
         />
       ) : (
         <ChatSurface

@@ -6,6 +6,7 @@ import { callRepositories, repositoriesMethods } from "./rpc/repositories";
 import { callStorage, storageMethods } from "./rpc/storage";
 import { callSystem, systemMethods } from "./rpc/system";
 import { callViberSessions, viberSessionMethods } from "./rpc/viber-sessions";
+import { callViberTeams, viberTeamMethods } from "./rpc/viber-teams";
 import { callProfiles, profileMethods } from "./rpc/profiles";
 import { StorageService } from "./storage/service";
 
@@ -44,6 +45,7 @@ export class Rpc {
       [repositoriesMethods, callRepositories],
       [storageMethods, callStorage],
       [viberSessionMethods, callViberSessions],
+      [viberTeamMethods, callViberTeams],
       [profileMethods, callProfiles],
     ] as const) {
       for (const method of methods) {

@@ -83,3 +83,36 @@ flowchart LR
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
     Share --> Accept["Provider accepts turn input"] --> Record["Record facts in thread context"]
 ```
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant SourceChat as Source Viber Chat
+    participant Dialog as TeammateHandoffDialog
+    participant Sessions as ViberSessions Service
+    participant Store as ViberTeamsStore (SQLite)
+    participant TargetChat as Target Teammate Session
+
+    User->>SourceChat: Click Handoff
+    SourceChat->>Dialog: Open TeammateHandoffDialog
+    Dialog->>Sessions: viber.team.prepareHandoff
+    Sessions->>Store: Verify team membership & query sanitized context
+    Store-->>Sessions: Filter private runs & omit memory facts
+    Sessions-->>Dialog: Return proposed minimal context snapshot
+    Dialog-->>User: Display editable context snapshot & instruction
+    alt User cancels
+        User->>Dialog: Click Cancel
+        Dialog-->>SourceChat: Close dialog without dispatch
+    else User approves handoff
+        User->>Dialog: Approve & Handoff
+        Dialog->>Sessions: viber.team.handoff(request_id, snapshot, instruction)
+        Sessions->>Store: Check idempotency & record handoff (dispatched)
+        Sessions->>TargetChat: Dispatch handoff prompt to continuous session
+        TargetChat-->>User: Execute turn with visible cancellation control
+        opt User cancels turn in-flight
+            User->>TargetChat: Click Stop
+            TargetChat->>Sessions: viber.session.cancel
+            Sessions->>Store: Update handoff status to cancelled
+        end
+    end
+```
