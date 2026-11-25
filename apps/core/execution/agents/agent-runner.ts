@@ -333,7 +333,9 @@ export class AgentRunner {
 
     let final: unknown;
     const conversationMessages = new Map<string, string>();
+    const assistantSegments: { key: string; text: string }[] = [];
     let failure: unknown;
+    let privateStopReason: string | undefined;
     let code: number | null = null;
     let invoked = false;
     let officialCodex = false;
@@ -410,13 +412,28 @@ export class AgentRunner {
         );
       }
 
-      if (options.viberSession && options.conversation?.threadId) {
-        new ViberSessionStore(this.db).assertThread(
-          options.viberSession.sessionId,
-          selectedConfig.provider,
-          options.conversation.threadId,
+      const savedThread =
+        options.viberSession && resumeThreadId
+          ? new ViberSessionStore(this.db).assertThread(
+              options.viberSession.sessionId,
+              selectedConfig.provider,
+              resumeThreadId,
+            )
+          : undefined;
+
+      const antigravityConversation = conversation && detection.provider === "antigravity";
+      const supportsAcp = detection.capabilities.includes("acp");
+      if (savedThread?.protocol === "acp" && antigravityConversation && !supportsAcp) {
+        throw new AdeError(
+          "provider_unavailable",
+          "The saved Antigravity thread requires an ACP-capable CLI.",
         );
       }
+
+      const acpConversation =
+        antigravityConversation &&
+        supportsAcp &&
+        (!resumeThreadId || savedThread?.protocol === "acp");
 
       if (selectedConfig.model && !config.model) {
         this.db.run(`UPDATE ${table} SET model=? WHERE id=?`, selectedConfig.model, id);
@@ -450,6 +467,7 @@ export class AgentRunner {
             conversationId,
             selectedConfig.model,
             injectedThrough,
+            antigravityConversation ? (acpConversation ? "acp" : "print") : undefined,
           );
         }
 
@@ -480,6 +498,7 @@ export class AgentRunner {
           schema: outputSchema,
           workspaceType: "utility",
           conversation: thread,
+          signal: runSignal,
           viberMemory:
             memory && ["codex", "antigravity"].includes(detection.provider)
               ? {
@@ -549,6 +568,7 @@ export class AgentRunner {
           ? {
               ...(resumeThreadId ? { threadId: resumeThreadId } : {}),
               ...(confirmResume ? { confirmResume: true } : {}),
+              ...(acpConversation ? { protocol: "acp" as const } : {}),
             }
           : undefined,
         options.conversation?.instructions !== undefined
@@ -595,7 +615,10 @@ export class AgentRunner {
             raw = { unparsed: line };
           }
 
-          if (officialCodex && codexMemoryEvent(raw)) {
+          if (
+            (officialCodex && codexMemoryEvent(raw)) ||
+            (stream === "stdout" && provider.shouldObserveStdout?.(raw) === false)
+          ) {
             return;
           }
 
@@ -651,16 +674,36 @@ export class AgentRunner {
               const data = object(event.data);
               const key = String(data.call_id ?? "answer");
 
-              const text =
-                typeof data.text === "string"
-                  ? data.text
-                  : `${conversationMessages.get(key) || ""}${typeof data.text_delta === "string" ? data.text_delta : ""}`;
+              const delta = typeof data.text_delta === "string" ? data.text_delta : "";
+              if (acpConversation) {
+                if (delta) {
+                  const previous = assistantSegments.at(-1);
+                  if (previous?.key === key) {
+                    previous.text += delta;
+                  } else {
+                    assistantSegments.push({ key, text: delta });
+                  }
+                }
+              } else {
+                const text =
+                  typeof data.text === "string"
+                    ? data.text
+                    : `${conversationMessages.get(key) || ""}${delta}`;
 
-              conversationMessages.set(key, text);
+                conversationMessages.set(key, text);
+              }
             }
 
             if (event.kind === "run.failed") {
               failure = event.data;
+              const stopReason = object(event.data).stopReason;
+              if (
+                acpConversation &&
+                typeof stopReason === "string" &&
+                ["max_tokens", "max_turn_requests", "refusal"].includes(stopReason)
+              ) {
+                privateStopReason = stopReason;
+              }
             }
 
             if (event.kind === "run.completed") {
@@ -685,6 +728,7 @@ export class AgentRunner {
         if (
           !confirmResume ||
           !options.viberSession ||
+          (antigravityConversation && !acpConversation) ||
           !(error instanceof AdeError) ||
           error.kind !== "thread_resume_rejected"
         ) {
@@ -703,15 +747,17 @@ export class AgentRunner {
 
         const freshInvocation = await prepareInvocation(
           fresh.prompt,
-          {},
+          acpConversation ? { protocol: "acp" } : {},
           fresh.preload,
           fresh.historyRowid,
         );
 
         failure = undefined;
+        privateStopReason = undefined;
         final = undefined;
         completedTurn = false;
         conversationMessages.clear();
+        assistantSegments.length = 0;
         output = await run(freshInvocation);
       }
 
@@ -739,9 +785,12 @@ export class AgentRunner {
       }
 
       if (conversation && !resultSchema.safeParse(final).success) {
-        const summary = [...conversationMessages.values()].reverse().find((text) => text.trim());
+        // Preserve chunk order and separate distinct assistant segments with a blank line.
+        const summary = acpConversation
+          ? assistantSegments.map(({ text }) => text).join("\n\n")
+          : [...conversationMessages.values()].reverse().find((text) => text.trim());
 
-        if (summary) {
+        if (summary?.trim()) {
           final = { summary };
         }
       }
@@ -789,7 +838,11 @@ export class AgentRunner {
       const e = privateContext
         ? new AdeError(
             error instanceof AdeError ? error.kind : "provider_failed",
-            signal.aborted ? "Run cancelled" : "The provider did not complete the Viber turn.",
+            signal.aborted
+              ? "Run cancelled"
+              : privateStopReason
+                ? `Antigravity stopped the turn (${privateStopReason}).`
+                : "The provider did not complete the Viber turn.",
           )
         : outputFailure || error;
 

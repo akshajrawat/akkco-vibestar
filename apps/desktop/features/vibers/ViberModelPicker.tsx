@@ -93,7 +93,20 @@ export const ViberModelPicker = ({
     group.variants.some((model) => (current.model ? model.id === current.model : model.isDefault)),
   );
 
-  const name = selectedGroup?.label || (current.model ? modelName(current.model) : "Choose model");
+  const effortSuffix = `-${current.effort}`;
+
+  const fallbackModel =
+    current.provider === "antigravity" && current.model.endsWith(effortSuffix)
+      ? current.model.slice(0, -effortSuffix.length)
+      : current.model;
+
+  const name = selectedGroup?.label || (current.model ? modelName(fallbackModel) : "Choose model");
+
+  const effortLabel = effortNames[current.effort] || current.effort;
+
+  const nameIncludesEffort =
+    current.provider === "antigravity" &&
+    name.toLowerCase().endsWith(` ${effortLabel.toLowerCase()}`);
 
   const sameProvider = browsingProvider === current.provider;
 
@@ -155,9 +168,7 @@ export const ViberModelPicker = ({
       selectedLabel={
         <>
           {name}
-          {(selectedGroup || current.model) && (
-            <span> {effortNames[current.effort] || current.effort}</span>
-          )}
+          {(selectedGroup || current.model) && !nameIncludesEffort && <span> {effortLabel}</span>}
         </>
       }
       listNotice={

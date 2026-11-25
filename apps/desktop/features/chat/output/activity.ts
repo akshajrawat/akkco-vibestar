@@ -147,5 +147,9 @@ export const toolState = (event: AgentEvent, data: Record<string, unknown>, run?
     return "interrupted";
   }
 
+  if (event.kind.startsWith("command.") && status === "pending") {
+    return "pending";
+  }
+
   return "running";
 };

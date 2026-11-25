@@ -195,7 +195,7 @@ export const AgentTimeline = ({
     const state = toolState(event, data, run);
     const failed = state === "failed";
     const interrupted = state === "interrupted";
-    const finished = state !== "running";
+    const finished = state !== "running" && state !== "pending";
 
     const observedDuration =
       command && row.initial.kind === "command.started" && event.kind === "command.finished"
@@ -239,9 +239,11 @@ export const AgentTimeline = ({
                 ? "Command failed"
                 : interrupted
                   ? "Command interrupted"
-                  : finished
-                    ? "Ran"
-                    : "Running command"
+                  : state === "pending"
+                    ? "Command pending"
+                    : finished
+                      ? "Ran"
+                      : "Running command"
             : event.kind === "test.result"
               ? `Test ${data.status || "result"}`
               : data.tool
@@ -336,7 +338,7 @@ export const AgentTimeline = ({
               ) : (
                 <Check size={12} className="success" />
               )
-            ) : !finished ? (
+            ) : state === "running" ? (
               <LoaderCircle size={12} className="running spinning" />
             ) : null}
 
