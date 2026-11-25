@@ -364,11 +364,6 @@ export class AgentRunner {
 
       const detection = await this.detect(provider, signal);
 
-      const acpConversation =
-        conversation &&
-        detection.provider === "antigravity" &&
-        detection.capabilities.includes("acp");
-
       if (signal.aborted) {
         throw new AdeError("cancelled", "Run cancelled");
       }
@@ -417,13 +412,28 @@ export class AgentRunner {
         );
       }
 
-      if (options.viberSession && options.conversation?.threadId) {
-        new ViberSessionStore(this.db).assertThread(
-          options.viberSession.sessionId,
-          selectedConfig.provider,
-          options.conversation.threadId,
+      const savedThread =
+        options.viberSession && resumeThreadId
+          ? new ViberSessionStore(this.db).assertThread(
+              options.viberSession.sessionId,
+              selectedConfig.provider,
+              resumeThreadId,
+            )
+          : undefined;
+
+      const antigravityConversation = conversation && detection.provider === "antigravity";
+      const supportsAcp = detection.capabilities.includes("acp");
+      if (savedThread?.protocol === "acp" && antigravityConversation && !supportsAcp) {
+        throw new AdeError(
+          "provider_unavailable",
+          "The saved Antigravity thread requires an ACP-capable CLI.",
         );
       }
+
+      const acpConversation =
+        antigravityConversation &&
+        supportsAcp &&
+        (!resumeThreadId || savedThread?.protocol === "acp");
 
       if (selectedConfig.model && !config.model) {
         this.db.run(`UPDATE ${table} SET model=? WHERE id=?`, selectedConfig.model, id);
@@ -457,6 +467,7 @@ export class AgentRunner {
             conversationId,
             selectedConfig.model,
             injectedThrough,
+            antigravityConversation ? (acpConversation ? "acp" : "print") : undefined,
           );
         }
 
@@ -557,7 +568,7 @@ export class AgentRunner {
           ? {
               ...(resumeThreadId ? { threadId: resumeThreadId } : {}),
               ...(confirmResume ? { confirmResume: true } : {}),
-              ...(detection.capabilities.includes("acp") ? { protocol: "acp" as const } : {}),
+              ...(acpConversation ? { protocol: "acp" as const } : {}),
             }
           : undefined,
         options.conversation?.instructions !== undefined
@@ -604,7 +615,10 @@ export class AgentRunner {
             raw = { unparsed: line };
           }
 
-          if (officialCodex && codexMemoryEvent(raw)) {
+          if (
+            (officialCodex && codexMemoryEvent(raw)) ||
+            (stream === "stdout" && provider.shouldObserveStdout?.(raw) === false)
+          ) {
             return;
           }
 
@@ -714,6 +728,7 @@ export class AgentRunner {
         if (
           !confirmResume ||
           !options.viberSession ||
+          (antigravityConversation && !acpConversation) ||
           !(error instanceof AdeError) ||
           error.kind !== "thread_resume_rejected"
         ) {
@@ -732,9 +747,7 @@ export class AgentRunner {
 
         const freshInvocation = await prepareInvocation(
           fresh.prompt,
-          conversation
-            ? { ...(detection.capabilities.includes("acp") ? { protocol: "acp" as const } : {}) }
-            : {},
+          acpConversation ? { protocol: "acp" } : {},
           fresh.preload,
           fresh.historyRowid,
         );

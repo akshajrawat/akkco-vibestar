@@ -124,6 +124,7 @@ export const ViberContinuationPrepareSchema = ViberSessionScopeSchema.extend({
 export const ViberThreadSchema = z.object({
   thread_id: z.string().min(1).max(500),
   provider: AgentExecutionSchema.shape.provider,
+  protocol: z.enum(["acp", "print"]).optional(),
   model: z.string().default(""),
   configuration: z.string(),
   status: z.enum(["ready", "uncertain"]),

@@ -1072,6 +1072,8 @@ export class ViberSessionStore {
         "The native thread changed. Send /clear to start a new thread.",
       );
     }
+
+    return thread;
   };
 
   recordThread = (
@@ -1080,6 +1082,7 @@ export class ViberSessionStore {
     threadId: string,
     model: string,
     injectedThrough?: number,
+    protocol?: "acp" | "print",
   ) => {
     const row = this.db.all<{
       configuration: string;
@@ -1131,6 +1134,7 @@ export class ViberSessionStore {
     const thread = ViberThreadSchema.parse({
       thread_id: threadId,
       provider: snapshot.execution.provider,
+      protocol,
       configuration: threadConfiguration(snapshot.execution, snapshot.profile.instructions),
       status: "uncertain",
       model,

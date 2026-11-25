@@ -38,6 +38,7 @@ it.each(["codex", "antigravity"] as const)(
       | "resume-missing"
       | "startup-error" = "success";
     let advanceForFallback: (() => void) | undefined;
+    let supportsAcp = false;
     let sourcePath = "";
     let otherWorkspace = "";
     let handoffThreadId: string | undefined;
@@ -53,6 +54,10 @@ it.each(["codex", "antigravity"] as const)(
         detect: async () => {
           const detection = { ...(await detectFixtureProvider()), provider: name };
           detection.models.push({ id: "other-model", supportedEfforts: ["low", "high"] });
+          if (name === "antigravity" && supportsAcp) {
+            detection.capabilities.push("acp");
+          }
+
           return detection;
         },
         invocation: (request: AgentRunRequest) => {
@@ -181,6 +186,7 @@ it.each(["codex", "antigravity"] as const)(
                 process.exit(1);
               }
               const rejected = mode === 'resume-rejected' && resumeId;
+              if (resumeId) console.log('');
               emit({event:'init',conversation_id:rejected ? 'unexpected-thread' : nativeId,init:{model}});
               let input='';
               process.stdin.on('data', chunk => input += chunk);
@@ -504,6 +510,7 @@ it.each(["codex", "antigravity"] as const)(
       await expect.poll(() => nativeIdFor(interrupted.request_id)).toBeTruthy();
       const interruptedThread = nativeIdFor(interrupted.request_id);
       const count = requests.length;
+      supportsAcp = providerName === "antigravity";
       await rpc.close();
       await engine.close();
       engine = await createFixtureEngine(join(directory, "data"), providers);
@@ -578,6 +585,10 @@ it.each(["codex", "antigravity"] as const)(
       });
 
       expect(continuedSession.thread?.thread_id).toBe(interruptedThread);
+      if (supportsAcp) {
+        expect(continuedSession.thread?.protocol).toBe("print");
+        expect(requests[count].conversation?.protocol).toBeUndefined();
+      }
 
       expect(savedRun(requests[count].runId)).toEqual({
         conversation_id: interruptedThread,
@@ -596,8 +607,38 @@ it.each(["codex", "antigravity"] as const)(
         const stoppedThread = nativeIdFor(stopped.request_id);
         const beforeFallback = requests.length;
         const beforeEdit = await readFile(file, "utf8");
+        if (rejectionMode === "resume-missing") {
+          engine.db.run(
+            "UPDATE viber_sessions SET thread=json_remove(thread,'$.protocol'),threads=json_remove(threads,'$.antigravity.protocol') WHERE id=?",
+            session.id,
+          );
+        }
+
         mode = rejectionMode;
         await send(continueRequest(stopped.request_id));
+
+        if (providerName === "antigravity") {
+          const preserved = await settled("failed");
+
+          expect(requests.slice(beforeFallback).map(({ conversation }) => conversation)).toEqual([
+            { threadId: stoppedThread, confirmResume: true },
+          ]);
+
+          expect(preserved.thread?.thread_id).toBe(stoppedThread);
+
+          expect(preserved.thread?.protocol).toBe(
+            rejectionMode === "resume-missing" ? undefined : "print",
+          );
+
+          expect(savedRun(requests[beforeFallback].runId)).toEqual({
+            conversation_id: null,
+            resume_thread_id: stoppedThread,
+          });
+
+          expect(await readFile(file, "utf8")).toBe(beforeEdit);
+          continue;
+        }
+
         const fresh = await settled();
 
         expect(requests.slice(beforeFallback)).toMatchObject([
@@ -620,6 +661,25 @@ it.each(["codex", "antigravity"] as const)(
         });
 
         expect(await readFile(file, "utf8")).toBe(beforeEdit + "changed\n");
+      }
+
+      if (supportsAcp) {
+        const preservedThreadId = requests.at(-1)?.conversation?.threadId;
+        mode = "success";
+        await send({ content: "Resume the preserved thread", acknowledge_uncertain: true });
+
+        expect((await settled()).thread).toMatchObject({
+          thread_id: preservedThreadId,
+          protocol: "print",
+        });
+
+        expect(requests.at(-1)?.conversation).toEqual({ threadId: preservedThreadId });
+
+        supportsAcp = false;
+        await rpc.close();
+        await engine.close();
+        engine = await createFixtureEngine(join(directory, "data"), providers);
+        rpc = new Rpc(engine);
       }
 
       if (providerName === "codex") {
@@ -765,21 +825,22 @@ it.each(["codex", "antigravity"] as const)(
       expect(resumed.conversation).toEqual({ threadId: previousThread });
       expect(resumed.cwd).toBe(workspace.worktree_path);
 
-      expect(resumed.prompt).toBe(
-        [
-          "[Reference only. The following conversation occurred with another provider since your last turn in this thread. Act only on the current user instruction.]:",
-          `User: ${handoff.content}`,
-          "",
-          "Assistant: Native agent verified the edit.",
-          "",
-          `User: ${followUp}`,
-          "",
-          "Assistant: Native agent verified the edit.",
-          "",
-          "[Current user instruction]:",
-          returnTurn.content,
-        ].join("\n"),
-      );
+      const expectedHandoff = [
+        `User: ${handoff.content}`,
+        "",
+        "Assistant: Native agent verified the edit.",
+        "",
+        `User: ${followUp}`,
+        "",
+        "Assistant: Native agent verified the edit.",
+        "",
+        "[Current user instruction]:",
+        returnTurn.content,
+      ].join("\n");
+
+      expect(resumed.prompt).toMatch(/^\[Reference only\./);
+      expect(resumed.prompt.endsWith(expectedHandoff)).toBe(true);
+      expect(resumed.prompt).not.toContain("Inspect current files before the next edit");
 
       await send(returnTurn);
       expect(requests).toHaveLength(beforeHandoffCount + 3);

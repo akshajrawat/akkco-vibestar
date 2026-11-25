@@ -4,7 +4,6 @@ import { AdeError } from "../../apps/core/domain";
 import {
   antigravityAcpConversation,
   antigravityAcpNormalize,
-  antigravityAcpResult,
 } from "../../apps/core/execution/providers/antigravity-acp";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 
@@ -383,8 +382,7 @@ describe("antigravityAcpConversation protocol", () => {
       params: { sessionId: "saved-sess-88" },
     });
 
-    // Replay update arrives before session/load response
-    receive({
+    const replay = {
       jsonrpc: "2.0",
       method: "session/update",
       params: {
@@ -394,9 +392,11 @@ describe("antigravityAcpConversation protocol", () => {
           content: { type: "text", text: "Historical replay chunk" },
         },
       },
-    });
+    };
 
-    // Must NOT trigger input acceptance
+    expect(invocation.shouldObserveStdout(replay)).toBe(false);
+    expect(invocation.normalize(replay)).toEqual([]);
+    receive(replay);
     expect(accepted).toEqual([]);
 
     // session/load completes
@@ -554,7 +554,9 @@ describe("antigravityAcpConversation protocol", () => {
       });
 
       expect(
-        invocation.normalize(tool({ sessionUpdate: "tool_call", kind: "execute" }))[0].kind,
+        invocation.normalize(
+          tool({ sessionUpdate: "tool_call", kind: "execute", status: "in_progress" }),
+        )[0].kind,
       ).toBe("command.started");
 
       expect(
@@ -1112,7 +1114,7 @@ describe("antigravityAcpConversation protocol", () => {
   });
 });
 
-describe("antigravityAcpNormalize, conversationId and result", () => {
+describe("antigravityAcpNormalize", () => {
   it("normalizes agent message and thought chunks with nested content", () => {
     const msgEvents = antigravityAcpNormalize({
       method: "session/update",
@@ -1212,8 +1214,33 @@ describe("antigravityAcpNormalize, conversationId and result", () => {
     });
   });
 
+  it.each(["tool_call", "tool_call_update"])("maps command statuses for %s", (sessionUpdate) => {
+    const normalize = (status: string) =>
+      antigravityAcpNormalize({
+        method: "session/update",
+        params: { update: { sessionUpdate, toolCallId: "cmd", kind: "execute", status } },
+      });
+
+    expect(normalize("pending")).toMatchObject([
+      { kind: "command.output", data: { status: "pending" } },
+    ]);
+
+    expect(normalize("in_progress")).toMatchObject([
+      { kind: "command.started", data: { status: "in_progress" } },
+    ]);
+
+    expect(normalize("completed")).toMatchObject([
+      { kind: "command.finished", data: { status: "completed" } },
+    ]);
+
+    expect(normalize("failed")).toMatchObject([
+      { kind: "command.finished", data: { status: "failed" } },
+    ]);
+  });
+
   it("excludes cancelled stopReason from run.completed", () => {
     const cancelledEvents = antigravityAcpNormalize({
+      jsonrpc: "2.0",
       id: 6,
       result: {
         stopReason: "cancelled",
@@ -1223,6 +1250,7 @@ describe("antigravityAcpNormalize, conversationId and result", () => {
     expect(cancelledEvents).toEqual([]);
 
     const completedEvents = antigravityAcpNormalize({
+      jsonrpc: "2.0",
       id: 6,
       result: {
         stopReason: "end_turn",
@@ -1231,24 +1259,6 @@ describe("antigravityAcpNormalize, conversationId and result", () => {
 
     expect(completedEvents).toHaveLength(1);
     expect(completedEvents[0].kind).toBe("run.completed");
-  });
-
-  it("suppresses session/update notifications when isTurnActive is false", () => {
-    const events = antigravityAcpNormalize(
-      {
-        method: "session/update",
-        params: {
-          sessionId: "sess-suppressed",
-          update: {
-            sessionUpdate: "agent_message_chunk",
-            content: { type: "text", text: "Replayed old chunk" },
-          },
-        },
-      },
-      false,
-    );
-
-    expect(events).toEqual([]);
   });
 
   it("normalizes tool calls with rawInput and tool updates with rawOutput", () => {
@@ -1292,15 +1302,5 @@ describe("antigravityAcpNormalize, conversationId and result", () => {
     expect(toolDoneEvents[0].data).toMatchObject({
       stdout: "File written successfully",
     });
-  });
-
-  it("extracts the result summary", () => {
-    expect(antigravityAcpResult({ result: { stopReason: "end_turn" } }, true)).toBeUndefined();
-
-    expect(antigravityAcpResult({ result: { stopReason: "end_turn" } }, false)).toEqual({
-      stopReason: "end_turn",
-    });
-
-    expect(antigravityAcpResult({ result: { stopReason: "cancelled" } }, true)).toBeUndefined();
   });
 });

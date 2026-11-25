@@ -12,7 +12,7 @@ export interface ProcessInputProtocol {
   validate?: (line: string) => void;
   receive: (line: string) => void;
   cancel?: (send: (message: unknown) => void) => void;
-  receiveCancellation?: (line: string) => void;
+  receiveCancellation?: (line: string, send: (message: unknown) => void) => void;
   validateExit?: (output: ProcessOutput) => void;
 }
 
@@ -181,24 +181,25 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
     const awaitingCancellation = () => graceTimer !== undefined && killTimer === undefined;
 
+    const send = (message: unknown) => child.stdin.write(JSON.stringify(message) + "\n");
+
     const line = (stream: "stdout" | "stderr", value: string) => {
       try {
-        if (aborted) {
-          if (stream === "stdout" && awaitingCancellation()) {
-            r.inputProtocol?.receiveCancellation?.(redact(value));
+        const safe = redact(value);
+        if (!aborted) {
+          if (stream === "stdout") {
+            r.inputProtocol?.validate?.(safe);
           }
 
-          return;
+          r.onLine?.(stream, safe);
         }
 
-        const safe = redact(value);
         if (stream === "stdout") {
-          r.inputProtocol?.validate?.(safe);
-        }
-
-        r.onLine?.(stream, safe);
-        if (stream === "stdout" && !aborted) {
-          r.inputProtocol?.receive(safe);
+          if (!aborted) {
+            r.inputProtocol?.receive(safe);
+          } else if (awaitingCancellation()) {
+            r.inputProtocol?.receiveCancellation?.(safe, send);
+          }
         }
       } catch (e) {
         aborted ||= e instanceof Error ? e : new Error(String(e));
@@ -318,7 +319,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         try {
           r.inputProtocol.cancel((message) => {
             try {
-              child.stdin.write(JSON.stringify(message) + "\n");
+              send(message);
               cancelSent = true;
             } catch {
               // Ignore stdin write error on abort
@@ -407,7 +408,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
         r.inputProtocol.start(
           (message) => {
             if (!aborted) {
-              child.stdin.write(JSON.stringify(message) + "\n");
+              send(message);
             }
           },
           () => child.stdin.end(),

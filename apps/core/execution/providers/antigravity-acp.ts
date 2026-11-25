@@ -1,24 +1,15 @@
 import { AdeError, type NormalizedEvent } from "../../domain";
 import type { ProcessInputProtocol } from "../runtime/process";
-import { object, withMemoryReference, type AgentRunRequest } from "./contracts";
+import { object, parseLine, withMemoryReference, type AgentRunRequest } from "./contracts";
 
 type AcpPhase =
   | "initialize"
   | "session_setup"
-  | "session_load"
   | "setting_mode"
   | "setting_model"
   | "setting_effort"
   | "turn_active"
   | "finished";
-
-const parseLine = (line: string) => {
-  try {
-    return object(JSON.parse(line));
-  } catch {
-    return {};
-  }
-};
 
 const isResponse = (raw: Record<string, unknown>) =>
   raw.jsonrpc === "2.0" && raw.method === undefined;
@@ -66,7 +57,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
   const tools = new Map<unknown, { name: unknown; kind: unknown }>();
 
   const isSessionReply = (raw: Record<string, unknown>) =>
-    raw.id === 2 && (phase === "session_setup" || phase === "session_load");
+    raw.id === 2 && phase === "session_setup";
 
   const sessionIdentity = (raw: Record<string, unknown>) => {
     const error = isResponse(raw) && !("result" in raw) ? object(raw.error) : {};
@@ -99,6 +90,9 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
   const matchesActiveSession = (raw: Record<string, unknown>) =>
     phase === "turn_active" && raw.jsonrpc === "2.0" && object(raw.params).sessionId === threadId;
 
+  const shouldObserveStdout = (raw: Record<string, unknown>) =>
+    raw.method !== "session/update" || matchesActiveSession(raw);
+
   const inputProtocol: ProcessInputProtocol = {
     start: (write, close) => {
       send = write;
@@ -127,13 +121,19 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
       }
     },
 
-    receiveCancellation: (line) => {
+    receiveCancellation: (line, write) => {
+      if (phase !== "turn_active") {
+        return;
+      }
+
       const raw = parseLine(line);
       if (
-        phase === "turn_active" &&
-        raw.id === 6 &&
-        successResult(raw)?.stopReason === "cancelled"
+        raw.jsonrpc === "2.0" &&
+        raw.method === "session/request_permission" &&
+        (typeof raw.id === "number" || typeof raw.id === "string")
       ) {
+        write({ jsonrpc: "2.0", id: raw.id, result: { outcome: { outcome: "cancelled" } } });
+      } else if (raw.id === 6 && successResult(raw)?.stopReason === "cancelled") {
         phase = "finished";
         end();
       }
@@ -188,41 +188,25 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
         send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
-        if (threadId) {
-          if (supportsResume) {
-            phase = "session_setup";
-
-            send({
-              jsonrpc: "2.0",
-              id: 2,
-              method: "session/resume",
-              params: { sessionId: threadId, cwd: request.cwd, mcpServers: [] },
-            });
-          } else if (supportsLoad) {
-            phase = "session_load";
-
-            send({
-              jsonrpc: "2.0",
-              id: 2,
-              method: "session/load",
-              params: { sessionId: threadId, cwd: request.cwd, mcpServers: [] },
-            });
-          } else {
-            throw new AdeError(
-              "provider_unavailable",
-              "Antigravity ACP server does not advertise session resume or load.",
-            );
-          }
-        } else {
-          phase = "session_setup";
-
-          send({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "session/new",
-            params: { cwd: request.cwd, mcpServers: [] },
-          });
+        if (threadId && !supportsResume && !supportsLoad) {
+          throw new AdeError(
+            "provider_unavailable",
+            "Antigravity ACP server does not advertise session resume or load.",
+          );
         }
+
+        phase = "session_setup";
+
+        send({
+          jsonrpc: "2.0",
+          id: 2,
+          method: threadId ? (supportsResume ? "session/resume" : "session/load") : "session/new",
+          params: {
+            ...(threadId ? { sessionId: threadId } : {}),
+            cwd: request.cwd,
+            mcpServers: [],
+          },
+        });
 
         return;
       }
@@ -269,11 +253,13 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
         return;
       }
 
-      // Handle session/set_mode response
-      if (response.id === 3 && phase === "setting_mode") {
-        requireResult(response, "set_mode");
+      if (
+        (response.id === 3 && phase === "setting_mode") ||
+        (response.id === 4 && phase === "setting_model")
+      ) {
+        requireResult(response, response.id === 3 ? "set_mode" : "set_model");
 
-        if (request.config.model) {
+        if (response.id === 3 && request.config.model) {
           phase = "setting_model";
 
           send({
@@ -285,31 +271,6 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
           return;
         }
-
-        if (request.config.effort && request.config.effort !== "default") {
-          phase = "setting_effort";
-
-          send({
-            jsonrpc: "2.0",
-            id: 5,
-            method: "session/set_config_option",
-            params: {
-              sessionId: threadId,
-              configId: "thought_level",
-              value: request.config.effort,
-            },
-          });
-
-          return;
-        }
-
-        proceedToPrompt();
-        return;
-      }
-
-      // Handle session/set_model response
-      if (response.id === 4 && phase === "setting_model") {
-        requireResult(response, "set_model");
 
         if (request.config.effort && request.config.effort !== "default") {
           phase = "setting_effort";
@@ -382,6 +343,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
     program: "agy",
     args: ["acp", "--sandbox"],
     inputProtocol,
+    shouldObserveStdout,
     conversationId: (raw: Record<string, unknown>) =>
       isSessionReply(raw) && successResult(raw) ? sessionIdentity(raw) : null,
     normalize: (raw: Record<string, unknown>): NormalizedEvent[] => {
@@ -389,13 +351,11 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
         return [{ kind: "run.started", data: { conversation_id: sessionIdentity(raw) } }];
       }
 
-      if (raw.method === "session/update") {
-        return matchesActiveSession(raw) ? antigravityAcpNormalize(raw, true, tools) : [];
+      if (cancelled || phase !== "turn_active" || !shouldObserveStdout(raw)) {
+        return [];
       }
 
-      return phase === "turn_active" && raw.id === 6 && successResult(raw)
-        ? antigravityAcpNormalize(raw)
-        : [];
+      return antigravityAcpNormalize(raw, tools);
     },
   };
 };
@@ -405,15 +365,10 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
  */
 export const antigravityAcpNormalize = (
   raw: Record<string, unknown>,
-  isTurnActive = true,
   tools = new Map<unknown, { name: unknown; kind: unknown }>(),
 ): NormalizedEvent[] => {
   // Session update notification
   if (raw.method === "session/update") {
-    if (!isTurnActive) {
-      return [];
-    }
-
     const params = object(raw.params);
     let update = object(params.update);
     const type = String(update.sessionUpdate);
@@ -466,9 +421,11 @@ export const antigravityAcpNormalize = (
       update = { ...update, ...classification };
     }
 
-    if (type === "tool_call") {
+    if (type === "tool_call" || type === "tool_call_update") {
       const toolName = String(update.name || "");
       const kindName = String(update.kind || "");
+      const reportedStatus = typeof update.status === "string" ? update.status : undefined;
+      let status = reportedStatus ?? (type === "tool_call" ? "running" : undefined);
       let kind: NormalizedEvent["kind"] = "analysis.status";
 
       if (
@@ -485,48 +442,15 @@ export const antigravityAcpNormalize = (
         kindName === "execute" ||
         ["run_command", "send_command_input", "Bash"].includes(toolName)
       ) {
-        kind = "command.started";
-      }
+        status = reportedStatus ?? (type === "tool_call" ? "pending" : undefined);
 
-      const args = object(update.args ?? update.rawInput ?? update.raw_input);
-      return [
-        {
-          kind,
-          data: {
-            call_id: update.toolCallId,
-            tool: toolName,
-            arguments: args,
-            command: args.CommandLine ?? args.command,
-            path: args.Path ?? args.AbsolutePath ?? args.TargetFile ?? args.file_path,
-            status: "running",
-          },
-        },
-      ];
-    }
-
-    if (type === "tool_call_update") {
-      const toolName = String(update.name || "");
-      const kindName = String(update.kind || "");
-      const status = String(update.status || "");
-      let kind: NormalizedEvent["kind"] = "analysis.status";
-
-      if (
-        kindName === "read" ||
-        ["read_file", "view_file", "list_dir", "grep_search", "find_by_name"].includes(toolName)
-      ) {
-        kind = "file.read";
-      } else if (
-        kindName === "edit" ||
-        ["write_to_file", "replace_file_content", "edit_file", "write_file"].includes(toolName)
-      ) {
-        kind = "file.changed";
-      } else if (
-        kindName === "execute" ||
-        ["run_command", "send_command_input", "Bash"].includes(toolName)
-      ) {
-        kind = ["completed", "failed", "DONE", "ERROR"].includes(status)
-          ? "command.finished"
-          : "command.started";
+        if (status === "in_progress") {
+          kind = "command.started";
+        } else if (status && ["completed", "failed", "DONE", "ERROR"].includes(status)) {
+          kind = "command.finished";
+        } else {
+          kind = "command.output";
+        }
       }
 
       const args = object(update.args ?? update.rawInput ?? update.raw_input);
@@ -555,48 +479,12 @@ export const antigravityAcpNormalize = (
     return [];
   }
 
-  // Response with session ID
-  if (raw.result && typeof raw.result === "object") {
-    const res = object(raw.result);
-    if (res.sessionId && (raw.id === 2 || raw.id === 1)) {
-      return [{ kind: "run.started", data: { conversation_id: res.sessionId } }];
-    }
-
-    if (res.stopReason === "end_turn") {
-      return [{ kind: "run.completed", data: res }];
-    }
-
-    if (res.stopReason === "cancelled") {
-      return [];
-    }
-
-    if (raw.id === 6 || typeof res.stopReason === "string") {
-      return [
-        { kind: "run.failed", data: { stopReason: res.stopReason ?? "missing stop reason" } },
-      ];
-    }
+  const result = successResult(raw);
+  if (!result || raw.id !== 6 || result.stopReason === "cancelled") {
+    return [];
   }
 
-  if (raw.error && typeof raw.error === "object") {
-    return [{ kind: "run.failed", data: raw.error }];
-  }
-
-  return [];
-};
-
-/**
- * Extracts final result summary from ACP responses.
- */
-export const antigravityAcpResult = (
-  raw: Record<string, unknown>,
-  conversation = false,
-): unknown => {
-  if (raw.result && typeof raw.result === "object") {
-    const res = object(raw.result);
-    if (res.stopReason === "end_turn") {
-      return conversation ? undefined : res;
-    }
-  }
-
-  return undefined;
+  return result.stopReason === "end_turn"
+    ? [{ kind: "run.completed", data: result }]
+    : [{ kind: "run.failed", data: { stopReason: result.stopReason ?? "missing stop reason" } }];
 };

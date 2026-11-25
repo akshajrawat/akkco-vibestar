@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import type { antigravityAcpNormalize } from "../../apps/core/execution/providers/antigravity-acp";
+import type { NormalizedEvent } from "../../apps/core/domain";
 import { antigravityAcpConversation } from "../../apps/core/execution/providers/antigravity-acp";
 import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import { Rpc } from "../../apps/core/rpc";
@@ -160,7 +160,7 @@ describe("Antigravity ACP Integration", () => {
 
       const invocation1 = antigravityAcpConversation(runRequest1);
 
-      const parsedEvents1: ReturnType<typeof antigravityAcpNormalize> = [];
+      const parsedEvents1: NormalizedEvent[] = [];
       let foundSessionId: string | null = null;
 
       const result1 = await execute({
@@ -249,14 +249,17 @@ describe("Antigravity ACP Integration", () => {
     }
   });
 
-  it("handles prompt cancellation through process execute with session/cancel", async () => {
+  it("cancels outstanding permission requests and closes stdin on the cancelled prompt reply", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "vibestar-acp-cancel-"));
 
     const cancelScript = `
+      const assert = require('node:assert/strict');
       const fs = require('node:fs');
       const readline = require('node:readline');
       const emit = msg => console.log(JSON.stringify(msg));
       const rl = readline.createInterface({ input: process.stdin });
+      let prompts = 0;
+      const permissionIds = new Set([99, 'permission-2']);
 
       process.on('SIGINT', () => {
         fs.appendFileSync('cancel.marker', ' and signalled');
@@ -285,6 +288,7 @@ describe("Antigravity ACP Integration", () => {
         } else if (req.method === 'session/set_config_option') {
           emit({ jsonrpc: '2.0', id: req.id, result: {} });
         } else if (req.method === 'session/prompt') {
+          assert.equal(++prompts, 1);
           emit({
             jsonrpc: '2.0',
             method: 'session/update',
@@ -296,12 +300,18 @@ describe("Antigravity ACP Integration", () => {
               }
             }
           });
+          for (const id of permissionIds) {
+            emit({ jsonrpc: '2.0', id, method: 'session/request_permission', params: { sessionId: 'cancel-session' } });
+          }
         } else if (req.method === 'session/cancel') {
           fs.writeFileSync('cancel.marker', 'received');
-          emit({ jsonrpc: '2.0', id: 6, result: { stopReason: 'cancelled' } });
-          emit({ jsonrpc: '2.0', id: 99, method: 'session/request_permission' });
-        } else if (req.id === 99) {
-          fs.writeFileSync('cancel.marker', 'sent extra input');
+          emit({ jsonrpc: '2.0', id: 6, result: { stopReason: 'end_turn' } });
+        } else if (permissionIds.delete(req.id)) {
+          assert.deepEqual(req.result, { outcome: { outcome: 'cancelled' } });
+          fs.appendFileSync('cancel.marker', ' and cancelled permission');
+          if (!permissionIds.size) {
+            emit({ jsonrpc: '2.0', id: 6, result: { stopReason: 'cancelled' } });
+          }
         }
       });
       rl.on('close', () => fs.appendFileSync('cancel.marker', ' and closed stdin'));
@@ -323,6 +333,7 @@ describe("Antigravity ACP Integration", () => {
       };
 
       const invocation = antigravityAcpConversation(runRequest);
+      const events: NormalizedEvent[] = [];
 
       // Abort after first update is received
       const execPromise = execute({
@@ -331,7 +342,11 @@ describe("Antigravity ACP Integration", () => {
         cwd: tempDir,
         signal: abortController.signal,
         inputProtocol: invocation.inputProtocol,
-        onLine: (_stream, line) => {
+        onLine: (stream, line) => {
+          if (stream === "stdout") {
+            events.push(...invocation.normalize(JSON.parse(line)));
+          }
+
           if (line.includes("agent_message_chunk")) {
             abortController.abort();
           }
@@ -341,19 +356,21 @@ describe("Antigravity ACP Integration", () => {
       await expect(execPromise).rejects.toMatchObject({ kind: "cancelled" });
 
       expect(await readFile(join(tempDir, "cancel.marker"), "utf8")).toBe(
-        "received and closed stdin",
+        "received and cancelled permission and cancelled permission and closed stdin",
       );
+
+      expect(events.map(({ kind }) => kind)).toEqual(["run.started", "message"]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   }, 10000);
 
   it.skipIf(process.env.VIBESTAR_TEST_SIGNED_IN_AGY !== "1" || !hasAgy())(
-    "runs real agy acp stdio smoke test against local binary",
+    "negotiates ACP v1 and creates a session with the signed-in agy binary",
     async () => {
       const tempDir = await mkdtemp(join(tmpdir(), "vibestar-acp-real-"));
       const abortController = new AbortController();
-      const capturedStdout: string[] = [];
+      let sessionId: string | null = null;
 
       const runRequest: AgentRunRequest = {
         runId: "real-agy-acp-smoke",
@@ -371,31 +388,22 @@ describe("Antigravity ACP Integration", () => {
 
       try {
         const execPromise = execute({
-          program: "agy",
-          args: ["acp", "--sandbox"],
+          ...invocation,
           cwd: tempDir,
           signal: abortController.signal,
-          inputProtocol: invocation.inputProtocol,
+          timeoutMs: 20000,
           onLine: (stream, line) => {
             if (stream === "stdout") {
-              capturedStdout.push(line);
-              // Once prompt or session update is dispatched, abort cleanly
-              if (line.includes('"sessionId":') || line.includes("session/update")) {
+              sessionId = invocation.conversationId(JSON.parse(line));
+              if (sessionId) {
                 abortController.abort();
               }
             }
           },
         });
 
-        // The execution will abort cleanly after observing real ACP server initialization & session setup
-        await expect(execPromise).rejects.toThrow();
-
-        // Check captured lines for real ACP protocol responses
-        const hasInitResponse = capturedStdout.some((l) => l.includes('"protocolVersion":1'));
-        const hasSessionCreated = capturedStdout.some((l) => l.includes('"sessionId":'));
-
-        expect(hasInitResponse).toBe(true);
-        expect(hasSessionCreated).toBe(true);
+        await expect(execPromise).rejects.toMatchObject({ kind: "cancelled" });
+        expect(sessionId).toEqual(expect.any(String));
       } finally {
         await rm(tempDir, { recursive: true, force: true });
       }
@@ -434,6 +442,10 @@ it.each(["missing", "unavailable"])(
             sessionId,
             update: { sessionUpdate: "agent_message_chunk", content: "replayed history" },
           } });
+          emit({ method: "session/update", params: {
+            sessionId,
+            update: { sessionUpdate: "usage_update", inputTokens: 999 },
+          } });
           if (rejectLoad === "true") {
             emit({ id, error: loadFailure === "missing"
               ? { code: -32002, message: "Resource not found", data: { sessionId } }
@@ -452,6 +464,10 @@ it.each(["missing", "unavailable"])(
           emit({ id: 6, result: { stopReason: "cancelled" } });
           break;
         case "session/prompt":
+          emit({ method: "session/update", params: {
+            sessionId,
+            update: { sessionUpdate: "usage_update", outputTokens: 7 },
+          } });
           if (stopTurn === "true") break;
           for (const [messageId, text] of [["A", "First"], ["A", " segment"], ["B", "Second"], ["A", "Third"]]) {
             emit({ method: "session/update", params: {
@@ -532,7 +548,7 @@ it.each(["missing", "unavailable"])(
       });
 
       const threadId = requests[0].runId;
-      expect(thread()?.thread_id).toBe(threadId);
+      expect(thread()).toMatchObject({ thread_id: threadId, protocol: "acp" });
 
       const stoppedId = randomUUID();
       stopTurn = true;
@@ -553,6 +569,20 @@ it.each(["missing", "unavailable"])(
       await rpc.call("viber.session.cancel", scope);
       await settled("cancelled");
 
+      const log = () =>
+        readFile(
+          join(engine.root, "logs", `viber-${session.id}`, `${requests.at(-1)?.runId}.jsonl`),
+          "utf8",
+        );
+
+      const stoppedLog = await log();
+      expect(stoppedLog).toContain('"id":2,"result":{}');
+      expect(stoppedLog).not.toMatch(/replayed history|"inputTokens":999/);
+
+      expect(
+        engine.db.all("SELECT input_tokens FROM ai_usage WHERE id=?", requests[1].runId),
+      ).toEqual([{ input_tokens: null }]);
+
       rejectLoad = true;
       stopTurn = false;
 
@@ -569,6 +599,14 @@ it.each(["missing", "unavailable"])(
         expect(requests[3].conversation).toEqual({ protocol: "acp" });
         expect(requests[3].prompt).toContain("Original request to resume");
         expect(thread()?.thread_id).toBe(requests[3].runId);
+        expect(await log()).toContain('"text":"First"');
+
+        expect(
+          engine.db.all(
+            "SELECT input_tokens,output_tokens FROM ai_usage WHERE id=?",
+            requests[3].runId,
+          ),
+        ).toEqual([{ input_tokens: null, output_tokens: 7 }]);
       } else {
         await settled("failed");
         expect(requests).toHaveLength(3);
@@ -578,6 +616,8 @@ it.each(["missing", "unavailable"])(
           engine.db.all("SELECT conversation_id FROM utility_runs WHERE id=?", requests[2].runId),
         ).toEqual([{ conversation_id: null }]);
       }
+
+      expect(await log()).not.toMatch(/replayed history|"inputTokens":999/);
     } finally {
       await rpc.close();
       await engine.close();

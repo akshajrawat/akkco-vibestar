@@ -1,6 +1,7 @@
 import { capture, checked } from "../runtime/process";
 import {
   object,
+  parseLine,
   verifyFlags,
   withMemoryReference,
   type AgentProvider,
@@ -9,11 +10,7 @@ import {
 } from "./contracts";
 import { AdeError, type NormalizedEvent } from "../../domain";
 import type { ProcessInputProtocol } from "../runtime/process";
-import {
-  antigravityAcpConversation,
-  antigravityAcpNormalize,
-  antigravityAcpResult,
-} from "./antigravity-acp";
+import { antigravityAcpConversation } from "./antigravity-acp";
 
 // The CLI exposes these models with provider-managed reasoning and rejects --effort.
 // Unknown unsuffixed models stay unavailable until their capabilities are known.
@@ -23,8 +20,6 @@ export class AntigravityProvider implements AgentProvider {
   readonly name = "antigravity";
 
   private activeAcp?: ReturnType<typeof antigravityAcpConversation>;
-
-  constructor(private readonly options: { acp?: boolean } = {}) {}
 
   detect = async (cwd: string, signal?: AbortSignal): Promise<ProviderDetection> => {
     const d: ProviderDetection = {
@@ -96,10 +91,7 @@ export class AntigravityProvider implements AgentProvider {
   };
 
   invocation = (r: AgentRunRequest) => {
-    const useAcp =
-      this.options.acp !== undefined ? this.options.acp : r.conversation?.protocol === "acp";
-
-    if (r.conversation && useAcp) {
+    if (r.conversation?.protocol === "acp") {
       const conv = antigravityAcpConversation(r);
       this.activeAcp = conv;
       return conv;
@@ -121,17 +113,6 @@ export class AntigravityProvider implements AgentProvider {
       ) {
         r.viberMemory?.onInputAccepted?.(threadId);
       }
-    };
-
-    const receiveInputEvent = (line: string) => {
-      let raw: Record<string, unknown>;
-      try {
-        raw = object(JSON.parse(line));
-      } catch {
-        return;
-      }
-
-      acknowledgeInput(raw);
     };
 
     const message = () => ({
@@ -167,12 +148,12 @@ export class AntigravityProvider implements AgentProvider {
             send(message());
             end();
           },
-          receive: receiveInputEvent,
+          receive: (line) => acknowledgeInput(parseLine(line)),
         } satisfies ProcessInputProtocol,
       };
     }
 
-    if (!r.conversation?.threadId || (!r.conversation.confirmResume && !r.viberMemory?.recall)) {
+    if (!r.conversation?.threadId) {
       // One stdin message keeps complete task context out of OS-limited argv.
       return { program: "agy", args, input: `${JSON.stringify(message())}\n` };
     }
@@ -189,7 +170,7 @@ export class AntigravityProvider implements AgentProvider {
         };
       },
       validate: (line) => {
-        const raw = object(JSON.parse(line));
+        const raw = parseLine(line);
         // Print mode can initialize a different conversation when the saved ID is missing.
         if (!dispatch || raw.event !== "init") {
           return;
@@ -208,9 +189,11 @@ export class AntigravityProvider implements AgentProvider {
         }
       },
       receive: (line) => {
+        const raw = parseLine(line);
+
         if (!dispatch) {
-          receiveInputEvent(line);
-        } else if (object(JSON.parse(line)).event === "init") {
+          acknowledgeInput(raw);
+        } else if (raw.event === "init") {
           dispatch();
         }
       },
@@ -234,16 +217,12 @@ export class AntigravityProvider implements AgentProvider {
     return { program: "agy", args, inputProtocol };
   };
 
+  shouldObserveStdout = (raw: Record<string, unknown>) =>
+    this.activeAcp?.shouldObserveStdout(raw) ?? true;
+
   normalize = (raw: Record<string, unknown>): NormalizedEvent[] => {
-    if (
-      raw.jsonrpc === "2.0" ||
-      raw.method === "session/update" ||
-      (raw.result &&
-        typeof raw.result === "object" &&
-        ("sessionId" in object(raw.result) || "stopReason" in object(raw.result))) ||
-      (raw.id != null && (raw.result != null || raw.error != null))
-    ) {
-      return this.activeAcp ? this.activeAcp.normalize(raw) : antigravityAcpNormalize(raw);
+    if (this.activeAcp) {
+      return this.activeAcp.normalize(raw);
     }
 
     if (raw.event === "init") {
@@ -391,11 +370,7 @@ export class AntigravityProvider implements AgentProvider {
   };
 
   result = (raw: Record<string, unknown>, conversation = false) => {
-    if (raw.result && typeof raw.result === "object" && "stopReason" in object(raw.result)) {
-      return antigravityAcpResult(raw, conversation);
-    }
-
-    if (raw.type !== "result" && raw.event !== "result") {
+    if (this.activeAcp || (raw.type !== "result" && raw.event !== "result")) {
       return undefined;
     }
 

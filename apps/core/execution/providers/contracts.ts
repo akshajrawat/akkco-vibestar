@@ -73,7 +73,7 @@ export interface AgentRunRequest {
   schemaPath: string;
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
-  conversation?: { threadId?: string; confirmResume?: true; protocol?: "acp" | "print" };
+  conversation?: { threadId?: string; confirmResume?: true; protocol?: "acp" };
   signal?: AbortSignal;
   viberMemory?: {
     recall?: (threadId?: string) => string[];
@@ -108,6 +108,7 @@ export interface AgentProvider {
     isolateProviderConfig?: boolean;
   };
   normalize: (raw: Record<string, unknown>) => NormalizedEvent[];
+  shouldObserveStdout?: (raw: Record<string, unknown>) => boolean;
   result: (raw: Record<string, unknown>, conversation?: boolean) => unknown;
   conversationId: (raw: Record<string, unknown>) => string | null;
   outputSchema?: (schema: Record<string, unknown>) => Record<string, unknown>;
@@ -193,3 +194,11 @@ export const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+
+export const parseLine = (line: string) => {
+  try {
+    return object(JSON.parse(line));
+  } catch {
+    return {};
+  }
+};
