@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import BetterSqlite3 from "better-sqlite3";
 import lockfile from "proper-lockfile";
 import { Database } from "./database";
+import { VIBESTAR_DB_NAME } from "./contracts";
 import { AdeError } from "../domain";
 import { createLayout, exists, inside, managedPath } from "../workspace/paths";
 
@@ -68,7 +69,7 @@ export const migrateDataRoot = async (source: string, target: string) => {
     await managedPath(source, directory);
   }
 
-  await managedPath(source, join("state", "vibestar.sqlite"));
+  await managedPath(source, join("state", VIBESTAR_DB_NAME));
 
   await recoverMigration(source, target);
   for (const dir of promotedDirectories) {
@@ -120,7 +121,7 @@ export const migrateDataRoot = async (source: string, target: string) => {
       });
     }
 
-    const stagedDbPath = join(staging, "state", "vibestar.sqlite");
+    const stagedDbPath = join(staging, "state", VIBESTAR_DB_NAME);
     if (!(await exists(stagedDbPath))) {
       throw new AdeError(
         "migration",
@@ -234,9 +235,9 @@ export const migrateDataRoot = async (source: string, target: string) => {
       promoted.push(dir);
     }
 
-    const verify = await Database.open(join(target, "state", "vibestar.sqlite"));
+    const verify = await Database.open(join(target, "state", VIBESTAR_DB_NAME));
     try {
-      const sqlite = new BetterSqlite3(join(source, "state", "vibestar.sqlite"));
+      const sqlite = new BetterSqlite3(join(source, "state", VIBESTAR_DB_NAME));
       try {
         sqlite
           .prepare(

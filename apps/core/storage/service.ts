@@ -7,6 +7,7 @@ import type { Engine } from "../execution/engine";
 import { exists, inside, managedPath } from "../workspace/paths";
 import { gitChecked } from "../workspace/git-command";
 import { inspectStorage } from "./inspection";
+import { VIBESTAR_DB_NAME } from "./contracts";
 
 export class StorageService {
   constructor(private readonly engine: Engine) {}
@@ -185,7 +186,7 @@ export class StorageService {
 
     const backup = await managedPath(e.root, join("backups", "viber-reset-" + randomUUID()));
     await mkdir(backup, { recursive: true, mode: 0o700 });
-    const database = join(backup, "vibestar.sqlite");
+    const database = join(backup, VIBESTAR_DB_NAME);
     await e.db.backup(database);
     await chmod(database, 0o600);
 
