@@ -1,9 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AdeError } from "../../apps/core/domain";
 import {
   antigravityAcpConversation,
-  antigravityAcpConversationId,
   antigravityAcpNormalize,
   antigravityAcpResult,
 } from "../../apps/core/execution/providers/antigravity-acp";
@@ -427,6 +426,148 @@ describe("antigravityAcpConversation protocol", () => {
     expect(accepted).toEqual(["saved-sess-88"]);
   });
 
+  it.each([1, 2, 3, 4, 5])("rejects a malformed setup response at request %i", (id) => {
+    const recall = vi.fn(() => []);
+
+    const invocation = antigravityAcpConversation({
+      ...baseRequest,
+      conversation: { threadId: "saved", confirmResume: true },
+      viberMemory: { recall },
+    });
+
+    const send = vi.fn();
+    invocation.inputProtocol.start(send, () => {});
+
+    const receive = (response: object) =>
+      invocation.inputProtocol.receive(JSON.stringify({ jsonrpc: "2.0", ...response }));
+
+    for (let replyId = 1; replyId < id; replyId++) {
+      receive({
+        id: replyId,
+        result:
+          replyId === 1
+            ? { protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } } }
+            : {},
+      });
+    }
+
+    send.mockClear();
+    for (const payload of [{}, { result: [] }, { result: null }, { result: {}, error: null }]) {
+      expect(() => receive({ id, ...payload })).toThrowError(
+        expect.objectContaining({ kind: "provider_failed" }),
+      );
+    }
+
+    expect(send).not.toHaveBeenCalled();
+    expect(recall).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: -32603, message: "Failed to read session saved: storage unavailable" },
+    { code: -32603, message: "Database not found" },
+    { code: -32002, message: "MCP server not found" },
+  ])("preserves the saved session for ambiguous errors ($message)", (error) => {
+    const invocation = antigravityAcpConversation({
+      ...baseRequest,
+      conversation: { threadId: "saved", confirmResume: true },
+    });
+
+    invocation.inputProtocol.start(
+      () => {},
+      () => {},
+    );
+
+    invocation.inputProtocol.receive(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        result: { protocolVersion: 1, agentCapabilities: { loadSession: true } },
+      }),
+    );
+
+    const reply = JSON.stringify({ jsonrpc: "2.0", id: 2, error });
+    for (const hook of [invocation.inputProtocol.validate!, invocation.inputProtocol.receive]) {
+      expect(() => hook(reply)).toThrowError(expect.objectContaining({ kind: "provider_failed" }));
+    }
+  });
+
+  it.each(["resume", "load"])(
+    "confirms an empty %s response and ignores replay and foreign updates",
+    (method) => {
+      const accept = vi.fn();
+
+      const invocation = antigravityAcpConversation({
+        ...baseRequest,
+        conversation: { threadId: "saved" },
+        viberMemory: { onInputAccepted: accept },
+      });
+
+      invocation.inputProtocol.start(
+        () => {},
+        () => {},
+      );
+
+      const receive = (raw: object) =>
+        invocation.inputProtocol.receive(JSON.stringify({ jsonrpc: "2.0", ...raw }));
+
+      const update = (sessionId: string) => ({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: "text" } },
+      });
+
+      receive({
+        id: 1,
+        result: {
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { [method]: {} } },
+        },
+      });
+
+      receive(update("saved"));
+      expect(invocation.conversationId(update("saved"))).toBeNull();
+      expect(invocation.normalize(update("saved"))).toEqual([]);
+
+      const reply = { jsonrpc: "2.0", id: 2, result: {} };
+      expect(invocation.conversationId(reply)).toBe("saved");
+
+      expect(invocation.normalize(reply)).toEqual([
+        { kind: "run.started", data: { conversation_id: "saved" } },
+      ]);
+
+      receive(reply);
+
+      for (const id of [3, 4, 5]) {
+        receive({ id, result: {} });
+      }
+
+      expect(invocation.normalize(update("foreign"))).toEqual([]);
+      receive(update("foreign"));
+      expect(accept).not.toHaveBeenCalled();
+      receive(update("saved"));
+      receive(update("saved"));
+      expect(accept).toHaveBeenCalledExactlyOnceWith("saved");
+
+      const tool = (data: object) => ({
+        ...update("saved"),
+        params: { sessionId: "saved", update: { toolCallId: "cmd", ...data } },
+      });
+
+      expect(
+        invocation.normalize(tool({ sessionUpdate: "tool_call", kind: "execute" }))[0].kind,
+      ).toBe("command.started");
+
+      expect(
+        invocation.normalize(tool({ sessionUpdate: "tool_call_update", status: "completed" }))[0]
+          .kind,
+      ).toBe("command.finished");
+
+      expect(
+        invocation.normalize({ jsonrpc: "2.0", id: 6, result: { stopReason: "max_tokens" } }),
+      ).toEqual([{ kind: "run.failed", data: { stopReason: "max_tokens" } }]);
+    },
+  );
+
   it("throws thread_resume_rejected when saved session is not found", () => {
     const invocation = antigravityAcpConversation({
       ...baseRequest,
@@ -455,15 +596,11 @@ describe("antigravityAcpConversation protocol", () => {
       error: { code: -32603, message: "Failed to read session nonexistent-sess: file not found" },
     });
 
-    // validate hook triggers thread_resume_rejected
-    expect(() => {
-      invocation.inputProtocol.validate?.(errorPayload);
-    }).toThrowError(AdeError);
-
-    // receive hook also triggers thread_resume_rejected
-    expect(() => {
-      invocation.inputProtocol.receive(errorPayload);
-    }).toThrowError(/saved thread/);
+    for (const hook of [invocation.inputProtocol.validate!, invocation.inputProtocol.receive]) {
+      expect(() => hook(errorPayload)).toThrowError(
+        expect.objectContaining({ kind: "thread_resume_rejected" }),
+      );
+    }
   });
 
   it("does NOT throw thread_resume_rejected on post-dispatch prompt turn error", () => {
@@ -602,6 +739,10 @@ describe("antigravityAcpConversation protocol", () => {
         result: { sessionId: "active-sess" },
       }),
     );
+
+    for (const id of [3, 4, 5]) {
+      invocation.inputProtocol.receive(JSON.stringify({ jsonrpc: "2.0", id, result: {} }));
+    }
 
     // Trigger cancel
     invocation.inputProtocol.cancel?.((msg) => {
@@ -1153,20 +1294,7 @@ describe("antigravityAcpNormalize, conversationId and result", () => {
     });
   });
 
-  it("extracts conversation id and result summary", () => {
-    expect(
-      antigravityAcpConversationId({
-        method: "session/update",
-        params: { sessionId: "extracted-sess-id" },
-      }),
-    ).toBe("extracted-sess-id");
-
-    expect(
-      antigravityAcpConversationId({
-        result: { sessionId: "res-sess-id" },
-      }),
-    ).toBe("res-sess-id");
-
+  it("extracts the result summary", () => {
     expect(antigravityAcpResult({ result: { stopReason: "end_turn" } }, true)).toBeUndefined();
 
     expect(antigravityAcpResult({ result: { stopReason: "end_turn" } }, false)).toEqual({

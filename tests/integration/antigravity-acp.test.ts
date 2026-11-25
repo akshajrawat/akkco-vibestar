@@ -1,14 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import {
-  antigravityAcpConversation,
-  antigravityAcpConversationId,
-  antigravityAcpNormalize,
-} from "../../apps/core/execution/providers/antigravity-acp";
+import type { antigravityAcpNormalize } from "../../apps/core/execution/providers/antigravity-acp";
+import { antigravityAcpConversation } from "../../apps/core/execution/providers/antigravity-acp";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
+import { Rpc } from "../../apps/core/rpc";
+import { createFixtureEngine, detectFixtureProvider } from "../helpers/fixtures";
+import { testProfileIds } from "../helpers/viber-fixtures";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import { execute } from "../../apps/core/execution/runtime/process";
 
@@ -158,7 +160,8 @@ describe("Antigravity ACP Integration", () => {
 
       const invocation1 = antigravityAcpConversation(runRequest1);
 
-      const capturedLines1: string[] = [];
+      const parsedEvents1: ReturnType<typeof antigravityAcpNormalize> = [];
+      let foundSessionId: string | null = null;
 
       const result1 = await execute({
         program: process.execPath,
@@ -167,25 +170,15 @@ describe("Antigravity ACP Integration", () => {
         inputProtocol: invocation1.inputProtocol,
         onLine: (stream, line) => {
           if (stream === "stdout") {
-            capturedLines1.push(line);
+            const raw = JSON.parse(line);
+            foundSessionId = invocation1.conversationId(raw) ?? foundSessionId;
+            parsedEvents1.push(...invocation1.normalize(raw));
           }
         },
       });
 
       expect(result1.code).toBe(0);
       expect(acceptedIds).toEqual(["acp-synthetic-session-1"]);
-
-      // Verify normalization of all emitted events
-      const parsedEvents1 = capturedLines1
-        .map((line) => {
-          try {
-            return JSON.parse(line);
-          } catch {
-            return null;
-          }
-        })
-        .filter(Boolean)
-        .flatMap((msg) => antigravityAcpNormalize(msg));
 
       expect(parsedEvents1.some((e) => e.kind === "file.read")).toBe(true);
 
@@ -206,11 +199,6 @@ describe("Antigravity ACP Integration", () => {
 
       expect(parsedEvents1.some((e) => e.kind === "run.completed")).toBe(true);
 
-      // Verify conversation identity extraction
-      const foundSessionId = capturedLines1
-        .map((line) => antigravityAcpConversationId(JSON.parse(line)))
-        .find((id): id is string => typeof id === "string" && id.length > 0);
-
       expect(foundSessionId).toBe("acp-synthetic-session-1");
 
       // Second turn: Resume existing session
@@ -223,7 +211,7 @@ describe("Antigravity ACP Integration", () => {
         prompt: "Follow up question",
         schemaPath: "/artifacts/schema.json",
         schema: { type: "object" },
-        conversation: { threadId: foundSessionId },
+        conversation: { threadId: foundSessionId! },
         viberMemory: {
           recall: (id) => {
             if (id) {
@@ -271,7 +259,8 @@ describe("Antigravity ACP Integration", () => {
       const rl = readline.createInterface({ input: process.stdin });
 
       process.on('SIGINT', () => {
-        // Allow in-flight stdin cancel to be processed
+        fs.appendFileSync('cancel.marker', ' and signalled');
+        process.exit(1);
       });
 
       rl.on('line', line => {
@@ -310,9 +299,12 @@ describe("Antigravity ACP Integration", () => {
         } else if (req.method === 'session/cancel') {
           fs.writeFileSync('cancel.marker', 'received');
           emit({ jsonrpc: '2.0', id: 6, result: { stopReason: 'cancelled' } });
-          process.exit(0);
+          emit({ jsonrpc: '2.0', id: 99, method: 'session/request_permission' });
+        } else if (req.id === 99) {
+          fs.writeFileSync('cancel.marker', 'sent extra input');
         }
       });
+      rl.on('close', () => fs.appendFileSync('cancel.marker', ' and closed stdin'));
     `;
 
     try {
@@ -346,16 +338,17 @@ describe("Antigravity ACP Integration", () => {
         },
       });
 
-      await expect(execPromise).rejects.toThrow();
-      const markerPath = join(tempDir, "cancel.marker");
-      const { existsSync } = await import("node:fs");
-      expect(existsSync(markerPath)).toBe(true);
+      await expect(execPromise).rejects.toMatchObject({ kind: "cancelled" });
+
+      expect(await readFile(join(tempDir, "cancel.marker"), "utf8")).toBe(
+        "received and closed stdin",
+      );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   }, 10000);
 
-  it.skipIf(!hasAgy())(
+  it.skipIf(process.env.VIBESTAR_TEST_SIGNED_IN_AGY !== "1" || !hasAgy())(
     "runs real agy acp stdio smoke test against local binary",
     async () => {
       const tempDir = await mkdtemp(join(tmpdir(), "vibestar-acp-real-"));
@@ -410,3 +403,185 @@ describe("Antigravity ACP Integration", () => {
     30000,
   );
 });
+
+it.each(["missing", "unavailable"])(
+  "saves interleaved text and handles a saved ACP session that is %s on Continue",
+  async (loadFailure) => {
+    const directory = await mkdtemp(join(tmpdir(), "vibestar-acp-runner-"));
+
+    let stopTurn = false;
+    let rejectLoad = false;
+    const requests: AgentRunRequest[] = [];
+
+    const script = `
+    const [newSessionId, stopTurn, rejectLoad, loadFailure] = process.argv.slice(1);
+    let sessionId;
+    const rl = require("node:readline").createInterface({ input: process.stdin });
+    const emit = (raw) => console.log(JSON.stringify({ jsonrpc: "2.0", ...raw }));
+    rl.on("line", (line) => {
+      const { method, id, params } = JSON.parse(line);
+      switch (method) {
+        case "initialize":
+          emit({ id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true } } });
+          break;
+        case "session/new":
+          sessionId = newSessionId;
+          emit({ id, result: { sessionId } });
+          break;
+        case "session/load":
+          sessionId = params.sessionId;
+          emit({ method: "session/update", params: {
+            sessionId,
+            update: { sessionUpdate: "agent_message_chunk", content: "replayed history" },
+          } });
+          if (rejectLoad === "true") {
+            emit({ id, error: loadFailure === "missing"
+              ? { code: -32002, message: "Resource not found", data: { sessionId } }
+              : { code: -32603, message: "Session storage unavailable" },
+            });
+          } else {
+            emit({ id, result: {} });
+          }
+          break;
+        case "session/set_mode":
+        case "session/set_model":
+        case "session/set_config_option":
+          emit({ id, result: {} });
+          break;
+        case "session/cancel":
+          emit({ id: 6, result: { stopReason: "cancelled" } });
+          break;
+        case "session/prompt":
+          if (stopTurn === "true") break;
+          for (const [messageId, text] of [["A", "First"], ["A", " segment"], ["B", "Second"], ["A", "Third"]]) {
+            emit({ method: "session/update", params: {
+              sessionId,
+              update: { sessionUpdate: "agent_message_chunk", messageId, content: { type: "text", text } },
+            } });
+          }
+          emit({ id, result: { stopReason: "end_turn" } });
+          break;
+      }
+    });
+  `;
+
+    const engine = await createFixtureEngine(join(directory, "data"), () => {
+      const adapter = new AntigravityProvider();
+      return {
+        ...adapter,
+        detect: async () => ({
+          ...(await detectFixtureProvider()),
+          provider: "antigravity",
+          capabilities: ["native-conversations", "acp"],
+        }),
+        invocation: (request) => {
+          requests.push(request);
+          return {
+            ...adapter.invocation(request),
+            program: process.execPath,
+            args: ["-e", script, request.runId, String(stopTurn), String(rejectLoad), loadFailure],
+          };
+        },
+      };
+    });
+
+    const rpc = new Rpc(engine);
+    try {
+      const profileId = testProfileIds.reviewer;
+      const selection = { provider: "antigravity" as const, model: "next-model", effort: "high" };
+
+      const session = await engine.viberSessions.store.create({
+        request_id: randomUUID(),
+        profile_id: profileId,
+        selection,
+      });
+
+      const scope = { session_id: session.id, profile_id: profileId };
+
+      const send = (content: string, extra = {}) =>
+        rpc.call("viber.session.send", {
+          ...scope,
+          request_id: randomUUID(),
+          content,
+          history_ids: [],
+          selection,
+          ...extra,
+        });
+
+      const detail = () => engine.viberSessions.store.detail(session.id, profileId);
+      const thread = () => engine.viberSessions.store.session(session.id, profileId).thread;
+
+      const settled = async (status: string) => {
+        await expect
+          .poll(() =>
+            detail()
+              .messages.filter(({ role }) => role === "user")
+              .at(-1),
+          )
+          .toMatchObject({ status });
+
+        await expect.poll(() => engine.isActive(`viber:${session.id}`)).toBe(false);
+      };
+
+      await send("Stream several assistant segments");
+      await settled("completed");
+
+      expect(detail().messages.at(-1)).toMatchObject({
+        role: "assistant",
+        content: "First segment\n\nSecond\n\nThird",
+      });
+
+      const threadId = requests[0].runId;
+      expect(thread()?.thread_id).toBe(threadId);
+
+      const stoppedId = randomUUID();
+      stopTurn = true;
+      await send("Original request to resume", { request_id: stoppedId });
+
+      await expect
+        .poll(() => {
+          const runId = requests.at(-1)?.runId;
+          return runId !== threadId
+            ? engine.db.all<{ conversation_id: string | null }>(
+                "SELECT conversation_id FROM utility_runs WHERE id=?",
+                runId,
+              )[0]?.conversation_id
+            : null;
+        })
+        .toBe(threadId);
+
+      await rpc.call("viber.session.cancel", scope);
+      await settled("cancelled");
+
+      rejectLoad = true;
+      stopTurn = false;
+
+      await send("Continue where you left off.", {
+        continue_message_id: stoppedId,
+        selection: undefined,
+        acknowledge_uncertain: true,
+      });
+
+      if (loadFailure === "missing") {
+        await settled("completed");
+        expect(requests).toHaveLength(4);
+        expect(requests[2].conversation).toMatchObject({ threadId, confirmResume: true });
+        expect(requests[3].conversation).toEqual({ protocol: "acp" });
+        expect(requests[3].prompt).toContain("Original request to resume");
+        expect(thread()?.thread_id).toBe(requests[3].runId);
+      } else {
+        await settled("failed");
+        expect(requests).toHaveLength(3);
+        expect(thread()?.thread_id).toBe(threadId);
+
+        expect(
+          engine.db.all("SELECT conversation_id FROM utility_runs WHERE id=?", requests[2].runId),
+        ).toEqual([{ conversation_id: null }]);
+      }
+    } finally {
+      await rpc.close();
+      await engine.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);

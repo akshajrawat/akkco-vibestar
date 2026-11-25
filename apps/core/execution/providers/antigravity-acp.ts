@@ -12,6 +12,44 @@ type AcpPhase =
   | "turn_active"
   | "finished";
 
+const parseLine = (line: string) => {
+  try {
+    return object(JSON.parse(line));
+  } catch {
+    return {};
+  }
+};
+
+const isResponse = (raw: Record<string, unknown>) =>
+  raw.jsonrpc === "2.0" && raw.method === undefined;
+
+const successResult = (raw: Record<string, unknown>) => {
+  if (
+    !isResponse(raw) ||
+    "error" in raw ||
+    !raw.result ||
+    typeof raw.result !== "object" ||
+    Array.isArray(raw.result)
+  ) {
+    return null;
+  }
+
+  return object(raw.result);
+};
+
+const requireResult = (raw: Record<string, unknown>, action: string) => {
+  const result = successResult(raw);
+  if (!result) {
+    const detail = isResponse(raw) ? object(raw.error).message : undefined;
+    throw new AdeError(
+      "provider_failed",
+      `Antigravity ${action} failed: ${typeof detail === "string" ? detail : "invalid response"}`,
+    );
+  }
+
+  return result;
+};
+
 /**
  * Executes a conversational turn against the official Antigravity ACP stdio server.
  * Manages protocol v1 negotiation, scoped session permissions, verified thread resume,
@@ -24,6 +62,42 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
   let threadId = request.conversation?.threadId;
   let inputAccepted = false;
   let cancelled = false;
+
+  const tools = new Map<unknown, { name: unknown; kind: unknown }>();
+
+  const isSessionReply = (raw: Record<string, unknown>) =>
+    raw.id === 2 && (phase === "session_setup" || phase === "session_load");
+
+  const sessionIdentity = (raw: Record<string, unknown>) => {
+    const error = isResponse(raw) && !("result" in raw) ? object(raw.error) : {};
+    if (
+      threadId &&
+      typeof error.code === "number" &&
+      typeof error.message === "string" &&
+      ((error.code === -32002 && object(error.data).sessionId === threadId) ||
+        /^(?:ACP )?session (?:not found|does not exist)(?:$|[:.])/i.test(error.message) ||
+        error.message === `Session ${threadId} not found` ||
+        (error.message.startsWith(`Failed to read session ${threadId}:`) &&
+          /:\s*(?:file not found\b|ENOENT\b|no such file or directory\b)/i.test(error.message)))
+    ) {
+      throw new AdeError("thread_resume_rejected", "Antigravity could not find the saved thread.");
+    }
+
+    const result = requireResult(raw, "session setup");
+    const returnedId = "sessionId" in result ? result.sessionId : threadId;
+    if (typeof returnedId !== "string" || !returnedId) {
+      throw new AdeError("provider_failed", "Antigravity returned no conversation identity.");
+    }
+
+    if (threadId && returnedId !== threadId) {
+      throw new AdeError("provider_failed", "Antigravity returned a different session identity.");
+    }
+
+    return returnedId;
+  };
+
+  const matchesActiveSession = (raw: Record<string, unknown>) =>
+    phase === "turn_active" && raw.jsonrpc === "2.0" && object(raw.params).sessionId === threadId;
 
   const inputProtocol: ProcessInputProtocol = {
     start: (write, close) => {
@@ -44,79 +118,37 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
     cancel: (write) => {
       cancelled = true;
-      if (
-        threadId &&
-        (phase === "turn_active" ||
-          phase === "session_setup" ||
-          phase === "setting_mode" ||
-          phase === "setting_model" ||
-          phase === "setting_effort")
-      ) {
-        try {
-          write({
-            jsonrpc: "2.0",
-            method: "session/cancel",
-            params: { sessionId: threadId },
-          });
-        } catch {
-          // Ignore write failure if process already terminated
-        }
+      if (phase === "turn_active" && threadId) {
+        write({
+          jsonrpc: "2.0",
+          method: "session/cancel",
+          params: { sessionId: threadId },
+        });
       }
     },
 
-    validate: request.conversation?.confirmResume
-      ? (line) => {
-          let response: Record<string, unknown>;
-          try {
-            response = object(JSON.parse(line));
-          } catch {
-            return;
-          }
+    receiveCancellation: (line) => {
+      const raw = parseLine(line);
+      if (
+        phase === "turn_active" &&
+        raw.id === 6 &&
+        successResult(raw)?.stopReason === "cancelled"
+      ) {
+        phase = "finished";
+        end();
+      }
+    },
 
-          if (response.id !== 2 || (phase !== "session_setup" && phase !== "session_load")) {
-            return;
-          }
-
-          if (response.error) {
-            const msg = String(object(response.error).message || "");
-            const code = object(response.error).code;
-            if (
-              code === -32603 ||
-              code === -32002 ||
-              /not found/i.test(msg) ||
-              /failed to read session/i.test(msg)
-            ) {
-              throw new AdeError(
-                "thread_resume_rejected",
-                "Antigravity could not find the saved thread.",
-              );
-            }
-          }
-
-          const returnedId = object(response.result).sessionId;
-          if (
-            threadId &&
-            typeof returnedId === "string" &&
-            returnedId !== "" &&
-            returnedId !== threadId
-          ) {
-            throw new AdeError(
-              "thread_resume_rejected",
-              "Antigravity could not confirm the saved thread.",
-            );
-          }
-        }
-      : undefined,
+    validate: (line) => {
+      const raw = parseLine(line);
+      if (isSessionReply(raw) && raw.method === undefined) {
+        sessionIdentity(raw);
+      }
+    },
 
     receive: (line) => {
-      let response: Record<string, unknown>;
-      try {
-        response = object(JSON.parse(line));
-      } catch {
-        return;
-      }
-
-      if (phase === "finished") {
+      const response = parseLine(line);
+      if (phase === "finished" || cancelled) {
         return;
       }
 
@@ -138,15 +170,8 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
       // Handle initialize response
       if (response.id === 1 && phase === "initialize") {
-        if (response.error) {
-          throw new AdeError(
-            "provider_failed",
-            String(object(response.error).message || "Antigravity ACP initialize failed"),
-          );
-        }
-
-        const res = object(response.result);
-        const protocolVersion = Number(res.protocolVersion ?? res.protocol_version);
+        const res = requireResult(response, "initialize");
+        const protocolVersion = res.protocolVersion ?? res.protocol_version;
         if (protocolVersion !== 1) {
           throw new AdeError(
             "provider_failed",
@@ -227,39 +252,8 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
       };
 
       // Handle session setup response (session/new, session/resume, or session/load)
-      if (response.id === 2 && (phase === "session_setup" || phase === "session_load")) {
-        if (response.error) {
-          const msg = String(object(response.error).message || "");
-          const code = object(response.error).code;
-          if (
-            threadId &&
-            (code === -32603 ||
-              code === -32002 ||
-              /not found/i.test(msg) ||
-              /failed to read session/i.test(msg))
-          ) {
-            throw new AdeError(
-              "thread_resume_rejected",
-              "Antigravity could not find the saved thread.",
-            );
-          }
-
-          throw new AdeError("provider_failed", `Antigravity session setup failed: ${msg}`);
-        }
-
-        const returnedId = String(object(response.result).sessionId || threadId || "");
-        if (!returnedId) {
-          throw new AdeError("provider_failed", "Antigravity returned no conversation identity.");
-        }
-
-        if (threadId && returnedId !== threadId) {
-          throw new AdeError(
-            "thread_resume_rejected",
-            "Antigravity returned a different session identity.",
-          );
-        }
-
-        threadId = returnedId;
+      if (isSessionReply(response)) {
+        threadId = sessionIdentity(response);
 
         // Apply scoped permission mode: accept-edits for workspace-write, plan for read-only
         phase = "setting_mode";
@@ -277,12 +271,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
       // Handle session/set_mode response
       if (response.id === 3 && phase === "setting_mode") {
-        if (response.error) {
-          throw new AdeError(
-            "provider_failed",
-            `Antigravity set_mode failed: ${String(object(response.error).message || "unknown error")}`,
-          );
-        }
+        requireResult(response, "set_mode");
 
         if (request.config.model) {
           phase = "setting_model";
@@ -320,12 +309,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
       // Handle session/set_model response
       if (response.id === 4 && phase === "setting_model") {
-        if (response.error) {
-          throw new AdeError(
-            "provider_failed",
-            `Antigravity set_model failed: ${String(object(response.error).message || "unknown error")}`,
-          );
-        }
+        requireResult(response, "set_model");
 
         if (request.config.effort && request.config.effort !== "default") {
           phase = "setting_effort";
@@ -350,12 +334,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
       // Handle session/set_config_option response
       if (response.id === 5 && phase === "setting_effort") {
-        if (response.error) {
-          throw new AdeError(
-            "provider_failed",
-            `Antigravity set_config_option failed: ${String(object(response.error).message || "unknown error")}`,
-          );
-        }
+        requireResult(response, "set_config_option");
 
         proceedToPrompt();
         return;
@@ -363,12 +342,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
       // Handle streaming updates
       if (response.method === "session/update") {
-        if (phase === "session_load") {
-          // Suppress replayed history updates from session/load so they don't pollute live chat
-          return;
-        }
-
-        if (phase !== "turn_active") {
+        if (!matchesActiveSession(response)) {
           return;
         }
 
@@ -392,14 +366,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
       // Handle prompt turn resolution
       if (response.id === 6 && phase === "turn_active") {
-        if (response.error) {
-          throw new AdeError(
-            "provider_failed",
-            String(object(response.error).message || "Antigravity prompt turn failed"),
-          );
-        }
-
-        const res = object(response.result);
+        const res = requireResult(response, "prompt");
         if (!inputAccepted && threadId && !cancelled && res.stopReason === "end_turn") {
           inputAccepted = true;
           request.viberMemory?.onInputAccepted?.(threadId);
@@ -415,7 +382,21 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
     program: "agy",
     args: ["acp", "--sandbox"],
     inputProtocol,
-    isTurnActive: () => phase === "turn_active",
+    conversationId: (raw: Record<string, unknown>) =>
+      isSessionReply(raw) && successResult(raw) ? sessionIdentity(raw) : null,
+    normalize: (raw: Record<string, unknown>): NormalizedEvent[] => {
+      if (isSessionReply(raw) && successResult(raw)) {
+        return [{ kind: "run.started", data: { conversation_id: sessionIdentity(raw) } }];
+      }
+
+      if (raw.method === "session/update") {
+        return matchesActiveSession(raw) ? antigravityAcpNormalize(raw, true, tools) : [];
+      }
+
+      return phase === "turn_active" && raw.id === 6 && successResult(raw)
+        ? antigravityAcpNormalize(raw)
+        : [];
+    },
   };
 };
 
@@ -425,6 +406,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 export const antigravityAcpNormalize = (
   raw: Record<string, unknown>,
   isTurnActive = true,
+  tools = new Map<unknown, { name: unknown; kind: unknown }>(),
 ): NormalizedEvent[] => {
   // Session update notification
   if (raw.method === "session/update") {
@@ -433,7 +415,7 @@ export const antigravityAcpNormalize = (
     }
 
     const params = object(raw.params);
-    const update = object(params.update);
+    let update = object(params.update);
     const type = String(update.sessionUpdate);
 
     if (type === "agent_message_chunk") {
@@ -475,6 +457,13 @@ export const antigravityAcpNormalize = (
           },
         },
       ];
+    }
+
+    if ((type === "tool_call" || type === "tool_call_update") && update.toolCallId != null) {
+      const prior = tools.get(update.toolCallId);
+      const classification = { name: update.name ?? prior?.name, kind: update.kind ?? prior?.kind };
+      tools.set(update.toolCallId, classification);
+      update = { ...update, ...classification };
     }
 
     if (type === "tool_call") {
@@ -577,9 +566,14 @@ export const antigravityAcpNormalize = (
       return [{ kind: "run.completed", data: res }];
     }
 
-    // A cancelled prompt must NOT be marked as run.completed
     if (res.stopReason === "cancelled") {
       return [];
+    }
+
+    if (raw.id === 6 || typeof res.stopReason === "string") {
+      return [
+        { kind: "run.failed", data: { stopReason: res.stopReason ?? "missing stop reason" } },
+      ];
     }
   }
 
@@ -588,27 +582,6 @@ export const antigravityAcpNormalize = (
   }
 
   return [];
-};
-
-/**
- * Extracts conversation identity from ACP events and responses.
- */
-export const antigravityAcpConversationId = (raw: Record<string, unknown>): string | null => {
-  if (raw.method === "session/update") {
-    const sid = object(raw.params).sessionId;
-    if (typeof sid === "string" && sid.length > 0) {
-      return sid;
-    }
-  }
-
-  if (raw.result && typeof raw.result === "object") {
-    const sid = object(raw.result).sessionId;
-    if (typeof sid === "string" && sid.length > 0) {
-      return sid;
-    }
-  }
-
-  return null;
 };
 
 /**

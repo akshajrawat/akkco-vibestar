@@ -333,7 +333,9 @@ export class AgentRunner {
 
     let final: unknown;
     const conversationMessages = new Map<string, string>();
+    const assistantSegments: { key: string; text: string }[] = [];
     let failure: unknown;
+    let privateStopReason: string | undefined;
     let code: number | null = null;
     let invoked = false;
     let officialCodex = false;
@@ -361,6 +363,11 @@ export class AgentRunner {
       cwd = viberWorkspace ? await this.git.assertOwnedTask(viberWorkspace) : options!.workspace!;
 
       const detection = await this.detect(provider, signal);
+
+      const acpConversation =
+        conversation &&
+        detection.provider === "antigravity" &&
+        detection.capabilities.includes("acp");
 
       if (signal.aborted) {
         throw new AdeError("cancelled", "Run cancelled");
@@ -653,16 +660,36 @@ export class AgentRunner {
               const data = object(event.data);
               const key = String(data.call_id ?? "answer");
 
-              const text =
-                typeof data.text === "string"
-                  ? data.text
-                  : `${conversationMessages.get(key) || ""}${typeof data.text_delta === "string" ? data.text_delta : ""}`;
+              const delta = typeof data.text_delta === "string" ? data.text_delta : "";
+              if (acpConversation) {
+                if (delta) {
+                  const previous = assistantSegments.at(-1);
+                  if (previous?.key === key) {
+                    previous.text += delta;
+                  } else {
+                    assistantSegments.push({ key, text: delta });
+                  }
+                }
+              } else {
+                const text =
+                  typeof data.text === "string"
+                    ? data.text
+                    : `${conversationMessages.get(key) || ""}${delta}`;
 
-              conversationMessages.set(key, text);
+                conversationMessages.set(key, text);
+              }
             }
 
             if (event.kind === "run.failed") {
               failure = event.data;
+              const stopReason = object(event.data).stopReason;
+              if (
+                acpConversation &&
+                typeof stopReason === "string" &&
+                ["max_tokens", "max_turn_requests", "refusal"].includes(stopReason)
+              ) {
+                privateStopReason = stopReason;
+              }
             }
 
             if (event.kind === "run.completed") {
@@ -713,9 +740,11 @@ export class AgentRunner {
         );
 
         failure = undefined;
+        privateStopReason = undefined;
         final = undefined;
         completedTurn = false;
         conversationMessages.clear();
+        assistantSegments.length = 0;
         output = await run(freshInvocation);
       }
 
@@ -743,9 +772,12 @@ export class AgentRunner {
       }
 
       if (conversation && !resultSchema.safeParse(final).success) {
-        const summary = [...conversationMessages.values()].reverse().find((text) => text.trim());
+        // Preserve chunk order and separate distinct assistant segments with a blank line.
+        const summary = acpConversation
+          ? assistantSegments.map(({ text }) => text).join("\n\n")
+          : [...conversationMessages.values()].reverse().find((text) => text.trim());
 
-        if (summary) {
+        if (summary?.trim()) {
           final = { summary };
         }
       }
@@ -793,7 +825,11 @@ export class AgentRunner {
       const e = privateContext
         ? new AdeError(
             error instanceof AdeError ? error.kind : "provider_failed",
-            signal.aborted ? "Run cancelled" : "The provider did not complete the Viber turn.",
+            signal.aborted
+              ? "Run cancelled"
+              : privateStopReason
+                ? `Antigravity stopped the turn (${privateStopReason}).`
+                : "The provider did not complete the Viber turn.",
           )
         : outputFailure || error;
 

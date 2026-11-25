@@ -41,6 +41,8 @@ it.each(["codex", "antigravity"] as const)(
     let sourcePath = "";
     let otherWorkspace = "";
     let handoffThreadId: string | undefined;
+    let foreignCodexThreadId: string | undefined;
+    const foreignThreadWrites: unknown[] = [];
     let answerText = "Native agent verified the edit.";
     const events: string[] = [];
 
@@ -63,7 +65,7 @@ it.each(["codex", "antigravity"] as const)(
 
           const nativeId =
             request.conversation?.threadId ||
-            (name === "antigravity" ? handoffThreadId : undefined) ||
+            (name === "antigravity" ? handoffThreadId : foreignCodexThreadId) ||
             request.runId;
 
           const script = `
@@ -188,6 +190,27 @@ it.each(["codex", "antigravity"] as const)(
               });
             }
           `;
+
+          const inputProtocol =
+            "inputProtocol" in invocation ? invocation.inputProtocol : undefined;
+
+          if (foreignCodexThreadId && name === "codex" && inputProtocol) {
+            const start = inputProtocol.start;
+
+            inputProtocol.start = (write, end) =>
+              start((message) => {
+                if (
+                  typeof message === "object" &&
+                  message !== null &&
+                  "method" in message &&
+                  (message.method === "turn/start" || message.method === "thread/inject_items")
+                ) {
+                  foreignThreadWrites.push(message);
+                }
+
+                write(message);
+              }, end);
+          }
 
           return {
             ...invocation,
@@ -1071,6 +1094,29 @@ it.each(["codex", "antigravity"] as const)(
           conversation: { threadId: replacement },
           prompt: resumePrompt,
         });
+      }
+
+      if (providerName === "codex") {
+        const outsiderId = randomUUID();
+        engine.vibers.saveProfile({ ...profile, id: outsiderId, name: "Outsider" }, null);
+        const outsider = await create(outsiderId);
+        foreignCodexThreadId = first.thread!.thread_id;
+
+        await send({
+          session_id: outsider.id,
+          profile_id: outsiderId,
+          content: "Never dispatch this to another Viber's thread",
+        });
+
+        await settled("failed", outsider);
+        expect(foreignThreadWrites).toEqual([]);
+
+        const runError = engine.db.all<{ error: string }>(
+          "SELECT error FROM utility_runs WHERE viber_session_id=?",
+          outsider.id,
+        )[0].error;
+
+        expect(runError).toContain("The native thread already belongs to another Viber.");
       }
 
       expect(engine.vibers.profile(profileId)).toEqual(profile);

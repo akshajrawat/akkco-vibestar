@@ -12,6 +12,7 @@ export interface ProcessInputProtocol {
   validate?: (line: string) => void;
   receive: (line: string) => void;
   cancel?: (send: (message: unknown) => void) => void;
+  receiveCancellation?: (line: string) => void;
   validateExit?: (output: ProcessOutput) => void;
 }
 
@@ -178,21 +179,29 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     const cap = 32 * 1024 * 1024;
     const outputBudget = new OutputBudget();
 
-    const line = (stream: "stdout" | "stderr", value: string) => {
-      if (aborted) {
-        return;
-      }
+    const awaitingCancellation = () => graceTimer !== undefined && killTimer === undefined;
 
+    const line = (stream: "stdout" | "stderr", value: string) => {
       try {
+        if (aborted) {
+          if (stream === "stdout" && awaitingCancellation()) {
+            r.inputProtocol?.receiveCancellation?.(redact(value));
+          }
+
+          return;
+        }
+
         const safe = redact(value);
         if (stream === "stdout") {
           r.inputProtocol?.validate?.(safe);
-          r.inputProtocol?.receive(safe);
         }
 
         r.onLine?.(stream, safe);
+        if (stream === "stdout" && !aborted) {
+          r.inputProtocol?.receive(safe);
+        }
       } catch (e) {
-        aborted = e instanceof Error ? e : new Error(String(e));
+        aborted ||= e instanceof Error ? e : new Error(String(e));
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -200,14 +209,14 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     };
 
     const consume = (stream: "stdout" | "stderr", chunk: Buffer) => {
-      if (aborted) {
+      if (aborted && (stream !== "stdout" || !awaitingCancellation())) {
         return;
       }
 
       try {
         outputBudget.consume(chunk);
       } catch (error) {
-        aborted = error as Error;
+        aborted ||= error as Error;
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -222,7 +231,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
             ? integrityDecoder.decode(chunk, { stream: true })
             : decoders[stream].write(chunk);
       } catch {
-        aborted = new AdeError(
+        aborted ||= new AdeError(
           "integrity_encoding",
           "Integrity identifiers contain unsupported non-UTF-8 bytes",
         );
@@ -247,7 +256,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       }
 
       if (r.rawStdoutForIntegrity && (truncated.stdout || integrityBytes > cap)) {
-        aborted = new AdeError("output_limit", "Integrity output exceeded the capture limit");
+        aborted ||= new AdeError("output_limit", "Integrity output exceeded the capture limit");
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -261,7 +270,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       buffers[stream] += text;
       if (buffers[stream].length > 2 * 1024 * 1024) {
-        aborted = new AdeError("output_limit", "Provider emitted a line larger than 2 MiB");
+        aborted ||= new AdeError("output_limit", "Provider emitted a line larger than 2 MiB");
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -271,7 +280,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       let i;
       while (
-        !aborted &&
+        (!aborted || awaitingCancellation()) &&
         (i = r.progressLines ? buffers[stream].search(/[\r\n]/) : buffers[stream].indexOf("\n")) >=
           0
       ) {
@@ -396,7 +405,11 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     if (r.inputProtocol) {
       try {
         r.inputProtocol.start(
-          (message) => child.stdin.write(JSON.stringify(message) + "\n"),
+          (message) => {
+            if (!aborted) {
+              child.stdin.write(JSON.stringify(message) + "\n");
+            }
+          },
           () => child.stdin.end(),
         );
       } catch (error) {

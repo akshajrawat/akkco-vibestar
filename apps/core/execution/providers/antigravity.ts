@@ -11,7 +11,6 @@ import { AdeError, type NormalizedEvent } from "../../domain";
 import type { ProcessInputProtocol } from "../runtime/process";
 import {
   antigravityAcpConversation,
-  antigravityAcpConversationId,
   antigravityAcpNormalize,
   antigravityAcpResult,
 } from "./antigravity-acp";
@@ -23,7 +22,7 @@ const automaticModels = new Set(["claude-sonnet-4-6", "claude-opus-4-6-thinking"
 export class AntigravityProvider implements AgentProvider {
   readonly name = "antigravity";
 
-  private activeAcp?: { isTurnActive: () => boolean };
+  private activeAcp?: ReturnType<typeof antigravityAcpConversation>;
 
   constructor(private readonly options: { acp?: boolean } = {}) {}
 
@@ -106,6 +105,7 @@ export class AntigravityProvider implements AgentProvider {
       return conv;
     }
 
+    this.activeAcp = undefined;
     let threadId = r.conversation?.threadId;
 
     const acknowledgeInput = (raw: Record<string, unknown>) => {
@@ -243,8 +243,7 @@ export class AntigravityProvider implements AgentProvider {
         ("sessionId" in object(raw.result) || "stopReason" in object(raw.result))) ||
       (raw.id != null && (raw.result != null || raw.error != null))
     ) {
-      const isTurnActive = this.activeAcp ? this.activeAcp.isTurnActive() : true;
-      return antigravityAcpNormalize(raw, isTurnActive);
+      return this.activeAcp ? this.activeAcp.normalize(raw) : antigravityAcpNormalize(raw);
     }
 
     if (raw.event === "init") {
@@ -457,9 +456,8 @@ export class AntigravityProvider implements AgentProvider {
   };
 
   conversationId = (raw: Record<string, unknown>) => {
-    const acpId = antigravityAcpConversationId(raw);
-    if (acpId) {
-      return acpId;
+    if (this.activeAcp) {
+      return this.activeAcp.conversationId(raw);
     }
 
     const init = object(raw.init);

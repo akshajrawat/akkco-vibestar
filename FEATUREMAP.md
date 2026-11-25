@@ -4,6 +4,7 @@ sequenceDiagram
     participant Chat as Viber chat
     participant Codex as Codex thread
     participant AGY as Antigravity ACP thread
+    participant Print as Antigravity print mode
 
     participant Provider as Turn provider
     Note over Chat: History scrolls beneath the fading black header
@@ -25,11 +26,28 @@ sequenceDiagram
     Chat->>AGY: Dispatch new prompt
     AGY-->>Chat: Stream reply
     User->>Chat: Choose another model or effort and send
-    Chat->>Provider: Set model and thought_level configuration
-    Provider-->>Chat: Confirm configuration
-    User->>Chat: Stop response
-    Chat->>Provider: Send cancel notification and terminate turn
-    Provider-->>Chat: Turn cancelled cleanly without run.completed
+    alt Antigravity ACP
+        Chat->>AGY: Set scoped mode, model and thought_level
+        AGY-->>Chat: Acknowledge each setting
+        Chat->>AGY: Dispatch prompt
+        User->>Chat: Stop response
+        Chat->>AGY: Send session/cancel
+        opt ACP acknowledges within grace period
+            AGY-->>Chat: Reply to prompt with cancelled
+            Chat->>AGY: Close stdin
+        end
+        opt ACP process stays open past grace period
+            Chat->>AGY: Interrupt process
+        end
+    else Antigravity print mode
+        Chat->>Print: Run with selected model and effort arguments
+        User->>Chat: Stop response
+        Chat->>Print: Interrupt process
+    else Codex
+        Chat->>Codex: Start turn with selected model and effort
+        User->>Chat: Stop response
+        Chat->>Codex: Interrupt process
+    end
     Chat-->>User: Show Continue where you left off
     opt User selects another provider for the stopped turn
         alt Target is Codex
@@ -86,8 +104,9 @@ flowchart LR
     Evidence --> Storage["Local SQLite · Viber and repository/topic scope"]
     Evidence -- "Correction to the repository's indentation default" --> Replace["Replace the previous fact"] --> Storage
     Storage --> Ollama["Local Ollama search"]
+    Confirm["Confirm saved native thread identity"] --> Recall
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
-    Share --> Confirm["Confirm saved native thread identity"] --> Accept["Provider accepts turn input exactly once"] --> Record["Record facts in thread context"]
+    Share --> Accept["Provider accepts turn input exactly once"] --> Record["Record facts in thread context"]
 ```
 
 ```mermaid
