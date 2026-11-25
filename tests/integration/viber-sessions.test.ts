@@ -876,3 +876,15 @@ it("creates an isolated conversation from profile defaults without requiring a r
   expect(session.repository_id).toBeNull();
   expect(provider.requests).toHaveLength(0);
 });
+
+it("keeps a resent turn isolated when its original request to share is no longer allowed", async () => {
+  const session = await create();
+  const input = { request_id: randomUUID(), shared_computer: true };
+
+  await send(session, input);
+  await settled(session);
+  await expect(send(session, input)).resolves.toMatchObject({ id: input.request_id });
+
+  expect(provider.requests).toHaveLength(1);
+  expect(provider.requests[0].sharedComputer).toBeFalsy();
+});

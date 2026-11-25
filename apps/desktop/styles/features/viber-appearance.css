@@ -268,11 +268,10 @@
 
 .viber-chat-page .event-timeline {
   @apply pt-6;
-  @apply pb-5;
 }
 
 .viber-chat-page .chat-draft .event-timeline {
-  @apply flex-[0_1_auto] mt-auto;
+  @apply flex-[0_1_auto] mt-auto pb-5;
 }
 
 .viber-chat-page .chat-draft .composer-lane {

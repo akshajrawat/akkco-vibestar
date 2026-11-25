@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { defaultSettings } from "../../apps/core/domain";
 import { ViberSessionChat } from "../../apps/desktop/features/vibers/ViberSessionChat";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { mockDialog } from "../helpers/dialog";
@@ -651,4 +652,96 @@ it("retains recovery acknowledgement when resending a lost-response request afte
   const sends = rpc.mock.calls.filter(([method]) => method === "viber.session.send");
   expect(sends[0]).toEqual(sends[1]);
   expect(sends[0][1].acknowledge_uncertain).toBe(true);
+});
+
+it("enforces Viber Workspace sharing permissions after recovery and without re-prompting on lost-response retry", async () => {
+  const session = crypto.randomUUID();
+  let failSend = true;
+
+  rpc.mockImplementation(async (method: string) => {
+    if (method === "viber.session.send") {
+      if (failSend) {
+        failSend = false;
+        throw new Error("Connection lost");
+      }
+
+      return {};
+    }
+
+    return { ...stored, session: { ...stored.session, id: session }, recovery_required: true };
+  });
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+
+  const view = render(
+    <ViberSessionChat
+      sessionId={session}
+      profile={viberProfile}
+      revision={0}
+      computerSupported
+      settings={{
+        ...defaultSettings,
+        allow_viber_communication: true,
+        viber_workspace_permission: "always-ask",
+      }}
+    />,
+  );
+
+  await screen.findByText("Previous answer");
+  expect(screen.queryByRole("button", { name: /Computer/i })).toBeNull();
+
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
+    target: { value: "Collaborate" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
+  expect(screen.getByRole("dialog", { name: "Shared workspace permission" })).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Allow for this turn" }));
+  await screen.findByText("Connection lost");
+
+  // Lost-response retry preserves both flags without opening either dialog again.
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+  await waitFor(() =>
+    expect(rpc.mock.calls.filter(([method]) => method === "viber.session.send")).toHaveLength(2),
+  );
+
+  const sends = rpc.mock.calls.filter(([method]) => method === "viber.session.send");
+  expect(sends[0]).toEqual(sends[1]);
+
+  expect(sends[0][1]).toMatchObject({
+    acknowledge_uncertain: true,
+    shared_computer: true,
+  });
+
+  // Full permission sends shared_computer automatically, while /clear stays isolated.
+  rpc.mockClear();
+
+  view.rerender(
+    <ViberSessionChat
+      sessionId={session}
+      profile={viberProfile}
+      revision={1}
+      computerSupported
+      settings={{
+        ...defaultSettings,
+        allow_viber_communication: true,
+        viber_workspace_permission: "full-permission",
+      }}
+    />,
+  );
+
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
+    target: { value: "/clear" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith("viber.session.send", expect.any(Object)));
+
+  expect(
+    rpc.mock.calls.find(([method]) => method === "viber.session.send")?.[1].shared_computer,
+  ).toBeUndefined();
 });

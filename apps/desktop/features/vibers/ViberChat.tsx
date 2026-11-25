@@ -1,8 +1,7 @@
-import { ComputerTurnOption } from "../computer/ComputerTurnOption";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { defaultAppearance } from "../../../core/vibers/appearance";
-import type { AgentProfile } from "../../../core/vibers/contracts";
-import type { ViberSession } from "../../../core/vibers/contracts";
+import type { AgentProfile, ViberSession } from "../../../core/vibers/contracts";
+import type { Settings } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
 import { Composer, composerContent } from "../chat/Composer";
@@ -10,6 +9,7 @@ import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { ViberFace } from "./ViberFace";
 import { ViberSessionChat } from "./ViberSessionChat";
+import { SharedWorkspaceDialog } from "./SharedWorkspaceDialog";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
 import { configurationError } from "../../../core/execution/providers/contracts";
@@ -28,15 +28,17 @@ export const ViberChat = ({
   profile,
   revision,
   computerSupported = false,
+  settings,
 }: {
   profile: AgentProfile;
   revision: number;
   computerSupported?: boolean;
+  settings?: Settings;
 }) => {
   const [sessionId, setSessionId] = useState<string>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [sharedComputer, setSharedComputer] = useState(false);
+  const [sharePrompt, setSharePrompt] = useState<{ content: string }>();
   const request = useRef({ signature: "", id: "", session: null as ViberSession | null });
   const starting = useRef(false);
   const draftId = `viber:${profile.id}:new-chat`;
@@ -63,7 +65,6 @@ export const ViberChat = ({
     void rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id })
       .then(([session]) => {
         if (active && session) {
-          setSharedComputer(false);
           setSessionId(session.id);
         }
       })
@@ -78,37 +79,60 @@ export const ViberChat = ({
     };
   }, [profile.id, revision]);
 
-  const start = async () => {
+  const start = async (content = composerContent(getTaskView(draftId)), shareChoice?: boolean) => {
     if (starting.current || invalid) {
       return;
     }
 
-    const content = composerContent(getTaskView(draftId));
     if (!content.trim() || content.length > 32000) {
       return;
     }
 
-    starting.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      const computer =
-        computerSupported && sharedComputer && content.trim() !== "/clear"
-          ? { shared_computer: true }
-          : {};
-
-      const signature = JSON.stringify({
+    const signatureFor = (share: boolean) =>
+      JSON.stringify({
         content,
-        ...computer,
+        ...(share && content.trim() !== "/clear" ? { shared_computer: true } : {}),
         profile_id: profile.id,
         selection,
         // Preserve the request signature used by existing managed-workspace drafts.
         repositoryId: "",
       });
 
-      if (request.current.signature !== signature) {
-        const saved = getTaskView(draftId).messageRequest;
+    const saved = getTaskView(draftId).messageRequest;
 
+    const savedChoice =
+      saved?.signature === signatureFor(false)
+        ? false
+        : saved?.signature === signatureFor(true)
+          ? true
+          : undefined;
+
+    const canShare = Boolean(
+      computerSupported && settings?.allow_viber_communication && content.trim() !== "/clear",
+    );
+
+    let share = false;
+    if (shareChoice !== undefined) {
+      share = canShare && shareChoice;
+    } else if (savedChoice !== undefined) {
+      share = savedChoice;
+    } else if (canShare) {
+      if (settings?.viber_workspace_permission === "full-permission") {
+        share = true;
+      } else {
+        setSharePrompt({ content });
+        return;
+      }
+    }
+
+    starting.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const computer = share ? { shared_computer: true as const } : {};
+      const signature = signatureFor(share);
+
+      if (request.current.signature !== signature) {
         request.current = {
           signature,
           id: saved?.signature === signature ? saved.id : crypto.randomUUID(),
@@ -192,6 +216,7 @@ export const ViberChat = ({
           profile={profile}
           revision={revision}
           computerSupported={computerSupported}
+          settings={settings}
         />
       ) : (
         <ChatSurface
@@ -222,18 +247,25 @@ export const ViberChat = ({
               busy={busy}
               disabled={!!invalid}
               model={modelControl}
-              extra={
-                computerSupported && (
-                  <ComputerTurnOption
-                    enabled={sharedComputer}
-                    change={setSharedComputer}
-                    disabled={busy}
-                  />
-                )
-              }
               hint="Each Viber uses its own workspace."
             />
           }
+        />
+      )}
+      {sharePrompt && (
+        <SharedWorkspaceDialog
+          viberName={profile.name}
+          cancel={() => setSharePrompt(undefined)}
+          keepIsolated={() => {
+            const prompt = sharePrompt;
+            setSharePrompt(undefined);
+            void start(prompt.content, false);
+          }}
+          allow={() => {
+            const prompt = sharePrompt;
+            setSharePrompt(undefined);
+            void start(prompt.content, true);
+          }}
         />
       )}
     </section>

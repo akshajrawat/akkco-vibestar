@@ -136,7 +136,8 @@ export const AgentTimeline = ({
       return (
         <details className="reasoning-event" key={row.key}>
           <summary>
-            <Brain size={16} /> {text.split("\n")[0].replaceAll("**", "")}
+            <Brain size={16} className="shrink-0" />
+            <span className="min-w-0 truncate">{text.split("\n")[0].replaceAll("**", "")}</span>
           </summary>
           <AgentResponse text={text} />
         </details>

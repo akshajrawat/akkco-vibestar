@@ -498,7 +498,7 @@ export class AgentRunner {
           prompt: options.sharedComputer
             ? `${text}
 
-The user enabled Shared Computer for this turn. Its files are at ${sharedFilesMount}.${
+Shared Computer is enabled for this turn. Shared workspace files across Vibers and the Shared Computer desktop are at ${sharedFilesMount}.${
                 options.sharedComputer.socket
                   ? ` For HTTP services running in the computer, use curl --unix-socket ${sharedServicesMount} http://localhost:PORT/PATH.`
                   : " Shared files are read-only for this turn."

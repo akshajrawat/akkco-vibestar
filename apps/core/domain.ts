@@ -59,6 +59,8 @@ export const SettingsSchema = z
     codex_implementation: PipelineStageConfigSchema,
     default_editor: z.enum(["", "code", "cursor", "windsurf", "codium"]).default(""),
     notification_preference: z.enum(["necessary", "all"]).default("necessary"),
+    viber_workspace_permission: z.enum(["always-ask", "full-permission"]).default("always-ask"),
+    allow_viber_communication: z.boolean().default(false),
     viber_memory: ViberMemorySettingsSchema.default(defaultViberMemorySettings),
     repository_discovery: z
       .object({
@@ -97,6 +99,8 @@ export const defaultSettings: Settings = {
   concurrency: 2,
   default_editor: "",
   notification_preference: "necessary",
+  viber_workspace_permission: "always-ask",
+  allow_viber_communication: false,
   viber_memory: defaultViberMemorySettings,
   antigravity: { model: "", effort: "high", timeout_secs: 1800 },
   codex_plan: { model: "", effort: "high", timeout_secs: 1800 },

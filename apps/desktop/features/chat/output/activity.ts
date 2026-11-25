@@ -27,6 +27,7 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
   }[] = [];
 
   const calls = new Map<string, number>();
+  let thought: { runId: string; key: string } | undefined;
 
   // Persisted IDs establish arrival order even when paged context precedes older deltas.
   const ordered = [...new Map(events.map((event) => [event.id, event])).values()].sort(
@@ -41,6 +42,23 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
     const data = eventData(event.data);
     if (["userMessage", "user_message", "user_input"].includes(String(data.tool))) {
       continue;
+    }
+
+    // Stored ACP thought chunks have no call ID. Keep them together until another activity arrives.
+    const thoughtDelta =
+      event.kind === "analysis.status" &&
+      typeof data.text_delta === "string" &&
+      data.call_id == null &&
+      !data.tool;
+
+    if (thoughtDelta) {
+      if (thought?.runId !== event.run_id) {
+        thought = { runId: event.run_id, key: `thought:${event.id}` };
+      }
+
+      data.tool = "reasoning";
+    } else {
+      thought = undefined;
     }
 
     if (
@@ -61,7 +79,7 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
     const matches =
       !search || `${event.data}\n${event.raw}`.toLowerCase().includes(search.toLowerCase());
 
-    const call = data.call_id != null ? `${event.run_id}/${data.call_id}` : null;
+    const call = thought?.key ?? (data.call_id != null ? `${event.run_id}/${data.call_id}` : null);
     const index = call ? calls.get(call) : undefined;
     if (index !== undefined) {
       const row = entries[index];

@@ -41,8 +41,6 @@ export class CoreBridge extends EventEmitter {
 
   private warning: string | undefined;
 
-  private manualTerminalAvailable = false;
-
   private stopping = false;
 
   private starting = false;
@@ -101,7 +99,6 @@ export class CoreBridge extends EventEmitter {
     this.notificationPreferencesAvailable = false;
     this.viberConversationsAvailable = false;
     this.viberSessionsAvailable = false;
-    this.manualTerminalAvailable = false;
     this.computersAvailable = false;
 
     this.checking = this.launch()
@@ -305,7 +302,6 @@ export class CoreBridge extends EventEmitter {
         viber_conversations?: number;
         viber_sessions?: number;
         shared_computer?: number;
-        manual_user_terminal?: number;
         runtime_restart?: number;
         notification_preferences?: number;
       }>("core.info", {}, 15000),
@@ -316,7 +312,6 @@ export class CoreBridge extends EventEmitter {
         this.viberConversationsAvailable = info.viber_conversations === 1;
         this.viberSessionsAvailable = info.viber_sessions === 3;
         this.computersAvailable = info.shared_computer === 1;
-        this.manualTerminalAvailable = info.manual_user_terminal === 1;
 
         this.warning = !this.viberSessionsAvailable
           ? "The running core is missing required Viber functionality. Update the WSL helper in Settings → Execution, then restart."
@@ -378,11 +373,7 @@ export class CoreBridge extends EventEmitter {
     }
 
     if (method.startsWith("git.")) {
-      throw new Error("Use the built-in terminal to run Git commands manually.");
-    }
-
-    if (!this.manualTerminalAvailable && method === "terminal.open") {
-      throw new Error("Update the execution helper before opening a manual user terminal.");
+      throw new Error("Run Git commands outside Vibestar.");
     }
 
     if (!this.computersAvailable && method.startsWith("computer.")) {

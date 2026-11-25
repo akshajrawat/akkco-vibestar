@@ -6,18 +6,8 @@ import { AuthDialog } from "./AuthDialog";
 import { Button } from "../../components/ui/button";
 import { PageHeader, ListSkeleton } from "../../components/ui/PageHeader";
 import { ProviderIcon } from "../../components/ui/ProviderIcon";
-import type { Settings } from "../../lib/types";
 
-type MemorySharing = Settings["viber_memory"]["share_with"];
-
-export const ProvidersPage = ({
-  memorySharing,
-}: {
-  memorySharing?: {
-    allowed: MemorySharing;
-    set: (provider: keyof MemorySharing, allowed: boolean) => void;
-  };
-}) => {
+export const ProvidersPage = () => {
   const { providers, loading, error, refresh } = useProviders();
   const [login, setLogin] = useState("");
   return (
@@ -55,9 +45,6 @@ export const ProvidersPage = ({
 
           const connected = p.connected;
 
-          const provider =
-            p.provider === "codex" || p.provider === "antigravity" ? p.provider : null;
-
           return (
             <section
               className="provider-row flex items-start gap-3.5 p-6 border border-border-subtle"
@@ -93,18 +80,6 @@ export const ProvidersPage = ({
                   )}
                   {!p.models.length && <p className="subtle">No models reported by this CLI.</p>}
                 </details>
-                {provider && memorySharing && (
-                  <label className="mt-3 flex w-fit items-center gap-2 text-xs text-ink-secondary">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4!"
-                      aria-label={`Share recalled memories with ${name}`}
-                      checked={memorySharing.allowed[provider]}
-                      onChange={(event) => memorySharing.set(provider, event.currentTarget.checked)}
-                    />
-                    Share recalled memories
-                  </label>
-                )}
               </div>
 
               {connected ? (

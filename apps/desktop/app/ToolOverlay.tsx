@@ -10,14 +10,12 @@ import { UsageView } from "../features/usage/UsageView";
 
 export const ToolOverlay = ({
   tool,
-  executionSettings,
   snapshot,
   refresh,
   error,
   close,
 }: {
   tool: WorkspaceTool;
-  executionSettings?: boolean;
   snapshot: Snapshot | null;
   refresh: () => Promise<void>;
   error: string;
@@ -26,9 +24,7 @@ export const ToolOverlay = ({
   if (tool === "Settings") {
     return (
       <SettingsPage
-        initialSection={executionSettings ? "Execution" : undefined}
         settings={snapshot?.settings}
-        root={snapshot?.root}
         snapshot={snapshot || undefined}
         refresh={refresh}
         close={close}

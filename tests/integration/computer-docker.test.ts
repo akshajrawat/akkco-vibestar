@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import { defaultSettings } from "../../apps/core/domain";
 import { Rpc } from "../../apps/core/rpc";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
@@ -63,6 +64,7 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
     let sessions: ViberSession[] = [];
     try {
       engine = await createFixtureEngine(join(directory, "data"), () => provider);
+      engine.db.saveSettings({ ...defaultSettings, allow_viber_communication: true });
       const host = engine;
       rpc = new Rpc(engine);
       const call = rpc.call;
@@ -78,6 +80,7 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
       const inspection = JSON.parse(await docker("inspect", name))[0];
       expect(inspection.HostConfig.PortBindings ?? {}).toEqual({});
       expect(inspection.Mounts).toHaveLength(2);
+      expect(await docker("exec", name, "xset", "q")).toMatch(/timeout:\s+0\b/);
 
       await docker(
         "exec",
@@ -143,20 +146,18 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
 
       await send(sessions[0], "write the smoke file");
 
-      expect(await call("computer.files", { path: "index.html" })).toMatchObject({
-        text: expect.stringContaining(marker),
-      });
+      expect(
+        await readFile(join(engine.root, "shared-computer", "files", "index.html"), "utf8"),
+      ).toContain(marker);
 
-      const terminal = await engine.computers.openTerminal();
-
-      engine.computers.terminalInput(
-        terminal.id,
-        "nohup python3 -m http.server 8049 --bind 127.0.0.1 >/tmp/http.log 2>&1 & printf '%s%s\\n' terminal- verified\r",
+      await docker(
+        "exec",
+        "-d",
+        name,
+        "sh",
+        "-c",
+        "nohup python3 -m http.server 8049 --bind 127.0.0.1 >/tmp/http.log 2>&1",
       );
-
-      await expect
-        .poll(() => engine?.computers.terminalStatus()?.output, { timeout: 10000 })
-        .toMatch(/\r?\nterminal-verified\r?\n/);
 
       await expect
         .poll(() => docker("exec", name, "curl", "-fsS", "http://127.0.0.1:8049").catch(() => ""))
@@ -217,7 +218,6 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
         has_data: false,
       });
 
-      await expect(call("computer.files", { path: "index.html" })).rejects.toThrow();
       await expect(docker("container", "inspect", name)).rejects.toThrow();
       await expect(docker("volume", "inspect", `${name}-home`)).rejects.toThrow();
       expect(await readFile(sentinel, "utf8")).toBe("kept");

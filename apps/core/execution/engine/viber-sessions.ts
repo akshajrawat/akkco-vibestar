@@ -135,6 +135,9 @@ export class ViberSessions {
 
     this.operations.assertExecutionSlot(key);
 
+    const shareWorkspace =
+      input.shared_computer && this.host.db.settings().allow_viber_communication;
+
     const snapshot = this.store.capture(input);
 
     const completed = this.operations.withExecutionSlot(
@@ -191,7 +194,7 @@ export class ViberSessions {
               },
             });
 
-          const output = input.shared_computer
+          const output = shareWorkspace
             ? await this.host.computers.withTurn(
                 snapshot.execution.access === "read-only",
                 signal,

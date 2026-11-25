@@ -7,9 +7,7 @@ import { AdeError } from "../domain";
 import type { Engine } from "../execution/engine";
 import { redact } from "../execution/runtime/process";
 import { ComputerDocker, type ContainerInspection, type Daemon } from "./docker";
-import { computerImage, sharedDirectory } from "./image";
-import { computerFiles } from "./files";
-import { ComputerTerminalSession } from "./terminal";
+import { computerImage, desktopVersion, sharedDirectory } from "./image";
 import { ComputerDesktop } from "./desktop";
 import { openComputerServices } from "./services";
 import type { ComputerStatus } from "./contracts";
@@ -32,8 +30,6 @@ export class Computers {
   private readonly network: string;
 
   private readonly filesRoot: string;
-
-  private readonly terminal: ComputerTerminalSession;
 
   readonly desktop: ComputerDesktop;
 
@@ -66,7 +62,6 @@ export class Computers {
     this.home = `${this.name}-home`;
     this.network = `${this.name}-net`;
     this.filesRoot = join(engine.root, "shared-computer", "files");
-    this.terminal = new ComputerTerminalSession(engine, this.docker, this.running);
     this.desktop = new ComputerDesktop(this.docker, this.running);
   }
 
@@ -165,7 +160,7 @@ export class Computers {
         /^[a-f0-9]{64}$/.test(source.split("/").at(-1) || ""));
 
     return (
-      container.Config.Labels["dev.vibestar.desktop"] === "1" &&
+      container.Config.Labels["dev.vibestar.desktop"] === desktopVersion &&
       container.Config.User === `${process.getuid?.()}:${process.getgid?.()}` &&
       container.Config.Labels["dev.vibestar.files"] === identity &&
       container.HostConfig.NetworkMode === this.network &&
@@ -222,7 +217,8 @@ export class Computers {
 
       if (saved) {
         const current = await this.inspect(socket);
-        if (current?.State.Running) {
+        // Let automatic startup replace the old container while reusing its files and home volume.
+        if (current?.State.Running && current.Config.Labels["dev.vibestar.desktop"] !== "1") {
           if (
             !this.matches(current, await this.filesIdentity()) ||
             current.State.Health?.Status !== "healthy"
@@ -251,10 +247,18 @@ export class Computers {
     const identity = await this.filesIdentity();
     const signal = this.shutdown.signal;
     const options = { signal };
-    const image = `vibestar-shared:desktop-1-${process.getuid?.()}-${process.getgid?.()}`;
+    const image = `vibestar-shared:desktop-${desktopVersion}-${process.getuid?.()}-${process.getgid?.()}`;
     let container = await this.inspect(socket);
 
     if (!container || !this.matches(container, identity)) {
+      if (!(await this.docker.inspect(socket, "image", image))) {
+        await this.docker.command(socket, ["build", "--tag", image, "-"], {
+          input: computerImage(process.getuid!(), process.getgid!()),
+          signal,
+          timeoutMs: 900000,
+        });
+      }
+
       if (container) {
         await this.stop(socket, container);
         await this.docker.command(socket, ["container", "rm", container.Id], options);
@@ -286,14 +290,6 @@ export class Computers {
         );
       }
 
-      if (!(await this.docker.inspect(socket, "image", image))) {
-        await this.docker.command(socket, ["build", "--tag", image, "-"], {
-          input: computerImage(process.getuid!(), process.getgid!()),
-          signal,
-          timeoutMs: 900000,
-        });
-      }
-
       await this.docker.command(
         socket,
         [
@@ -303,7 +299,7 @@ export class Computers {
           "--label",
           this.label(),
           "--label",
-          "dev.vibestar.desktop=1",
+          `dev.vibestar.desktop=${desktopVersion}`,
           "--label",
           `dev.vibestar.files=${identity}`,
           "--network",
@@ -474,7 +470,7 @@ export class Computers {
 
     try {
       if (action !== "start") {
-        await Promise.allSettled([this.desktop.close(), this.terminal.close()]);
+        await this.desktop.close().catch(() => undefined);
       }
 
       const daemon = await this.daemon(saved);
@@ -545,33 +541,6 @@ export class Computers {
     return { socket, id: target.Id };
   };
 
-  terminalStatus = () => this.terminal.status();
-
-  openTerminal = () => this.terminal.open();
-
-  terminalInput = (id: string, text: string) => this.terminal.input(id, text);
-
-  terminalResize = (id: string, cols: number, rows: number) => this.terminal.resize(id, cols, rows);
-
-  closeTerminal = (id: string) => this.terminal.close(id);
-
-  files = async (path: string) => {
-    const saved = this.binding();
-    if (
-      !saved ||
-      saved.workspace_root !== this.engine.root ||
-      saved.reset_pending ||
-      this.operation
-    ) {
-      throw new AdeError(
-        "computer_stopped",
-        "Start Shared Computer to create its files directory.",
-      );
-    }
-
-    return computerFiles(await this.checkedFiles(), path);
-  };
-
   withTurn = async <T>(
     readOnly: boolean,
     signal: AbortSignal,
@@ -614,7 +583,6 @@ export class Computers {
       this.operation,
       ...this.turns,
       this.desktop.close().catch(() => undefined),
-      this.terminal.close(),
     ]);
 
     const failure = closed.find((result) => result.status === "rejected");

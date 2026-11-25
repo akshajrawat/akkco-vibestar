@@ -1,23 +1,26 @@
 .sidebar {
   --background-input: #1c1c1c;
-  --background-hover: var(--background-app);
-  --background-selected: var(--background-app);
   --text-secondary: #adadad;
   --text-muted: #929292;
-  container-type: inline-size;
   @apply h-full overflow-hidden bg-surface-sidebar;
+}
+
+.sidebar:not(.sidebar-collapsed) {
+  --background-hover: var(--background-app);
+  --background-selected: var(--background-app);
 }
 
 .sidebar-brand-header {
   @apply gap-2 px-3 py-0;
 }
 
-.sidebar-brand {
-  @apply gap-2.5;
+.sidebar-collapsed .sidebar-brand-header,
+.sidebar-collapsed .sidebar-header {
+  @apply justify-center px-0;
 }
 
-.sidebar-brand img {
-  @apply shrink-0 size-6.5;
+.sidebar-collapsed .sidebar-header {
+  @apply flex pb-2;
 }
 
 .sidebar-brand-title {
@@ -25,30 +28,20 @@
   color: #ffffff;
 }
 
-.sidebar-brand-v {
-  color: #ffffff;
+.sidebar-icon-button {
+  @apply grid place-items-center shrink-0 size-8 p-0 [border:0] rounded-control bg-transparent text-ink-muted cursor-pointer [transition:color_var(--motion-fast),_background-color_var(--motion-fast)];
 }
 
-@container (max-width: 190px) {
-  .sidebar-brand-title {
-    @apply hidden;
-  }
-}
-
-.sidebar-collapse {
-  @apply size-8 rounded-[6px] bg-transparent text-ink-muted cursor-pointer;
-}
-
-.sidebar-collapse:hover {
+.sidebar-icon-button:hover {
   @apply bg-surface-hover text-foreground;
-}
-
-.sidebar-collapse svg {
-  @apply size-4.5;
 }
 
 .sidebar-content {
   @apply flex-1 min-h-0 overflow-x-hidden overflow-y-auto scroll-pt-11.75;
+}
+
+.sidebar-collapsed .sidebar-content {
+  scrollbar-width: thin;
 }
 
 .sidebar-header {
@@ -89,11 +82,11 @@
 }
 
 .sidebar-vibers {
-  @apply flex flex-col gap-1 px-3 pb-2;
+  @apply flex flex-col gap-1.5 px-3 pb-2.5;
 }
 
 .sidebar-viber {
-  @apply w-full min-h-13 flex items-center gap-1.5 pl-1.5 pr-2 py-0 [border:0] rounded-[10px] bg-transparent text-foreground text-left;
+  @apply w-full min-h-16 flex items-center gap-2.5 px-3 py-2 [border:0] rounded-[10px] bg-transparent text-foreground text-left;
 }
 
 .sidebar-viber:hover {
@@ -106,6 +99,22 @@
 
 .sidebar-viber > .viber-face {
   @apply size-12 shrink-0;
+}
+
+.sidebar-collapsed .sidebar-vibers {
+  @apply px-2.5;
+}
+
+.sidebar-collapsed .sidebar-viber {
+  @apply min-h-11 justify-center gap-0 p-0;
+}
+
+.sidebar-collapsed .sidebar-viber > .viber-face {
+  @apply size-9;
+}
+
+.sidebar-rail-error {
+  @apply m-0 grid place-items-center text-accent-red;
 }
 
 .sidebar-viber .viber-face-shadow {
@@ -128,16 +137,20 @@
   @apply col-span-2 row-start-2 truncate text-[13px] leading-[18px] font-normal text-ink-secondary;
 }
 
-.sidebar-empty {
-  @apply m-0;
-}
-
 .sidebar-vibers .error {
   @apply m-1.5 px-2.5 py-2 rounded-[6px] bg-surface-error text-accent-red text-[11px] leading-[1.4] [word-break:break-word];
 }
 
 .sidebar-dock {
   @apply flex items-center gap-2 flex-[0_0_46px] mt-auto px-3 py-0 bg-surface-sidebar;
+}
+
+.sidebar-collapsed .sidebar-dock {
+  @apply justify-center flex-[0_0_58px] px-0;
+}
+
+.sidebar-collapsed .sidebar-dock button {
+  @apply size-10 bg-surface-selected shadow-md shadow-black/40;
 }
 
 .sidebar-dock-item {
@@ -153,8 +166,8 @@
   @apply text-foreground bg-neutral-800;
 }
 
-.sidebar-dock button:focus-visible {
-  @apply outline-none;
+.sidebar-collapsed .sidebar-dock button:is(:hover, :focus-visible) {
+  @apply bg-neutral-700;
 }
 
 .sidebar-dock button:is(:hover, :focus-visible) + .sidebar-dock-label {

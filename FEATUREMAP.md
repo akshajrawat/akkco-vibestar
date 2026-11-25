@@ -12,6 +12,7 @@ sequenceDiagram
     Chat->>Codex: Start thread with message
     Codex-->>Chat: Reply and tool activity
     Note over Chat: Tool activity shows only messages with text
+    Note over Chat: Consecutive reasoning chunks appear in one collapsible activity entry
     User->>Chat: Switch to Antigravity and send
     Chat->>AGY: Negotiate ACP v1 initialize and create session
     AGY-->>Chat: Return session ID, set scoped mode and config
@@ -112,7 +113,6 @@ flowchart LR
     Viber["Completed Viber turn"] --> Suggest["Model suggests a lasting fact"]
     Settings["General Settings · Enable Memory"] --> Learn["Automatic saving"]
     Settings --> Recall["Recall"]
-    Permissions["Provider Settings · Share recalled memories"] --> Recall
     Learn --> Suggest --> Evidence["Validate user evidence"]
     Evidence --> Storage["Local SQLite · Viber and repository/topic scope"]
     Evidence -- "Correction to the repository's indentation default" --> Replace["Replace the previous fact"] --> Storage
@@ -136,16 +136,28 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Computer["Workspace → Computer"] --> Check["Linux / WSL helper · Docker Engine"]
-    Check --> Start["Stopped → Start → Starting → Ready"]
-    Start --> Desktop["Desktop · one human controller"]
-    Start --> Terminal["Terminal · shared Linux shell"]
-    Start --> Files["Files · shared workspace folder"]
-    Desktop --> Chromium["Chromium · shared browser sessions"]
-    ChatA["Viber A chat · per-turn opt-in"] --> Files
-    ChatB["Viber B chat · per-turn opt-in"] --> Files
-    ChatA --> Services["Private HTTP access to container services"]
-    ChatB --> Services
-    Start --> Stop["Stop · preserve files and Chromium sessions"]
-    Start --> Reset["Confirmed Reset · clear shared computer state"]
+    Startup["App Initial Load"] --> BootToast["Merged Initial Load Toast (WSL + Computer)"]
+    Startup --> AutoStart["Auto-start Shared Computer"]
+    TopBar["Top Bar · Computer Icon"] --> Panel["Computer Panel · Labeled Status"]
+    AutoStart --> Desktop["Desktop Screen · Always-on background + Chromium"]
+    Panel --> Desktop
+    Settings["General → Viber Workspaces"] --> AllowTalk["Allow Vibers to talk with each other"]
+    Settings --> Permission["Permission · Always ask / Full permission"]
+    Settings --> Memory["Enable Memory"]
+    AllowTalk --> Gate{"Sharing enabled?"}
+    Gate -- "Off" --> Isolated["Private Viber Workspace Only"]
+    Gate -- "On + Always ask" --> Prompt["Per-turn Confirmation Dialog"]
+    Gate -- "On + Full permission" --> Shared["Shared Computer Files & Services"]
+    Prompt -- "Allow for this turn" --> Shared
+    Prompt -- "Keep isolated" --> Isolated
+    Shared --> Desktop
+```
+
+```mermaid
+flowchart LR
+    Open["Expanded sidebar · Search, Viber previews, workspace tools"] -->|Collapse or Ctrl+B| Rail["Collapsed sidebar · Search, Viber avatars, bottom Settings"]
+    Rail -->|Expand or Ctrl+B| Open
+    Rail -->|Search| Focus["Restore sidebar width and focus search"] --> Open
+    Rail -->|Select avatar| Chat["Viber chat"]
+    Open -->|Select Viber| Chat
 ```

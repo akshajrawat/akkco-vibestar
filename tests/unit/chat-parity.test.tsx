@@ -483,3 +483,28 @@ it("collapses completed work while leaving the answer visible and omits protocol
   fireEvent.click(log.querySelector("summary")!);
   expect(log.querySelector(".tool-event")?.textContent).toContain("node --test");
 });
+
+it("groups streamed reasoning into readable disclosures around tool activity", () => {
+  const ui = render(
+    <AgentTimeline
+      compact
+      runs={[run]}
+      events={[
+        event(1, "analysis.status", { text_delta: "The user" }),
+        event(2, "analysis.status", { text_delta: " " }),
+        event(3, "analysis.status", { text_delta: "wants to open the desktop." }),
+        event(4, "command.finished", { command: "ls", exit_code: 0 }),
+        event(5, "analysis.status", { text_delta: "The workspace is ready." }),
+      ]}
+    />,
+  );
+
+  const thoughts = ui.container.querySelectorAll<HTMLDetailsElement>(".reasoning-event");
+
+  expect(
+    Array.from(thoughts, (entry) => entry.querySelector("summary")?.textContent?.trim()),
+  ).toEqual(["The user wants to open the desktop.", "The workspace is ready."]);
+
+  expect(thoughts[0].nextElementSibling?.classList.contains("tool-event")).toBe(true);
+  expect(thoughts[0].open).toBe(false);
+});

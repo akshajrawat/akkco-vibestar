@@ -1,4 +1,3 @@
-import { ComputerTurnOption } from "../computer/ComputerTurnOption";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -6,7 +5,7 @@ import {
   type AgentProfile,
   type ViberSessionDetail,
 } from "../../../core/vibers/contracts";
-import type { AgentEvent, Run } from "../../lib/types";
+import type { AgentEvent, Run, Settings } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
 import { Button } from "../../components/ui/button";
@@ -16,6 +15,7 @@ import { AgentTimeline } from "../chat/AgentTimeline";
 import { RunError } from "../chat/RunError";
 import { ViberModelPicker } from "./ViberModelPicker";
 import { ViberRecoveryDialog } from "./ViberRecoveryDialog";
+import { SharedWorkspaceDialog } from "./SharedWorkspaceDialog";
 import { useProviders } from "../../hooks/useWorkspace";
 import { configurationError } from "../../../core/execution/providers/contracts";
 
@@ -26,6 +26,7 @@ export const ViberSessionChat = (props: {
   profile: AgentProfile;
   revision: number;
   computerSupported?: boolean;
+  settings?: Settings;
 }) => <SessionChat key={props.sessionId} {...props} />;
 
 const SessionChat = ({
@@ -33,11 +34,13 @@ const SessionChat = ({
   profile,
   revision,
   computerSupported = false,
+  settings,
 }: {
   sessionId: string;
   profile: AgentProfile;
   revision: number;
   computerSupported?: boolean;
+  settings?: Settings;
 }) => {
   const id = `viber-session:${sessionId}`;
   const view = useTaskView(id);
@@ -47,7 +50,13 @@ const SessionChat = ({
   const [busy, setBusy] = useState<"sending" | "preparing">();
   const [stopping, setStopping] = useState(false);
   const [recovery, setRecovery] = useState<{ content: string; continueMessageId?: string }>();
-  const [sharedComputer, setSharedComputer] = useState(false);
+
+  const [sharePrompt, setSharePrompt] = useState<{
+    content: string;
+    acknowledged: boolean;
+    continueMessageId?: string;
+  }>();
+
   const sending = useRef(false);
   const cancelling = useRef(false);
   const requested = useRef({ sequence: 0 });
@@ -117,6 +126,7 @@ const SessionChat = ({
     content = composerContent(getTaskView(id)),
     acknowledged = false,
     continueMessageId?: string,
+    shareChoice?: boolean,
   ) => {
     if (
       sending.current ||
@@ -129,9 +139,63 @@ const SessionChat = ({
       return;
     }
 
-    if (uncertain && !acknowledged) {
-      setRecovery({ content, continueMessageId });
-      return;
+    const inputFor = (acknowledge: boolean, share: boolean) => ({
+      session_id: sessionId,
+      profile_id: profile.id,
+      content,
+      history_ids: [],
+      ...(share && content.trim() !== "/clear" ? { shared_computer: true } : {}),
+      ...(acknowledge ? { acknowledge_uncertain: true } : {}),
+      ...(continueMessageId ? { continue_message_id: continueMessageId } : { selection }),
+    });
+
+    const previous = getTaskView(id).messageRequest;
+
+    const saved = data.messages.some(
+      (message) => message.id === previous?.id && message.status !== "pending",
+    )
+      ? null
+      : previous;
+
+    // A lost-response resend retains the original flags even after a remount.
+    const savedInput = saved
+      ? [
+          inputFor(false, false),
+          inputFor(true, false),
+          inputFor(false, true),
+          inputFor(true, true),
+        ].find(
+          (candidate) =>
+            (!acknowledged || candidate.acknowledge_uncertain) &&
+            (shareChoice === undefined || Boolean(candidate.shared_computer) === shareChoice) &&
+            JSON.stringify(candidate) === saved.signature,
+        )
+      : undefined;
+
+    let input = savedInput;
+    if (!input) {
+      if (uncertain && !acknowledged) {
+        setRecovery({ content, continueMessageId });
+        return;
+      }
+
+      const canShare = Boolean(
+        computerSupported && settings?.allow_viber_communication && content.trim() !== "/clear",
+      );
+
+      let share = false;
+      if (shareChoice !== undefined) {
+        share = canShare && shareChoice;
+      } else if (canShare) {
+        if (settings?.viber_workspace_permission === "full-permission") {
+          share = true;
+        } else {
+          setSharePrompt({ content, acknowledged, continueMessageId });
+          return;
+        }
+      }
+
+      input = inputFor(acknowledged, share);
     }
 
     sending.current = true;
@@ -139,37 +203,6 @@ const SessionChat = ({
     setError(undefined);
     let requestId: string | undefined;
     try {
-      const inputFor = (acknowledge: boolean, share: boolean) => ({
-        session_id: sessionId,
-        profile_id: profile.id,
-        content,
-        history_ids: [],
-        ...(share && content.trim() !== "/clear" ? { shared_computer: true } : {}),
-        ...(acknowledge ? { acknowledge_uncertain: true } : {}),
-        ...(continueMessageId ? { continue_message_id: continueMessageId } : { selection }),
-      });
-
-      const previous = getTaskView(id).messageRequest;
-
-      const saved = data.messages.some(
-        (message) => message.id === previous?.id && message.status !== "pending",
-      )
-        ? null
-        : previous;
-
-      // A lost-response resend retains the original flags even after a remount.
-      const input =
-        [
-          inputFor(false, false),
-          inputFor(true, false),
-          inputFor(false, true),
-          inputFor(true, true),
-        ].find(
-          (input) =>
-            (!acknowledged || input.acknowledge_uncertain) &&
-            JSON.stringify(input) === saved?.signature,
-        ) || inputFor(acknowledged, computerSupported && sharedComputer);
-
       const signature = JSON.stringify(input);
       let request = saved;
       if (request?.signature !== signature) {
@@ -179,7 +212,6 @@ const SessionChat = ({
 
       requestId = request.id;
       await rpc("viber.session.send", { ...input, request_id: request.id });
-      setSharedComputer(false);
 
       updateTaskView(id, {
         ...(!continueMessageId && composerContent(getTaskView(id)) === content
@@ -335,15 +367,6 @@ const SessionChat = ({
             busy={!!busy || active || stopping}
             disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
             stop={active ? () => void stop() : undefined}
-            extra={
-              computerSupported && (
-                <ComputerTurnOption
-                  enabled={sharedComputer}
-                  change={setSharedComputer}
-                  disabled={!!busy || active}
-                />
-              )
-            }
             model={
               <ViberModelPicker
                 execution={{ ...profile.execution, ...selection }}
@@ -364,6 +387,22 @@ const SessionChat = ({
           confirm={() => {
             setRecovery(undefined);
             void send(recovery.content, true, recovery.continueMessageId);
+          }}
+        />
+      )}
+      {sharePrompt !== undefined && (
+        <SharedWorkspaceDialog
+          viberName={profile.name}
+          cancel={() => setSharePrompt(undefined)}
+          keepIsolated={() => {
+            const prompt = sharePrompt;
+            setSharePrompt(undefined);
+            void send(prompt.content, prompt.acknowledged, prompt.continueMessageId, false);
+          }}
+          allow={() => {
+            const prompt = sharePrompt;
+            setSharePrompt(undefined);
+            void send(prompt.content, prompt.acknowledged, prompt.continueMessageId, true);
           }}
         />
       )}

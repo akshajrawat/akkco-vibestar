@@ -36,31 +36,11 @@ export interface ComputerStatus {
   has_data: boolean;
 }
 
-export interface ComputerTerminal {
-  id: string;
-  output: string;
-  sequence: number;
-}
-
-export interface ComputerFiles {
-  path: string;
-  entries: { name: string; directory: boolean }[];
-  text: string | null;
-}
-
 type Empty = Record<string, never>;
-
-type TerminalId = { terminal_id: string };
 
 export interface ComputerRpc {
   "computer.status": { input: Empty; output: ComputerStatus };
   "computer.control": { input: z.input<typeof ComputerActionSchema>; output: ComputerStatus };
-  "computer.terminal.open": { input: Empty; output: ComputerTerminal };
-  "computer.terminal.status": { input: Empty; output: ComputerTerminal | null };
-  "computer.terminal.input": { input: TerminalId & { text: string }; output: null };
-  "computer.terminal.resize": { input: TerminalId & { cols: number; rows: number }; output: null };
-  "computer.terminal.close": { input: TerminalId; output: null };
-  "computer.files": { input: { path: string }; output: ComputerFiles };
   "computer.desktop.acquire": { input: { controller_id: string }; output: null };
   "computer.desktop.frame": { input: { controller_id: string }; output: string };
   "computer.desktop.input": {

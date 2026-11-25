@@ -1,19 +1,21 @@
-import { useState, type Ref } from "react";
+import { useCallback, useRef, useState, type Ref } from "react";
 import {
+  Activity,
+  CircleAlert,
+  FolderGit2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plug,
   Plus,
   Search,
-  PanelLeftClose,
-  Activity,
-  FolderGit2,
-  Plug,
   Settings,
-  Monitor,
 } from "lucide-react";
 import type { AgentProfile, ViberMessagePreview } from "../../core/vibers/contracts";
 import { ViberFace } from "../features/vibers/ViberFace";
 import type { Snapshot, WorkspaceTool } from "../lib/types";
 
 interface NavigationSidebarProps {
+  collapsed: boolean;
   width: number;
   snapshot: Snapshot | null;
   profiles: AgentProfile[];
@@ -23,11 +25,11 @@ interface NavigationSidebarProps {
   selectViber: (profile: AgentProfile) => void;
   selectedViber?: string;
   openTool: (tool: WorkspaceTool) => void;
-  computerOpen: boolean;
-  toggleComputer: () => void;
   toggleSidebar: () => void;
   toggleRef?: Ref<HTMLButtonElement>;
 }
+
+export const collapsedSidebarWidth = 64;
 
 const dockItems = [
   { tool: "Repositories", Icon: FolderGit2 },
@@ -40,6 +42,7 @@ const messageTime = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 const messageDate = new Intl.DateTimeFormat(undefined, { dateStyle: "short" });
 
 export const NavigationSidebar = ({
+  collapsed,
   width,
   snapshot,
   profiles,
@@ -49,102 +52,125 @@ export const NavigationSidebar = ({
   selectViber,
   selectedViber,
   openTool,
-  computerOpen,
-  toggleComputer,
   toggleSidebar,
   toggleRef,
 }: NavigationSidebarProps) => {
   const [search, setSearch] = useState("");
+  const focusOnExpand = useRef(false);
+
+  const searchInput = useCallback((input: HTMLInputElement | null) => {
+    if (input && focusOnExpand.current) {
+      focusOnExpand.current = false;
+      input.focus();
+    }
+  }, []);
 
   const previewsByProfile = new Map(previews.map((preview) => [preview.profile_id, preview]));
   const today = new Date().toDateString();
 
-  const filtered = profiles.filter((profile) =>
-    `${profile.name} ${profile.description || ""}`
-      .toLowerCase()
-      .includes(search.trim().toLowerCase()),
-  );
+  const query = search.trim().toLowerCase();
+
+  const visibleProfiles =
+    collapsed || !query
+      ? profiles
+      : profiles.filter((profile) =>
+          `${profile.name} ${profile.description || ""}`.toLowerCase().includes(query),
+        );
+
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const toggleLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
 
   return (
     <aside
-      className="sidebar flex flex-none flex-col min-w-0 min-h-0 text-foreground"
+      className={`sidebar flex flex-none flex-col min-w-0 min-h-0 text-foreground ${collapsed ? "sidebar-collapsed" : ""}`}
       style={{ width }}
       aria-label="Workspace navigation"
     >
       <div className="sidebar-brand-header flex items-center justify-between flex-[0_0_42px] pt-2 pb-1">
-        <div className="sidebar-brand flex items-center min-w-0 select-none flex-1">
-          <span className="sidebar-brand-title">
-            <span className="sidebar-brand-v">V</span>ibestar
-          </span>
-        </div>
+        {!collapsed && <span className="sidebar-brand-title">Vibestar</span>}
         <button
           ref={toggleRef}
-          className="sidebar-collapse grid place-items-center shrink-0 p-0 [border:0] [transition:color_var(--motion-fast),_background-color_var(--motion-fast)]"
-          aria-label="Collapse sidebar"
-          aria-expanded="true"
-          title="Collapse sidebar (Ctrl+B)"
+          type="button"
+          className="sidebar-icon-button"
+          aria-label={toggleLabel}
+          aria-expanded={!collapsed}
+          title={`${toggleLabel} (Ctrl+B)`}
           onClick={toggleSidebar}
         >
-          <PanelLeftClose size={18} aria-hidden="true" />
+          <ToggleIcon size={18} aria-hidden="true" />
         </button>
       </div>
 
       <div className="sidebar-content">
         <div className="sidebar-header">
-          <div className="sidebar-search">
-            <label>
-              <Search size={16} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="Search vibers"
-                placeholder="Search"
-                autoComplete="off"
-                spellCheck={false}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape" && search && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setSearch("");
-                  }
-                }}
-              />
-            </label>
+          {collapsed ? (
             <button
-              className="sidebar-new-viber"
-              aria-label="Create Viber"
-              title="Create Viber"
-              onClick={createViber}
-              disabled={!snapshot}
+              type="button"
+              className="sidebar-icon-button"
+              aria-label="Search vibers"
+              title="Search vibers"
+              onClick={() => {
+                focusOnExpand.current = true;
+                toggleSidebar();
+              }}
             >
-              <Plus size={18} aria-hidden="true" />
+              <Search size={18} aria-hidden="true" />
             </button>
-          </div>
+          ) : (
+            <div className="sidebar-search">
+              <label>
+                <Search size={16} aria-hidden="true" />
+                <input
+                  ref={searchInput}
+                  type="search"
+                  aria-label="Search vibers"
+                  placeholder="Search"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && search && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setSearch("");
+                    }
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className="sidebar-new-viber"
+                aria-label="Create Viber"
+                title="Create Viber"
+                onClick={createViber}
+                disabled={!snapshot}
+              >
+                <Plus size={18} aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
-
-        <button
-          type="button"
-          className="mx-3 mb-1 flex items-center gap-2 rounded-lg border-0 bg-transparent px-3 py-2 text-left text-sm text-ink-secondary hover:bg-surface-hover aria-expanded:bg-surface-active aria-expanded:text-foreground"
-          aria-expanded={computerOpen}
-          onClick={toggleComputer}
-        >
-          <Monitor size={16} aria-hidden="true" />
-          Computer
-        </button>
 
         <div className="sidebar-vibers" role="region" aria-label="Viber list">
           {profilesError && (
-            <p role="alert" className="error">
-              {profilesError}
+            <p
+              role="alert"
+              className={collapsed ? "sidebar-rail-error" : "error"}
+              title={profilesError}
+            >
+              {collapsed && <CircleAlert size={16} aria-hidden="true" />}
+              <span className={collapsed ? "sr-only" : undefined}>{profilesError}</span>
             </p>
           )}
-          {filtered.length === 0 ? (
-            <div className="sidebar-empty px-3 py-6 text-ink-muted text-[12px] text-center">
-              <p>{search ? "No matching vibers" : "No vibers created yet"}</p>
-            </div>
+          {visibleProfiles.length === 0 ? (
+            <p
+              className={collapsed ? "sr-only" : "px-3 py-6 text-ink-muted text-[12px] text-center"}
+            >
+              {query && !collapsed ? "No matching vibers" : "No vibers created yet"}
+            </p>
           ) : (
-            filtered.map((profile) => {
+            visibleProfiles.map((profile) => {
               const message = previewsByProfile.get(profile.id);
               const date = message ? new Date(message.created_at) : null;
               const preview = message?.content.replace(/\s+/g, " ").trim();
@@ -152,22 +178,26 @@ export const NavigationSidebar = ({
 
               return (
                 <button
+                  type="button"
                   className="sidebar-viber"
                   key={profile.id}
                   aria-current={selectedViber === profile.id ? "page" : undefined}
                   onClick={() => selectViber(profile)}
+                  aria-label={collapsed ? `Chat with ${profile.name}` : undefined}
                   title={`Chat with ${profile.name}`}
                 >
                   <ViberFace profile={profile} compact />
-                  <span className="sidebar-viber-details">
-                    <strong>{profile.name}</strong>
-                    {message && date && Number.isFinite(date.getTime()) && (
-                      <time dateTime={message.created_at} title={date.toLocaleString()}>
-                        {timestamp.format(date)}
-                      </time>
-                    )}
-                    {preview && <small>{preview}</small>}
-                  </span>
+                  {!collapsed && (
+                    <span className="sidebar-viber-details">
+                      <strong>{profile.name}</strong>
+                      {message && date && Number.isFinite(date.getTime()) && (
+                        <time dateTime={message.created_at} title={date.toLocaleString()}>
+                          {timestamp.format(date)}
+                        </time>
+                      )}
+                      {preview && <small>{preview}</small>}
+                    </span>
+                  )}
                 </button>
               );
             })
@@ -176,21 +206,26 @@ export const NavigationSidebar = ({
       </div>
 
       <nav className="sidebar-dock" aria-label="Workspace tools">
-        {dockItems.map(({ tool, Icon }) => (
-          <div key={tool} className="sidebar-dock-item">
-            <button
-              type="button"
-              aria-label={tool}
-              aria-haspopup="dialog"
-              onClick={() => openTool(tool)}
-            >
-              <Icon aria-hidden="true" />
-            </button>
-            <span className="sidebar-dock-label" aria-hidden="true">
-              {tool}
-            </span>
-          </div>
-        ))}
+        {dockItems
+          .filter(({ tool }) => !collapsed || tool === "Settings")
+          .map(({ tool, Icon }) => (
+            <div key={tool} className="sidebar-dock-item">
+              <button
+                type="button"
+                aria-label={tool}
+                title={collapsed ? tool : undefined}
+                aria-haspopup="dialog"
+                onClick={() => openTool(tool)}
+              >
+                <Icon aria-hidden="true" />
+              </button>
+              {!collapsed && (
+                <span className="sidebar-dock-label" aria-hidden="true">
+                  {tool}
+                </span>
+              )}
+            </div>
+          ))}
       </nav>
     </aside>
   );

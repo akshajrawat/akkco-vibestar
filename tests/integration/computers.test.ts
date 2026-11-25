@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ComputerDocker } from "../../apps/core/computers/docker";
 import { ComputerActionSchema } from "../../apps/core/computers/contracts";
-import { computerFiles } from "../../apps/core/computers/files";
 import { Engine } from "../../apps/core/execution/engine";
 
 let directory: string;
@@ -51,6 +51,26 @@ it("adds the shared table when reopening an existing schema-0 data root", async 
   engine = await Engine.create(join(directory, "data"));
   expect(engine.db.all("SELECT singleton FROM shared_computer")).toEqual([]);
   expect(engine.db.all("PRAGMA user_version")).toEqual([{ user_version: 0 }]);
+});
+
+it("allows automatic startup to replace a running desktop from the previous image", async () => {
+  bind();
+  vi.spyOn(ComputerDocker.prototype, "daemon").mockResolvedValue(daemon);
+
+  vi.spyOn(ComputerDocker.prototype, "inspect").mockResolvedValue({
+    Config: {
+      Labels: {
+        "dev.vibestar.shared": createHash("sha256").update(engine.root).digest("hex").slice(0, 24),
+        "dev.vibestar.desktop": "1",
+      },
+    },
+    State: { Running: true },
+  });
+
+  await expect(engine.computers.status()).resolves.toMatchObject({
+    status: "stopped",
+    has_data: true,
+  });
 });
 
 it("serializes lifecycle operations per workspace while status stays readable", async () => {
@@ -136,33 +156,4 @@ it("never resets resources from a copied workspace or unexpectedly changed Docke
   });
 
   expect(inspect).not.toHaveBeenCalled();
-});
-
-it("bounds directory and text previews, rejects alias paths, and redacts Basic credentials", async () => {
-  const workspace = join(directory, "files");
-  await mkdir(join(workspace, "nested"), { recursive: true });
-  const secret = "ZHVtbXk6c2VjcmV0";
-  const hidden = join(directory, "hidden");
-  await writeFile(hidden, "host private");
-  await symlink(hidden, join(workspace, "escape"));
-  await writeFile(join(workspace, "invalid\\name"), "unopenable");
-  await writeFile(join(workspace, "nested", "request.txt"), `Authorization: Basic ${secret}\n`);
-
-  expect((await computerFiles(workspace, "")).entries).toEqual([
-    { name: "nested", directory: true },
-  ]);
-
-  expect((await computerFiles(workspace, "nested/request.txt")).text).toBe(
-    "Authorization: Basic [REDACTED]\n",
-  );
-
-  await expect(computerFiles(workspace, "escape")).rejects.toThrow();
-  await expect(computerFiles(workspace, "../hidden")).rejects.toThrow("Select");
-  await writeFile(join(workspace, "large.txt"), Buffer.alloc(1048577));
-  await expect(computerFiles(workspace, "large.txt")).rejects.toThrow("1 MiB");
-  for (let index = 0; index < 5001; index++) {
-    await symlink(hidden, join(workspace, "nested", String(index)));
-  }
-
-  await expect(computerFiles(workspace, "nested")).rejects.toThrow("5,000-entry");
 });

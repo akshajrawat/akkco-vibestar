@@ -411,25 +411,6 @@ export class ViberSessionStore {
       WHERE s.profile_id NOT IN (SELECT profile_id FROM retired_viber_profiles)
     `);
 
-  continuousSession = (profileId: string, repositoryId?: string) => {
-    identity.parse(profileId);
-
-    const existing = this.db.all<{ id: string }>(
-      "SELECT id FROM viber_sessions WHERE profile_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 1",
-      profileId,
-    )[0];
-
-    if (existing) {
-      return this.session(existing.id, profileId);
-    }
-
-    return this.create({
-      request_id: randomUUID(),
-      profile_id: profileId,
-      repository_id: repositoryId,
-    });
-  };
-
   detail = (sessionId: string, profileId: string): ViberSessionDetail => {
     const session = this.session(sessionId, profileId);
 

@@ -14,24 +14,20 @@ import { useSettingsDraft } from "./useSettingsDraft";
 
 /** Settings is independent of app navigation; panels automatically save changes. */
 export const SettingsPage = ({
-  initialSection = "General",
   settings,
-  root,
   refresh,
   snapshot,
   close,
 }: {
-  initialSection?: SettingsCategory;
   settings?: Settings;
-  root?: string;
   refresh: () => Promise<void>;
   snapshot?: Snapshot;
   close: () => void;
 }) => {
   const draft = useSettingsDraft(settings, refresh);
   const { value, setValue } = draft;
-  const [section, setSection] = useState<SettingsCategory>(initialSection);
-  const [visited, setVisited] = useState<SettingsCategory[]>([initialSection]);
+  const [section, setSection] = useState<SettingsCategory>("General");
+  const [visited, setVisited] = useState<SettingsCategory[]>(["General"]);
 
   const savingOnClose = useRef<Promise<boolean> | null>(null);
 
@@ -130,26 +126,7 @@ export const SettingsPage = ({
                         configure the environment.
                       </p>
                     ))}
-                  {category === "Providers" && (
-                    <ProvidersPage
-                      memorySharing={
-                        value && {
-                          allowed: value.viber_memory.share_with,
-                          set: (provider, allowed) =>
-                            setValue({
-                              ...value,
-                              viber_memory: {
-                                ...value.viber_memory,
-                                share_with: {
-                                  ...value.viber_memory.share_with,
-                                  [provider]: allowed,
-                                },
-                              },
-                            }),
-                        }
-                      }
-                    />
-                  )}
+                  {category === "Providers" && <ProvidersPage />}
                   {category === "Repositories" && (
                     <>
                       {snapshot ? (
@@ -164,7 +141,6 @@ export const SettingsPage = ({
                       desktop={draft.desktop}
                       setDesktop={draft.setDesktop}
                       flush={draft.flush}
-                      root={root}
                       busy={draft.busy}
                       installLog={draft.installLog}
                       install={draft.install}

@@ -11,7 +11,19 @@
 }
 
 .composer-lane {
-  @apply w-full;
+  @apply w-full bg-transparent;
+}
+
+.chat-main:not(.chat-draft) .composer-lane {
+  @apply absolute inset-x-0 bottom-0 z-[3] pointer-events-none bg-transparent;
+}
+
+.chat-main:not(.chat-draft) .composer-lane :is(.chat-input, .chat-actions-content > *) {
+  @apply pointer-events-auto;
+}
+
+.chat-workspace .chat-main:not(.chat-draft) .event-timeline {
+  padding-bottom: calc(var(--composer-height, 140px) + 20px);
 }
 
 .chat-draft .event-timeline {

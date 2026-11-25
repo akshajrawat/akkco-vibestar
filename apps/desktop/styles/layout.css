@@ -23,12 +23,8 @@
   app-region: no-drag;
 }
 
-.titlebar-action {
-  @apply size-10 bg-transparent text-ink-muted;
-}
-
-.titlebar-action:hover {
-  @apply text-foreground bg-surface-hover;
+.titlebar-computer:hover {
+  @apply bg-border-default text-foreground;
 }
 
 .window-controls {

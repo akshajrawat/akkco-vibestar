@@ -23,7 +23,7 @@ const keyNames: Record<string, string> = {
   " ": "space",
 };
 
-// Unmounting a tab releases its lease before the next desktop view can acquire it.
+// Release the controller lease before the next desktop view acquires it.
 let previousRelease = Promise.resolve<unknown>(undefined);
 
 export const ComputerDesktop = () => {
@@ -225,11 +225,6 @@ export const ComputerDesktop = () => {
         >
           <Monitor size={22} /> Connecting desktop…
         </div>
-      )}
-      {frame && !error && (
-        <p className="m-0 text-xs text-ink-muted">
-          Click the desktop to use its keyboard and mouse.
-        </p>
       )}
     </div>
   );

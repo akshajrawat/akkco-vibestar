@@ -182,11 +182,9 @@ export class Engine extends EventEmitter {
 
   changed = (id?: string) => this.publish({ event: "changed", session_id: id });
 
-  isActive = (id: string) => this.state.active.has(id) || this.state.interactive.has(id);
+  isActive = (id: string) => this.state.active.has(id);
 
   hasActive = () => this.cleanupBlockers().length > 0;
-
-  drain = (...args: Parameters<EngineScheduling["drain"]>) => this.scheduling.drain(...args);
 
   register = (...args: Parameters<RepositoryOperations["register"]>) =>
     this.repositories.register(...args);
@@ -211,9 +209,6 @@ export class Engine extends EventEmitter {
 
   fetchRepository = (...args: Parameters<RepositoryOperations["fetchRepository"]>) =>
     this.repositories.fetchRepository(...args);
-
-  configureRepository = (...args: Parameters<RepositoryOperations["configureRepository"]>) =>
-    this.repositories.configureRepository(...args);
 
   beginShutdown = () => {
     this.state.closed = true;

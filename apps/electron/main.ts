@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, screen, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, screen, dialog } from "electron";
 import { mkdir, writeFile, cp, access } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -262,16 +262,6 @@ const main = async () => {
     } finally {
       changingRuntime = false;
     }
-  });
-
-  ipcMain.handle("desktop:external", async (event, url) => {
-    trusted(event);
-    const u = new URL(z.string().parse(url));
-    if (u.protocol !== "https:" || u.hostname !== "github.com" || u.username || u.password) {
-      throw new Error("Only HTTPS GitHub links may be opened");
-    }
-
-    await shell.openExternal(u.href);
   });
 
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;

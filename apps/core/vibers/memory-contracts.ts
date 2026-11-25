@@ -9,17 +9,14 @@ const model = z
 export const defaultViberMemorySettings = {
   automatic_saving: false,
   recall: false,
-  share_with: { codex: false, antigravity: false },
   embedding_model: "nomic-embed-text",
   suggestion_model: "qwen2.5:1.5b",
 };
 
-export const ViberMemorySettingsSchema = z.strictObject({
+// Strip the legacy provider-sharing field when reading existing settings.
+export const ViberMemorySettingsSchema = z.object({
   automatic_saving: z.boolean().default(false),
   recall: z.boolean().default(false),
-  share_with: z
-    .strictObject({ codex: z.boolean().default(false), antigravity: z.boolean().default(false) })
-    .default(defaultViberMemorySettings.share_with),
   embedding_model: model.default(defaultViberMemorySettings.embedding_model),
   suggestion_model: model.default(defaultViberMemorySettings.suggestion_model),
 });

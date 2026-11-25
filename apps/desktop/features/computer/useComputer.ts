@@ -2,80 +2,137 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComputerStatus } from "../../../core/computers/contracts";
 import { computerRpc, errorMessage, subscribe } from "../../lib/api";
 
-export const useComputer = (supported: boolean, visible: boolean) => {
+export const useComputer = (supported: boolean, canAutoStart = false) => {
   const [status, setStatus] = useState<ComputerStatus>();
-  const requested = useRef({ sequence: 0 });
+  const [didStart, setDidStart] = useState(false);
+  const mounted = useRef(false);
+  const sequence = useRef(0);
+  const booted = useRef(false);
 
-  const refresh = useCallback(() => {
+  const startComputer = useCallback(async () => {
     if (!supported) {
       return;
     }
 
-    const version = ++requested.current.sequence;
+    const version = ++sequence.current;
+    setDidStart(true);
 
-    void computerRpc("computer.status", {})
-      .then((value) => {
-        if (version === requested.current.sequence) {
-          setStatus(value);
-        }
-      })
-      .catch((error) => {
-        if (version === requested.current.sequence) {
-          setStatus({ status: "error", docker: null, has_data: false, error: errorMessage(error) });
-        }
-      });
+    setStatus((current) => ({
+      status: "starting",
+      error: null,
+      docker: null,
+      has_data: current?.has_data ?? false,
+    }));
+
+    try {
+      const next = await computerRpc("computer.control", { action: "start" });
+      if (mounted.current && version === sequence.current) {
+        setStatus(next);
+      }
+    } catch (error) {
+      if (mounted.current && version === sequence.current) {
+        const message = errorMessage(error);
+        setStatus({ status: "error", docker: null, has_data: false, error: message });
+      }
+    }
   }, [supported]);
 
-  useEffect(() => {
-    if (!supported) {
+  const boot = useCallback(async () => {
+    if (!supported || !canAutoStart || booted.current) {
       return;
     }
 
-    let alive = true;
-    const sequence = requested.current;
+    booted.current = true;
+    const version = ++sequence.current;
+    try {
+      const value = await computerRpc("computer.status", {});
+      if (!mounted.current || version !== sequence.current) {
+        return;
+      }
+
+      if (value.status === "stopped") {
+        await startComputer();
+        return;
+      }
+
+      setStatus(value);
+    } catch (error) {
+      if (mounted.current && version === sequence.current) {
+        const message = errorMessage(error);
+        setStatus({ status: "error", docker: null, has_data: false, error: message });
+      }
+    }
+  }, [supported, canAutoStart, startComputer]);
+
+  useEffect(() => {
+    mounted.current = true;
+    if (!supported) {
+      booted.current = false;
+      sequence.current++;
+      setDidStart(false);
+
+      return () => {
+        mounted.current = false;
+      };
+    }
+
+    let active = true;
 
     const subscription = subscribe((event) => {
-      if (!alive) {
+      if (!active) {
         return;
       }
 
       if (event.event === "computer.changed") {
-        requested.current.sequence++;
-        setStatus(event.data as ComputerStatus);
+        const next = event.data as ComputerStatus;
+        if (next.status !== "starting") {
+          sequence.current++;
+        }
+
+        setStatus(next);
       } else if (event.event === "core.closed" || event.event === "core.error") {
-        requested.current.sequence++;
+        sequence.current++;
+        booted.current = false;
+        setDidStart(false);
+
+        const message = "Reconnect the execution helper.";
 
         setStatus({
           status: "error",
           docker: null,
           has_data: false,
-          error: "Reconnect the execution helper.",
+          error: message,
         });
-      } else if (
-        event.event === "runtime.status" &&
-        (event.data as { phase?: string })?.phase === "ready" &&
-        visible
-      ) {
-        refresh();
+      } else if (event.event === "runtime.status") {
+        const phase = (event.data as { phase?: string })?.phase;
+        if (phase === "ready") {
+          if (!booted.current) {
+            void boot();
+          }
+        } else if (phase) {
+          booted.current = false;
+        }
       }
     });
 
-    if (visible) {
-      void subscription
-        .then(() => {
-          if (alive) {
-            refresh();
-          }
-        })
-        .catch(() => undefined);
-    }
+    void subscription
+      .then(() => {
+        if (active) {
+          void boot();
+        }
+      })
+      .catch(() => undefined);
 
     return () => {
-      alive = false;
-      sequence.sequence++;
+      active = false;
+      mounted.current = false;
       void subscription.then((unsubscribe) => unsubscribe()).catch(() => undefined);
     };
-  }, [supported, visible, refresh]);
+  }, [supported, boot]);
 
-  return { status: supported ? status : undefined, refresh };
+  return {
+    status: supported ? status : undefined,
+    didStart: supported ? didStart : false,
+    retry: startComputer,
+  };
 };

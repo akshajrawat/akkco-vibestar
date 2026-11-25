@@ -1,13 +1,14 @@
 import { DesktopSize } from "./contracts";
 
 export const sharedDirectory = "/home/viber/workspace";
+export const desktopVersion = "2";
 
 // The build context is stdin. Only the managed workspace and saved Linux home are writable.
 export const computerImage = (uid: number, gid: number) => `
 FROM node:22-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \\
     bash ca-certificates chromium curl fonts-liberation git openbox python3 python3-venv \\
-    scrot socat tini xauth xdotool x11-utils xvfb \\
+    scrot socat tini xauth xdotool x11-utils x11-xserver-utils xvfb \\
     && rm -rf /var/lib/apt/lists/*
 RUN if ! getent group ${gid} >/dev/null; then groupadd --gid ${gid} viber; fi \\
     && if ! getent passwd ${uid} >/dev/null; then useradd --uid ${uid} --gid ${gid} --home-dir /home/viber viber; fi \\
@@ -15,7 +16,7 @@ RUN if ! getent group ${gid} >/dev/null; then groupadd --gid ${gid} viber; fi \\
 COPY --chmod=755 <<'EOF_DESKTOP' /usr/local/bin/vibestar-desktop
 #!/bin/bash
 set -eu
-Xvfb :0 -screen 0 ${DesktopSize.width}x${DesktopSize.height}x24 -nolisten tcp &
+Xvfb :0 -screen 0 ${DesktopSize.width}x${DesktopSize.height}x24 -s 0 -noreset -nolisten tcp &
 display=$!
 for attempt in {1..80}; do
   xdpyinfo >/dev/null 2>&1 && break
@@ -23,6 +24,7 @@ for attempt in {1..80}; do
   sleep .1
 done
 xdpyinfo >/dev/null
+xsetroot -solid '#26364b'
 openbox &
 wm=$!
 vibestar-browser &

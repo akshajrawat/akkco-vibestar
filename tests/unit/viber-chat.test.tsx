@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { defaultSettings } from "../../apps/core/domain";
 import { ViberChat } from "../../apps/desktop/features/vibers/ViberChat";
 import { updateTaskView } from "../../apps/desktop/lib/taskView";
+import { mockDialog } from "../helpers/dialog";
 import { viberProfile } from "../helpers/viber-fixtures";
 
 vi.mock("../../apps/desktop/features/vibers/ViberSessionChat", () => ({
@@ -29,6 +31,8 @@ vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
 }));
 
 const rpc = vi.fn();
+
+beforeEach(mockDialog);
 
 afterEach(() => {
   cleanup();
@@ -176,4 +180,81 @@ it("keeps a saved request ID for an unlinked draft and retains text attachments"
     profile_id: profile.id,
     selection,
   });
+});
+
+it("omits the Computer toggle from the composer and applies Viber Workspace sharing permissions", async () => {
+  const sessionId = crypto.randomUUID();
+
+  rpc.mockImplementation(async (method: string) =>
+    method === "viber.session.list" ? [] : { id: sessionId },
+  );
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+
+  const view = render(
+    <ViberChat
+      profile={viberProfile}
+      revision={0}
+      computerSupported
+      settings={{
+        ...defaultSettings,
+        allow_viber_communication: true,
+        viber_workspace_permission: "always-ask",
+      }}
+    />,
+  );
+
+  expect(screen.queryByRole("button", { name: /Computer/i })).toBeNull();
+  const input = screen.getByRole("textbox", { name: `Message ${viberProfile.name}` });
+  fireEvent.change(input, { target: { value: "Share via computer" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  expect(screen.getByRole("dialog", { name: "Shared workspace permission" })).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog", { name: "Shared workspace permission" })).toBeNull();
+  expect(rpc.mock.calls.some(([method]) => method === "viber.session.send")).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(screen.getByRole("button", { name: "Allow for this turn" }));
+  await screen.findByText("Existing conversation view");
+
+  expect(rpc).toHaveBeenCalledWith(
+    "viber.session.send",
+    expect.objectContaining({
+      content: "Share via computer",
+      shared_computer: true,
+    }),
+  );
+
+  rpc.mockClear();
+  const autoProfile = { ...viberProfile, id: crypto.randomUUID() };
+
+  view.rerender(
+    <ViberChat
+      key={autoProfile.id}
+      profile={autoProfile}
+      revision={0}
+      computerSupported
+      settings={{
+        ...defaultSettings,
+        allow_viber_communication: true,
+        viber_workspace_permission: "full-permission",
+      }}
+    />,
+  );
+
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${autoProfile.name}` }), {
+    target: { value: "Auto share" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await screen.findByText("Existing conversation view");
+
+  expect(rpc).toHaveBeenCalledWith(
+    "viber.session.send",
+    expect.objectContaining({
+      content: "Auto share",
+      shared_computer: true,
+    }),
+  );
 });
