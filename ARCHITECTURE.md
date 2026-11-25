@@ -52,7 +52,7 @@ permissions after workspace ownership checks. See the [security guide](docs/secu
 
 Feature-specific code belongs with its owner. Shared renderer primitives stay under `apps/desktop/components`
 and ordered CSS chapters under `apps/desktop/styles/`. Detailed folder and check ownership is documented in
-the [contributor guide](CONTRIBUTING.md) and [testing guide](docs/testing.md).
+the [testing guide](docs/testing.md).
 
 ## Desktop tool overlays
 
@@ -106,5 +106,4 @@ Data-root migration, backup procedures, and workspace isolation enforce strict o
 - [Security boundaries](docs/security.md)
 - [Development and platform setup](docs/development.md)
 - [Testing Guide](docs/testing.md)
-- [Contributing](CONTRIBUTING.md)
 - [Third-party notices](docs/third-party-notices.md)
