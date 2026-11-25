@@ -1303,4 +1303,32 @@ describe("antigravityAcpNormalize", () => {
       stdout: "File written successfully",
     });
   });
+
+  it("preserves standard ACP content on a completed command", () => {
+    const update = {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "cmd",
+      kind: "execute",
+      status: "completed",
+      content: [
+        { type: "content", content: { type: "text", text: "Tests passed" } },
+        { type: "terminal", terminalId: "terminal-1" },
+        { type: "content", content: { type: "text", text: "Build passed" } },
+      ],
+    };
+
+    const normalize = (fields = {}) =>
+      antigravityAcpNormalize({
+        method: "session/update",
+        params: { update: { ...update, ...fields } },
+      });
+
+    const expected = [{ kind: "command.finished", data: { stdout: "Tests passed\nBuild passed" } }];
+    expect(normalize()).toMatchObject(expected);
+    expect(normalize({ rawOutput: "Tests passed\nBuild passed" })).toMatchObject(expected);
+
+    expect(normalize({ content: [], rawOutput: "Raw fallback" })).toMatchObject([
+      { kind: "command.finished", data: { stdout: "Raw fallback" } },
+    ]);
+  });
 });

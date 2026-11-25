@@ -454,6 +454,22 @@ export const antigravityAcpNormalize = (
       }
 
       const args = object(update.args ?? update.rawInput ?? update.raw_input);
+
+      const contentText = Array.isArray(update.content)
+        ? update.content
+            .flatMap((entry) => {
+              const block = object(entry);
+              const content = object(block.content);
+              return block.type === "content" &&
+                content.type === "text" &&
+                typeof content.text === "string" &&
+                content.text.length
+                ? [content.text]
+                : [];
+            })
+            .join("\n")
+        : "";
+
       return [
         {
           kind,
@@ -465,7 +481,9 @@ export const antigravityAcpNormalize = (
             path: args.Path ?? args.AbsolutePath ?? args.TargetFile ?? args.file_path,
             status: status === "failed" || status === "ERROR" ? "failed" : status,
             exit_code: update.exitCode ?? update.exit_code,
-            stdout: update.stdout ?? update.output ?? update.rawOutput ?? update.raw_output,
+            stdout:
+              contentText ||
+              (update.stdout ?? update.output ?? update.rawOutput ?? update.raw_output),
             stderr: update.stderr ?? object(update.error).message,
           },
         },
