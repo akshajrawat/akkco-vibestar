@@ -1,5 +1,14 @@
 import { useState, type Ref } from "react";
-import { Plus, Search, PanelLeftClose, Activity, FolderGit2, Plug, Settings } from "lucide-react";
+import {
+  Plus,
+  Search,
+  PanelLeftClose,
+  Activity,
+  FolderGit2,
+  Plug,
+  Settings,
+  Monitor,
+} from "lucide-react";
 import type { AgentProfile, ViberMessagePreview } from "../../core/vibers/contracts";
 import { ViberFace } from "../features/vibers/ViberFace";
 import type { Snapshot, WorkspaceTool } from "../lib/types";
@@ -14,6 +23,8 @@ interface NavigationSidebarProps {
   selectViber: (profile: AgentProfile) => void;
   selectedViber?: string;
   openTool: (tool: WorkspaceTool) => void;
+  computerOpen: boolean;
+  toggleComputer: () => void;
   toggleSidebar: () => void;
   toggleRef?: Ref<HTMLButtonElement>;
 }
@@ -38,6 +49,8 @@ export const NavigationSidebar = ({
   selectViber,
   selectedViber,
   openTool,
+  computerOpen,
+  toggleComputer,
   toggleSidebar,
   toggleRef,
 }: NavigationSidebarProps) => {
@@ -109,6 +122,16 @@ export const NavigationSidebar = ({
             </button>
           </div>
         </div>
+
+        <button
+          type="button"
+          className="mx-3 mb-1 flex items-center gap-2 rounded-lg border-0 bg-transparent px-3 py-2 text-left text-sm text-ink-secondary hover:bg-surface-hover aria-expanded:bg-surface-active aria-expanded:text-foreground"
+          aria-expanded={computerOpen}
+          onClick={toggleComputer}
+        >
+          <Monitor size={16} aria-hidden="true" />
+          Computer
+        </button>
 
         <div className="sidebar-vibers" role="region" aria-label="Viber list">
           {profilesError && (

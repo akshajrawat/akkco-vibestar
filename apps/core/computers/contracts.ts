@@ -1,54 +1,45 @@
 import { z } from "zod";
-import { ViberSessionScopeSchema } from "../vibers/contracts";
 
-export const ComputerScopeSchema = z.object({ profile_id: z.string().uuid() }).strict();
+export const sharedFilesMount = "/mnt/vibestar-shared";
+export const sharedServicesMount = "/run/vibestar-computer.sock";
 
-export const ComputerActionSchema = ComputerScopeSchema.extend({
-  action: z.enum(["start", "stop", "restart", "reset"]),
-  session_id: z.string().uuid().optional(),
-  confirmed: z.literal(true).optional(),
-}).strict();
+export const DesktopSize = { width: 1000, height: 640 } as const;
 
-export const ComputerTerminalSchema = ComputerScopeSchema.extend({
-  session_id: z.string().uuid().optional(),
-  login: z.enum(["codex", "antigravity"]).optional(),
-  confirmed: z.literal(true).optional(),
-}).strict();
+export const ComputerActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.enum(["start", "stop", "restart"]) }).strict(),
+  z.object({ action: z.literal("reset"), confirmed: z.literal(true) }).strict(),
+]);
 
-export const ComputerFileSchema = ViberSessionScopeSchema.extend({
-  path: z.string().max(2000).default(""),
-}).strict();
-
-export const LOCAL_BROWSER_URL_REGEX =
-  /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d{1,5})?(?:\/.*)?$/i;
-
-export const ComputerBrowserSchema = z
-  .object({
-    profile_id: z.string().uuid(),
-    url: z
-      .string()
-      .trim()
-      .regex(
-        LOCAL_BROWSER_URL_REGEX,
-        "Only local web services (http://127.0.0.1:* or http://localhost:*) can be opened for human sign-in takeover.",
-      ),
-  })
-  .strict();
+export const DesktopInputSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("pointer"),
+      x: z.number().int().min(0).lt(DesktopSize.width),
+      y: z.number().int().min(0).lt(DesktopSize.height),
+      button: z.number().int().min(1).max(5),
+      phase: z.enum(["down", "up", "click", "move"]),
+    })
+    .strict(),
+  z.object({ type: z.literal("text"), text: z.string().regex(/^[ -~]{1,256}$/) }).strict(),
+  z
+    .object({
+      type: z.literal("key"),
+      keys: z.string().regex(/^(?:ctrl\+)?(?:alt\+)?(?:shift\+)?[a-zA-Z0-9_]{1,24}$/),
+    })
+    .strict(),
+]);
 
 export interface ComputerStatus {
-  profile_id: string;
-  status: "starting" | "ready" | "running" | "stopped" | "error";
-  session_id: string | null;
+  status: "starting" | "ready" | "stopped" | "error";
   error: string | null;
-  docker_available?: boolean;
+  docker: { ready: boolean; detail: string } | null;
+  has_data: boolean;
 }
 
 export interface ComputerTerminal {
   id: string;
   output: string;
   sequence: number;
-  login: "codex" | "antigravity" | null;
-  session_id: string | null;
 }
 
 export interface ComputerFiles {
@@ -57,30 +48,24 @@ export interface ComputerFiles {
   text: string | null;
 }
 
+type Empty = Record<string, never>;
+
+type TerminalId = { terminal_id: string };
+
 export interface ComputerRpc {
-  "computer.status": { input: z.input<typeof ComputerScopeSchema>; output: ComputerStatus };
+  "computer.status": { input: Empty; output: ComputerStatus };
   "computer.control": { input: z.input<typeof ComputerActionSchema>; output: ComputerStatus };
-  "computer.providers": {
-    input: z.input<typeof ComputerScopeSchema>;
-    output: import("../execution/providers/contracts").ProviderDetection[];
-  };
-  "computer.terminal.open": {
-    input: z.input<typeof ComputerTerminalSchema>;
-    output: ComputerTerminal;
-  };
-  "computer.terminal.status": {
-    input: z.input<typeof ComputerScopeSchema>;
-    output: ComputerTerminal | null;
-  };
-  "computer.terminal.input": {
-    input: { profile_id: string; terminal_id: string; text: string };
+  "computer.terminal.open": { input: Empty; output: ComputerTerminal };
+  "computer.terminal.status": { input: Empty; output: ComputerTerminal | null };
+  "computer.terminal.input": { input: TerminalId & { text: string }; output: null };
+  "computer.terminal.resize": { input: TerminalId & { cols: number; rows: number }; output: null };
+  "computer.terminal.close": { input: TerminalId; output: null };
+  "computer.files": { input: { path: string }; output: ComputerFiles };
+  "computer.desktop.acquire": { input: { controller_id: string }; output: null };
+  "computer.desktop.frame": { input: { controller_id: string }; output: string };
+  "computer.desktop.input": {
+    input: { controller_id: string; input: z.input<typeof DesktopInputSchema> };
     output: null;
   };
-  "computer.terminal.resize": {
-    input: { profile_id: string; terminal_id: string; cols: number; rows: number };
-    output: null;
-  };
-  "computer.terminal.close": { input: z.input<typeof ComputerScopeSchema>; output: null };
-  "computer.files": { input: z.input<typeof ComputerFileSchema>; output: ComputerFiles };
-  "profile.delete": { input: { profile_id: string; confirmed: true }; output: null };
+  "computer.desktop.release": { input: { controller_id: string }; output: null };
 }

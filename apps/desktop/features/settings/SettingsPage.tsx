@@ -14,12 +14,14 @@ import { useSettingsDraft } from "./useSettingsDraft";
 
 /** Settings is independent of app navigation; panels automatically save changes. */
 export const SettingsPage = ({
+  initialSection = "General",
   settings,
   root,
   refresh,
   snapshot,
   close,
 }: {
+  initialSection?: SettingsCategory;
   settings?: Settings;
   root?: string;
   refresh: () => Promise<void>;
@@ -28,8 +30,8 @@ export const SettingsPage = ({
 }) => {
   const draft = useSettingsDraft(settings, refresh);
   const { value, setValue } = draft;
-  const [section, setSection] = useState<SettingsCategory>("General");
-  const [visited, setVisited] = useState<SettingsCategory[]>(["General"]);
+  const [section, setSection] = useState<SettingsCategory>(initialSection);
+  const [visited, setVisited] = useState<SettingsCategory[]>([initialSection]);
 
   const savingOnClose = useRef<Promise<boolean> | null>(null);
 

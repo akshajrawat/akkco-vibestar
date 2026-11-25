@@ -1,3 +1,4 @@
+import { sharedFilesMount } from "../../computers/contracts";
 import { capture, checked } from "../runtime/process";
 import {
   object,
@@ -125,6 +126,7 @@ export class AntigravityProvider implements AgentProvider {
       "--mode",
       r.access === "workspace-write" ? "accept-edits" : "plan",
       "--sandbox",
+      ...(r.sharedComputer ? ["--add-dir", sharedFilesMount] : []),
       "--input-format",
       "stream-json",
       "--output-format",

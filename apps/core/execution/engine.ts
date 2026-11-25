@@ -118,13 +118,13 @@ export class Engine extends EventEmitter {
 
     this.scheduling = new EngineScheduling(this, this.state);
 
+    this.computers = new Computers(this);
+
     this.viberSessions = new ViberSessions(this, this.state, this.runner, {
       withExecutionSlot: this.withExecutionSlot,
       assertExecutionSlot: this.scheduling.assertExecutionSlot,
       stopActivity: this.stopActivity,
     });
-
-    this.computers = new Computers(this);
   }
 
   static create = async (
@@ -168,7 +168,6 @@ export class Engine extends EventEmitter {
 
       engine.db.recover();
       engine.memory.queueIndex();
-      await engine.computers.recover();
       return engine;
     } catch (error) {
       database?.close();
@@ -244,9 +243,16 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.active.values()].map((a) => a.promise));
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
-        await this.memory.close();
-        await this.computers.close();
-        await this.repositoryIndex.close();
+        const closed = await Promise.allSettled([
+          this.memory.close(),
+          this.computers.close(),
+          this.repositoryIndex.close(),
+        ]);
+
+        const failure = closed.find((result) => result.status === "rejected");
+        if (failure) {
+          throw failure.reason;
+        }
       } finally {
         try {
           this.db.close();

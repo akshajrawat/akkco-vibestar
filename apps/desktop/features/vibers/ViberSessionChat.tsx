@@ -1,3 +1,4 @@
+import { ComputerTurnOption } from "../computer/ComputerTurnOption";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -24,16 +25,19 @@ export const ViberSessionChat = (props: {
   sessionId: string;
   profile: AgentProfile;
   revision: number;
+  computerSupported?: boolean;
 }) => <SessionChat key={props.sessionId} {...props} />;
 
 const SessionChat = ({
   sessionId,
   profile,
   revision,
+  computerSupported = false,
 }: {
   sessionId: string;
   profile: AgentProfile;
   revision: number;
+  computerSupported?: boolean;
 }) => {
   const id = `viber-session:${sessionId}`;
   const view = useTaskView(id);
@@ -43,6 +47,7 @@ const SessionChat = ({
   const [busy, setBusy] = useState<"sending" | "preparing">();
   const [stopping, setStopping] = useState(false);
   const [recovery, setRecovery] = useState<{ content: string; continueMessageId?: string }>();
+  const [sharedComputer, setSharedComputer] = useState(false);
   const sending = useRef(false);
   const cancelling = useRef(false);
   const requested = useRef({ sequence: 0 });
@@ -134,11 +139,12 @@ const SessionChat = ({
     setError(undefined);
     let requestId: string | undefined;
     try {
-      const inputFor = (acknowledge: boolean) => ({
+      const inputFor = (acknowledge: boolean, share: boolean) => ({
         session_id: sessionId,
         profile_id: profile.id,
         content,
         history_ids: [],
+        ...(share && content.trim() !== "/clear" ? { shared_computer: true } : {}),
         ...(acknowledge ? { acknowledge_uncertain: true } : {}),
         ...(continueMessageId ? { continue_message_id: continueMessageId } : { selection }),
       });
@@ -153,11 +159,16 @@ const SessionChat = ({
 
       // A lost-response resend retains the original flags even after a remount.
       const input =
-        [inputFor(false), inputFor(true)].find(
+        [
+          inputFor(false, false),
+          inputFor(true, false),
+          inputFor(false, true),
+          inputFor(true, true),
+        ].find(
           (input) =>
             (!acknowledged || input.acknowledge_uncertain) &&
             JSON.stringify(input) === saved?.signature,
-        ) || inputFor(acknowledged);
+        ) || inputFor(acknowledged, computerSupported && sharedComputer);
 
       const signature = JSON.stringify(input);
       let request = saved;
@@ -168,6 +179,7 @@ const SessionChat = ({
 
       requestId = request.id;
       await rpc("viber.session.send", { ...input, request_id: request.id });
+      setSharedComputer(false);
 
       updateTaskView(id, {
         ...(!continueMessageId && composerContent(getTaskView(id)) === content
@@ -323,6 +335,15 @@ const SessionChat = ({
             busy={!!busy || active || stopping}
             disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
             stop={active ? () => void stop() : undefined}
+            extra={
+              computerSupported && (
+                <ComputerTurnOption
+                  enabled={sharedComputer}
+                  change={setSharedComputer}
+                  disabled={!!busy || active}
+                />
+              )
+            }
             model={
               <ViberModelPicker
                 execution={{ ...profile.execution, ...selection }}

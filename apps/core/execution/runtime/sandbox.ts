@@ -1,3 +1,4 @@
+import { sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
 import { gitChecked } from "../../workspace/git-command";
 import { homedir } from "node:os";
 import { dirname, join, isAbsolute, resolve } from "node:path";
@@ -32,6 +33,7 @@ export const sandboxInvocation = async (
   analysisWorkspace?: string,
   contextPaths: string[] = [],
   viberSessionId?: string,
+  sharedComputer?: { files: string; socket?: string },
 ) => {
   if (process.platform !== "linux") {
     throw new AdeError("sandbox", "The execution core must run inside Linux/WSL.");
@@ -399,6 +401,22 @@ export const sandboxInvocation = async (
     }
 
     args.push("--ro-bind", context, context);
+  }
+
+  if (sharedComputer) {
+    const expected = join(root, "shared-computer", "files");
+    if (
+      !viberSessionId ||
+      sharedComputer.files !== expected ||
+      (await realpath(expected)) !== expected
+    ) {
+      throw new AdeError("isolation", "Shared Computer files are outside their managed directory.");
+    }
+
+    args.push(readOnly ? "--ro-bind" : "--bind", expected, sharedFilesMount);
+    if (!readOnly && sharedComputer.socket) {
+      args.push("--ro-bind", sharedComputer.socket, sharedServicesMount);
+    }
   }
 
   // File overlays follow directory mounts so a source mount cannot expose its project configuration again.

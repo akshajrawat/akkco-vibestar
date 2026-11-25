@@ -1,3 +1,4 @@
+import { sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
 import { z } from "zod";
 import { Usage } from "../output/usage";
 import { discoverCodexModels } from "../providers/codex-models";
@@ -28,6 +29,7 @@ interface AgentRunOptions {
   prompt: string;
   purpose: string;
   workspace?: string;
+  sharedComputer?: { files: string; socket?: string };
   schema?: z.ZodType;
   contextPaths?: string[];
   conversation?: { threadId?: string; instructions?: string; context?: string };
@@ -475,7 +477,16 @@ export class AgentRunner {
           stage: 0,
           access: execution.access,
           config: selectedConfig,
-          prompt: text,
+          prompt: options.sharedComputer
+            ? `${text}
+
+The user enabled Shared Computer for this turn. Its files are at ${sharedFilesMount}.${
+                options.sharedComputer.socket
+                  ? ` For HTTP services running in the computer, use curl --unix-socket ${sharedServicesMount} http://localhost:PORT/PATH.`
+                  : " Shared files are read-only for this turn."
+              }`
+            : text,
+          sharedComputer: Boolean(options.sharedComputer),
           schemaPath,
           schema: outputSchema,
           workspaceType: "utility",
@@ -537,6 +548,7 @@ export class AgentRunner {
           options.workspace,
           contextPaths,
           options.viberSession?.sessionId,
+          options.sharedComputer,
         );
       };
 

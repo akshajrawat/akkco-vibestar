@@ -1,3 +1,13 @@
+export const sharedComputerSchema = `
+CREATE TABLE IF NOT EXISTS shared_computer(
+  singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+  socket TEXT NOT NULL,
+  daemon_id TEXT NOT NULL,
+  workspace_root TEXT NOT NULL,
+  reset_pending INTEGER NOT NULL DEFAULT 0 CHECK(reset_pending IN (0,1))
+);
+`;
+
 export const schemaVersion = 0;
 
 export const baselineSchema = `
@@ -219,4 +229,5 @@ CREATE INDEX viber_memory_share_thread ON viber_memory_shares(session_id,provide
 CREATE TABLE viber_memory_private_runs(
   run_id TEXT PRIMARY KEY REFERENCES utility_runs(id) ON DELETE CASCADE
 );
+${sharedComputerSchema}
 `;

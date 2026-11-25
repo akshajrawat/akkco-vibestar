@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type Ref } from "react";
-import { Minus, Square, Copy, X, PanelLeftOpen, Monitor } from "lucide-react";
+import { Minus, Square, Copy, X, PanelLeftOpen } from "lucide-react";
 
 import type { AgentProfile } from "../../core/vibers/contracts";
 import { ViberFace } from "../features/vibers/ViberFace";
@@ -8,14 +8,10 @@ export const TitleBar = ({
   profile,
   onSidebar,
   toggleRef,
-  onComputer,
-  computerOpen,
 }: {
   profile?: AgentProfile;
   onSidebar?: () => void;
   toggleRef?: Ref<HTMLButtonElement>;
-  onComputer?: () => void;
-  computerOpen?: boolean;
 } = {}) => {
   const [maximized, setMaximized] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -130,18 +126,6 @@ export const TitleBar = ({
         <span role="alert" className="text-[11px] text-accent-red">
           {error}
         </span>
-      )}
-
-      {onComputer && (
-        <button
-          className={`titlebar-action grid place-items-center shrink-0 p-0 [border:0] focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[-2px] ${computerOpen ? "bg-surface-active text-ink" : "text-ink-secondary hover:text-ink hover:bg-surface-hover"}`}
-          aria-label={computerOpen ? "Hide computer" : "Show computer"}
-          aria-pressed={computerOpen}
-          title={computerOpen ? "Hide computer" : "Show computer"}
-          onClick={onComputer}
-        >
-          <Monitor size={17} aria-hidden="true" />
-        </button>
       )}
 
       <div className="window-controls shrink-0 flex ml-auto" aria-label="Window controls">

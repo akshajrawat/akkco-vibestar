@@ -1,354 +1,420 @@
-import { useCallback, useEffect, useState } from "react";
-import { Folder, File, Monitor, X } from "lucide-react";
-
-import type { ComputerStatus, ComputerFiles } from "../../../core/computers/contracts";
-import { computerRpc, subscribe, errorMessage } from "../../lib/api";
+import { useEffect, useRef, useState } from "react";
+import { Check, CircleAlert, Folder, Monitor, RotateCw, TerminalSquare, X } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { WorkspaceOverlay } from "../../components/ui/WorkspaceOverlay";
+import { computerRpc, errorMessage, subscribe } from "../../lib/api";
+import type { ComputerFiles, ComputerRpc, ComputerStatus } from "../../../core/computers/contracts";
+import { ComputerDesktop } from "./ComputerDesktop";
 import { ComputerTerminal } from "./ComputerTerminal";
-import { ComputerBrowser } from "./ComputerBrowser";
 
-type Action = "stop" | "restart" | "reset" | "codex" | "antigravity";
+const labels = { starting: "Starting", ready: "Ready", stopped: "Stopped", error: "Error" };
+
+const tabs = [
+  { id: "desktop", label: "Desktop", Icon: Monitor },
+  { id: "terminal", label: "Terminal", Icon: TerminalSquare },
+  { id: "files", label: "Files", Icon: Folder },
+] as const;
+
+type Tab = (typeof tabs)[number]["id"];
 
 export const ComputerPanel = ({
-  profileId,
-  sessionId,
-  visible,
+  supported,
+  status,
+  refresh,
   hide,
-  refreshProviders,
+  settings,
 }: {
-  profileId: string;
-  sessionId?: string;
-  visible: boolean;
+  supported: boolean;
+  status?: ComputerStatus;
+  refresh: () => void;
   hide: () => void;
-  refreshProviders: () => Promise<void>;
+  settings: () => void;
 }) => {
-  const [status, setStatus] = useState<ComputerStatus>();
-
-  const [tab, setTab] = useState(() => {
-    const saved = localStorage.getItem("vibestar.computerTab");
-    if (saved === "files" || saved === "browser") {
-      return saved;
-    }
-
-    return "terminal";
-  });
-
-  const [files, setFiles] = useState<ComputerFiles>();
-  const [error, setError] = useState("");
+  const [tab, setTab] = useState<Tab>("desktop");
   const [busy, setBusy] = useState(false);
-  const [confirmation, setConfirmation] = useState<Action>();
-  const scope = { profile_id: profileId, ...(sessionId ? { session_id: sessionId } : {}) };
-
-  const refresh = useCallback(async () => {
-    setStatus(await computerRpc("computer.status", { profile_id: profileId }));
-  }, [profileId]);
+  const [reset, setReset] = useState(false);
+  const [error, setError] = useState("");
+  const [shell, setShell] = useState<string>();
+  const [path, setPath] = useState("");
+  const [files, setFiles] = useState<ComputerFiles>();
+  const owned = useRef(true);
+  const ready = status?.status === "ready";
+  const canRead = status?.has_data && (ready || status.status === "stopped");
 
   useEffect(() => {
-    let alive = true;
+    owned.current = true;
+    return () => {
+      owned.current = false;
+    };
+  }, []);
 
-    void computerRpc("computer.status", { profile_id: profileId })
-      .then((value) => {
-        if (alive) {
-          setStatus(value);
+  useEffect(() => {
+    if (!ready || tab !== "terminal") {
+      return;
+    }
+
+    let active = true;
+    let generation = 0;
+
+    const load = async () => {
+      const requested = ++generation;
+      try {
+        const current = await computerRpc("computer.terminal.status", {});
+        if (active && requested === generation) {
+          setShell(current?.id);
         }
-      })
-      .catch((err) => {
-        if (alive) {
-          setError(errorMessage(err));
+      } catch (reason) {
+        if (active && requested === generation) {
+          setShell(undefined);
+          setError(errorMessage(reason));
         }
-      });
+      }
+    };
 
     const subscription = subscribe((event) => {
-      if (
-        event.event === "computer.changed" &&
-        (event.data as ComputerStatus).profile_id === profileId
+      if (!active) {
+        return;
+      }
+
+      if (event.event === "computer.terminal.opened") {
+        generation++;
+        setShell(event.session_id);
+      } else if (event.event === "computer.terminal.closed") {
+        generation++;
+        setShell((current) => (current === event.session_id ? undefined : current));
+      } else if (event.event === "core.closed" || event.event === "core.error") {
+        generation++;
+        setShell(undefined);
+      } else if (
+        event.event === "runtime.status" &&
+        (event.data as { phase?: string })?.phase === "ready"
       ) {
-        setStatus(event.data as ComputerStatus);
+        void load();
+      }
+    });
+
+    void subscription.then(load).catch((reason) => {
+      if (active) {
+        setError(errorMessage(reason));
       }
     });
 
     return () => {
-      alive = false;
-      void subscription.then((unsubscribe) => unsubscribe());
+      active = false;
+      void subscription.then((unsubscribe) => unsubscribe()).catch(() => undefined);
     };
-  }, [profileId]);
+  }, [ready, tab]);
 
-  const run = async (operation: () => Promise<unknown>) => {
-    setBusy(true);
-    setError("");
-    try {
-      await operation();
-      await refresh();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const browse = async (path = "") => {
-    if (!sessionId) {
+  useEffect(() => {
+    if (tab !== "files" || !canRead) {
       return;
     }
 
-    const next = await computerRpc("computer.files", { ...scope, session_id: sessionId, path });
-    setFiles(next);
+    let active = true;
+
+    void computerRpc("computer.files", { path })
+      .then((next) => {
+        if (active) {
+          setFiles(next);
+        }
+      })
+      .catch((reason) => {
+        if (active) {
+          setError(errorMessage(reason));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [tab, path, canRead]);
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+    } catch (reason) {
+      if (owned.current) {
+        setError(errorMessage(reason));
+      }
+    } finally {
+      if (owned.current) {
+        setBusy(false);
+      }
+    }
   };
 
-  useEffect(() => {
-    setFiles(undefined);
-  }, [sessionId]);
+  const control = (input: ComputerRpc["computer.control"]["input"]) =>
+    run(() => computerRpc("computer.control", input));
 
-  const selectTab = (value: string) => {
-    setTab(value);
-    localStorage.setItem("vibestar.computerTab", value);
-  };
-
-  const control = (action: "start" | "stop" | "restart" | "reset") =>
-    computerRpc("computer.control", {
-      ...scope,
-      action,
-      ...(action === "start" ? {} : { confirmed: true as const }),
-    });
-
-  const confirm = async () => {
-    const action = confirmation!;
-    setConfirmation(undefined);
-
-    await run(() =>
-      action === "codex" || action === "antigravity"
-        ? computerRpc("computer.terminal.open", { ...scope, login: action, confirmed: true })
-        : control(action),
-    );
-
-    selectTab("terminal");
-  };
-
-  const state = status?.status || "stopped";
+  const changing = busy || status?.status === "starting";
 
   return (
     <aside
-      className="flex h-full flex-col border-l border-l-border-subtle bg-surface-panel text-[12px] text-ink-secondary"
-      hidden={!visible}
-      aria-label="Viber computer"
+      className="flex h-full min-h-0 flex-col border-l border-border-default bg-background"
+      aria-label="Shared Computer"
     >
-      <header className="flex gap-2 items-center px-2.5 py-2 border-b border-b-border-subtle">
-        <Monitor size={15} />
-        <strong>Computer</strong>
-        <span
-          role="status"
-          data-state={state}
-          className="ml-auto capitalize text-ink-muted data-[state=ready]:text-accent-green data-[state=running]:text-accent-green data-[state=starting]:text-accent-amber data-[state=error]:text-accent-red"
-        >
-          {state}
-        </span>
-        <Button size="icon" variant="ghost" aria-label="Hide computer panel" onClick={hide}>
-          <X size={14} />
+      <header className="flex min-h-[44px] items-center gap-2 border-b border-border-default px-4">
+        <Monitor size={16} aria-hidden="true" />
+        <h2 className="m-0 grow text-sm font-semibold">Shared Computer</h2>
+        {status && (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-hover px-2.5 py-1 text-xs"
+            role="status"
+            aria-label={`Computer: ${labels[status.status]}`}
+          >
+            <span
+              className={`size-1.5 rounded-full ${ready ? "bg-green-500" : "bg-current"}`}
+              aria-hidden="true"
+            />
+            {labels[status.status]}
+          </span>
+        )}
+        <Button size="icon" variant="ghost" onClick={hide} aria-label="Close Computer">
+          <X size={16} />
         </Button>
       </header>
-      <div className="flex flex-wrap gap-[3px] p-[5px]">
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={busy || status?.status === "starting" || status?.status === "running"}
-          onClick={() => void run(() => control("start"))}
-        >
-          Start
-        </Button>
-        {(["stop", "restart", "reset"] as const).map((action) => (
-          <Button
-            key={action}
-            size="sm"
-            variant="ghost"
-            disabled={busy || (action === "stop" && status?.status === "stopped")}
-            onClick={() => {
-              if (action === "stop") {
-                void run(() => control("stop"));
-              } else {
-                setConfirmation(action);
-              }
-            }}
-          >
-            {action[0].toUpperCase() + action.slice(1)}
-          </Button>
-        ))}
-      </div>
-      {(error || status?.error) && (
-        <p role="alert" className="px-2.5 py-1 text-accent-red m-0 text-[11px] leading-tight">
-          {error || status?.error}
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+        <p className="m-0 text-xs leading-relaxed text-ink-muted">
+          Vibers can use the same files when you enable Computer in a chat. Browser sessions are
+          shared across this workspace.
         </p>
-      )}
-      <div className="flex border-b border-b-border-subtle p-1 gap-1" role="tablist">
-        <Button
-          size="sm"
-          variant={tab === "terminal" ? "secondary" : "ghost"}
-          role="tab"
-          aria-selected={tab === "terminal"}
-          className={`flex-1 ${tab === "terminal" ? "text-ink font-semibold" : "text-ink-muted"}`}
-          onClick={() => selectTab("terminal")}
-        >
-          Terminal
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === "browser" ? "secondary" : "ghost"}
-          role="tab"
-          aria-selected={tab === "browser"}
-          className={`flex-1 ${tab === "browser" ? "text-ink font-semibold" : "text-ink-muted"}`}
-          onClick={() => selectTab("browser")}
-        >
-          Browser
-        </Button>
-        <Button
-          size="sm"
-          variant={tab === "files" ? "secondary" : "ghost"}
-          role="tab"
-          aria-selected={tab === "files"}
-          className={`flex-1 ${tab === "files" ? "text-ink font-semibold" : "text-ink-muted"}`}
-          onClick={() => selectTab("files")}
-        >
-          Files
-        </Button>
-      </div>
-      <div
-        className="flex-1 flex flex-col min-h-0"
-        role="tabpanel"
-        aria-label="Terminal"
-        hidden={tab !== "terminal"}
-      >
-        <div className="flex flex-wrap gap-[3px] p-[5px]">
+        <div className="flex flex-wrap items-center gap-2">
+          {ready || (status?.status === "error" && status.has_data && status.docker?.ready) ? (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={changing}
+                onClick={() => void control({ action: "stop" })}
+              >
+                Stop
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={changing}
+                onClick={() => void control({ action: "restart" })}
+              >
+                Restart
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              disabled={changing || !status?.docker?.ready}
+              onClick={() => void control({ action: "start" })}
+            >
+              Start
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
-            disabled={busy}
-            onClick={() => void run(() => computerRpc("computer.terminal.open", scope))}
+            disabled={changing || !status?.has_data || !status.docker?.ready}
+            onClick={() => setReset(true)}
           >
-            Open shell
+            Reset
           </Button>
           <Button
-            size="sm"
+            size="icon"
             variant="ghost"
-            disabled={busy}
-            onClick={() =>
-              void run(() => computerRpc("computer.terminal.close", { profile_id: profileId }))
-            }
+            disabled={changing}
+            onClick={refresh}
+            aria-label="Check prerequisites"
           >
-            Close shell
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => void run(refreshProviders)}
-          >
-            Refresh models
+            <RotateCw size={14} />
           </Button>
         </div>
-        <ComputerTerminal
-          profileId={profileId}
-          sessionId={sessionId}
-          active={visible && tab === "terminal"}
-          report={setError}
-        />
-        <details className="border-t border-t-border-subtle p-2.5 [&>p]:my-2 [&>p]:leading-[1.6]">
-          <summary>Provider setup</summary>
-          <p>
-            Sign into each Viber separately using your subscription. Codex is installed. Install the
-            official Linux Antigravity CLI in ~/.local/bin using the shell. User tools, Python
-            environments and npm installs in your home persist.
-          </p>
-          <div className="flex flex-wrap gap-[3px] p-[5px]">
-            <Button size="sm" disabled={busy} onClick={() => setConfirmation("codex")}>
-              Sign in to Codex
+
+        {(!ready || error) && (
+          <div className="grid gap-2 rounded-xl border border-border-default px-3 py-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span>Linux / WSL helper</span>
+              {supported ? (
+                <Check size={14} aria-label="Ready" />
+              ) : (
+                <Button size="sm" variant="secondary" onClick={settings}>
+                  Execution settings
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span>Docker Engine</span>
+              {status?.docker?.ready ? (
+                <Check size={14} aria-label="Ready" />
+              ) : (
+                <CircleAlert size={14} aria-label="Check the Docker connection" />
+              )}
+            </div>
+            {(error || status?.error) && (
+              <p className="m-0 break-words text-accent-amber" role="alert">
+                {error || status?.error}
+              </p>
+            )}
+            {status?.status === "starting" && (
+              <p className="m-0 text-ink-muted">
+                Preparing Linux and Chromium. First start may take a few minutes.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div
+          className="inline-flex self-start gap-1 rounded-lg bg-surface-hover p-1"
+          role="group"
+          aria-label="Computer views"
+        >
+          {tabs.map(({ id, label, Icon }) => (
+            <Button
+              key={id}
+              size="sm"
+              variant={tab === id ? "secondary" : "ghost"}
+              aria-pressed={tab === id}
+              onClick={() => {
+                setError("");
+                setTab(id);
+              }}
+            >
+              <Icon size={14} />
+              {label}
             </Button>
-            <Button size="sm" disabled={busy} onClick={() => setConfirmation("antigravity")}>
-              Sign in to Antigravity
+          ))}
+        </div>
+
+        {tab === "desktop" &&
+          (ready ? (
+            <ComputerDesktop />
+          ) : (
+            <div className="grid aspect-[25/16] place-content-center justify-items-center gap-2 rounded-xl border border-border-default bg-surface-hover text-ink-muted">
+              <Monitor size={24} /> Start the computer to open its desktop.
+            </div>
+          ))}
+        {tab === "terminal" &&
+          (ready ? (
+            <>
+              <div>
+                {shell ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await computerRpc("computer.terminal.close", { terminal_id: shell });
+                        setShell((current) => (current === shell ? undefined : current));
+                      })
+                    }
+                  >
+                    Close shell
+                  </Button>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () =>
+                        setShell((await computerRpc("computer.terminal.open", {})).id),
+                      )
+                    }
+                  >
+                    Open shell
+                  </Button>
+                )}
+              </div>
+              {shell && <ComputerTerminal report={setError} />}
+            </>
+          ) : (
+            <p className="m-0 text-sm text-ink-muted">Start the computer to open a shell.</p>
+          ))}
+        {tab === "files" &&
+          (canRead ? (
+            <>
+              <div className="flex items-center gap-2 text-xs">
+                {path && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setPath(path.split("/").slice(0, -1).join("/"))}
+                  >
+                    Up
+                  </Button>
+                )}
+                <code className="break-all">/{path}</code>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Refresh files"
+                  onClick={() =>
+                    void run(async () => setFiles(await computerRpc("computer.files", { path })))
+                  }
+                >
+                  <RotateCw size={14} />
+                </Button>
+              </div>
+              {files?.path === path &&
+                (files.text !== null ? (
+                  <pre className="m-0 whitespace-pre-wrap break-words rounded-xl border border-border-default p-3 text-xs">
+                    {files.text}
+                  </pre>
+                ) : files.entries.length ? (
+                  <div className="flex flex-col items-stretch gap-0.5">
+                    {files.entries.map((entry) => (
+                      <Button
+                        key={entry.name}
+                        className="justify-start"
+                        variant="ghost"
+                        onClick={() => {
+                          setError("");
+                          setPath([path, entry.name].filter(Boolean).join("/"));
+                        }}
+                      >
+                        {entry.directory && <Folder size={14} />}
+                        <span className="truncate">{entry.name}</span>
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="m-0 text-sm text-ink-muted">No shared files yet.</p>
+                ))}
+            </>
+          ) : (
+            <p className="m-0 text-sm text-ink-muted">
+              Start the computer to create its shared files folder.
+            </p>
+          ))}
+      </div>
+
+      {reset && (
+        <WorkspaceOverlay
+          label="Reset Shared Computer"
+          onClose={() => setReset(false)}
+          className="max-w-[460px] p-6"
+        >
+          <h2>Reset Shared Computer?</h2>
+          <p>
+            This permanently clears shared files, the Linux home, and Chromium sessions. Viber chats
+            and their own workspaces are preserved.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setReset(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setReset(false);
+                setFiles(undefined);
+                setPath("");
+                void control({ action: "reset", confirmed: true });
+              }}
+            >
+              Reset computer
             </Button>
           </div>
-          <p>
-            Close the login terminal, start the computer, then refresh models. Close any shell
-            before sending a chat message.
-          </p>
-        </details>
-      </div>
-      <div
-        className="flex-1 flex flex-col min-h-0 overflow-hidden"
-        role="tabpanel"
-        aria-label="Browser"
-        hidden={tab !== "browser"}
-      >
-        <ComputerBrowser profileId={profileId} active={visible && tab === "browser"} />
-      </div>
-      <div
-        className="flex-1 flex flex-col min-h-0 overflow-auto computer-files"
-        role="tabpanel"
-        aria-label="Files"
-        hidden={tab !== "files"}
-      >
-        <div className="flex flex-wrap gap-[3px] p-[5px]">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || !sessionId}
-            onClick={() => void run(() => browse())}
-          >
-            Workspace
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || !files?.path}
-            onClick={() => void run(() => browse(files?.path.split("/").slice(0, -1).join("/")))}
-          >
-            Up
-          </Button>
-        </div>
-        {!sessionId && (
-          <p className="px-3 py-2 wrap-anywhere">Start a chat to browse its workspace.</p>
-        )}
-        {sessionId && !files && (
-          <p className="px-3 py-2 wrap-anywhere">Select Workspace to browse accessible files.</p>
-        )}
-        <code className="px-3 py-1.5 text-ink-muted wrap-anywhere">{files?.path || "/"}</code>
-        {files?.entries.map((entry) => (
-          <button
-            className="flex items-center gap-[7px] px-3 py-1.5 text-left wrap-anywhere [&:hover]:bg-surface-hover"
-            key={entry.name}
-            onClick={() =>
-              void run(() => browse([files.path, entry.name].filter(Boolean).join("/")))
-            }
-          >
-            {entry.directory ? <Folder size={14} /> : <File size={14} />}
-            {entry.name}
-          </button>
-        ))}
-        {files?.text !== null && files?.text !== undefined && (
-          <pre className="p-3 overflow-auto text-[12px] whitespace-pre">{files.text}</pre>
-        )}
-      </div>
-      {confirmation && (
-        <WorkspaceOverlay
-          label="Confirm computer action"
-          onClose={() => setConfirmation(undefined)}
-          className="computer-confirmation max-w-[480px] p-6"
-        >
-          <h2>
-            {confirmation === "codex" || confirmation === "antigravity"
-              ? "Connect this Viber's account?"
-              : `${confirmation[0].toUpperCase() + confirmation.slice(1)} computer?`}
-          </h2>
-          <p className="my-4 leading-[1.6]">
-            {confirmation === "reset"
-              ? "This permanently deletes this computer's home, account sessions, user data and installed dependencies. Chat workspace files are preserved. Native AI context will be cleared."
-              : confirmation === "codex" || confirmation === "antigravity"
-                ? "The official CLI will authenticate inside this Viber's private computer. Host credentials are never copied. Credentials saved here belong to this Viber until reset or deletion."
-                : "This closes the computer's shell and stops its processes. Saved home and workspace files remain."}
-          </p>
-          <footer className="flex justify-end gap-2">
-            <Button onClick={() => setConfirmation(undefined)}>Cancel</Button>
-            <Button onClick={() => void confirm()}>Confirm</Button>
-          </footer>
         </WorkspaceOverlay>
       )}
     </aside>

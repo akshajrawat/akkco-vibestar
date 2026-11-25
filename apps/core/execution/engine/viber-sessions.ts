@@ -17,7 +17,7 @@ export class ViberSessions {
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory"
+      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory" | "computers"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -168,14 +168,12 @@ export class ViberSessions {
 
           signal.throwIfAborted();
 
-          const output = await this.runner.runConfigured(
-            { id: input.session_id },
-            signal,
-            snapshot.execution,
-            {
+          const run = (sharedComputer?: { files: string; socket?: string }) =>
+            this.runner.runConfigured({ id: input.session_id }, signal, snapshot.execution, {
               prompt: snapshot.prompt,
               purpose: `${snapshot.profile.name} session`,
               workspace,
+              sharedComputer,
               conversation: snapshot.conversation,
               originalPrompt: snapshot.originalPrompt,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
@@ -191,8 +189,15 @@ export class ViberSessions {
                     }
                   : undefined,
               },
-            },
-          );
+            });
+
+          const output = input.shared_computer
+            ? await this.host.computers.withTurn(
+                snapshot.execution.access === "read-only",
+                signal,
+                run,
+              )
+            : await run();
 
           this.store.finish(input.request_id, "completed", output);
           if (suggestionSignal) {

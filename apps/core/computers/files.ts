@@ -1,32 +1,30 @@
 import { constants } from "node:fs";
-import { open, readdir } from "node:fs/promises";
+import { open, opendir } from "node:fs/promises";
 
 import { AdeError } from "../domain";
 import { redact } from "../execution/runtime/process";
 import type { ComputerFiles } from "./contracts";
 
-/** Walk through pinned directory descriptors. Workspace symlinks never grant host access. */
+const allowed = (path: string) =>
+  path.length <= 2000 &&
+  (!path ||
+    path
+      .split("/")
+      .every(
+        (part) =>
+          Boolean(part) &&
+          ![".", "..", ".git", ".ssh", ".codex"].includes(part) &&
+          !part.includes("\\") &&
+          !part.includes("\0"),
+      ));
+
+/** Walk pinned directory descriptors, skipping symlinks and rejecting multiply linked files. */
 export const computerFiles = async (root: string, path: string): Promise<ComputerFiles> => {
-  const parts = path ? path.split("/") : [];
-  if (
-    parts.some(
-      (part) =>
-        !part ||
-        part === "." ||
-        part === ".." ||
-        part === ".git" ||
-        part === ".ssh" ||
-        part === ".codex" ||
-        part.includes("\\") ||
-        part.includes("\0"),
-    )
-  ) {
-    throw new AdeError(
-      "isolation",
-      "Select a regular file or directory in this session's workspace.",
-    );
+  if (!allowed(path)) {
+    throw new AdeError("isolation", "Select a regular file or directory in Shared Computer files.");
   }
 
+  const parts = path ? path.split("/") : [];
   let handle = await open(root, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY);
   try {
     for (const [index, part] of parts.entries()) {
@@ -44,27 +42,25 @@ export const computerFiles = async (root: string, path: string): Promise<Compute
 
     const metadata = await handle.stat();
     if (metadata.isDirectory()) {
-      const entries = await readdir(`/proc/self/fd/${handle.fd}`, { withFileTypes: true });
-      if (entries.length > 5000) {
-        throw new AdeError("file_limit", "This directory exceeds the 5,000-entry limit.");
+      const entries: ComputerFiles["entries"] = [];
+      const directory = await opendir(`/proc/self/fd/${handle.fd}`);
+      let count = 0;
+      for await (const entry of directory) {
+        if (++count > 5000) {
+          throw new AdeError("file_limit", "This directory exceeds the 5,000-entry limit.");
+        }
+
+        const child = path ? `${path}/${entry.name}` : entry.name;
+        if (allowed(child) && (entry.isFile() || entry.isDirectory())) {
+          entries.push({ name: entry.name, directory: entry.isDirectory() });
+        }
       }
 
-      return {
-        path,
-        text: null,
-        entries: entries
-          .filter(
-            (entry) =>
-              entry.name !== ".git" &&
-              entry.name !== ".ssh" &&
-              entry.name !== ".codex" &&
-              (entry.isFile() || entry.isDirectory()),
-          )
-          .map((entry) => ({ name: entry.name, directory: entry.isDirectory() }))
-          .sort(
-            (a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name),
-          ),
-      };
+      entries.sort(
+        (a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name),
+      );
+
+      return { path, text: null, entries };
     }
 
     if (!metadata.isFile() || metadata.nlink !== 1 || metadata.size > 1048576) {
@@ -76,6 +72,7 @@ export const computerFiles = async (root: string, path: string): Promise<Compute
     const after = await handle.stat();
     if (
       bytesRead !== metadata.size ||
+      after.size !== metadata.size ||
       after.mtimeMs !== metadata.mtimeMs ||
       after.ctimeMs !== metadata.ctimeMs
     ) {

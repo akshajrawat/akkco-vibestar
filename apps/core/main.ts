@@ -83,7 +83,7 @@ const main = async () => {
             protocol: 3,
             viber_conversations: 1,
             viber_sessions: 3,
-            viber_computers: 1,
+            shared_computer: 1,
             manual_user_terminal: 1,
             runtime_restart: 1,
             notification_preferences: 1,

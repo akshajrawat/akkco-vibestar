@@ -16,6 +16,8 @@ import { DataMigration } from "./DataMigration";
 import { notifications as notify } from "../lib/notifications";
 import { GlobalNotifications } from "./GlobalNotifications";
 import { ToolOverlay } from "./ToolOverlay";
+import { ComputerPanel } from "../features/computer/ComputerPanel";
+import { useComputer } from "../features/computer/useComputer";
 
 const minSidebarWidth = 200;
 const maxSidebarWidth = 320;
@@ -47,15 +49,11 @@ export const App = () => {
     () => localStorage.getItem("vibestar.activeViber") || "",
   );
 
-  const [computerOpen, setComputerOpen] = useState(
-    () => localStorage.getItem("vibestar.computerOpen") !== "false",
-  );
-
-  const toggleComputer = () =>
-    setComputerOpen((open) => {
-      localStorage.setItem("vibestar.computerOpen", String(!open));
-      return !open;
-    });
+  const [computerOpen, setComputerOpen] = useState(false);
+  const computerSupported = snapshot?.capabilities?.shared_computer === 1;
+  const computer = useComputer(computerSupported, computerOpen);
+  const [computerWidth, setComputerWidth] = usePaneSize("sharedComputerWidth", () => 480, 340, 680);
+  const [executionSettings, setExecutionSettings] = useState(false);
 
   const [newProfile, setNewProfile] = useState<AgentProfile>();
 
@@ -130,24 +128,31 @@ export const App = () => {
     return () => window.removeEventListener("keydown", key);
   }, [toggleSidebar]);
 
+  const openExecutionSettings = () => {
+    setExecutionSettings(true);
+    openTool("Settings");
+  };
+
   const openViber = useCallback((profile: AgentProfile) => {
     setSelectedViber(profile.id);
     localStorage.setItem("vibestar.activeViber", profile.id);
   }, []);
 
   const chatProfile = profiles.find((p) => p.id === selectedViber) || profiles[0];
-  const showingComputer = !!chatProfile && computerOpen;
 
   const availableSidebarWidth = Math.max(
     minSidebarWidth,
-    Math.min(
-      maxSidebarWidth,
-      Math.floor(windowWidth / 2),
-      windowWidth - (showingComputer ? 543 : 260),
-    ),
+    Math.min(maxSidebarWidth, Math.floor(windowWidth / 2), windowWidth - 260),
   );
 
   const visibleSidebarWidth = Math.min(sidebarWidth, availableSidebarWidth);
+
+  const maxComputerWidth = Math.max(
+    340,
+    Math.min(680, windowWidth - (sidebar ? visibleSidebarWidth : 0) - 320),
+  );
+
+  const visibleComputerWidth = Math.min(computerWidth, maxComputerWidth);
 
   return (
     <div className="desktop-shell flex flex-col">
@@ -165,7 +170,12 @@ export const App = () => {
             createViber={createViber}
             selectViber={openViber}
             selectedViber={chatProfile?.id}
-            openTool={openTool}
+            openTool={(value) => {
+              setExecutionSettings(false);
+              openTool(value);
+            }}
+            computerOpen={computerOpen}
+            toggleComputer={() => setComputerOpen((open) => !open)}
           />
         )}
 
@@ -186,8 +196,6 @@ export const App = () => {
             onRuntimeStatus={setRuntimePhase}
           />
           <TitleBar
-            onComputer={chatProfile ? toggleComputer : undefined}
-            computerOpen={computerOpen}
             profile={chatProfile}
             onSidebar={sidebar ? undefined : toggleSidebar}
             toggleRef={sidebarToggle}
@@ -205,9 +213,8 @@ export const App = () => {
             <ViberChat
               key={chatProfile.id}
               profile={chatProfile}
-              computerOpen={computerOpen}
-              hideComputer={toggleComputer}
               revision={revision}
+              computerSupported={computerSupported}
             />
           ) : (
             <ViberWelcome
@@ -218,11 +225,34 @@ export const App = () => {
           )}
         </main>
 
+        {computerOpen && (
+          <>
+            <ResizeHandle
+              label="Resize computer panel"
+              value={visibleComputerWidth}
+              onChange={setComputerWidth}
+              min={340}
+              max={maxComputerWidth}
+              reverse
+            />
+            <div className="min-h-0 shrink-0 max-w-[80vw]" style={{ width: visibleComputerWidth }}>
+              <ComputerPanel
+                supported={computerSupported}
+                status={computer.status}
+                refresh={computer.refresh}
+                hide={() => setComputerOpen(false)}
+                settings={openExecutionSettings}
+              />
+            </div>
+          </>
+        )}
+
         {tool && (
           <ToolOverlay
             key={tool}
             tool={tool}
             snapshot={snapshot}
+            executionSettings={executionSettings}
             refresh={refresh}
             error={error}
             close={() => openTool(undefined)}
@@ -260,6 +290,12 @@ export const App = () => {
                 run: () => openViber(p),
               })),
               {
+                id: "computer",
+                label: "Computer",
+                detail: "Shared workspace desktop",
+                run: () => setComputerOpen(true),
+              },
+              {
                 id: "repositories",
                 label: "Repositories",
                 detail: "Workspace checkouts",
@@ -281,7 +317,10 @@ export const App = () => {
                 id: "settings",
                 label: "Settings",
                 detail: "System configuration",
-                run: () => openTool("Settings"),
+                run: () => {
+                  setExecutionSettings(false);
+                  openTool("Settings");
+                },
               },
             ]}
           />

@@ -94,3 +94,19 @@ flowchart TD
     OpenActiveDB -- "Incompatible schema" --> Stop["Report database path, migration records and SQLite user_version"]
     SchemaZero --> CoreReady
 ```
+
+```mermaid
+flowchart LR
+    Computer["Workspace → Computer"] --> Check["Linux / WSL helper · Docker Engine"]
+    Check --> Start["Stopped → Start → Starting → Ready"]
+    Start --> Desktop["Desktop · one human controller"]
+    Start --> Terminal["Terminal · shared Linux shell"]
+    Start --> Files["Files · shared workspace folder"]
+    Desktop --> Chromium["Chromium · shared browser sessions"]
+    ChatA["Viber A chat · per-turn opt-in"] --> Files
+    ChatB["Viber B chat · per-turn opt-in"] --> Files
+    ChatA --> Services["Private HTTP access to container services"]
+    ChatB --> Services
+    Start --> Stop["Stop · preserve files and Chromium sessions"]
+    Start --> Reset["Confirmed Reset · clear shared computer state"]
+```

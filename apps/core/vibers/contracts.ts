@@ -112,6 +112,7 @@ export const ViberSessionSendSchema = ViberSessionScopeSchema.extend({
   new_thread: z.literal(true).optional(),
   acknowledge_uncertain: z.literal(true).optional(),
   continue_message_id: identity.optional(),
+  shared_computer: z.literal(true).optional(),
 }).strict();
 
 export const continueLabel = "Continue where you left off.";

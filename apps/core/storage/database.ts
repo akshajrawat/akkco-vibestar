@@ -1,4 +1,4 @@
-import { baselineSchema, schemaVersion } from "./schema";
+import { baselineSchema, schemaVersion, sharedComputerSchema } from "./schema";
 import BetterSqlite3 from "better-sqlite3";
 import { randomBytes } from "node:crypto";
 import { lstat } from "node:fs/promises";
@@ -108,6 +108,9 @@ export class Database {
           this.connection.exec(baselineSchema);
           this.run("INSERT INTO schema_migrations VALUES(?,?)", schemaVersion, now());
         });
+      } else {
+        // Early schema-0 data roots predate the optional shared computer.
+        this.connection.exec(sharedComputerSchema);
       }
 
       this.records.initialize();

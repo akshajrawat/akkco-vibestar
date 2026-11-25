@@ -63,6 +63,7 @@ export const configurationError = (d: ProviderDetection, config: StageConfig) =>
 };
 
 export interface AgentRunRequest {
+  sharedComputer?: boolean;
   runId: string;
   cwd: string;
   stage: number;

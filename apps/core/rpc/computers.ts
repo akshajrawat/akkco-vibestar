@@ -1,26 +1,26 @@
 import { z } from "zod";
-
 import { AdeError } from "../domain";
-import {
-  ComputerActionSchema,
-  ComputerScopeSchema,
-  ComputerTerminalSchema,
-  ComputerFileSchema,
-} from "../computers/contracts";
-import { computerFiles } from "../computers/files";
+import { ComputerActionSchema, DesktopInputSchema } from "../computers/contracts";
 import type { RpcServices } from "./services";
 
 export const computerMethods = [
   "computer.status",
   "computer.control",
-  "computer.providers",
   "computer.terminal.open",
   "computer.terminal.status",
   "computer.terminal.input",
   "computer.terminal.resize",
   "computer.terminal.close",
   "computer.files",
+  "computer.desktop.acquire",
+  "computer.desktop.frame",
+  "computer.desktop.input",
+  "computer.desktop.release",
 ] as const;
+
+const terminal = z.object({ terminal_id: z.string().uuid() }).strict();
+const controller = z.object({ controller_id: z.string().uuid() }).strict();
+const empty = z.object({}).strict();
 
 export const callComputers = async (
   { engine }: Pick<RpcServices, "engine">,
@@ -28,75 +28,62 @@ export const callComputers = async (
   raw: unknown,
 ) => {
   const computers = engine.computers;
-
-  const prepare = (input: { session_id?: string; profile_id: string }) =>
-    input.session_id
-      ? () => engine.viberSessions.prepareWorkspace(input.session_id!, input.profile_id)
-      : undefined;
-
   switch (method) {
     case "computer.status":
-      return computers.status(ComputerScopeSchema.parse(raw));
-
-    case "computer.control": {
+      empty.parse(raw);
+      return computers.status();
+    case "computer.control":
+      return computers.control(ComputerActionSchema.parse(raw).action);
+    case "computer.terminal.open":
+      empty.parse(raw);
       engine.assertAvailable();
-      const input = ComputerActionSchema.parse(raw);
-      return computers.control(input, input.action, input.confirmed, prepare(input));
-    }
-
-    case "computer.providers":
-      return computers.providers(ComputerScopeSchema.parse(raw));
-
-    case "computer.terminal.open": {
-      engine.assertAvailable();
-      const input = ComputerTerminalSchema.parse(raw);
-      return computers.openTerminal(input, prepare(input), input.login, input.confirmed);
-    }
-
+      return computers.openTerminal();
     case "computer.terminal.status":
-      return computers.terminalStatus(ComputerScopeSchema.parse(raw));
-
+      empty.parse(raw);
+      return computers.terminalStatus();
     case "computer.terminal.input": {
-      engine.assertAvailable();
-
-      const input = ComputerScopeSchema.extend({
-        terminal_id: z.string().uuid(),
-        text: z.string().max(8192),
-      })
-        .strict()
-        .parse(raw);
-
-      computers.terminalInput(input, input.terminal_id, input.text);
+      const { terminal_id, text } = terminal.extend({ text: z.string().max(8192) }).parse(raw);
+      computers.terminalInput(terminal_id, text);
       return null;
     }
 
     case "computer.terminal.resize": {
-      engine.assertAvailable();
-
-      const input = ComputerScopeSchema.extend({
-        terminal_id: z.string().uuid(),
-        cols: z.number().int().min(10).max(500),
-        rows: z.number().int().min(4).max(200),
-      })
-        .strict()
+      const { terminal_id, cols, rows } = terminal
+        .extend({
+          cols: z.number().int().min(10).max(500),
+          rows: z.number().int().min(4).max(200),
+        })
         .parse(raw);
 
-      computers.terminalResize(input, input.terminal_id, input.cols, input.rows);
+      computers.terminalResize(terminal_id, cols, rows);
       return null;
     }
 
     case "computer.terminal.close":
-      await computers.closeTerminal(ComputerScopeSchema.parse(raw));
+      await computers.closeTerminal(terminal.parse(raw).terminal_id);
       return null;
-
-    case "computer.files": {
-      const input = ComputerFileSchema.parse(raw);
-      computers.authorize(input);
-      const workspace = engine.viberSessions.store.workspace(input.session_id);
-      const cwd = await engine.git.assertOwnedTask(workspace);
-      return computerFiles(cwd, input.path);
+    case "computer.files":
+      return computers.files(
+        z
+          .object({ path: z.string().max(2000) })
+          .strict()
+          .parse(raw).path,
+      );
+    case "computer.desktop.acquire":
+      engine.assertAvailable();
+      await computers.desktop.acquire(controller.parse(raw).controller_id);
+      return null;
+    case "computer.desktop.frame":
+      return computers.desktop.frame(controller.parse(raw).controller_id);
+    case "computer.desktop.input": {
+      const { controller_id, input } = controller.extend({ input: DesktopInputSchema }).parse(raw);
+      await computers.desktop.input(controller_id, input);
+      return null;
     }
 
+    case "computer.desktop.release":
+      await computers.desktop.close(controller.parse(raw).controller_id);
+      return null;
     default:
       throw new AdeError("invalid_method", `Unknown method: ${method}`);
   }

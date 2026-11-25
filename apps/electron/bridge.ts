@@ -102,6 +102,7 @@ export class CoreBridge extends EventEmitter {
     this.viberConversationsAvailable = false;
     this.viberSessionsAvailable = false;
     this.manualTerminalAvailable = false;
+    this.computersAvailable = false;
 
     this.checking = this.launch()
       .catch((error) => {
@@ -303,7 +304,7 @@ export class CoreBridge extends EventEmitter {
         build: string;
         viber_conversations?: number;
         viber_sessions?: number;
-        viber_computers?: number;
+        shared_computer?: number;
         manual_user_terminal?: number;
         runtime_restart?: number;
         notification_preferences?: number;
@@ -314,7 +315,7 @@ export class CoreBridge extends EventEmitter {
         this.notificationPreferencesAvailable = info.notification_preferences === 1;
         this.viberConversationsAvailable = info.viber_conversations === 1;
         this.viberSessionsAvailable = info.viber_sessions === 3;
-        this.computersAvailable = info.viber_computers === 1;
+        this.computersAvailable = info.shared_computer === 1;
         this.manualTerminalAvailable = info.manual_user_terminal === 1;
 
         this.warning = !this.viberSessionsAvailable
@@ -385,7 +386,7 @@ export class CoreBridge extends EventEmitter {
     }
 
     if (!this.computersAvailable && method.startsWith("computer.")) {
-      throw new Error("Update the execution helper before using Viber computers.");
+      throw new Error("Update the execution helper before using Shared Computer.");
     }
 
     const settings =
@@ -413,7 +414,7 @@ export class CoreBridge extends EventEmitter {
           capabilities: {
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
             ...(this.viberSessionsAvailable ? { viber_sessions: 3 } : {}),
-            ...(this.computersAvailable ? { viber_computers: 1 } : {}),
+            ...(this.computersAvailable ? { shared_computer: 1 } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };

@@ -32,6 +32,7 @@ export const Composer = ({
   stop,
   save,
   model,
+  extra,
   context,
   busy,
   disabled,
@@ -49,6 +50,7 @@ export const Composer = ({
   stop?: () => void;
   save?: { label: string; run: () => void; disabled?: boolean };
   model: ReactNode;
+  extra?: ReactNode;
   context: ContextOption[];
   busy: boolean;
   disabled?: boolean;
@@ -312,6 +314,7 @@ export const Composer = ({
             {save.label}
           </Button>
         )}
+        {extra}
         <span className="flex-1 min-w-0" />
         {compact ? <div className="composer-model">{model}</div> : model}
         {stop ? (
