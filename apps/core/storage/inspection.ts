@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { now } from "../domain";
 import type { Engine } from "../execution/engine";
+import { VIBESTAR_DB_NAME } from "./contracts";
 
 const directorySize = async (path: string): Promise<number> => {
   try {
@@ -54,9 +55,9 @@ export const inspectStorage = async (engine: Engine) => {
     root: engine.root,
     sizes,
     database:
-      (await directorySize(join(engine.root, "state", "vibestar.sqlite"))) +
-      (await directorySize(join(engine.root, "state", "vibestar.sqlite-wal"))) +
-      (await directorySize(join(engine.root, "state", "vibestar.sqlite-shm"))),
+      (await directorySize(join(engine.root, "state", VIBESTAR_DB_NAME))) +
+      (await directorySize(join(engine.root, "state", `${VIBESTAR_DB_NAME}-wal`))) +
+      (await directorySize(join(engine.root, "state", `${VIBESTAR_DB_NAME}-shm`))),
     total: Object.values(sizes).reduce((n, value) => n + value, 0),
     measured_at: now(),
     external_repositories: engine.db

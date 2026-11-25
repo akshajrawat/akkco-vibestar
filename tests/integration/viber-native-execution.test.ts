@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 
@@ -11,24 +11,20 @@ import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import type { ViberSession } from "../../apps/core/vibers/contracts";
+import { VIBESTAR_DB_NAME } from "../../apps/core/storage/contracts";
 import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { viberSnapshotKeyPath } from "../../apps/core/storage/viber-snapshots";
+import { exists } from "../../apps/core/workspace/paths";
 import { createFixtureEngine, fixtureRepository, detectFixtureProvider } from "../helpers/fixtures";
-
-const fixture = vi.hoisted(() => ({ home: "" }));
-
-vi.mock("node:os", async (original) => {
-  const module = await original<typeof import("node:os")>();
-  return { ...module, homedir: () => fixture.home || module.homedir() };
-});
 
 it.each(["codex", "antigravity"] as const)(
   "%s runs its native tool loop, recovers explicitly, and hands off across a restart",
   async (providerName) => {
     const directory = await mkdtemp(join(tmpdir(), "vibestar-native-session-"));
-    fixture.home = join(directory, "home");
-    const codexState = join(fixture.home, ".codex");
-    const geminiState = join(fixture.home, ".gemini");
-    const antigravityState = join(fixture.home, ".config", "antigravity");
+    const snapshotKey = viberSnapshotKeyPath(join(directory, "data", "state", VIBESTAR_DB_NAME));
+    const codexState = join(homedir(), ".codex");
+    const geminiState = join(homedir(), ".gemini");
+    const antigravityState = join(homedir(), ".config", "antigravity");
     const requests: AgentRunRequest[] = [];
     const adapters = { codex: new CodexProvider(), antigravity: new AntigravityProvider() };
     let mode:
@@ -82,7 +78,11 @@ it.each(["codex", "antigravity"] as const)(
             const toolLoop = prompt => {
               if (prompt !== ${JSON.stringify(request.prompt)}) throw Error('Wrong native prompt');
               if (mode === 'wait') { setInterval(() => {}, 1000); return; }
-              for (const path of ${JSON.stringify([join(directory, "private.txt"), join(directory, "data", "state", "vibestar.sqlite.viber-key"), sourcePath, otherWorkspace].filter(Boolean))}) {
+              for (const path of ${JSON.stringify(
+                [join(directory, "private.txt"), snapshotKey, sourcePath, otherWorkspace].filter(
+                  Boolean,
+                ),
+              )}) {
                 try { fs.readFileSync(path); throw Error('Host or sibling files were exposed: ' + path); }
                 catch (error) { if (!['ENOENT', 'EACCES'].includes(error.code)) throw error; }
               }
@@ -199,8 +199,11 @@ it.each(["codex", "antigravity"] as const)(
 
     let engine = await createFixtureEngine(join(directory, "data"), providers);
     let rpc = new Rpc(engine);
+
+    expect(await exists(snapshotKey)).toBe(true);
+
     try {
-      const bin = join(fixture.home, ".local", "bin");
+      const bin = join(homedir(), ".local", "bin");
       await mkdir(bin, { recursive: true });
       for (const executable of ["codex", "agy"]) {
         await writeFile(join(bin, executable), '#!/bin/sh\nexec node "$@"\n', { mode: 0o700 });
@@ -1086,7 +1089,6 @@ it.each(["codex", "antigravity"] as const)(
     } finally {
       await rpc.close();
       await engine.close();
-      fixture.home = "";
       await rm(directory, { recursive: true, force: true });
     }
   },

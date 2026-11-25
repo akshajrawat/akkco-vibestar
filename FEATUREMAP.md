@@ -89,3 +89,14 @@ flowchart LR
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
     Share --> Confirm["Confirm saved native thread identity"] --> Accept["Provider accepts turn input exactly once"] --> Record["Record facts in thread context"]
 ```
+
+```mermaid
+flowchart TD
+    Start["Vibestar Startup"] --> InspectActive["Inspect Active SQLite Paths\n(state/vibestar-v1.sqlite, wal, shm, journal)"]
+    InspectActive --> VerifyActive["Verify regular files, no symlinks or hard links"]
+    VerifyActive --> OpenActiveDB{"Inspect Active SQLite\n(state/vibestar-v1.sqlite)"}
+    OpenActiveDB -- "Fresh database" --> SchemaZero["Create schema 0 in one transaction"]
+    OpenActiveDB -- "Schema 0" --> CoreReady["Core Engine Ready"]
+    OpenActiveDB -- "Incompatible schema" --> Stop["Report database path, migration records and SQLite user_version"]
+    SchemaZero --> CoreReady
+```
