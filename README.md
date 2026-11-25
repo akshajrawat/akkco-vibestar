@@ -1,26 +1,18 @@
 # Akkco Vibestar
 
-Vibestar is a platform for persistent AI employees called **Vibers**.
+Vibestar is a desktop app for building a team of AI assistants you can return to. Each assistant, called a **Viber**, has its own workspace and an ongoing conversation. Give it a job, come back with a follow-up, or switch AI providers without starting the conversation over.
 
-Each Viber is an autonomous agent with a name, custom appearance, dedicated workspace, and a single continuous conversation.
+The goal is to make everyday work easier to delegate, from one-off tasks to recurring work.
 
-## Architecture & Concepts
+## What you can do today
 
-- **Viber**: Persistent AI employee defined by name and avatar appearance. Creation requires no complex prompt or model setup.
-- **Continuous Conversation**: Each Viber owns exactly one continuous conversation thread and workspace. No session switching or multiple chats per Viber.
-- **Native Provider Session Management**: Maintains separate native conversation IDs for Codex and Antigravity, resumed across turns and restarts. A provider receives saved chat context on the first switch and the messages since its last turn when resumed.
-- **BYOS (Bring Your Own Subscription)**: Official Codex and Antigravity integration with per-turn dynamic model and reasoning effort selection in the composer.
+- **Create Vibers for different jobs.** Give each one a name and a workspace. Connect a repository when the job needs one.
+- **Use your existing AI subscriptions.** Connect Codex or Google Antigravity, choose a model in chat, and carry conversation context over when you switch providers.
+- **Let a Viber remember useful details.** Memory is optional and stored locally. You decide which providers can receive recalled details.
 
-There are no Task or Workflow entities in Vibestar. Vibers are the primary operational and navigation entities.
+## Run locally
 
-## Supported platforms and requirements
-
-Vibestar runs on Linux desktop or on Windows with WSL2.
-The desktop interface and the execution core require Node.js 22.12 or newer and npm 10 or newer.
-
-Official provider CLIs (`codex` or `agy`) can be used directly with your existing subscriptions and auth credentials.
-
-## Install and run
+Vibestar runs on Linux or Windows with WSL2. You’ll need Node.js 22.12 or later, npm 10 or later, and a signed-in Codex or Antigravity CLI to chat. See the [local setup guide](docs/development.md) for system dependencies and Windows setup.
 
 ```bash
 git clone https://github.com/akshajrawat/akkco-vibestar.git
@@ -29,26 +21,8 @@ npm ci
 npm run dev
 ```
 
-To build for production:
+Once the app opens, create a Viber with **+**, choose a provider and model in chat, and give it a job.
 
-```bash
-npm run build
-npm start
-```
+[Architecture](ARCHITECTURE.md) · [Memory setup](docs/viber-memory.md) · [Security](docs/security.md) · [Testing](docs/testing.md)
 
-## Basic use
-
-- **Sidebar Navigation**: The sidebar lists your Vibers. Search Vibers by name in the sidebar and create one with the **+** button. The dock opens Repositories, Providers, Usage, and Settings in overlays above the current chat.
-- **Conversations & Workspaces**: Selecting a Viber opens directly into its continuous conversation interface with dedicated workspace files or connected repositories.
-- **Model Selection & Composer**: Switch providers (Codex / Antigravity), models, and reasoning effort dynamically in the composer. Use `/clear` to reset provider context when the Viber has no active turn.
-- **Viber Memory**: Enable Memory in General Settings to learn from chats and recall local facts. Manage sharing in Provider settings. See the [Viber Memory setup guide](docs/viber-memory.md).
-- **Planning**: Use the official provider CLI's plan mode when you need a planning-only session. In interactive Codex, use `/plan`. In Antigravity, use `agy --mode plan`.
-
-## Project status and documentation
-
-- [Architecture Guide](ARCHITECTURE.md)
-- [Security Boundaries](docs/security.md)
-- [Development Setup](docs/development.md)
-- [Testing Guide](docs/testing.md)
-
-Project code is licensed under [MIT](LICENSE). Bundled fonts and third-party material retain their own terms; see [third-party notices](docs/third-party-notices.md).
+[MIT License](LICENSE) · [Third-party notices](docs/third-party-notices.md)
