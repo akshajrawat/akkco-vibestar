@@ -10,7 +10,6 @@ import {
 } from "../../apps/core/domain";
 import { safeFile, worktreePath } from "../../apps/core/workspace/paths";
 import { Database } from "../../apps/core/storage/database";
-import { migrations } from "../../apps/core/storage/migrations";
 
 describe("domain and persistence", () => {
   it("generates valid branches and deterministic collisions", () => {
@@ -66,16 +65,14 @@ describe("domain and persistence", () => {
     }
   });
 
-  it("migrates and persists SQLite settings across reopen", async () => {
+  it("initializes and persists SQLite settings across reopen", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-db-"));
     try {
       const path = join(dir, "test.sqlite");
       const db = await Database.open(path);
       db.saveSettings({ ...defaultSettings, concurrency: 3 });
 
-      expect(db.all("SELECT MAX(version) AS version FROM schema_migrations")).toEqual([
-        { version: migrations.at(-1)!.version },
-      ]);
+      expect(db.all("SELECT version FROM schema_migrations")).toEqual([{ version: 0 }]);
 
       expect(db.all("PRAGMA foreign_key_check")).toEqual([]);
 

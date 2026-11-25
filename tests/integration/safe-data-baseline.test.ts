@@ -2,19 +2,20 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, link, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { Engine } from "../../apps/core/execution/engine";
 import { Rpc } from "../../apps/core/rpc";
 import { dataRootChoice } from "../../apps/core/storage/bootstrap";
 import { LEGACY_VIBESTAR_DB_NAME, VIBESTAR_DB_NAME } from "../../apps/core/storage/contracts";
+import { viberSnapshotKeyPath } from "../../apps/core/storage/viber-snapshots";
 import { exists } from "../../apps/core/workspace/paths";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
 
 vi.mock("node:os", async (original) => {
   const module = await original<typeof import("node:os")>();
-  return { ...module, homedir: () => fixture.home || module.homedir() };
+  return { ...module, homedir: () => fixture.home };
 });
 
 let testDirs: string[] = [];
@@ -26,7 +27,12 @@ const createTempDir = async () => {
   return dir;
 };
 
+beforeEach(async () => {
+  fixture.home = await createTempDir();
+});
+
 afterEach(async () => {
+  fixture.home = "";
   for (const dir of testDirs) {
     await rm(dir, { recursive: true, force: true });
   }
@@ -34,7 +40,7 @@ afterEach(async () => {
   testDirs = [];
 });
 
-it("fresh startup initializes only versioned database without creating legacy file", async () => {
+it("fresh startup initializes schema 0 in the versioned database", async () => {
   const root = await createTempDir();
   const engine = await Engine.create(root);
   const rpc = new Rpc(engine);
@@ -45,6 +51,8 @@ it("fresh startup initializes only versioned database without creating legacy fi
 
     expect(await exists(v1Path)).toBe(true);
     expect(await exists(legacyPath)).toBe(false);
+    expect(engine.db.all("SELECT version FROM schema_migrations")).toEqual([{ version: 0 }]);
+    expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
 
     const snapshot = (await rpc.call("snapshot", {})) as {
       root: string;
@@ -59,12 +67,15 @@ it("fresh startup initializes only versioned database without creating legacy fi
   }
 });
 
-it("restart preserves data in versioned database across reopens", async () => {
+it("restart preserves data and the original schema 0 record", async () => {
   const root = await createTempDir();
   let engine = await Engine.create(root);
   let rpc = new Rpc(engine);
+  let baseline: { version: number; applied_at: string }[];
 
   try {
+    baseline = engine.db.all("SELECT version, applied_at FROM schema_migrations");
+
     engine.db.saveSettings({
       ...engine.db.displaySettings(),
       default_editor: "code",
@@ -81,6 +92,7 @@ it("restart preserves data in versioned database across reopens", async () => {
   try {
     const settings = engine.db.displaySettings();
     expect(settings.default_editor).toBe("code");
+    expect(engine.db.all("SELECT version, applied_at FROM schema_migrations")).toEqual(baseline);
 
     const v1Path = join(root, "state", VIBESTAR_DB_NAME);
     const legacyPath = join(root, "state", LEGACY_VIBESTAR_DB_NAME);
@@ -90,6 +102,41 @@ it("restart preserves data in versioned database across reopens", async () => {
     await rpc.close();
     await engine.close();
   }
+});
+
+it.each([
+  { versions: [0], label: "an older schema 0" },
+  { versions: [0, 45, 46, 47, 48], label: "the previous versioned schema" },
+])("rejects $label without modifying the database", async ({ versions }) => {
+  const root = await createTempDir();
+  const stateDir = join(root, "state");
+  await mkdir(stateDir);
+  const path = join(stateDir, VIBESTAR_DB_NAME);
+  const sqlite = new BetterSqlite3(path);
+
+  try {
+    sqlite.exec(`
+      CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+      CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO settings VALUES('example', 'keep this data');
+    `);
+
+    for (const version of versions) {
+      sqlite.prepare("INSERT INTO schema_migrations VALUES(?, CURRENT_TIMESTAMP)").run(version);
+    }
+  } finally {
+    sqlite.close();
+  }
+
+  const original = await readFile(path);
+
+  await expect(Engine.create(root)).rejects.toMatchObject({
+    kind: "migration",
+    message: expect.stringContaining(`recorded versions: ${versions.join(", ")}`),
+  });
+
+  expect(await readFile(path)).toEqual(original);
+  expect(await exists(viberSnapshotKeyPath(path))).toBe(false);
 });
 
 it("preserves legacy database and repository files byte-for-byte untouched and shows clear notice", async () => {
@@ -262,6 +309,44 @@ it("rejects alias and symlinks from legacy database pointing to active database"
   );
 });
 
+it.each(["", "-wal", "-shm", "-journal"])(
+  "rejects an indirect legacy symlink to a missing active database path with suffix %j",
+  async (suffix) => {
+    const root = await createTempDir();
+    const stateDir = join(root, "state");
+    const legacyDir = join(fixture.home, ".akkco-ade", "state");
+    await mkdir(stateDir);
+    await mkdir(legacyDir, { recursive: true });
+
+    const activeDb = join(stateDir, VIBESTAR_DB_NAME);
+    await symlink(stateDir, join(legacyDir, "active-state"));
+    await symlink(`active-state/${VIBESTAR_DB_NAME}${suffix}`, join(legacyDir, "bridge.sqlite"));
+    await symlink("bridge.sqlite", join(legacyDir, LEGACY_VIBESTAR_DB_NAME));
+
+    await expect(Engine.create(root)).rejects.toThrow(
+      /Legacy database file .* must not be a symlink to the active database/,
+    );
+
+    expect(await exists(activeDb)).toBe(false);
+  },
+);
+
+it("allows an indirect dangling link unrelated to the active database", async () => {
+  const root = await createTempDir();
+  const stateDir = join(root, "state");
+  await mkdir(stateDir);
+  await symlink("unrelated.sqlite", join(stateDir, "bridge.sqlite"));
+  await symlink("bridge.sqlite", join(stateDir, LEGACY_VIBESTAR_DB_NAME));
+
+  const engine = await Engine.create(root);
+  try {
+    expect(await exists(join(stateDir, VIBESTAR_DB_NAME))).toBe(true);
+    expect(await exists(join(stateDir, "unrelated.sqlite"))).toBe(false);
+  } finally {
+    await engine.close();
+  }
+});
+
 it("rejects reverse symlink from active database pointing to legacy database", async () => {
   const root = await createTempDir();
   const stateDir = join(root, "state");
@@ -280,30 +365,35 @@ it("rejects reverse symlink from active database pointing to legacy database", a
   );
 });
 
+it("uses the test home when checking for a legacy database outside the active root", async () => {
+  const root = await createTempDir();
+  const legacyDir = join(fixture.home, ".akkco-ade", "state");
+  const legacyPath = join(legacyDir, LEGACY_VIBESTAR_DB_NAME);
+  await mkdir(legacyDir, { recursive: true });
+  await writeFile(legacyPath, "legacy marker");
+
+  const engine = await Engine.create(root);
+  try {
+    expect(await engine.freshStartInfo()).toMatchObject({ legacy_paths: [legacyPath] });
+  } finally {
+    await engine.close();
+  }
+});
+
 it("handles malformed legacy location ~/.akkco-ade as regular file without breaking snapshot", async () => {
   const root = await createTempDir();
-  const fakeHome = await createTempDir();
-  await writeFile(join(fakeHome, ".akkco-ade"), "synthetic regular file instead of dir");
-  fixture.home = fakeHome;
+  await writeFile(join(fixture.home, ".akkco-ade"), "synthetic regular file instead of dir");
 
+  const engine = await Engine.create(root);
+  const rpc = new Rpc(engine);
   try {
-    const engine = await Engine.create(root);
-    const rpc = new Rpc(engine);
+    const snapshot = (await rpc.call("snapshot", {})) as { root: string; fresh_start?: unknown };
 
-    try {
-      const snapshot = (await rpc.call("snapshot", {})) as {
-        root: string;
-        fresh_start?: { detected: boolean; legacy_paths: string[]; message: string };
-      };
-
-      expect(snapshot.root).toBe(root);
-      expect(snapshot.fresh_start).toBeUndefined();
-    } finally {
-      await rpc.close();
-      await engine.close();
-    }
+    expect(snapshot.root).toBe(root);
+    expect(snapshot.fresh_start).toBeUndefined();
   } finally {
-    fixture.home = "";
+    await rpc.close();
+    await engine.close();
   }
 });
 

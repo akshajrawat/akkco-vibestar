@@ -8,7 +8,6 @@ import type { z } from "zod";
 
 type Snapshot = z.infer<typeof ViberMessageSnapshotSchema>;
 
-export const viberSnapshotVersion = 46;
 export const viberSnapshotKeyPath = (databasePath: string) => `${databasePath}.viber-key`;
 
 const unavailable = () =>
