@@ -40,13 +40,17 @@ it("mounts only the selected provider state and toolchain from a home outside /h
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, "sandbox-manifest");
 
+    const databases = engine.db.all<{ name: string; file: string }>("PRAGMA database_list");
+    const activeDatabase = databases.find(({ name }) => name === "main")?.file;
+    expect(activeDatabase).toBeTruthy();
+
     const hidden = [
       join(fixture.home, "personal-fixture"),
       join(other, "other-fixture"),
       "/etc/hostname",
       "/etc/machine-id",
       socket,
-      join(engine.root, "state", "vibestar-v1.sqlite"),
+      activeDatabase,
     ];
 
     const code = `#!/usr/bin/env node

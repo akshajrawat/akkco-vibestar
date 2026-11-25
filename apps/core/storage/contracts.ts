@@ -3,13 +3,6 @@ import { z } from "zod";
 import type { Repository } from "../domain";
 
 export const VIBESTAR_DB_NAME = "vibestar-v1.sqlite";
-export const LEGACY_VIBESTAR_DB_NAME = "vibestar.sqlite";
-
-export interface FreshStartNotice {
-  detected: boolean;
-  legacy_paths: string[];
-  message: string;
-}
 
 export const RepositoryRecordSchema = z
   .object({

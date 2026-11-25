@@ -18,11 +18,6 @@ export interface AgentEvent {
 
 export interface Snapshot {
   warning?: string;
-  fresh_start?: {
-    detected: boolean;
-    legacy_paths: string[];
-    message: string;
-  } | null;
   capabilities?: {
     viber_conversations?: number;
     viber_sessions?: number;

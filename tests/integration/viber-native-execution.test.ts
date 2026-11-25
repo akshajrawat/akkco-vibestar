@@ -11,7 +11,9 @@ import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import type { ViberSession } from "../../apps/core/vibers/contracts";
+import { VIBESTAR_DB_NAME } from "../../apps/core/storage/contracts";
 import { migrateDataRoot } from "../../apps/core/storage/migrate-root";
+import { viberSnapshotKeyPath } from "../../apps/core/storage/viber-snapshots";
 import { exists } from "../../apps/core/workspace/paths";
 import { createFixtureEngine, fixtureRepository, detectFixtureProvider } from "../helpers/fixtures";
 
@@ -19,6 +21,7 @@ it.each(["codex", "antigravity"] as const)(
   "%s runs its native tool loop, recovers explicitly, and hands off across a restart",
   async (providerName) => {
     const directory = await mkdtemp(join(tmpdir(), "vibestar-native-session-"));
+    const snapshotKey = viberSnapshotKeyPath(join(directory, "data", "state", VIBESTAR_DB_NAME));
     const codexState = join(homedir(), ".codex");
     const geminiState = join(homedir(), ".gemini");
     const antigravityState = join(homedir(), ".config", "antigravity");
@@ -76,13 +79,9 @@ it.each(["codex", "antigravity"] as const)(
               if (prompt !== ${JSON.stringify(request.prompt)}) throw Error('Wrong native prompt');
               if (mode === 'wait') { setInterval(() => {}, 1000); return; }
               for (const path of ${JSON.stringify(
-                [
-                  join(directory, "private.txt"),
-                  join(directory, "data", "state", "vibestar.sqlite.viber-key"),
-                  join(directory, "data", "state", "vibestar-v1.sqlite.viber-key"),
-                  sourcePath,
-                  otherWorkspace,
-                ].filter(Boolean),
+                [join(directory, "private.txt"), snapshotKey, sourcePath, otherWorkspace].filter(
+                  Boolean,
+                ),
               )}) {
                 try { fs.readFileSync(path); throw Error('Host or sibling files were exposed: ' + path); }
                 catch (error) { if (!['ENOENT', 'EACCES'].includes(error.code)) throw error; }
@@ -201,9 +200,7 @@ it.each(["codex", "antigravity"] as const)(
     let engine = await createFixtureEngine(join(directory, "data"), providers);
     let rpc = new Rpc(engine);
 
-    expect(await exists(join(directory, "data", "state", "vibestar-v1.sqlite.viber-key"))).toBe(
-      true,
-    );
+    expect(await exists(snapshotKey)).toBe(true);
 
     try {
       const bin = join(homedir(), ".local", "bin");

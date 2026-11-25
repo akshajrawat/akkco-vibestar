@@ -1,12 +1,10 @@
 import { baselineSchema, schemaVersion } from "./schema";
 import BetterSqlite3 from "better-sqlite3";
 import { randomBytes } from "node:crypto";
-import { lstat, readlink, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { lstat } from "node:fs/promises";
 import { exists } from "../workspace/paths";
 import { PersistedRecords } from "./records";
-import { RepositoryRecordSchema, LEGACY_VIBESTAR_DB_NAME, VIBESTAR_DB_NAME } from "./contracts";
+import { RepositoryRecordSchema } from "./contracts";
 import { ViberSnapshots, loadViberSnapshotKey, viberSnapshotKeyPath } from "./viber-snapshots";
 import {
   defaultSettings,
@@ -16,35 +14,6 @@ import {
   type Repository,
   type Settings,
 } from "../domain";
-
-export { VIBESTAR_DB_NAME, LEGACY_VIBESTAR_DB_NAME } from "./contracts";
-
-const resolveDatabasePath = async (file: string): Promise<string | null> => {
-  const followed = new Set<string>();
-  for (;;) {
-    const parent = await realpath(dirname(file));
-    const path = join(parent, basename(file));
-    if (followed.has(path)) {
-      return null;
-    }
-
-    let target: string;
-    try {
-      target = await readlink(path);
-    } catch (error) {
-      const { code } = error as NodeJS.ErrnoException;
-      if (code === "ENOENT" || code === "EINVAL") {
-        return path;
-      }
-
-      throw error;
-    }
-
-    followed.add(path);
-    // Resolve the parent on the next hop so relative targets keep filesystem .. semantics.
-    file = isAbsolute(target) ? target : `${parent}${sep}${target}`;
-  }
-};
 
 export class Database {
   private readonly connection: BetterSqlite3.Database;
@@ -58,7 +27,6 @@ export class Database {
     let hasSealedSnapshots = false;
     if (path !== ":memory:") {
       const activeFiles = [path, `${path}-wal`, `${path}-shm`, `${path}-journal`];
-      const activeEntries = new Map<string, { dev: number; ino: number }>();
 
       for (const file of activeFiles) {
         try {
@@ -69,71 +37,9 @@ export class Database {
               `Database file ${file} must be a regular non-symlink file without hard links.`,
             );
           }
-
-          activeEntries.set(file, { dev: entry.dev, ino: entry.ino });
         } catch (e) {
           if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
             throw e;
-          }
-        }
-      }
-
-      if (basename(path) === VIBESTAR_DB_NAME) {
-        const activeParent = await realpath(dirname(path));
-        const activePaths = new Set(activeFiles.map((file) => join(activeParent, basename(file))));
-        const legacyDirs = [dirname(path)];
-        try {
-          const defaultOldDir = join(homedir(), ".akkco-ade", "state");
-          if (defaultOldDir !== dirname(path)) {
-            legacyDirs.push(defaultOldDir);
-          }
-        } catch {
-          // Ignore homedir resolution failures
-        }
-
-        for (const dir of legacyDirs) {
-          const legacyBase = join(dir, LEGACY_VIBESTAR_DB_NAME);
-
-          const legacyFiles = [
-            legacyBase,
-            `${legacyBase}-wal`,
-            `${legacyBase}-shm`,
-            `${legacyBase}-journal`,
-          ];
-
-          for (const legacyFile of legacyFiles) {
-            try {
-              const legacyLstat = await lstat(legacyFile);
-              if (legacyLstat.isSymbolicLink()) {
-                const target = await resolveDatabasePath(legacyFile);
-                if (target && activePaths.has(target)) {
-                  throw new AdeError(
-                    "isolation",
-                    `Legacy database file ${legacyFile} must not be a symlink to the active database.`,
-                  );
-                }
-              }
-
-              for (const [activeFile, activeStat] of activeEntries) {
-                if (
-                  resolve(legacyFile) !== resolve(activeFile) &&
-                  legacyLstat.dev === activeStat.dev &&
-                  legacyLstat.ino === activeStat.ino
-                ) {
-                  throw new AdeError(
-                    "isolation",
-                    `Legacy database file ${legacyFile} shares an inode with active file ${activeFile}.`,
-                  );
-                }
-              }
-            } catch (e) {
-              if (
-                (e as NodeJS.ErrnoException).code !== "ENOENT" &&
-                (e as NodeJS.ErrnoException).code !== "ENOTDIR"
-              ) {
-                throw e;
-              }
-            }
           }
         }
       }

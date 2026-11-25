@@ -1,17 +1,12 @@
 import { EventEmitter } from "node:events";
-import { lstat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import lockfile from "proper-lockfile";
 
 import { AdeError, type CoreEvent } from "../domain";
 import { Database } from "../storage/database";
-import {
-  VIBESTAR_DB_NAME,
-  LEGACY_VIBESTAR_DB_NAME,
-  type FreshStartNotice,
-} from "../storage/contracts";
+import { VIBESTAR_DB_NAME } from "../storage/contracts";
 import { RepositoryIndex } from "../workspace/discovery";
 import { GitWorkspace } from "../workspace/git";
 import { createLayout } from "../workspace/paths";
@@ -178,43 +173,6 @@ export class Engine extends EventEmitter {
 
   publish = (e: CoreEvent) => {
     this.emit("event", e);
-  };
-
-  freshStartInfo = async (): Promise<FreshStartNotice | null> => {
-    try {
-      const legacyPaths: string[] = [];
-
-      const checkPath = async (path: string) => {
-        try {
-          const entry = await lstat(path);
-          return entry.isFile();
-        } catch {
-          return false;
-        }
-      };
-
-      const localLegacy = join(this.root, "state", LEGACY_VIBESTAR_DB_NAME);
-      if (await checkPath(localLegacy)) {
-        legacyPaths.push(localLegacy);
-      }
-
-      const defaultOld = join(homedir(), ".akkco-ade", "state", LEGACY_VIBESTAR_DB_NAME);
-      if (defaultOld !== localLegacy && (await checkPath(defaultOld))) {
-        legacyPaths.push(defaultOld);
-      }
-
-      if (!legacyPaths.length) {
-        return null;
-      }
-
-      return {
-        detected: true,
-        legacy_paths: legacyPaths,
-        message: `Vibestar started with a fresh database baseline. Previous data remains preserved at ${legacyPaths.join(", ")}. Previous settings, conversations, and repository connections are separate from the current workspace.`,
-      };
-    } catch {
-      return null;
-    }
   };
 
   changed = (id?: string) => this.publish({ event: "changed", session_id: id });

@@ -175,21 +175,6 @@ export const App = () => {
             onSidebar={sidebar ? undefined : toggleSidebar}
             toggleRef={sidebarToggle}
           />
-          {snapshot?.fresh_start && (
-            <div
-              className="fresh-start-notice bg-surface-app border-b border-b-border-default px-4 py-3 flex flex-col gap-1"
-              role="status"
-              aria-label="Fresh database notice"
-            >
-              <div className="flex items-center gap-2 font-medium text-[13px] text-ink-primary">
-                <span className="w-2 h-2 rounded-full bg-accent-blue" aria-hidden="true" />
-                Vibestar started with a fresh database
-              </div>
-              <p className="text-[12px] text-ink-muted m-0 leading-normal">
-                {snapshot.fresh_start.message}
-              </p>
-            </div>
-          )}
           {snapshot?.warning && (
             <p
               className="helper-warning text-accent-amber px-4 py-2 m-0 border-b border-b-border-default text-[12px] leading-[1.4]"

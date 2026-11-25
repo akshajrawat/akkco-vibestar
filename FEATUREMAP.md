@@ -87,16 +87,10 @@ flowchart LR
 ```mermaid
 flowchart TD
     Start["Vibestar Startup"] --> InspectActive["Inspect Active SQLite Paths\n(state/vibestar-v1.sqlite, wal, shm, journal)"]
-    InspectActive --> VerifyActive["Verify regular files, non-symlink, single hardlink\nResolve legacy symlink chains, including missing final targets"]
-    VerifyActive --> OpenActiveDB{"Inspect Active Versioned SQLite\n(state/vibestar-v1.sqlite)"}
+    InspectActive --> VerifyActive["Verify regular files, no symlinks or hard links"]
+    VerifyActive --> OpenActiveDB{"Inspect Active SQLite\n(state/vibestar-v1.sqlite)"}
     OpenActiveDB -- "Fresh database" --> SchemaZero["Create schema 0 in one transaction"]
     OpenActiveDB -- "Schema 0" --> CoreReady["Core Engine Ready"]
     OpenActiveDB -- "Incompatible schema" --> Stop["Report database path, migration records and SQLite user_version"]
     SchemaZero --> CoreReady
-    CoreReady --> SnapshotRPC["Desktop Snapshot Request"]
-    SnapshotRPC --> CheckLegacy{"Legacy Database Detected?\n(state/vibestar.sqlite or ~/.akkco-ade)"}
-    CheckLegacy -- "Legacy Exists" --> AttachNotice["Attach FreshStartNotice to Snapshot\n(legacy paths + separate workspace note)"]
-    CheckLegacy -- "None" --> CleanSnapshot["Return Clean Snapshot"]
-    AttachNotice --> RenderBanner["Desktop Renders Persistent Notice Banner\n(below title bar)"]
-    CleanSnapshot --> NormalUI["Standard UI Without Banner"]
 ```
