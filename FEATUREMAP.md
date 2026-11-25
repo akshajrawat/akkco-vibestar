@@ -3,7 +3,8 @@ sequenceDiagram
     actor User
     participant Chat as Viber chat
     participant Codex as Codex thread
-    participant AGY as Antigravity thread
+    participant AGY as Antigravity ACP thread
+    participant Print as Antigravity print mode
 
     participant Provider as Turn provider
     Note over Chat: History scrolls beneath the fading black header
@@ -12,18 +13,54 @@ sequenceDiagram
     Codex-->>Chat: Reply and tool activity
     Note over Chat: Tool activity shows only messages with text
     User->>Chat: Switch to Antigravity and send
-    Chat->>AGY: Start thread with saved chat context and new message
-    AGY-->>Chat: Reply
+    Chat->>AGY: Negotiate ACP v1 initialize and create session
+    AGY-->>Chat: Return session ID, set scoped mode and config
+    Chat->>AGY: Dispatch prompt with gated recalled facts
+    AGY-->>Chat: Stream message and tool call updates
     User->>Chat: Switch back to Codex and send
     Chat->>Codex: Resume thread with Antigravity exchange and new message
     Codex-->>Chat: Reply
-    User->>Chat: Choose another Codex model and send
-    Chat->>Codex: Resume the same thread with the new model
-    Codex-->>Chat: Reply
-    User->>Chat: Change reasoning effort and send
-    Chat->>Codex: Resume the thread with the new effort
-    User->>Chat: Stop response
-    Chat->>Provider: Cancel the active turn
+    User->>Chat: Switch to Antigravity and resume
+    alt Saved thread was confirmed through ACP
+        Chat->>AGY: Resume saved ACP session ID
+        AGY-->>Chat: Confirm resumed session
+        Chat->>AGY: Dispatch new prompt
+        AGY-->>Chat: Stream reply
+    else Saved thread is print mode or has unknown origin
+        Chat->>Print: Request saved thread ID
+        alt Print mode confirms the saved ID
+            Chat->>Print: Dispatch new prompt
+            Print-->>Chat: Stream reply
+        else Print mode cannot confirm the ID
+            Chat-->>User: Show failure and keep the saved thread
+        end
+    end
+    User->>Chat: Choose another model or effort and send
+    alt Antigravity ACP
+        Chat->>AGY: Set scoped mode, model and thought_level
+        AGY-->>Chat: Acknowledge each setting
+        Chat->>AGY: Dispatch prompt
+        User->>Chat: Stop response
+        Chat->>AGY: Send session/cancel
+        opt ACP requests tool permission during shutdown
+            Chat-->>AGY: Return cancelled permission outcome
+        end
+        opt ACP acknowledges within grace period
+            AGY-->>Chat: Reply to prompt with cancelled
+            Chat->>AGY: Close stdin
+        end
+        opt ACP process stays open past grace period
+            Chat->>AGY: Interrupt process
+        end
+    else Antigravity print mode
+        Chat->>Print: Run with selected model and effort arguments
+        User->>Chat: Stop response
+        Chat->>Print: Interrupt process
+    else Codex
+        Chat->>Codex: Start turn with selected model and effort
+        User->>Chat: Stop response
+        Chat->>Codex: Interrupt process
+    end
     Chat-->>User: Show Continue where you left off
     opt User selects another provider for the stopped turn
         alt Target is Codex
@@ -48,7 +85,7 @@ sequenceDiagram
     alt Provider confirms the saved thread
         Chat->>Provider: Send only Continue where you left off to the saved or prepared thread
         Provider-->>Chat: Reply
-    else No usable saved thread or explicit rejection before dispatch
+    else No saved thread or confirmed missing Codex or ACP thread
         alt Original provider
             Chat->>Provider: Start a fresh thread with Viber instructions and the exact interrupted request
             Note over Provider: Inspect workspace files and partial edits before continuing
@@ -57,8 +94,8 @@ sequenceDiagram
             Chat->>Codex: Send only Continue where you left off
         end
         Provider-->>Chat: Reply
-    else Resume outcome is uncertain
-        Chat-->>User: Show the failure for inspection
+    else Resume outcome is uncertain or a saved print-mode thread is rejected
+        Chat-->>User: Show the failure and keep the saved thread
     end
     User->>Chat: Send /clear
     alt Viber has an active turn
@@ -80,8 +117,10 @@ flowchart LR
     Evidence --> Storage["Local SQLite · Viber and repository/topic scope"]
     Evidence -- "Correction to the repository's indentation default" --> Replace["Replace the previous fact"] --> Storage
     Storage --> Ollama["Local Ollama search"]
+    Confirm["Confirm saved native thread identity"] --> Recall
     Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
-    Share --> Accept["Provider accepts turn input"] --> Record["Record facts in thread context"]
+    Share -- "Antigravity ACP" --> AcceptACP["Acknowledge turn input once"] --> Record["Record facts in thread context"]
+    Share -- "Other provider paths" --> Accept["Provider accepts turn input"] --> Record
 ```
 
 ```mermaid

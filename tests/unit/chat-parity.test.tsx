@@ -216,6 +216,21 @@ it("orders paged tool events and preserves terminal status when late output arri
   expect(ui.container.querySelector('[data-state="interrupted"]')).toBeTruthy();
 });
 
+it("shows a pending command before execution starts", () => {
+  const pending = event(1, "command.output", {
+    call_id: "command",
+    command: "npm test",
+    status: "pending",
+  });
+
+  const running = event(2, "command.started", { call_id: "command", status: "in_progress" });
+  const view = render(<AgentTimeline compact runs={[run]} events={[pending]} />);
+
+  expect(screen.getByText("Command pending")).toBeTruthy();
+  view.rerender(<AgentTimeline compact runs={[run]} events={[pending, running]} />);
+  expect(screen.getByText("Running command")).toBeTruthy();
+});
+
 it("reveals a new run error after dismissing an earlier one", () => {
   const ui = render(<RunError error="First error" run={run} />);
   fireEvent.click(screen.getByLabelText("Dismiss run notice"));
