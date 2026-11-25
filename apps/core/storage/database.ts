@@ -147,24 +147,29 @@ export class Database {
 
       try {
         const objects = source.prepare("SELECT name FROM sqlite_schema").pluck().all();
+        const userVersion = source.pragma("user_version", { simple: true });
+
+        const versions = objects.includes("schema_migrations")
+          ? source.prepare("SELECT version FROM schema_migrations ORDER BY version").pluck().all()
+          : [];
+
         initialize = objects.length === 0;
+
+        // The previous schema also started at 0, before introducing private memory runs.
+        if (
+          userVersion !== schemaVersion ||
+          (!initialize &&
+            (versions.length !== 1 ||
+              versions[0] !== schemaVersion ||
+              !objects.includes("viber_memory_private_runs")))
+        ) {
+          throw new AdeError(
+            "migration",
+            `Database ${path} is incompatible with schema ${schemaVersion} (recorded versions: ${versions.join(", ") || "none"}, SQLite user_version: ${userVersion}). Preserve the database and choose a fresh data root.`,
+          );
+        }
+
         if (!initialize) {
-          const versions = objects.includes("schema_migrations")
-            ? source.prepare("SELECT version FROM schema_migrations ORDER BY version").pluck().all()
-            : [];
-
-          // The previous schema also started at 0, before introducing private memory runs.
-          if (
-            versions.length !== 1 ||
-            versions[0] !== schemaVersion ||
-            !objects.includes("viber_memory_private_runs")
-          ) {
-            throw new AdeError(
-              "migration",
-              `Database ${path} is incompatible with schema ${schemaVersion} (recorded versions: ${versions.join(", ") || "none"}). Preserve the database and choose a fresh data root.`,
-            );
-          }
-
           hasSealedSnapshots = Boolean(
             source
               .prepare(

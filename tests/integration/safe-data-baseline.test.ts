@@ -1,8 +1,9 @@
-import { createHash, randomUUID } from "node:crypto";
-import { lstat, link, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { lstat, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it } from "vitest";
 
 import { Engine } from "../../apps/core/execution/engine";
 import { Rpc } from "../../apps/core/rpc";
@@ -11,28 +12,15 @@ import { LEGACY_VIBESTAR_DB_NAME, VIBESTAR_DB_NAME } from "../../apps/core/stora
 import { viberSnapshotKeyPath } from "../../apps/core/storage/viber-snapshots";
 import { exists } from "../../apps/core/workspace/paths";
 
-const fixture = vi.hoisted(() => ({ home: "" }));
-
-vi.mock("node:os", async (original) => {
-  const module = await original<typeof import("node:os")>();
-  return { ...module, homedir: () => fixture.home };
-});
-
 let testDirs: string[] = [];
 
 const createTempDir = async () => {
-  const dir = join(process.cwd(), "out", "test-baseline-" + randomUUID());
-  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-test-baseline-"));
   testDirs.push(dir);
   return dir;
 };
 
-beforeEach(async () => {
-  fixture.home = await createTempDir();
-});
-
 afterEach(async () => {
-  fixture.home = "";
   for (const dir of testDirs) {
     await rm(dir, { recursive: true, force: true });
   }
@@ -52,6 +40,7 @@ it("fresh startup initializes schema 0 in the versioned database", async () => {
     expect(await exists(v1Path)).toBe(true);
     expect(await exists(legacyPath)).toBe(false);
     expect(engine.db.all("SELECT version FROM schema_migrations")).toEqual([{ version: 0 }]);
+    expect(engine.db.all("PRAGMA user_version")).toEqual([{ user_version: 0 }]);
     expect(engine.db.all("PRAGMA foreign_key_check")).toEqual([]);
 
     const snapshot = (await rpc.call("snapshot", {})) as {
@@ -105,9 +94,10 @@ it("restart preserves data and the original schema 0 record", async () => {
 });
 
 it.each([
-  { versions: [0], label: "an older schema 0" },
-  { versions: [0, 45, 46, 47, 48], label: "the previous versioned schema" },
-])("rejects $label without modifying the database", async ({ versions }) => {
+  { versions: [0], userVersion: 0, label: "an older schema 0" },
+  { versions: [0, 45, 46, 47, 48], userVersion: 0, label: "the previous versioned schema" },
+  { versions: [], userVersion: 48, label: "an empty database with a nonzero SQLite version" },
+])("rejects $label without modifying the database", async ({ versions, userVersion }) => {
   const root = await createTempDir();
   const stateDir = join(root, "state");
   await mkdir(stateDir);
@@ -115,14 +105,17 @@ it.each([
   const sqlite = new BetterSqlite3(path);
 
   try {
-    sqlite.exec(`
-      CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
-      CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO settings VALUES('example', 'keep this data');
-    `);
+    sqlite.pragma(`user_version = ${userVersion}`);
+    if (versions.length) {
+      sqlite.exec(`
+        CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+        CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO settings VALUES('example', 'keep this data');
+      `);
 
-    for (const version of versions) {
-      sqlite.prepare("INSERT INTO schema_migrations VALUES(?, CURRENT_TIMESTAMP)").run(version);
+      for (const version of versions) {
+        sqlite.prepare("INSERT INTO schema_migrations VALUES(?, CURRENT_TIMESTAMP)").run(version);
+      }
     }
   } finally {
     sqlite.close();
@@ -132,7 +125,9 @@ it.each([
 
   await expect(Engine.create(root)).rejects.toMatchObject({
     kind: "migration",
-    message: expect.stringContaining(`recorded versions: ${versions.join(", ")}`),
+    message: expect.stringContaining(
+      `recorded versions: ${versions.join(", ") || "none"}, SQLite user_version: ${userVersion}`,
+    ),
   });
 
   expect(await readFile(path)).toEqual(original);
@@ -314,14 +309,14 @@ it.each(["", "-wal", "-shm", "-journal"])(
   async (suffix) => {
     const root = await createTempDir();
     const stateDir = join(root, "state");
-    const legacyDir = join(fixture.home, ".akkco-ade", "state");
+    const legacyDir = join(homedir(), ".akkco-ade", "state");
     await mkdir(stateDir);
     await mkdir(legacyDir, { recursive: true });
 
     const activeDb = join(stateDir, VIBESTAR_DB_NAME);
     await symlink(stateDir, join(legacyDir, "active-state"));
     await symlink(`active-state/${VIBESTAR_DB_NAME}${suffix}`, join(legacyDir, "bridge.sqlite"));
-    await symlink("bridge.sqlite", join(legacyDir, LEGACY_VIBESTAR_DB_NAME));
+    await symlink("bridge.sqlite", join(legacyDir, `${LEGACY_VIBESTAR_DB_NAME}${suffix}`));
 
     await expect(Engine.create(root)).rejects.toThrow(
       /Legacy database file .* must not be a symlink to the active database/,
@@ -367,7 +362,7 @@ it("rejects reverse symlink from active database pointing to legacy database", a
 
 it("uses the test home when checking for a legacy database outside the active root", async () => {
   const root = await createTempDir();
-  const legacyDir = join(fixture.home, ".akkco-ade", "state");
+  const legacyDir = join(homedir(), ".akkco-ade", "state");
   const legacyPath = join(legacyDir, LEGACY_VIBESTAR_DB_NAME);
   await mkdir(legacyDir, { recursive: true });
   await writeFile(legacyPath, "legacy marker");
@@ -382,7 +377,7 @@ it("uses the test home when checking for a legacy database outside the active ro
 
 it("handles malformed legacy location ~/.akkco-ade as regular file without breaking snapshot", async () => {
   const root = await createTempDir();
-  await writeFile(join(fixture.home, ".akkco-ade"), "synthetic regular file instead of dir");
+  await writeFile(join(homedir(), ".akkco-ade"), "synthetic regular file instead of dir");
 
   const engine = await Engine.create(root);
   const rpc = new Rpc(engine);
