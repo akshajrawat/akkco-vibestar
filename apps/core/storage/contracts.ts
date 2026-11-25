@@ -4,6 +4,13 @@ import type { Repository } from "../domain";
 
 export const VIBESTAR_DB_NAME = "vibestar-v1.sqlite";
 
+export const sqliteFilePaths = (path: string) => [
+  path,
+  `${path}-wal`,
+  `${path}-shm`,
+  `${path}-journal`,
+];
+
 export const RepositoryRecordSchema = z
   .object({
     id: z.string(),

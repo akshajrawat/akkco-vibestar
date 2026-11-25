@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 
+import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,6 +8,7 @@ import { createServer } from "node:net";
 
 import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
 import { execute } from "../../apps/core/execution/runtime/process";
+import { viberSnapshotKeyPath } from "../../apps/core/storage/viber-snapshots";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
@@ -42,7 +44,8 @@ it("mounts only the selected provider state and toolchain from a home outside /h
 
     const databases = engine.db.all<{ name: string; file: string }>("PRAGMA database_list");
     const activeDatabase = databases.find(({ name }) => name === "main")?.file;
-    expect(activeDatabase).toBeTruthy();
+    assert.ok(activeDatabase);
+    const snapshotKey = viberSnapshotKeyPath(activeDatabase);
 
     const hidden = [
       join(fixture.home, "personal-fixture"),
@@ -51,6 +54,7 @@ it("mounts only the selected provider state and toolchain from a home outside /h
       "/etc/machine-id",
       socket,
       activeDatabase,
+      snapshotKey,
     ];
 
     const code = `#!/usr/bin/env node
@@ -87,6 +91,16 @@ const fs=require('node:fs/promises');const net=require('node:net');
     expect(result.stdout).toContain("TOOLCHAIN_OK");
     expect(await readFile(join(state, "new-session-fixture"), "utf8")).toBe("provider update");
     expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
+
+    for (const program of [activeDatabase, snapshotKey]) {
+      await expect(
+        sandboxInvocation(engine.root, engine.db, task, { program, args: [] }, true),
+      ).rejects.toMatchObject({
+        kind: "isolation",
+        message: expect.stringContaining("mount overlaps the private Vibestar database"),
+      });
+    }
+
     const relative = join(task.worktree_path, "fixture-check.sh");
 
     await writeFile(relative, "#!/bin/sh\nprintf 'RELATIVE_TOOL_OK\\n'\n", {

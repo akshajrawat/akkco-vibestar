@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { exists } from "../workspace/paths";
 import { PersistedRecords } from "./records";
-import { RepositoryRecordSchema } from "./contracts";
+import { RepositoryRecordSchema, sqliteFilePaths } from "./contracts";
 import { ViberSnapshots, loadViberSnapshotKey, viberSnapshotKeyPath } from "./viber-snapshots";
 import {
   defaultSettings,
@@ -26,9 +26,7 @@ export class Database {
     let initialize = true;
     let hasSealedSnapshots = false;
     if (path !== ":memory:") {
-      const activeFiles = [path, `${path}-wal`, `${path}-shm`, `${path}-journal`];
-
-      for (const file of activeFiles) {
+      for (const file of sqliteFilePaths(path)) {
         try {
           const entry = await lstat(file);
           if (entry.isSymbolicLink() || !entry.isFile() || entry.nlink > 1) {

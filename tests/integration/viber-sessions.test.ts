@@ -25,6 +25,7 @@ import type { AgentRunRequest } from "../../apps/core/execution/providers/contra
 import { AgentRunner } from "../../apps/core/execution/agents/agent-runner";
 import { createFixtureEngine, detectFixtureProvider } from "../helpers/fixtures";
 import { CodexProvider } from "../../apps/core/execution/providers/codex";
+import { VIBESTAR_DB_NAME } from "../../apps/core/storage/contracts";
 import { viberSnapshotKeyPath } from "../../apps/core/storage/viber-snapshots";
 
 class SessionProvider extends CodexProvider {
@@ -326,7 +327,7 @@ it("keeps prompts sealed and recovers exact instructions after restart", async (
   const continued = capture({ continue_message_id: original.request_id });
 
   const state = join(engine.root, "state");
-  const dbPath = join(state, "vibestar-v1.sqlite");
+  const dbPath = join(state, VIBESTAR_DB_NAME);
   const keyPath = viberSnapshotKeyPath(dbPath);
   await rpc.close();
   await engine.close();
@@ -402,7 +403,7 @@ it("fails closed on a swapped Viber snapshot and on a missing key", async () => 
   await expect(send(session, two)).rejects.toThrow("could not be verified");
   expect(provider.requests).toHaveLength(2);
 
-  const keyPath = viberSnapshotKeyPath(join(engine.root, "state", "vibestar-v1.sqlite"));
+  const keyPath = viberSnapshotKeyPath(join(engine.root, "state", VIBESTAR_DB_NAME));
   await rpc.close();
   await engine.close();
   await rm(keyPath);

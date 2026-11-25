@@ -111,43 +111,42 @@ it.each([
   expect(await exists(viberSnapshotKeyPath(path))).toBe(false);
 });
 
-it("rejects invalid database paths such as symlinks, hard links, and directories", async () => {
-  const root = await createTempDir();
-  const stateDir = join(root, "state");
-  await mkdir(stateDir, { recursive: true, mode: 0o700 });
+it.each(["", "-wal", "-shm", "-journal"])(
+  "rejects unsafe active database paths with suffix %j",
+  async (suffix) => {
+    const root = await createTempDir();
+    const stateDir = join(root, "state");
+    await mkdir(stateDir, { recursive: true, mode: 0o700 });
 
-  const realTarget = join(root, "target.sqlite");
-  await writeFile(realTarget, "");
+    const path = join(stateDir, `${VIBESTAR_DB_NAME}${suffix}`);
+    const target = join(root, "target.sqlite");
+    await symlink(target, path);
 
-  // Test symlink rejection
-  const symlinkDb = join(stateDir, VIBESTAR_DB_NAME);
-  await symlink(realTarget, symlinkDb);
+    await expect(Engine.create(root)).rejects.toThrow(
+      /must be a regular non-symlink file without hard links/,
+    );
 
-  await expect(Engine.create(root)).rejects.toThrow(
-    /must be a regular non-symlink file without hard links/,
-  );
+    await writeFile(target, "");
 
-  // Clean symlink
-  await rm(symlinkDb);
+    await expect(Engine.create(root)).rejects.toThrow(
+      /must be a regular non-symlink file without hard links/,
+    );
 
-  // Test directory rejection
-  await mkdir(symlinkDb, { mode: 0o700 });
+    await rm(path);
+    await mkdir(path, { mode: 0o700 });
 
-  await expect(Engine.create(root)).rejects.toThrow(
-    /must be a regular non-symlink file without hard links/,
-  );
+    await expect(Engine.create(root)).rejects.toThrow(
+      /must be a regular non-symlink file without hard links/,
+    );
 
-  await rm(symlinkDb, { recursive: true });
+    await rm(path, { recursive: true });
+    await link(target, path);
 
-  // Test hard link rejection
-  const sourceFile = join(root, "source.sqlite");
-  await writeFile(sourceFile, "dummy");
-  await link(sourceFile, symlinkDb);
-
-  await expect(Engine.create(root)).rejects.toThrow(
-    /must be a regular non-symlink file without hard links/,
-  );
-});
+    await expect(Engine.create(root)).rejects.toThrow(
+      /must be a regular non-symlink file without hard links/,
+    );
+  },
+);
 
 it("pauses startup and throws clear error if interrupted migration journal is detected", async () => {
   const root = await createTempDir();
