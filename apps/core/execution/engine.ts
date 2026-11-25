@@ -6,6 +6,7 @@ import lockfile from "proper-lockfile";
 
 import { AdeError, type CoreEvent } from "../domain";
 import { Database } from "../storage/database";
+import { VIBESTAR_DB_NAME } from "../storage/contracts";
 import { RepositoryIndex } from "../workspace/discovery";
 import { GitWorkspace } from "../workspace/git";
 import { createLayout } from "../workspace/paths";
@@ -143,7 +144,7 @@ export class Engine extends EventEmitter {
 
     let database: Database | undefined;
     try {
-      database = await Database.open(join(root, "state", "vibestar.sqlite"));
+      database = await Database.open(join(root, "state", VIBESTAR_DB_NAME));
       const engine = new Engine(root, release, database, providers, gitTransport);
       for (const run of engine.db.all<{
         pid: number;
