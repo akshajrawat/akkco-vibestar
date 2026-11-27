@@ -122,7 +122,7 @@ it("saves setting changes automatically across categories", async () => {
   expect(screen.queryByText("Local repository discovery")).toBeNull();
 });
 
-it("uses switches for Viber sharing and Memory under Viber Workspaces without provider memory controls", async () => {
+it("uses switches for Viber sharing and Memory under Viber Workspaces with independent provider memory controls", async () => {
   vi.mocked(useProviders).mockReturnValue({
     providers: ["codex", "antigravity"].map((provider) => ({
       provider,
@@ -188,7 +188,26 @@ it("uses switches for Viber sharing and Memory under Viber Workspaces without pr
 
   expect(screen.getByRole("heading", { name: "OpenAI Codex" })).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Google Antigravity" })).toBeTruthy();
-  expect(screen.queryByRole("checkbox", { name: /share recalled memories/i })).toBeNull();
+
+  const codex = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: "Share recalled memories with OpenAI Codex",
+  });
+
+  const antigravity = screen.getByRole<HTMLInputElement>("checkbox", {
+    name: "Share recalled memories with Google Antigravity",
+  });
+
+  expect(codex.checked).toBe(false);
+  expect(antigravity.checked).toBe(false);
+  await act(async () => fireEvent.click(codex));
+  expect(antigravity.checked).toBe(false);
+
+  expect(rpc).toHaveBeenLastCalledWith(
+    "settings.save",
+    expect.objectContaining({
+      viber_memory: expect.objectContaining({ share_with: { codex: true, antigravity: false } }),
+    }),
+  );
 
   fireEvent.click(screen.getByRole("button", { name: "General" }));
   await act(async () => fireEvent.click(memory));

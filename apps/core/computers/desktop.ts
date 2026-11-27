@@ -1,9 +1,13 @@
 import type { z } from "zod";
 import { AdeError } from "../domain";
-import type { ComputerDocker } from "./docker";
+import type { ComputerDocker, ContainerInspection } from "./docker";
 import type { DesktopInputSchema } from "./contracts";
 
-type Control = { key: string; socket: string; id: string; expires: number };
+type Target = { socket: string; id: string; startedAt: string };
+
+type Control = Target & { key: string; expires: number; held: Set<number> };
+
+const targetKey = ({ socket, id, startedAt }: Target) => JSON.stringify([socket, id, startedAt]);
 
 export class ComputerDesktop {
   private controller?: Control;
@@ -18,11 +22,11 @@ export class ComputerDesktop {
 
   private releasing?: Promise<void>;
 
-  private readonly held = new Set<number>();
+  private readonly pendingReleases = new Map<string, Control>();
 
   constructor(
     private readonly docker: ComputerDocker,
-    private readonly running: () => Promise<{ socket: string; id: string }>,
+    private readonly running: () => Promise<Target>,
   ) {}
 
   acquire = async (key: string) => {
@@ -40,11 +44,23 @@ export class ComputerDesktop {
       const release = this.controller ? this.close(this.controller.key) : this.releasing;
       await release?.catch(() => undefined);
       const target = await this.running();
+      const currentKey = targetKey(target);
+      for (const [key, pending] of this.pendingReleases) {
+        if (key !== currentKey) {
+          await this.release(pending).catch(() => undefined);
+        }
+      }
+
+      const pending = this.pendingReleases.get(currentKey);
+      if (pending) {
+        await this.release(pending);
+      }
+
       if (generation !== this.generation) {
         throw new AdeError("desktop_disconnected", "Reconnect to the Shared Computer desktop.");
       }
 
-      this.controller = { ...target, key, expires: Date.now() + 15000 };
+      this.controller = { ...target, key, expires: Date.now() + 15000, held: new Set() };
     } finally {
       this.acquiring = false;
     }
@@ -94,7 +110,7 @@ export class ComputerDesktop {
   };
 
   input = async (key: string, action: z.output<typeof DesktopInputSchema>) => {
-    const { socket, id } = this.owns(key);
+    const { socket, id, held } = this.owns(key);
     if (this.inputRequest) {
       throw new AdeError("desktop_busy", "Wait for the pending desktop input.");
     }
@@ -115,7 +131,7 @@ export class ComputerDesktop {
     }
 
     if (action.type === "pointer" && action.phase === "down") {
-      this.held.add(action.button);
+      held.add(action.button);
     }
 
     this.inputRequest = this.docker.command(socket, ["exec", id, "xdotool", ...args], {
@@ -125,7 +141,7 @@ export class ComputerDesktop {
     try {
       await this.inputRequest;
       if (action.type === "pointer" && action.phase === "up") {
-        this.held.delete(action.button);
+        held.delete(action.button);
       }
     } finally {
       this.inputRequest = undefined;
@@ -143,6 +159,7 @@ export class ComputerDesktop {
     }
 
     this.controller = undefined;
+    this.pendingReleases.set(targetKey(target), target);
 
     this.releasing = this.release(target).finally(() => {
       this.releasing = undefined;
@@ -153,13 +170,29 @@ export class ComputerDesktop {
 
   private release = async (target: Control) => {
     await Promise.allSettled([this.inputRequest, this.frameRequest]);
-    if (this.held.size) {
-      const args = [...this.held].flatMap((button) => ["mouseup", String(button)]);
-      this.held.clear();
+    try {
+      if (target.held.size) {
+        const args = [...target.held].flatMap((button) => ["mouseup", String(button)]);
 
-      await this.docker.command(target.socket, ["exec", target.id, "xdotool", ...args], {
-        timeoutMs: 4000,
-      });
+        const current = await this.docker.inspect<ContainerInspection>(
+          target.socket,
+          "container",
+          target.id,
+        );
+
+        if (current?.State.Running && current.State.StartedAt === target.startedAt) {
+          await this.docker.command(target.socket, ["exec", target.id, "xdotool", ...args], {
+            timeoutMs: 4000,
+          });
+        }
+      }
+
+      this.pendingReleases.delete(targetKey(target));
+    } catch {
+      throw new AdeError(
+        "desktop_release",
+        "Could not release the mouse buttons. Reconnect to retry.",
+      );
     }
   };
 }

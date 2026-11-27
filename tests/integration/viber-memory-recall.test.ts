@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -85,6 +85,7 @@ const facts = () =>
   );
 
 const vectorCount = () => engine.db.all("SELECT 1 FROM viber_memory_vectors").length;
+const codexSharing = { codex: true, antigravity: false } as const;
 
 const send = async (
   session: ViberSession,
@@ -92,6 +93,7 @@ const send = async (
   provider = session.selection.provider,
   status = "completed",
   acknowledgeUncertain = false,
+  sharedComputer = false,
 ) => {
   const request_id = randomUUID();
 
@@ -102,6 +104,7 @@ const send = async (
     content,
     history_ids: [],
     ...(acknowledgeUncertain ? { acknowledge_uncertain: true } : {}),
+    ...(sharedComputer ? { shared_computer: true } : {}),
     selection: { ...session.selection, provider },
   });
 
@@ -118,7 +121,7 @@ const send = async (
   return request_id;
 };
 
-it("gates lookup locally, ranks within the Viber and repo or topic, and uses one recall setting across providers, and rechecks revisions and thread history", async () => {
+it("gates lookup locally, ranks within the Viber and repo or topic, and rechecks consent, revisions and thread history", async () => {
   const identify = vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest-a");
 
   const embed = vi.spyOn(localMemoryModels, "embed").mockImplementation(async (_model, text) =>
@@ -165,8 +168,13 @@ it("gates lookup locally, ranks within the Viber and repo or topic, and uses one
   expect(identify).not.toHaveBeenCalled();
   await configure({ recall: true, embedding_model: "fixture" });
   await expect.poll(vectorCount).toBe(9);
+  embed.mockClear();
+  expect(await recall()).toBeUndefined();
+  expect(embed).not.toHaveBeenCalled();
+
+  await configure({ share_with: codexSharing });
+  expect(await recall("antigravity")).toBeUndefined();
   const pick = (await recall())!;
-  const pickForAntigravity = (await recall("antigravity"))!;
   const matches = pick("native-thread");
 
   expect(matches.map(({ text }) => text)).toEqual([
@@ -178,7 +186,6 @@ it("gates lookup locally, ranks within the Viber and repo or topic, and uses one
   engine.memory.recordShares(turn(session), "native-thread", matches);
   expect(pick("native-thread").map(({ text }) => text)).toEqual(["Fourth useful fact"]);
   expect(pick("new-thread")).toEqual(matches);
-  expect(pickForAntigravity("native-thread")).toEqual(matches);
 
   expect(
     engine.db.all("SELECT provider,revision FROM viber_memory_shares WHERE fact_id=?", first),
@@ -188,14 +195,10 @@ it("gates lookup locally, ranks within the Viber and repo or topic, and uses one
   expect(pick("native-thread")).toEqual(matches);
   engine.db.run("DELETE FROM viber_memory_facts WHERE profile_id=? AND id=?", profileId, first);
   expect(pick().map(({ id }) => id)).not.toContain(first);
-  await configure({ recall: false });
+  await configure({ share_with: { codex: false, antigravity: false } });
   expect(pick()).toEqual([]);
-  expect(pickForAntigravity()).toEqual([]);
-  embed.mockClear();
-  expect(await recall("antigravity")).toBeUndefined();
-  expect(embed).not.toHaveBeenCalled();
 
-  await configure({ recall: true, embedding_model: "fixture-v2" });
+  await configure({ embedding_model: "fixture-v2", share_with: codexSharing });
 
   await expect
     .poll(() => engine.db.all("SELECT DISTINCT model,dimensions FROM viber_memory_vectors"))
@@ -216,7 +219,7 @@ it("discards a query vector when the installed model changes during embedding", 
   await start();
   const session = await create();
   seedFact("Fixture fact", "fixture topic");
-  await configure({ recall: true, embedding_model: "fixture" });
+  await configure({ recall: true, share_with: codexSharing, embedding_model: "fixture" });
   await expect.poll(vectorCount).toBe(1);
 
   embed.mockImplementationOnce(async () => {
@@ -570,6 +573,7 @@ it.each(["learned", "legacy"])(
     await configure({
       automatic_saving: true,
       recall: true,
+      share_with: codexSharing,
       embedding_model: "fixture",
     });
 
@@ -752,7 +756,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line', line 
     const session = await create();
     await send(session, "Start a session.");
     seedFact(fact, "coding examples");
-    await configure({ recall: true, embedding_model: "fixture" });
+    await configure({ recall: true, share_with: codexSharing, embedding_model: "fixture" });
     await expect.poll(vectorCount).toBe(1);
 
     const shares = () => engine.db.all("SELECT thread_id,in_context FROM viber_memory_shares");
@@ -813,6 +817,7 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
 
   await configure({
     recall: true,
+    share_with: { codex: false, antigravity: true },
     embedding_model: "fixture",
   });
 
@@ -844,7 +849,6 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
   expect(requests[1].conversation?.threadId).toBe(requests[0].runId);
   expect(engine.viberSessions.detail(session.id, profileId).messages.at(-1)?.content).toBe(fact);
   await expectPrivateLogs(requests[1].runId);
-  await configure({ recall: false });
   await send(session, "Continue with the other provider.", "codex");
   expect(requests[2].prompt).not.toContain(fact);
 
@@ -856,4 +860,87 @@ require('node:readline').createInterface({input:process.stdin}).on('line',line=>
   expect(engine.db.all("SELECT provider FROM viber_memory_shares WHERE fact_id=?", id)).toEqual([
     { provider: "antigravity" },
   ]);
+});
+
+it("shares recalled facts only with Codex when both providers use Shared Computer", async () => {
+  const fact = "Use the local fixture database for testing.";
+  vi.spyOn(localMemoryModels, "identify").mockResolvedValue("digest");
+
+  vi.spyOn(localMemoryModels, "embed").mockImplementation(async (_model, inputs) =>
+    inputs.map(() => [1, 0]),
+  );
+
+  const admitted: { provider: string; shared: boolean | undefined; facts: string[] }[] = [];
+
+  await start((_stage, name = "codex") => {
+    const adapter = name === "codex" ? new CodexProvider() : new AntigravityProvider();
+    return {
+      ...adapter,
+      detect: async () => ({ ...(await detectFixtureProvider()), provider: name }),
+      invocation: (request) => {
+        const thread = request.runId;
+
+        admitted.push({
+          provider: name,
+          shared: request.sharedComputer,
+          facts: request.viberMemory?.recall?.(thread) ?? [],
+        });
+
+        request.viberMemory?.onInputAccepted?.(thread);
+
+        const lines =
+          name === "codex"
+            ? [
+                { type: "thread.started", thread_id: thread },
+                { type: "item.completed", item: { type: "agent_message", text: "Codex reply" } },
+                { type: "turn.completed" },
+              ]
+            : [
+                { event: "init", conversation_id: thread },
+                {
+                  event: "result",
+                  result: {
+                    status: "SUCCESS",
+                    response: "Antigravity reply",
+                    conversation_id: thread,
+                  },
+                },
+              ];
+
+        return {
+          program: process.execPath,
+          args: [
+            "-e",
+            `process.stdout.write(${JSON.stringify(lines.map((line) => JSON.stringify(line)).join("\n") + "\n")})`,
+          ],
+        };
+      },
+    };
+  });
+
+  const files = join(engine.root, "shared-computer", "files");
+  await mkdir(files, { recursive: true });
+
+  const shared = vi
+    .spyOn(engine.computers, "withTurn")
+    .mockImplementation((_readOnly, _signal, run) => run({ files }));
+
+  engine.db.saveSettings({ ...engine.db.settings(), allow_viber_communication: true });
+  const session = await create();
+  const factId = seedFact(fact, "fixture database");
+  await configure({ recall: true, share_with: codexSharing, embedding_model: "fixture" });
+  await expect.poll(vectorCount).toBe(1);
+
+  await send(session, "Which database should I use?", "codex", "completed", false, true);
+  await send(session, "Which database should I use?", "antigravity", "completed", false, true);
+  expect(shared).toHaveBeenCalledTimes(2);
+
+  expect(admitted).toEqual([
+    { provider: "codex", shared: true, facts: [fact] },
+    { provider: "antigravity", shared: true, facts: [] },
+  ]);
+
+  expect(engine.db.all("SELECT provider FROM viber_memory_shares WHERE fact_id=?", factId)).toEqual(
+    [{ provider: "codex" }],
+  );
 });

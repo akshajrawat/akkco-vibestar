@@ -67,3 +67,49 @@ it("keeps Vibers and Settings accessible on the rail and restores the expanded s
     "page",
   );
 });
+
+it("shows a greeting and creation time until the first turn, with pinned avatars below search", () => {
+  const atlas = { ...viberProfile, name: "Atlas" };
+  const nova = { ...viberProfile, id: testProfileIds.reviewer, name: "Nova" };
+  const onViberAction = vi.fn();
+  const timestamp = new Date().toISOString();
+
+  render(
+    <NavigationSidebar
+      collapsed={false}
+      width={340}
+      snapshot={null}
+      profiles={[atlas, nova]}
+      previews={[]}
+      createdAtByProfile={{ [atlas.id]: timestamp, [nova.id]: timestamp }}
+      profilesError=""
+      createViber={vi.fn()}
+      selectViber={vi.fn()}
+      openTool={vi.fn()}
+      toggleSidebar={vi.fn()}
+      pinnedIds={[nova.id]}
+      onViberAction={onViberAction}
+    />,
+  );
+
+  const pinned = screen.getByRole("group", { name: "Pinned Vibers" });
+  expect(pinned.contains(screen.getByRole("button", { name: "Chat with Nova" }))).toBe(true);
+  const greeting = screen.getByText("Hello, I’m Atlas. What can I help you with?");
+  const row = greeting.closest("button")!;
+  expect(row.querySelector("time")?.dateTime).toBe(timestamp);
+
+  for (const [label, action] of [
+    ["Pin", "pin"],
+    ["Rename", "rename"],
+    ["Edit", "edit"],
+    ["Delete", "delete"],
+  ]) {
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    expect(onViberAction).toHaveBeenLastCalledWith(action, atlas);
+  }
+
+  fireEvent.contextMenu(screen.getByRole("button", { name: "Chat with Nova" }));
+  fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
+  expect(onViberAction).toHaveBeenLastCalledWith("pin", nova);
+});

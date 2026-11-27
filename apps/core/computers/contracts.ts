@@ -34,6 +34,7 @@ export interface ComputerStatus {
   error: string | null;
   docker: { ready: boolean; detail: string } | null;
   has_data: boolean;
+  reset_pending?: boolean;
 }
 
 type Empty = Record<string, never>;

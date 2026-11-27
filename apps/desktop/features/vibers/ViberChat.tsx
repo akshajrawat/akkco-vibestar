@@ -7,7 +7,7 @@ import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
 import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
-import { ViberFace } from "./ViberFace";
+import { ViberGreeting } from "./ViberGreeting";
 import { ViberSessionChat } from "./ViberSessionChat";
 import { SharedWorkspaceDialog } from "./SharedWorkspaceDialog";
 import { RunError } from "../chat/RunError";
@@ -35,7 +35,7 @@ export const ViberChat = ({
   computerSupported?: boolean;
   settings?: Settings;
 }) => {
-  const [sessionId, setSessionId] = useState<string>();
+  const [sessionId, setSessionId] = useState<string | null>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [sharePrompt, setSharePrompt] = useState<{ content: string }>();
@@ -64,8 +64,8 @@ export const ViberChat = ({
 
     void rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id })
       .then(([session]) => {
-        if (active && session) {
-          setSessionId(session.id);
+        if (active) {
+          setSessionId((current) => session?.id ?? current ?? null);
         }
       })
       .catch((reason) => {
@@ -208,7 +208,9 @@ export const ViberChat = ({
         } as CSSProperties
       }
     >
-      {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
+      {(error || (sessionId === null && invalid)) && (
+        <RunError error={error || invalid!} conversation />
+      )}
       {sessionId ? (
         <ViberSessionChat
           key={sessionId}
@@ -218,17 +220,11 @@ export const ViberChat = ({
           computerSupported={computerSupported}
           settings={settings}
         />
-      ) : (
+      ) : sessionId === null ? (
         <ChatSurface
           id={draftId}
           revision={revision}
-          empty
-          conversation={
-            <div className="chat-welcome py-[0_24px] text-center viber-chat-welcome">
-              <ViberFace profile={profile} animated />
-              <h1>Ready when you are.</h1>
-            </div>
-          }
+          conversation={<ViberGreeting name={profile.name} />}
           composer={
             <Composer
               compact
@@ -251,7 +247,11 @@ export const ViberChat = ({
             />
           }
         />
-      )}
+      ) : !error ? (
+        <p role="status" className="px-5 py-3 text-xs text-ink-muted">
+          Opening conversation…
+        </p>
+      ) : null}
       {sharePrompt && (
         <SharedWorkspaceDialog
           viberName={profile.name}

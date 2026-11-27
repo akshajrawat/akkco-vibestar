@@ -1,3 +1,4 @@
+import { ViberGreeting } from "./ViberGreeting";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -306,9 +307,9 @@ const SessionChat = ({
       <ChatSurface
         id={id}
         revision={revision}
-        empty={!data?.messages.length}
         conversation={
           <>
+            {data && <ViberGreeting name={profile.name} />}
             {timeline}
             {data?.messages
               .filter(

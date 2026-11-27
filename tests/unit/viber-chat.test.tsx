@@ -70,7 +70,12 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
   render(<ViberChat profile={viberProfile} revision={0} />);
 
-  expect(screen.getByRole("heading", { name: "Ready when you are." })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toBe("Opening conversation…");
+  expect(screen.queryByRole("textbox")).toBeNull();
+
+  expect(
+    (await screen.findByText(viberProfile.name, { selector: "strong" })).parentElement?.textContent,
+  ).toBe(`Hello, I’m ${viberProfile.name}. What can I help you with?`);
 
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith("viber.session.list", { profile_id: viberProfile.id }),
@@ -90,7 +95,7 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
   await screen.findByText("Try again");
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
   await screen.findByText("Existing conversation view");
-  expect(screen.queryByRole("heading", { name: "Ready when you are." })).toBeNull();
+  expect(screen.queryByText(viberProfile.name, { selector: "strong" })).toBeNull();
   expect(document.querySelector(".viber-chat-welcome")).toBeNull();
   expect(rpc.mock.calls.filter(([method]) => method === "viber.session.create")).toHaveLength(1);
 
@@ -155,7 +160,7 @@ it("keeps a saved request ID for an unlinked draft and retains text attachments"
 
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
   render(<ViberChat profile={profile} revision={0} />);
-  fireEvent.click(screen.getByRole("button", { name: "Add context" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Add context" }));
   fireEvent.click(screen.getByRole("button", { name: "Text" }));
 
   fireEvent.change(screen.getByRole("textbox", { name: "Context text" }), {
@@ -205,7 +210,7 @@ it("omits the Computer toggle from the composer and applies Viber Workspace shar
   );
 
   expect(screen.queryByRole("button", { name: /Computer/i })).toBeNull();
-  const input = screen.getByRole("textbox", { name: `Message ${viberProfile.name}` });
+  const input = await screen.findByRole("textbox", { name: `Message ${viberProfile.name}` });
   fireEvent.change(input, { target: { value: "Share via computer" } });
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
   expect(screen.getByRole("dialog", { name: "Shared workspace permission" })).toBeTruthy();
@@ -243,7 +248,7 @@ it("omits the Computer toggle from the composer and applies Viber Workspace shar
     />,
   );
 
-  fireEvent.change(screen.getByRole("textbox", { name: `Message ${autoProfile.name}` }), {
+  fireEvent.change(await screen.findByRole("textbox", { name: `Message ${autoProfile.name}` }), {
     target: { value: "Auto share" },
   });
 

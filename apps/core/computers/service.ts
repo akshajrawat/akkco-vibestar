@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -9,6 +10,7 @@ import { redact } from "../execution/runtime/process";
 import { ComputerDocker, type ContainerInspection, type Daemon } from "./docker";
 import { computerImage, desktopVersion, sharedDirectory } from "./image";
 import { ComputerDesktop } from "./desktop";
+import { desktopSeccomp } from "./seccomp";
 import { openComputerServices } from "./services";
 import type { ComputerStatus } from "./contracts";
 
@@ -16,7 +18,7 @@ type Binding = Daemon & { reset_pending: number; workspace_root: string };
 
 type Action = "start" | "stop" | "restart" | "reset";
 
-type Running = { socket: string; id: string };
+type Running = { socket: string; id: string; startedAt: string; filesIdentity: string };
 
 export class Computers {
   private readonly docker: ComputerDocker;
@@ -42,6 +44,10 @@ export class Computers {
   private readonly turns = new Set<Promise<unknown>>();
 
   private revision = 0;
+
+  private startError?: string;
+
+  private verified?: { id: string; startedAt: string; identity: string };
 
   private starting: ComputerStatus = {
     status: "starting",
@@ -167,7 +173,9 @@ export class Computers {
       !container.HostConfig.Privileged &&
       container.HostConfig.CapDrop?.includes("ALL") &&
       !container.HostConfig.CapAdd?.length &&
-      container.HostConfig.SecurityOpt?.includes("no-new-privileges") &&
+      container.HostConfig.SecurityOpt?.length === 2 &&
+      container.HostConfig.SecurityOpt.includes("no-new-privileges") &&
+      container.HostConfig.SecurityOpt.includes(`seccomp=${desktopSeccomp}`) &&
       container.HostConfig.ReadonlyRootfs &&
       !Object.keys(container.HostConfig.PortBindings ?? {}).length &&
       container.HostConfig.Mounts?.some(
@@ -183,6 +191,28 @@ export class Computers {
           m.Type === "bind" && guestPath(m.Source) && m.Destination === sharedDirectory && m.RW,
       )
     );
+  };
+
+  private isReady = async (container: ContainerInspection | null, revision: number) => {
+    const verified = this.verified;
+
+    const identity = container?.State.Running
+      ? await this.filesIdentity().catch(() => undefined)
+      : undefined;
+
+    const valid =
+      identity !== undefined &&
+      container?.State.Health?.Status === "healthy" &&
+      this.matches(container, identity) &&
+      verified?.id === container.Id &&
+      verified.startedAt === container.State.StartedAt &&
+      verified.identity === identity;
+
+    if (!valid && revision === this.revision && this.verified === verified) {
+      this.verified = undefined;
+    }
+
+    return valid ? identity : undefined;
   };
 
   private publish = (status: ComputerStatus) => {
@@ -205,9 +235,11 @@ export class Computers {
       has_data: Boolean(saved),
     };
 
+    if (saved?.reset_pending) {
+      result.reset_pending = true;
+    }
+
     try {
-      const { socket } = await this.daemon(saved);
-      result.docker = { ready: true, detail: "Linux Docker engine connected" };
       if (saved?.reset_pending) {
         throw new AdeError(
           "reset_pending",
@@ -215,25 +247,38 @@ export class Computers {
         );
       }
 
+      const { socket } = await this.daemon(saved);
+      result.docker = { ready: true, detail: "Linux Docker engine connected" };
+      if (this.startError) {
+        throw new AdeError("desktop_unavailable", this.startError);
+      }
+
       if (saved) {
         const current = await this.inspect(socket);
-        // Let automatic startup replace the old container while reusing its files and home volume.
-        if (current?.State.Running && current.Config.Labels["dev.vibestar.desktop"] !== "1") {
-          if (
-            !this.matches(current, await this.filesIdentity()) ||
-            current.State.Health?.Status !== "healthy"
-          ) {
+        // Startup upgrades older images and revalidates a desktop after the helper restarts.
+        if (
+          current?.State.Running &&
+          current.Config.Labels["dev.vibestar.desktop"] === desktopVersion
+        ) {
+          const wasVerified = Boolean(this.verified);
+          if (await this.isReady(current, revision)) {
+            result.status = "ready";
+          } else if (wasVerified || current.State.Health?.Status !== "healthy") {
             throw new AdeError(
               "desktop_unavailable",
-              "The desktop is unavailable. Restart the shared computer.",
+              "The desktop is unavailable. Restart Shared Computer.",
             );
           }
-
-          result.status = "ready";
+        } else {
+          await this.isReady(null, revision);
         }
       }
     } catch (error) {
       const detail = redact(error instanceof Error ? error.message : String(error));
+      if (revision === this.revision) {
+        this.verified = undefined;
+      }
+
       result.status = "error";
       result.error = detail;
       result.docker ??= { ready: false, detail };
@@ -290,45 +335,55 @@ export class Computers {
         );
       }
 
-      await this.docker.command(
-        socket,
-        [
-          "create",
-          "--name",
-          this.name,
-          "--label",
-          this.label(),
-          "--label",
-          `dev.vibestar.desktop=${desktopVersion}`,
-          "--label",
-          `dev.vibestar.files=${identity}`,
-          "--network",
-          this.network,
-          "--cap-drop",
-          "ALL",
-          "--security-opt",
-          "no-new-privileges",
-          "--read-only",
-          "--tmpfs",
-          "/tmp:rw,nosuid,nodev,size=512m",
-          "--shm-size",
-          "256m",
-          "--mount",
-          `type=volume,source=${this.home},target=/home/viber`,
-          "--mount",
-          `type=bind,source=${source},target=${sharedDirectory},bind-recursive=disabled`,
-          "--health-cmd",
-          "xdpyinfo >/dev/null && pgrep -x openbox >/dev/null",
-          "--health-interval",
-          "1s",
-          "--health-timeout",
-          "2s",
-          "--health-retries",
-          "10",
-          image,
-        ],
-        options,
-      );
+      const profileDir = await mkdtemp(join(tmpdir(), "vibestar-seccomp-"));
+      const profilePath = join(profileDir, "profile.json");
+      try {
+        await writeFile(profilePath, desktopSeccomp, { mode: 0o600 });
+
+        await this.docker.command(
+          socket,
+          [
+            "create",
+            "--name",
+            this.name,
+            "--label",
+            this.label(),
+            "--label",
+            `dev.vibestar.desktop=${desktopVersion}`,
+            "--label",
+            `dev.vibestar.files=${identity}`,
+            "--network",
+            this.network,
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--security-opt",
+            `seccomp=${profilePath}`,
+            "--read-only",
+            "--tmpfs",
+            "/tmp:rw,nosuid,nodev,size=512m",
+            "--shm-size",
+            "256m",
+            "--mount",
+            `type=volume,source=${this.home},target=/home/viber`,
+            "--mount",
+            `type=bind,source=${source},target=${sharedDirectory},bind-recursive=disabled`,
+            "--health-cmd",
+            "test -f /tmp/vibestar-desktop-ready && xdpyinfo >/dev/null && pgrep -x openbox >/dev/null",
+            "--health-interval",
+            "1s",
+            "--health-timeout",
+            "2s",
+            "--health-retries",
+            "10",
+            image,
+          ],
+          options,
+        );
+      } finally {
+        await rm(profileDir, { recursive: true, force: true });
+      }
 
       container = await this.inspect(socket);
     }
@@ -340,13 +395,26 @@ export class Computers {
       );
     }
 
-    if (!container.State.Running) {
-      await this.docker.command(socket, ["start", container.Id], options);
+    const unhealthy = container.State.Running && container.State.Health?.Status === "unhealthy";
+    if (unhealthy) {
+      await this.stop(socket, container);
+    }
+
+    if (!container.State.Running || unhealthy) {
+      await this.docker
+        .command(socket, ["start", container.Id], options)
+        .catch((error: unknown) => {
+          throw new AdeError(
+            "desktop_unavailable",
+            `Docker could not start Shared Computer with Chromium's sandbox. Check that this Linux or WSL engine permits unprivileged user namespaces. ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
     }
 
     for (let attempt = 0; attempt < 40; attempt++) {
-      const state = (await this.inspect(socket))?.State;
-      if (!state?.Running || state.Health?.Status === "unhealthy") {
+      const current = await this.inspect(socket);
+      const state = current?.State;
+      if (current?.Id !== container.Id || !state?.Running || state.Health?.Status === "unhealthy") {
         break;
       }
 
@@ -363,7 +431,7 @@ export class Computers {
               container.Id,
               "sh",
               "-c",
-              'test -w "$1" && cat "$1/$2"',
+              'set -eC; cat "$1/$2"; : > "$1/$2.write"; rm "$1/$2.write"',
               "verify-bind",
               sharedDirectory,
               probe,
@@ -371,20 +439,33 @@ export class Computers {
             options,
           );
 
-          if (observed !== nonce) {
+          const after = await this.inspect(socket);
+          if (
+            observed !== nonce ||
+            (await this.filesIdentity()) !== identity ||
+            after?.Id !== container.Id ||
+            !after.State.Running ||
+            after.State.StartedAt !== state.StartedAt ||
+            after.State.Health?.Status !== "healthy" ||
+            !this.matches(after, identity)
+          ) {
             throw new AdeError("isolation", "Docker could not access the managed workspace files.");
           }
         } finally {
           await rm(join(source, probe), { force: true });
         }
 
+        this.verified = { id: container.Id, startedAt: state.StartedAt, identity };
         return;
       }
 
       await delay(500, undefined, { signal });
     }
 
-    throw new AdeError("desktop_unavailable", "The Linux desktop did not become ready.");
+    throw new AdeError(
+      "desktop_unavailable",
+      "The Linux desktop could not start Chromium safely. Check that this Linux or WSL engine permits unprivileged user namespaces.",
+    );
   };
 
   private stop = async (socket: string, container: ContainerInspection | null) => {
@@ -448,6 +529,8 @@ export class Computers {
     );
 
     this.revision++;
+    this.verified = undefined;
+    this.startError = undefined;
     this.starting = { status: "starting", error: null, docker: null, has_data: Boolean(saved) };
 
     this.operation = this.change(action, saved).finally(() => {
@@ -469,9 +552,7 @@ export class Computers {
     };
 
     try {
-      if (action !== "start") {
-        await this.desktop.close().catch(() => undefined);
-      }
+      await this.desktop.close().catch(() => undefined);
 
       const daemon = await this.daemon(saved);
       next.docker = { ready: true, detail: "Linux Docker engine connected" };
@@ -510,8 +591,20 @@ export class Computers {
         next.status = "ready";
       }
     } catch (error) {
+      if (this.binding()?.reset_pending) {
+        next.reset_pending = true;
+      }
+
       next.status = "error";
       next.error = redact(error instanceof Error ? error.message : String(error));
+      if (
+        (action === "start" || action === "restart") &&
+        next.docker?.ready &&
+        !next.reset_pending
+      ) {
+        this.startError = next.error;
+      }
+
       next.docker ??= { ready: false, detail: next.error };
     }
 
@@ -529,16 +622,17 @@ export class Computers {
     const { socket } = await this.daemon(saved);
     const target = await this.inspect(socket);
 
-    const valid =
-      target?.State.Running &&
-      target.State.Health?.Status === "healthy" &&
-      this.matches(target, await this.filesIdentity());
-
-    if (!valid || revision !== this.revision || this.shutdown.signal.aborted) {
+    const identity = await this.isReady(target, revision);
+    if (!target || !identity || revision !== this.revision || this.shutdown.signal.aborted) {
       throw new AdeError("computer_stopped", "Shared Computer is unavailable. Check its status.");
     }
 
-    return { socket, id: target.Id };
+    return {
+      socket,
+      id: target.Id,
+      startedAt: target.State.StartedAt,
+      filesIdentity: identity,
+    };
   };
 
   withTurn = async <T>(
@@ -554,14 +648,21 @@ export class Computers {
 
     const operation = (async () => {
       const running = await this.running();
-      const files = await this.checkedFiles();
 
       const services = readOnly
         ? undefined
         : await openComputerServices(this.engine.root, this.docker, running, signal);
 
       try {
-        return await run({ files, socket: services?.socket });
+        if ((await this.filesIdentity()) !== running.filesIdentity) {
+          this.verified = undefined;
+          throw new AdeError(
+            "computer_stopped",
+            "Shared Computer files changed. Restart Shared Computer.",
+          );
+        }
+
+        return await run({ files: this.filesRoot, socket: services?.socket });
       } finally {
         await services?.close();
       }

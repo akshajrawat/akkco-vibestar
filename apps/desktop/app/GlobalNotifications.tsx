@@ -158,7 +158,9 @@ export const GlobalNotifications = ({
 
       notifications.error(computer.status.error || "Could not start Shared Computer.", {
         id: "runtime",
-        action: { label: "Retry", run: computer.retry },
+        ...(computer.status.reset_pending
+          ? {}
+          : { action: { label: "Retry", run: computer.retry } }),
       });
     } else if (
       computer.status?.status === "ready" &&

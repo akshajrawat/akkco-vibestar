@@ -54,6 +54,8 @@ export const AgentProfileSchema = z
 
 export type AgentProfile = z.infer<typeof AgentProfileSchema>;
 
+export const viberGreeting = (name: string) => `Hello, I’m ${name}. What can I help you with?`;
+
 export const ConversationSelectionSchema = AgentExecutionSchema.pick({
   provider: true,
   model: true,
@@ -187,6 +189,7 @@ export interface ViberMessagePreview {
 export interface ViberNavigation {
   profiles: AgentProfile[];
   previews: ViberMessagePreview[];
+  created_at_by_profile?: Record<string, string>;
 }
 
 export interface ViberSessionDetail {

@@ -107,7 +107,11 @@ export const ComputerDesktop = () => {
             setError(errorMessage(reason));
           }
         });
+
+      return true;
     }
+
+    return false;
   };
 
   const keyboard = (event: KeyboardEvent) => {
@@ -161,7 +165,7 @@ export const ComputerDesktop = () => {
       ),
     );
 
-    send({ type: "pointer", phase, x, y, button });
+    return send({ type: "pointer", phase, x, y, button });
   };
 
   const release = (event: PointerEvent<HTMLButtonElement>) =>
@@ -201,8 +205,7 @@ export const ComputerDesktop = () => {
           onPointerCancel={release}
           onPointerMove={(event) => {
             if (event.buttons && !moving.current) {
-              moving.current = true;
-              pointer(event, "move", 1);
+              moving.current = pointer(event, "move", 1);
             }
           }}
           onWheel={(event) => {

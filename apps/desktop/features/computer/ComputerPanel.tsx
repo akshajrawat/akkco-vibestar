@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Button } from "../../components/ui/button";
 import type { ComputerStatus } from "../../../core/computers/contracts";
 import { ComputerDesktop } from "./ComputerDesktop";
 
@@ -18,10 +20,13 @@ const statusColors: Record<ComputerStatus["status"], string> = {
 export const ComputerPanel = ({
   supported,
   status,
+  reset,
 }: {
   supported: boolean;
   status?: ComputerStatus;
+  reset?: () => Promise<void>;
 }) => {
+  const [confirming, setConfirming] = useState(false);
   const state = supported ? (status?.status ?? "starting") : "error";
   const label = labels[state];
 
@@ -44,6 +49,31 @@ export const ComputerPanel = ({
       </div>
       {state === "ready" ? (
         <ComputerDesktop />
+      ) : state === "error" && status?.reset_pending && reset ? (
+        <div className="rounded-xl border border-border-default p-4 text-sm">
+          <p role="alert" className="mb-3">
+            {status.error}
+          </p>
+          {confirming ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="basis-full">
+                Delete the remaining Shared Computer files and Linux home?
+              </p>
+              <Button onClick={() => setConfirming(false)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setConfirming(false);
+                  void reset();
+                }}
+              >
+                Confirm Reset
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={() => setConfirming(true)}>Retry Reset</Button>
+          )}
+        </div>
       ) : (
         <div className="aspect-[25/16] rounded-xl border border-border-default bg-surface-hover" />
       )}

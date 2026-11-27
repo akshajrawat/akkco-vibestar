@@ -118,7 +118,9 @@ flowchart LR
     Evidence -- "Correction to the repository's indentation default" --> Replace["Replace the previous fact"] --> Storage
     Storage --> Ollama["Local Ollama search"]
     Confirm["Confirm saved native thread identity"] --> Recall
-    Recall --> Ollama --> Share["Up to 3 fact texts · Provider turn input"]
+    Providers["Provider Settings · Individual memory consent"] --> Consent{"Selected provider opted in?"}
+    Recall --> Consent
+    Consent -->|Yes| Ollama --> Share["Up to 3 fact texts · Provider turn input"]
     Share -- "Antigravity ACP" --> AcceptACP["Acknowledge turn input once"] --> Record["Record facts in thread context"]
     Share -- "Other provider paths" --> Accept["Provider accepts turn input"] --> Record
 ```
@@ -139,8 +141,12 @@ flowchart LR
     Startup["App Initial Load"] --> BootToast["Merged Initial Load Toast (WSL + Computer)"]
     Startup --> AutoStart["Auto-start Shared Computer"]
     TopBar["Top Bar · Computer Icon"] --> Panel["Computer Panel · Labeled Status"]
-    AutoStart --> Desktop["Desktop Screen · Always-on background + Chromium"]
+    AutoStart --> Verify{"Sandboxed Chromium and shared write probe ready?"}
+    Verify -->|Yes| Desktop["Linux desktop · Chromium, Terminal, Files"]
+    Verify -->|No| Unavailable["Unavailable · startup error"]
     Panel --> Desktop
+    Panel --> Pending{"Reset incomplete?"}
+    Pending -->|Yes| Retry["Retry Reset · confirm cleanup"]
     Settings["General → Viber Workspaces"] --> AllowTalk["Allow Vibers to talk with each other"]
     Settings --> Permission["Permission · Always ask / Full permission"]
     Settings --> Memory["Enable Memory"]
@@ -150,7 +156,7 @@ flowchart LR
     Gate -- "On + Full permission" --> Shared["Shared Computer Files & Services"]
     Prompt -- "Allow for this turn" --> Shared
     Prompt -- "Keep isolated" --> Isolated
-    Shared --> Desktop
+    Shared --> Verify
 ```
 
 ```mermaid
@@ -160,4 +166,8 @@ flowchart LR
     Rail -->|Search| Focus["Restore sidebar width and focus search"] --> Open
     Rail -->|Select avatar| Chat["Viber chat"]
     Open -->|Select Viber| Chat
+    Open -->|Right click| Actions["Pin, rename, edit or delete"]
+    Actions -->|Pin| Pinned["Pinned avatars below search"]
+    Pinned -->|Select avatar| Chat
+    Chat --> Greeting["New Viber · Greeting, sidebar preview and timestamp"]
 ```

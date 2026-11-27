@@ -17,6 +17,9 @@ import { notifications as notify } from "../lib/notifications";
 import { GlobalNotifications } from "./GlobalNotifications";
 import { ToolOverlay } from "./ToolOverlay";
 import { ComputerPanel } from "../features/computer/ComputerPanel";
+import { Button } from "../components/ui/button";
+import { WorkspaceOverlay } from "../components/ui/WorkspaceOverlay";
+import { errorMessage, rpc } from "../lib/api";
 import { useComputer } from "../features/computer/useComputer";
 
 const minSidebarWidth = 220;
@@ -48,6 +51,7 @@ export const App = () => {
   const {
     profiles,
     previews,
+    createdAtByProfile,
     error: profilesError,
     refresh: refreshProfiles,
   } = useProfiles(revision);
@@ -60,15 +64,52 @@ export const App = () => {
   const snapshotReady = Boolean(snapshot);
   const migrationPending = Boolean(snapshot?.migration);
   const computerSupported = snapshot?.capabilities?.shared_computer === 1;
-  const computer = useComputer(computerSupported, snapshotReady && !migrationPending);
+  const computer = useComputer(computerSupported, snapshotReady && !migrationPending, computerOpen);
   const [computerWidth, setComputerWidth] = usePaneSize("sharedComputerWidth", () => 480, 340, 680);
 
   const [newProfile, setNewProfile] = useState<AgentProfile>();
+  const [renameOnly, setRenameOnly] = useState(false);
+  const [deleteProfile, setDeleteProfile] = useState<AgentProfile>();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() => {
+    try {
+      const stored: unknown = JSON.parse(localStorage.getItem("vibestar.pinnedVibers") || "[]");
+      return Array.isArray(stored)
+        ? [...new Set(stored.filter((id): id is string => typeof id === "string"))]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const savePins = (next: string[]) => {
+    setPinnedIds(next);
+    localStorage.setItem("vibestar.pinnedVibers", JSON.stringify(next));
+  };
+
+  const confirmDelete = async (profile: AgentProfile) => {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await rpc("profile.delete", { profile_id: profile.id, confirmed: true });
+      savePins(pinnedIds.filter((id) => id !== profile.id));
+      refreshProfiles();
+      setDeleteProfile(undefined);
+    } catch (reason) {
+      setDeleteError(errorMessage(reason));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const createViber = () => {
     if (!snapshot) {
       return;
     }
+
+    setRenameOnly(false);
 
     setNewProfile({
       id: crypto.randomUUID(),
@@ -187,10 +228,27 @@ export const App = () => {
           snapshot={snapshot}
           profiles={profiles}
           previews={previews}
+          createdAtByProfile={createdAtByProfile}
           profilesError={profilesError}
           createViber={createViber}
           selectViber={openViber}
           selectedViber={chatProfile?.id}
+          pinnedIds={pinnedIds}
+          onViberAction={(action, profile) => {
+            if (action === "pin") {
+              savePins(
+                pinnedIds.includes(profile.id)
+                  ? pinnedIds.filter((id) => id !== profile.id)
+                  : [...pinnedIds, profile.id],
+              );
+            } else if (action === "delete") {
+              setDeleteError("");
+              setDeleteProfile(profile);
+            } else {
+              setRenameOnly(action === "rename");
+              setNewProfile(profile);
+            }
+          }}
           openTool={openTool}
         />
 
@@ -258,7 +316,11 @@ export const App = () => {
                   className="min-h-0 shrink-0 max-w-[80vw]"
                   style={{ width: visibleComputerWidth }}
                 >
-                  <ComputerPanel status={computer.status} supported={computerSupported} />
+                  <ComputerPanel
+                    status={computer.status}
+                    supported={computerSupported}
+                    reset={computer.reset}
+                  />
                 </div>
               </>
             )}
@@ -280,14 +342,51 @@ export const App = () => {
           <CreateViberDialog
             key={newProfile.id}
             profile={newProfile}
+            renameOnly={renameOnly}
             close={() => {
               setNewProfile(undefined);
             }}
             saved={(created) => {
               refreshProfiles();
-              openViber(created);
+              if (!newProfile.revision) {
+                openViber(created);
+              }
             }}
           />
+        )}
+
+        {deleteProfile && (
+          <WorkspaceOverlay
+            label="Delete Viber"
+            className="viber-delete-overlay"
+            onClose={() => {
+              if (!deleting) {
+                setDeleteProfile(undefined);
+              }
+            }}
+          >
+            <h2>Delete {deleteProfile.name}?</h2>
+            <p className="mt-2 text-ink-secondary">
+              This removes the Viber and its private workspace.
+            </p>
+            {deleteError && (
+              <p className="error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button disabled={deleting} onClick={() => setDeleteProfile(undefined)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                busy={deleting}
+                onClick={() => void confirmDelete(deleteProfile)}
+              >
+                Delete Viber
+              </Button>
+            </div>
+          </WorkspaceOverlay>
         )}
 
         {palette && (

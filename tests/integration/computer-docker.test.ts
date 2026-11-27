@@ -70,16 +70,22 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
       const call = rpc.call;
       const owner = createHash("sha256").update(engine.root).digest("hex").slice(0, 24);
       const name = `vibestar-shared-${owner}`;
-      const docker = (...args: string[]) => checked("docker", args, directory);
 
       expect(await call("computer.control", { action: "start" })).toMatchObject({
         status: "ready",
         error: null,
       });
 
+      const [{ socket }] = engine.db.all<{ socket: string }>("SELECT socket FROM shared_computer");
+
+      const docker = (...args: string[]) =>
+        checked("docker", ["--host", `unix://${socket}`, ...args], directory);
+
       const inspection = JSON.parse(await docker("inspect", name))[0];
       expect(inspection.HostConfig.PortBindings ?? {}).toEqual({});
       expect(inspection.Mounts).toHaveLength(2);
+      expect(inspection.HostConfig.Privileged).toBe(false);
+      expect(inspection.HostConfig.CapDrop).toContain("ALL");
       expect(await docker("exec", name, "xset", "q")).toMatch(/timeout:\s+0\b/);
 
       await docker(
@@ -220,6 +226,7 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
 
       await expect(docker("container", "inspect", name)).rejects.toThrow();
       await expect(docker("volume", "inspect", `${name}-home`)).rejects.toThrow();
+      await expect(docker("network", "inspect", `${name}-net`)).rejects.toThrow();
       expect(await readFile(sentinel, "utf8")).toBe("kept");
     } catch (error) {
       failure = error;

@@ -269,3 +269,32 @@ it("leaves an already running desktop alone on Linux", async () => {
   expect(screen.queryByText("Starting Shared Computer...")).toBeNull();
   expect(screen.queryByText("Vibestar ready")).toBeNull();
 });
+
+it("confirms a Retry Reset and sends reset instead of starting", async () => {
+  const incomplete = {
+    ...stopped,
+    status: "error" as const,
+    error: "Volume removal failed",
+    reset_pending: true,
+  };
+
+  rpc.mockResolvedValueOnce(incomplete).mockResolvedValueOnce({ ...stopped, has_data: false });
+
+  const PanelHarness = () => {
+    const computer = useComputer(true, true);
+    return <ComputerPanel supported status={computer.status} reset={computer.reset} />;
+  };
+
+  render(<PanelHarness />);
+  fireEvent.click(await screen.findByRole("button", { name: "Retry Reset" }));
+  expect(rpc.mock.calls).toEqual([["computer.status", {}]]);
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Retry Reset" }));
+  fireEvent.click(screen.getByRole("button", { name: "Confirm Reset" }));
+  await screen.findByRole("status", { name: "Computer: Stopped" });
+
+  expect(rpc.mock.calls).toEqual([
+    ["computer.status", {}],
+    ["computer.control", { action: "reset", confirmed: true }],
+  ]);
+});

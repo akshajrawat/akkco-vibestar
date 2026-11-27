@@ -102,8 +102,8 @@ export const GeneralSettings = ({
           <span>
             <span id="enable-memory">Enable Memory</span>
             <small id="enable-memory-description">
-              Save useful facts from your chats and include relevant facts in future requests to the
-              selected provider.
+              Save useful facts from your chats. Choose which providers can receive recalled facts
+              in Providers settings.
             </small>
           </span>
           <button

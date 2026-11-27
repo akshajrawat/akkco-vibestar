@@ -30,6 +30,8 @@ const headersFor = (headers: IncomingHttpHeaders) => {
   return Object.fromEntries(Object.entries(headers).filter(([name]) => !hops.has(name)));
 };
 
+const maxUploadBytes = 2 * 1024 * 1024;
+
 const forward = async (
   incoming: IncomingMessage,
   response: ServerResponse,
@@ -46,6 +48,11 @@ const forward = async (
     !/^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/.test(incoming.method ?? "")
   ) {
     response.writeHead(400).end();
+    return;
+  }
+
+  if (Number(incoming.headers["content-length"]) > maxUploadBytes) {
+    response.writeHead(413, { connection: "close" }).end();
     return;
   }
 
@@ -81,13 +88,15 @@ const forward = async (
   const abort = () => upstream.destroy();
   response.once("close", abort);
 
-  const limit = (maximum: number) => {
+  const oversized = new Error("Shared Computer service upload exceeds its limit.");
+
+  const limit = (maximum: number, failure: Error) => {
     let bytes = 0;
     return new Transform({
       transform(chunk: Buffer, _encoding, finish) {
         bytes += chunk.length;
         if (bytes > maximum) {
-          finish(new Error("Shared Computer service body exceeds its limit."));
+          finish(failure);
         } else {
           finish(null, chunk);
         }
@@ -95,27 +104,40 @@ const forward = async (
     });
   };
 
+  // Keep the client request out of the pipeline so upstream failures leave its HTTP socket writable.
+  const upload = limit(maxUploadBytes, oversized);
+  const abortUpload = (error: Error) => upload.destroy(error);
+  incoming.once("error", abortUpload);
+
   try {
     const answer = new Promise<IncomingMessage>((resolve, reject) => {
       upstream.once("response", resolve);
       upstream.once("error", reject);
     });
 
-    const sending = pipeline(incoming, limit(2 * 1024 * 1024), upstream, { signal: timeout });
+    const sending = pipeline(upload, upstream, { signal: timeout });
+    incoming.pipe(upload);
 
     const receiving = answer.then((reply) => {
       response.writeHead(reply.statusCode ?? 502, headersFor(reply.headers));
-      return pipeline(reply, limit(8 * 1024 * 1024), response, { signal: timeout });
+      return pipeline(
+        reply,
+        limit(8 * 1024 * 1024, new Error("Shared Computer service response exceeds its limit.")),
+        response,
+        { signal: timeout },
+      );
     });
 
     await Promise.all([sending, receiving]);
-  } catch {
+  } catch (error) {
     if (!response.headersSent && !response.destroyed) {
-      response.writeHead(502).end();
+      response.writeHead(error === oversized ? 413 : 502, { connection: "close" }).end();
     } else if (!response.writableFinished) {
       response.destroy();
     }
   } finally {
+    incoming.unpipe(upload);
+    incoming.removeListener("error", abortUpload);
     response.removeListener("close", abort);
     upstream.destroy();
     child.kill("SIGKILL");

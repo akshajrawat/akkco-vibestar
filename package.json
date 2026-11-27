@@ -80,7 +80,8 @@
       "package.json",
       "assets/**/*",
       "LICENSE",
-      "docs/third-party-notices.md"
+      "docs/third-party-notices.md",
+      "docs/moby-seccomp-license.txt"
     ],
     "extraResources": [
       {

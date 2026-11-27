@@ -122,14 +122,19 @@ export class ViberMemory {
     );
   };
 
-  private mayRecall = (model: string) => {
+  private mayRecall = (scope: MemoryTurnScope, model: string) => {
     const settings = this.settings();
-    return !this.closed && settings.recall && settings.embedding_model === model;
+    return (
+      !this.closed &&
+      settings.recall &&
+      settings.share_with[scope.provider] &&
+      settings.embedding_model === model
+    );
   };
 
   prepareRecall = async (scope: MemoryTurnScope, prompt: string, signal: AbortSignal) => {
     const { embedding_model: model } = this.settings();
-    if (!this.mayRecall(model) || !model) {
+    if (!this.mayRecall(scope, model) || !model) {
       return undefined;
     }
 
@@ -145,7 +150,7 @@ export class ViberMemory {
     }
 
     return (threadId?: string) => {
-      if (signal.aborted || config.aborted || !this.mayRecall(model)) {
+      if (signal.aborted || config.aborted || !this.mayRecall(scope, model)) {
         return [];
       }
 

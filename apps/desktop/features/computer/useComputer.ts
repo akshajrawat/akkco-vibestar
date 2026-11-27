@@ -2,40 +2,58 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComputerStatus } from "../../../core/computers/contracts";
 import { computerRpc, errorMessage, subscribe } from "../../lib/api";
 
-export const useComputer = (supported: boolean, canAutoStart = false) => {
+export const useComputer = (supported: boolean, canAutoStart = false, monitor = false) => {
   const [status, setStatus] = useState<ComputerStatus>();
   const [didStart, setDidStart] = useState(false);
   const mounted = useRef(false);
   const sequence = useRef(0);
   const booted = useRef(false);
 
-  const startComputer = useCallback(async () => {
-    if (!supported) {
-      return;
-    }
-
-    const version = ++sequence.current;
-    setDidStart(true);
-
-    setStatus((current) => ({
-      status: "starting",
-      error: null,
-      docker: null,
-      has_data: current?.has_data ?? false,
-    }));
-
-    try {
-      const next = await computerRpc("computer.control", { action: "start" });
-      if (mounted.current && version === sequence.current) {
-        setStatus(next);
+  const control = useCallback(
+    async (action: "start" | "reset") => {
+      if (!supported) {
+        return;
       }
-    } catch (error) {
-      if (mounted.current && version === sequence.current) {
-        const message = errorMessage(error);
-        setStatus({ status: "error", docker: null, has_data: false, error: message });
+
+      const version = ++sequence.current;
+      setDidStart(true);
+
+      setStatus((current) => ({
+        status: "starting",
+        error: null,
+        docker: null,
+        has_data: current?.has_data ?? false,
+        reset_pending: current?.reset_pending,
+      }));
+
+      try {
+        const next = await computerRpc(
+          "computer.control",
+          action === "reset" ? { action, confirmed: true } : { action },
+        );
+
+        if (mounted.current && version === sequence.current) {
+          setStatus(next);
+        }
+      } catch (error) {
+        if (mounted.current && version === sequence.current) {
+          const message = errorMessage(error);
+
+          setStatus((current) => ({
+            ...current,
+            status: "error",
+            docker: current?.docker ?? null,
+            has_data: current?.has_data ?? false,
+            error: message,
+          }));
+        }
       }
-    }
-  }, [supported]);
+    },
+    [supported],
+  );
+
+  const startComputer = useCallback(() => control("start"), [control]);
+  const resetComputer = useCallback(() => control("reset"), [control]);
 
   const boot = useCallback(async () => {
     if (!supported || !canAutoStart || booted.current) {
@@ -130,9 +148,42 @@ export const useComputer = (supported: boolean, canAutoStart = false) => {
     };
   }, [supported, boot]);
 
+  useEffect(() => {
+    if (!supported || !canAutoStart || !monitor) {
+      return;
+    }
+
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    // Docker and the shared mount can change outside Vibestar while the panel is open.
+    const check = async () => {
+      const version = sequence.current;
+      try {
+        const value = await computerRpc("computer.status", {});
+        if (active && booted.current && version === sequence.current) {
+          setStatus(value);
+        }
+      } catch {
+        // The runtime subscription handles helper disconnections.
+      } finally {
+        if (active) {
+          timer = setTimeout(() => void check(), 4000);
+        }
+      }
+    };
+
+    void check();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [supported, canAutoStart, monitor]);
+
   return {
     status: supported ? status : undefined,
     didStart: supported ? didStart : false,
     retry: startComputer,
+    reset: resetComputer,
   };
 };

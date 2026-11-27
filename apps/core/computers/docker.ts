@@ -21,7 +21,7 @@ export interface ContainerInspection {
     ReadonlyRootfs: boolean;
     Mounts: { Target: string; BindOptions?: { NonRecursive?: boolean } }[];
   };
-  State: { Running: boolean; Health?: { Status: string } };
+  State: { Running: boolean; StartedAt: string; Health?: { Status: string } };
   Mounts: { Type: string; Source: string; Destination: string; Name?: string; RW: boolean }[];
 }
 

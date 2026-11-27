@@ -35,7 +35,17 @@ export const callViberSessions = async (
       const profiles = engine.vibers.listProfiles();
 
       if (z.object({ include_previews: z.literal(true) }).safeParse(raw).success) {
-        return { profiles, previews: sessions.store.messagePreviews() } satisfies ViberNavigation;
+        const dates = engine.db.all<{ id: string; created_at: string }>(
+          "SELECT id, created_at FROM agent_profiles WHERE id NOT IN (SELECT profile_id FROM retired_viber_profiles)",
+        );
+
+        return {
+          profiles,
+          previews: sessions.store.messagePreviews(),
+          created_at_by_profile: Object.fromEntries(
+            dates.map(({ id, created_at }) => [id, created_at]),
+          ),
+        } satisfies ViberNavigation;
       }
 
       return profiles;

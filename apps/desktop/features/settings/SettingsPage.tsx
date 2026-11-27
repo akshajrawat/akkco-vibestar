@@ -126,7 +126,26 @@ export const SettingsPage = ({
                         configure the environment.
                       </p>
                     ))}
-                  {category === "Providers" && <ProvidersPage />}
+                  {category === "Providers" && (
+                    <ProvidersPage
+                      memorySharing={
+                        value && {
+                          allowed: value.viber_memory.share_with,
+                          set: (provider, allowed) =>
+                            setValue({
+                              ...value,
+                              viber_memory: {
+                                ...value.viber_memory,
+                                share_with: {
+                                  ...value.viber_memory.share_with,
+                                  [provider]: allowed,
+                                },
+                              },
+                            }),
+                        }
+                      }
+                    />
+                  )}
                   {category === "Repositories" && (
                     <>
                       {snapshot ? (

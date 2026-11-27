@@ -50,7 +50,7 @@ describe("domain and persistence", () => {
     ).toBe("max");
   });
 
-  it("reads legacy provider sharing settings without changing global recall", () => {
+  it("preserves each provider’s independent memory consent", () => {
     const settings = SettingsSchema.parse({
       ...defaultSettings,
       viber_memory: {
@@ -60,7 +60,11 @@ describe("domain and persistence", () => {
       },
     });
 
-    expect(settings.viber_memory).toEqual({ ...defaultSettings.viber_memory, recall: true });
+    expect(settings.viber_memory).toEqual({
+      ...defaultSettings.viber_memory,
+      recall: true,
+      share_with: { codex: false, antigravity: true },
+    });
   });
 
   it("rejects traversal and symlink escape", async () => {

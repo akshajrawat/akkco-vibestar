@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ComputerDocker } from "../../apps/core/computers/docker";
+import { ComputerDocker, type ContainerInspection } from "../../apps/core/computers/docker";
 import { ComputerActionSchema } from "../../apps/core/computers/contracts";
+import { computerImage, desktopVersion, sharedDirectory } from "../../apps/core/computers/image";
+import { desktopSeccomp } from "../../apps/core/computers/seccomp";
 import { Engine } from "../../apps/core/execution/engine";
 
 let directory: string;
@@ -156,4 +158,242 @@ it("never resets resources from a copied workspace or unexpectedly changed Docke
   });
 
   expect(inspect).not.toHaveBeenCalled();
+});
+
+it("retries Reset after container removal and keeps the checkpoint until the volume and network are gone", async () => {
+  bind();
+  vi.spyOn(ComputerDocker.prototype, "daemon").mockResolvedValue(daemon);
+
+  const labels = {
+    "dev.vibestar.shared": createHash("sha256").update(engine.root).digest("hex").slice(0, 24),
+  };
+
+  let container = true;
+  let volumeFailure = true;
+
+  const inspected = vi
+    .spyOn(ComputerDocker.prototype, "inspect")
+    .mockImplementation(async (_socket, kind) => {
+      if (kind === "container") {
+        return container
+          ? { Id: "container-id", Config: { Labels: labels }, State: { Running: false } }
+          : null;
+      }
+
+      return { Labels: labels };
+    });
+
+  const command = vi
+    .spyOn(ComputerDocker.prototype, "command")
+    .mockImplementation(async (_socket, args) => {
+      if (args[0] === "container") {
+        container = false;
+      }
+
+      if (args[0] === "volume" && volumeFailure) {
+        throw new Error("volume is busy");
+      }
+
+      expect(engine.db.all("SELECT reset_pending FROM shared_computer")).toEqual([
+        { reset_pending: 1 },
+      ]);
+
+      return "";
+    });
+
+  expect(await engine.computers.control("reset")).toMatchObject({
+    status: "error",
+    error: "volume is busy",
+    reset_pending: true,
+  });
+
+  expect(await engine.computers.status()).toMatchObject({ status: "error", reset_pending: true });
+  expect(container).toBe(false);
+
+  expect(command.mock.calls.map(([, args]) => args.slice(0, 2))).toEqual([
+    ["container", "rm"],
+    ["volume", "rm"],
+  ]);
+
+  volumeFailure = false;
+  command.mockClear();
+
+  expect(await engine.computers.control("reset")).toMatchObject({
+    status: "stopped",
+    has_data: false,
+  });
+
+  expect(inspected.mock.calls.filter(([, kind]) => kind === "container")).toHaveLength(2);
+
+  expect(command.mock.calls.map(([, args]) => args.slice(0, 2))).toEqual([
+    ["volume", "rm"],
+    ["network", "rm"],
+  ]);
+
+  expect(engine.db.all("SELECT reset_pending FROM shared_computer")).toEqual([]);
+});
+
+it("requires a successful guest write probe for the current boot and shared directory", async () => {
+  bind();
+  const root = join(engine.root, "shared-computer");
+  const source = join(root, "files");
+  await mkdir(root, { mode: 0o700 });
+  await mkdir(source, { mode: 0o700 });
+  const info = await lstat(source, { bigint: true });
+  const owner = createHash("sha256").update(engine.root).digest("hex").slice(0, 24);
+  const name = `vibestar-shared-${owner}`;
+
+  const container: ContainerInspection = {
+    Id: "desktop-id",
+    State: { Running: true, StartedAt: "first-boot", Health: { Status: "healthy" } },
+    Config: {
+      Labels: {
+        "dev.vibestar.shared": owner,
+        "dev.vibestar.desktop": desktopVersion,
+        "dev.vibestar.files": `${info.dev}:${info.ino}`,
+      },
+      User: `${process.getuid?.()}:${process.getgid?.()}`,
+    },
+    HostConfig: {
+      NetworkMode: `${name}-net`,
+      PortBindings: {},
+      Privileged: false,
+      SecurityOpt: ["no-new-privileges", `seccomp=${desktopSeccomp}`],
+      CapDrop: ["ALL"],
+      CapAdd: null,
+      ReadonlyRootfs: true,
+      Mounts: [{ Target: sharedDirectory, BindOptions: { NonRecursive: true } }],
+    },
+    Mounts: [
+      {
+        Type: "volume",
+        Name: `${name}-home`,
+        Source: "/docker/home",
+        Destination: "/home/viber",
+        RW: true,
+      },
+      { Type: "bind", Source: source, Destination: sharedDirectory, RW: true },
+    ],
+  };
+
+  vi.spyOn(ComputerDocker.prototype, "daemon").mockResolvedValue(daemon);
+
+  vi.spyOn(ComputerDocker.prototype, "inspect").mockImplementation(async () =>
+    structuredClone(container),
+  );
+
+  const probe = vi
+    .spyOn(ComputerDocker.prototype, "command")
+    .mockRejectedValueOnce(new Error("guest cannot write"));
+
+  probe.mockImplementation(async (_socket, args) => {
+    expect(args).toEqual(
+      expect.arrayContaining(["exec", "desktop-id", "verify-bind", sharedDirectory]),
+    );
+
+    return args.at(-1)!.replace(".vibestar-", "");
+  });
+
+  const turn = vi.fn(async () => "response");
+  const withTurn = () => engine.computers.withTurn(true, new AbortController().signal, turn);
+  expect((await engine.computers.status()).status).not.toBe("ready");
+  await expect(withTurn()).rejects.toThrow("unavailable");
+
+  expect(await engine.computers.control("start")).toMatchObject({
+    status: "error",
+    error: "guest cannot write",
+  });
+
+  expect(await engine.computers.status()).toMatchObject({
+    status: "error",
+    error: "guest cannot write",
+  });
+
+  await expect(withTurn()).rejects.toThrow("unavailable");
+  expect(turn).not.toHaveBeenCalled();
+
+  expect(await engine.computers.control("start")).toMatchObject({ status: "ready" });
+  expect((await engine.computers.status()).status).toBe("ready");
+  await expect(withTurn()).resolves.toBe("response");
+
+  container.State.Health = { Status: "unhealthy" };
+  const originalProbe = probe.getMockImplementation()!;
+
+  probe.mockImplementation(async (socket, args) => {
+    if (args[0] === "stop") {
+      container.State.Running = false;
+      return "";
+    }
+
+    if (args[0] === "start") {
+      container.State = { Running: true, StartedAt: "recovered", Health: { Status: "healthy" } };
+      return "";
+    }
+
+    return originalProbe(socket, args);
+  });
+
+  const previousCalls = probe.mock.calls.length;
+  expect((await engine.computers.status()).status).toBe("error");
+  expect(await engine.computers.control("start")).toMatchObject({ status: "ready" });
+
+  expect(probe.mock.calls.slice(previousCalls).map(([, [command]]) => command)).toEqual([
+    "stop",
+    "start",
+    "exec",
+  ]);
+
+  container.State.StartedAt = "second-boot";
+  await expect(withTurn()).rejects.toThrow("unavailable");
+  expect((await engine.computers.status()).status).not.toBe("ready");
+  expect(await engine.computers.control("start")).toMatchObject({ status: "ready" });
+
+  await rename(source, join(root, "previous-files"));
+  await mkdir(source, { mode: 0o700 });
+  expect((await engine.computers.status()).status).not.toBe("ready");
+  await expect(withTurn()).rejects.toThrow("unavailable");
+  expect(turn).toHaveBeenCalledOnce();
+});
+
+it("retries an unconfirmed mouse release before transferring control of the same boot", async () => {
+  const target = { ...daemon, id: "desktop", startedAt: "boot" };
+  const docker = new ComputerDocker(engine.root);
+
+  const inspect = vi
+    .spyOn(docker, "inspect")
+    .mockResolvedValue({ State: { Running: true, StartedAt: "boot" } });
+
+  const command = vi
+    .spyOn(docker, "command")
+    .mockResolvedValueOnce("")
+    .mockRejectedValueOnce(new Error("exec connection lost"))
+    .mockRejectedValueOnce(new Error("still disconnected"))
+    .mockResolvedValue("");
+
+  const desktop = new (await import("../../apps/core/computers/desktop")).ComputerDesktop(
+    docker,
+    async () => target,
+  );
+
+  await desktop.acquire("first");
+  await desktop.input("first", { type: "pointer", phase: "down", x: 10, y: 20, button: 3 });
+  await expect(desktop.close("first")).rejects.toThrow("release the mouse");
+  await expect(desktop.acquire("second")).rejects.toThrow("release the mouse");
+  await expect(desktop.acquire("second")).resolves.toBeUndefined();
+
+  expect(command.mock.calls.slice(1).map(([, args]) => args)).toEqual(
+    Array.from({ length: 3 }, () => ["exec", target.id, "xdotool", "mouseup", "3"]),
+  );
+
+  expect(inspect).toHaveBeenCalledTimes(3);
+  await desktop.close();
+});
+
+it("ships a sandboxed Chromium launcher and guest workspace launchers", () => {
+  const image = computerImage(1000, 1000);
+  expect(image).toContain("exec chromium --disable-dev-shm-usage");
+  expect(image).not.toContain("--no-sandbox");
+  expect(image).toContain('label="Chromium"');
+  expect(image).toContain(`cd ${sharedDirectory} &amp;&amp; exec xterm`);
+  expect(image).toContain(`thunar ${sharedDirectory}`);
 });

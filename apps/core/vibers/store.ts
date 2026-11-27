@@ -400,15 +400,16 @@ export class ViberSessionStore {
 
   messagePreviews = () =>
     this.db.all<ViberMessagePreview>(`
-      SELECT s.profile_id, substr(m.content, 1, 280) AS content, m.created_at
-      FROM viber_sessions s
+      SELECT p.id AS profile_id, substr(m.content, 1, 280) AS content, m.created_at
+      FROM agent_profiles p
       JOIN viber_messages m ON m.id = (
-        SELECT id FROM viber_messages
-        WHERE session_id = s.id
-        ORDER BY created_at DESC, rowid DESC
+        SELECT messages.id FROM viber_sessions sessions
+        JOIN viber_messages messages ON messages.session_id = sessions.id
+        WHERE sessions.profile_id = p.id
+        ORDER BY messages.created_at DESC, messages.rowid DESC
         LIMIT 1
       )
-      WHERE s.profile_id NOT IN (SELECT profile_id FROM retired_viber_profiles)
+      WHERE p.id NOT IN (SELECT profile_id FROM retired_viber_profiles)
     `);
 
   detail = (sessionId: string, profileId: string): ViberSessionDetail => {
