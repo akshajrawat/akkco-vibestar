@@ -74,6 +74,13 @@ export const ComputerPanel = ({
             <Button onClick={() => setConfirming(true)}>Retry Reset</Button>
           )}
         </div>
+      ) : status?.progress || status?.error ? (
+        <p
+          role={state === "error" ? "alert" : "status"}
+          className="rounded-xl border border-border-default p-4 text-sm text-ink-secondary"
+        >
+          {status.error || status.progress}
+        </p>
       ) : (
         <div className="aspect-[25/16] rounded-xl border border-border-default bg-surface-hover" />
       )}

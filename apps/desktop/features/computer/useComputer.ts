@@ -68,7 +68,7 @@ export const useComputer = (supported: boolean, canAutoStart = false, monitor = 
         return;
       }
 
-      if (value.status === "stopped") {
+      if (value.status === "stopped" || (value.docker?.ready === false && !value.reset_pending)) {
         await startComputer();
         return;
       }
@@ -84,9 +84,13 @@ export const useComputer = (supported: boolean, canAutoStart = false, monitor = 
 
   useEffect(() => {
     mounted.current = true;
+    sequence.current++;
+    if (!canAutoStart) {
+      booted.current = false;
+    }
+
     if (!supported) {
       booted.current = false;
-      sequence.current++;
       setDidStart(false);
 
       return () => {
@@ -146,7 +150,15 @@ export const useComputer = (supported: boolean, canAutoStart = false, monitor = 
       mounted.current = false;
       void subscription.then((unsubscribe) => unsubscribe()).catch(() => undefined);
     };
-  }, [supported, boot]);
+  }, [supported, canAutoStart, boot]);
+
+  const refreshStatus = useCallback(async () => {
+    const version = sequence.current;
+    const value = await computerRpc("computer.status", {});
+    if (mounted.current && version === sequence.current) {
+      setStatus(value);
+    }
+  }, []);
 
   useEffect(() => {
     if (!supported || !canAutoStart || !monitor) {
@@ -156,13 +168,11 @@ export const useComputer = (supported: boolean, canAutoStart = false, monitor = 
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
-    // Docker and the shared mount can change outside Vibestar while the panel is open.
+    // Docker and the shared mount can change outside Vibestar.
     const check = async () => {
-      const version = sequence.current;
       try {
-        const value = await computerRpc("computer.status", {});
-        if (active && booted.current && version === sequence.current) {
-          setStatus(value);
+        if (booted.current) {
+          await refreshStatus();
         }
       } catch {
         // The runtime subscription handles helper disconnections.
@@ -173,16 +183,17 @@ export const useComputer = (supported: boolean, canAutoStart = false, monitor = 
       }
     };
 
-    void check();
+    timer = setTimeout(() => void check(), 4000);
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [supported, canAutoStart, monitor]);
+  }, [supported, canAutoStart, monitor, refreshStatus]);
 
   return {
     status: supported ? status : undefined,
     didStart: supported ? didStart : false,
+    refreshStatus,
     retry: startComputer,
     reset: resetComputer,
   };

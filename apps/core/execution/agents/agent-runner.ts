@@ -1,4 +1,4 @@
-import { sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
+import { sharedCommandUrl, sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
 import { z } from "zod";
 import { Usage } from "../output/usage";
 import { discoverCodexModels } from "../providers/codex-models";
@@ -500,7 +500,10 @@ export class AgentRunner {
 
 Shared Computer is enabled for this turn. Shared workspace files across Vibers and the Shared Computer desktop are at ${sharedFilesMount}.${
                 options.sharedComputer.socket
-                  ? ` For HTTP services running in the computer, use curl --unix-socket ${sharedServicesMount} http://localhost:PORT/PATH.`
+                  ? `
+Use the Shared Computer to act on requests to open websites, operate the visible Chromium browser, or run commands in its Linux desktop. For example, run:
+curl --noproxy '*' -fsS --unix-socket ${sharedServicesMount} --data-binary 'vibestar-browser https://github.com' ${sharedCommandUrl}
+POST a shell script to that endpoint and check the returned JSON code, stdout, and stderr. Scripts run in the Shared Computer workspace, with DISPLAY=:0 and the saved desktop home. Use Chromium DevTools Protocol at http://127.0.0.1:9222 from inside the guest for page inspection and browser automation, or use xdotool and scrot for desktop input and screenshots. Use the existing browser session for website actions. Git and gh are available in the guest and can use authentication configured in its saved home. For HTTP services running in the computer, use curl --noproxy '*' --unix-socket ${sharedServicesMount} http://localhost:PORT/PATH.`
                   : " Shared files are read-only for this turn."
               }`
             : text,

@@ -1,7 +1,7 @@
+import { CircleAlert } from "lucide-react";
+
 import type { Run } from "../../lib/types";
-import { useState } from "react";
-import { X } from "lucide-react";
-import { Button } from "../../components/ui/button";
+import { errorMessage } from "../../lib/api";
 
 const conversationError = (error: string) => {
   if (error.startsWith("Choose a model before sending")) {
@@ -31,36 +31,24 @@ const conversationError = (error: string) => {
     return "AI context couldn't be resumed. Send /clear to start a new thread.";
   }
 
-  if (/cancelled|stopped|interrupt/i.test(error)) {
-    return "Response stopped.";
-  }
-
-  return "The response couldn't finish. Review the details and try again.";
+  return "The response couldn't finish.";
 };
 
 export const RunError = ({
   error,
   run,
   stage = run?.stage ?? 0,
-  retry,
-  logs,
-  blocked = false,
   conversation = false,
 }: {
   error: string;
   run?: Run;
   stage?: number;
-  retry?: () => void;
-  logs?: () => void;
-  blocked?: boolean;
   conversation?: boolean;
 }) => {
-  const identity = `${run?.id || ""}:${stage}:${run?.status || ""}:${error}`;
-  const [dismissed, setDismissed] = useState<string>();
-
   const cancelled =
     run?.status === "cancelled" || (stage !== 4 && /cancelled|stopped|interrupt/i.test(error));
 
+  const reason = errorMessage(error).trim();
   const validation = stage === 4;
 
   const provider =
@@ -89,76 +77,40 @@ export const RunError = ({
                   ? "preparation"
                   : "validation";
 
-  if (dismissed === identity) {
-    return null;
-  }
+  const title = conversation
+    ? cancelled
+      ? "Response stopped."
+      : conversationError(reason)
+    : validation
+      ? "Verification needs attention"
+      : cancelled
+        ? "Run cancelled"
+        : `${provider} ${stageName} failed`;
 
   return (
     <section
-      className={`flex items-baseline flex-wrap gap-[8px_16px] flex-none px-5 py-2 border-b border-b-border text-[12px] wrap-anywhere ${cancelled || blocked ? "run-error-cancelled" : "run-error-failed"}`}
+      className="flex flex-none items-start gap-2 text-[12px] wrap-anywhere"
       aria-label={cancelled ? "Cancelled run" : "Run failure"}
     >
-      <div className="flex items-baseline flex-wrap gap-2 min-w-0">
-        <span className={cancelled || blocked ? "warning" : "failure"} aria-hidden="true">
-          {cancelled || blocked ? "●" : "×"}
-        </span>
-
-        <strong>
-          {conversation
-            ? conversationError(error)
-            : validation
-              ? "Verification needs attention"
-              : cancelled
-                ? "Run cancelled"
-                : `${provider} ${stageName} failed`}
-        </strong>
-
+      <CircleAlert
+        className={`mt-1 ${cancelled ? "text-ink-secondary" : "text-accent-red"}`}
+        size={15}
+        aria-hidden="true"
+      />
+      <div className="min-w-0 flex-1 space-y-1" aria-live="polite">
+        <strong className={cancelled ? "text-foreground" : "text-accent-red"}>{title}</strong>
+        {reason && reason !== title && (
+          <p className="whitespace-pre-wrap text-ink-secondary">{reason}</p>
+        )}
         {!conversation && (
-          <span className="subtle">
+          <p className="text-ink-muted">
             {validation
-              ? error
-              : cancelled
-                ? `${provider} ${stageName} was stopped.`
-                : "This stage couldn't finish. Review the technical details before retrying."}
-          </span>
+              ? "Host validation"
+              : `${provider} · ${stageName} · Exit ${run?.exit_code ?? "unavailable"}`}
+            {run?.id && <> · Run {run.id}</>}
+          </p>
         )}
       </div>
-
-      {retry && !cancelled && (
-        <Button size="sm" onClick={retry}>
-          Retry
-        </Button>
-      )}
-
-      <details className="run-error-details min-w-0 ml-auto [&[open]]:basis-full">
-        <summary>Technical details</summary>
-        <p>
-          {validation ? (
-            "Host validation · no provider process is launched"
-          ) : (
-            <>
-              Provider: {run?.provider || provider} · Stage: {stage} · Exit:{" "}
-              {run?.exit_code ?? "unavailable"}
-            </>
-          )}
-        </p>
-        {run?.id && <code>Run {run.id}</code>}
-        <pre>{error}</pre>
-        {logs && (
-          <Button size="sm" onClick={logs}>
-            Open logs
-          </Button>
-        )}
-      </details>
-
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label="Dismiss run notice"
-        onClick={() => setDismissed(identity)}
-      >
-        <X size={12} />
-      </Button>
     </section>
   );
 };

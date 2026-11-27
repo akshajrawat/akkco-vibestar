@@ -508,71 +508,84 @@ export const AgentTimeline = ({
   for (const message of messages.filter(
     (message) => message.role !== "assistant" || !answeredRuns.has(message.run_id || ""),
   )) {
+    const failed = message.role === "user" && message.status === "chat_failed";
+    const linkedRun = message.run_id ? runById.get(message.run_id) : undefined;
+
     blocks.push({
       time: message.created_at,
       key: message.id,
       content: (
-        <article
-          className={
-            message.role === "assistant"
-              ? "saved-assistant-message"
-              : "user-message relative m-[20px_0_12px_auto] px-[13px] py-[9px]"
-          }
-          data-message-id={message.id}
-        >
-          {message.status?.startsWith("chat_") &&
-            ["chat_failed", "chat_cancelled"].includes(message.status) && (
-              <small className="subtle">
-                {message.status.replace("chat_", "").replaceAll("_", " ")}
-              </small>
+        <>
+          {failed && (
+            <small className="mb-1 block pr-3 text-right font-medium text-accent-red">Failed</small>
+          )}
+          <article
+            className={
+              message.role === "assistant"
+                ? "saved-assistant-message"
+                : `user-message relative mb-3 ml-auto px-[13px] py-[9px] ${failed ? "mt-0" : "mt-5"}`
+            }
+            data-message-id={message.id}
+          >
+            {message.status === "chat_cancelled" && <small className="subtle">cancelled</small>}
+            {message.role === "assistant" && message.status === "chat_failed" && (
+              <small className="subtle">failed</small>
             )}
 
-          {message.status === "queued" && (
-            <small className="running">Feedback queued · next safe stage boundary</small>
-          )}
+            {message.status === "queued" && (
+              <small className="running">Feedback queued · next safe stage boundary</small>
+            )}
 
-          {message.status === "draft" && (
-            <small className="warning">Instruction saved for later · no agent started</small>
-          )}
-          {message.role === "assistant" ? (
-            <AgentResponse text={message.content} />
-          ) : (
-            <UserMessageBody>
-              <p>{message.content.split("\n\nLinked PR review context (untrusted):")[0]}</p>
-            </UserMessageBody>
-          )}
-          <div className="message-actions flex gap-[3px] opacity-0 focus-within:opacity-100 [transition:opacity_200ms_ease]">
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Copy message"
-              title="Copy message"
-              onClick={() => void navigator.clipboard.writeText(message.content).catch(() => {})}
-            >
-              <Copy size={16} />
-            </Button>
-
-            {retryMessage && message.status !== "review_question" && message.purpose !== "chat" && (
-              <Button size="sm" variant="ghost" onClick={() => retryMessage(message)}>
-                {message.status === "draft" ? "Send saved instruction" : "Retry"}
+            {message.status === "draft" && (
+              <small className="warning">Instruction saved for later · no agent started</small>
+            )}
+            {message.role === "assistant" ? (
+              <AgentResponse text={message.content} />
+            ) : (
+              <UserMessageBody>
+                <p>{message.content.split("\n\nLinked PR review context (untrusted):")[0]}</p>
+              </UserMessageBody>
+            )}
+            <div className="message-actions flex gap-[3px] opacity-0 focus-within:opacity-100 [transition:opacity_200ms_ease]">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Copy message"
+                title="Copy message"
+                onClick={() => void navigator.clipboard.writeText(message.content).catch(() => {})}
+              >
+                <Copy size={16} />
               </Button>
-            )}
 
-            {editMessage &&
-              message.status !== "review_question" &&
-              message.role !== "assistant" && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label="Edit and retry message"
-                  title="Edit and retry"
-                  onClick={() => editMessage(message)}
-                >
-                  <Pencil size={16} />
-                </Button>
-              )}
-          </div>
-        </article>
+              {retryMessage &&
+                message.status !== "review_question" &&
+                message.purpose !== "chat" && (
+                  <Button size="sm" variant="ghost" onClick={() => retryMessage(message)}>
+                    {message.status === "draft" ? "Send saved instruction" : "Retry"}
+                  </Button>
+                )}
+
+              {editMessage &&
+                message.status !== "review_question" &&
+                message.role !== "assistant" && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Edit and retry message"
+                    title="Edit and retry"
+                    onClick={() => editMessage(message)}
+                  >
+                    <Pencil size={16} />
+                  </Button>
+                )}
+            </div>
+          </article>
+          {standalone && message.error && !linkedRun?.error && (
+            <div className="mt-7">
+              <RunError error={message.error} conversation />
+            </div>
+          )}
+        </>
       ),
     });
   }

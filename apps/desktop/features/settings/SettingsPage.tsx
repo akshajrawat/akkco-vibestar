@@ -76,6 +76,7 @@ export const SettingsPage = ({
       label="Settings"
       className="tool-overlay settings-workspace"
       onClose={() => void requestClose()}
+      dismissOnBackdrop
     >
       <div className="settings-layout">
         <SettingsNavigation selected={section} select={select} />

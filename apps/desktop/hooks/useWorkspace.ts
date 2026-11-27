@@ -6,6 +6,7 @@ import type { Snapshot, Detection } from "../lib/types";
 export const useWorkspace = () => {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState("");
+  const [runtimeUnavailable, setRuntimeUnavailable] = useState(false);
   const [revision, setRevision] = useState(0);
   const requested = useRef(0);
 
@@ -19,12 +20,14 @@ export const useWorkspace = () => {
 
       setSnapshot(next);
       setError("");
+      setRuntimeUnavailable(false);
     } catch (e) {
       if (request !== requested.current) {
         return;
       }
 
       setError(errorMessage(e));
+      setRuntimeUnavailable(true);
     }
   }, []);
 
@@ -36,6 +39,10 @@ export const useWorkspace = () => {
     const subscription = subscribe((e) => {
       if (e.event === "core.error" || e.event === "core.closed") {
         setError(e.text || "Execution core stopped. Restart the app to recover.");
+        if (e.event === "core.closed") {
+          requested.current++;
+          setRuntimeUnavailable(true);
+        }
       } else if (
         ["changed", "agent.event", "usage.changed", "command.output"].includes(e.event) ||
         (e.event === "utility.event" && !!e.session_id) ||
@@ -71,7 +78,7 @@ export const useWorkspace = () => {
     };
   }, [refresh]);
 
-  return { snapshot, error, setError, refresh, revision };
+  return { snapshot, error, runtimeUnavailable, setError, refresh, revision };
 };
 
 let detectedProviders: Detection[] = [];

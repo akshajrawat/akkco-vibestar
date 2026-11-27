@@ -40,10 +40,7 @@
 }
 
 .workspace-overlay.viber-create-overlay {
-  @apply h-[min(590px,calc(100dvh_-_40px))] w-[min(720px,calc(100vw_-_24px))] rounded-[22px];
-  background: linear-gradient(155deg, #303743f5, #1b1e25fa 52%, #191c21fa);
-  border: 1px solid rgb(255 255 255 / 14%);
-  backdrop-filter: blur(22px);
+  @apply h-[min(590px,calc(100dvh_-_40px))] w-[min(720px,calc(100vw_-_24px))] rounded-[22px] bg-black;
 }
 
 .viber-create-overlay .viber-editor-heading {
@@ -87,10 +84,8 @@
   @apply w-[min(100%,360px)];
 }
 
-.viber-create-overlay .viber-identity-fields input {
-  @apply min-h-10 rounded-lg px-3.5 text-left text-sm font-semibold placeholder:text-ink-secondary;
-  background: rgb(255 255 255 / 7%);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 16%);
+.viber-create-overlay .viber-name-input {
+  @apply min-h-11 bg-transparent px-4 text-center text-[15px] font-semibold placeholder:text-ink-secondary focus:placeholder:text-transparent;
 }
 
 .viber-create-overlay .avatar-builder {
@@ -184,7 +179,7 @@
     @apply w-[126px];
   }
 
-  .viber-create-overlay .viber-identity-fields input {
+  .viber-create-overlay .viber-name-input {
     @apply min-h-10;
   }
 
@@ -531,12 +526,4 @@
 
 .workspace-overlay.viber-rename-overlay {
   @apply h-auto w-[min(410px,calc(100vw_-_24px))];
-}
-
-.viber-create-overlay .viber-identity-fields input:is(:hover, :focus-visible) {
-  background: rgb(255 255 255 / 12%);
-}
-
-.viber-name-label {
-  @apply mb-1.5 flex items-center gap-1.5 text-xs text-ink-secondary;
 }

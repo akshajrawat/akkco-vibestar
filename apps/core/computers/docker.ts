@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { AdeError } from "../domain";
 import { execute, type ProcessRequest } from "../execution/runtime/process";
 
@@ -10,7 +11,7 @@ export interface Daemon {
 
 export interface ContainerInspection {
   Id: string;
-  Config: { Labels: Record<string, string>; User: string };
+  Config: { Labels: Record<string, string>; User: string; Image: string };
   HostConfig: {
     NetworkMode: string;
     PortBindings: Record<string, unknown> | null;
@@ -37,17 +38,59 @@ const localSocket = async (pinned?: string) => {
   }
 
   throw new AdeError(
-    "docker_unavailable",
+    "docker_offline",
     "Start Docker Engine or enable Docker Desktop WSL integration for this distribution.",
   );
 };
+
+const offline = (error: unknown) => error instanceof AdeError && error.kind === "docker_offline";
+
+const launchDesktop = String.raw`
+$ErrorActionPreference = 'Stop'
+$exe = Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
+  $cli = Get-Command docker.exe -CommandType Application -ErrorAction SilentlyContinue
+  if ($cli) {
+    $exe = Join-Path (Split-Path -Parent $cli.Source) '..\..\Docker Desktop.exe'
+  }
+}
+if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
+  throw 'Docker Desktop executable not found.'
+}
+$exe = (Resolve-Path -LiteralPath $exe).Path
+# Docker reads this preference before deciding whether to show its dashboard.
+$settingsDir = Join-Path $env:APPDATA 'Docker'
+$settingsPath = Join-Path $settingsDir 'settings-store.json'
+$legacyPath = Join-Path $settingsDir 'settings.json'
+if (!(Test-Path -LiteralPath $settingsPath) -and (Test-Path -LiteralPath $legacyPath)) {
+  $settingsPath = $legacyPath
+}
+$exists = Test-Path -LiteralPath $settingsPath
+$settings = if ($exists) { Get-Content -Raw -LiteralPath $settingsPath | ConvertFrom-Json } else { [pscustomobject]@{} }
+if ($settings.openUIOnStartupDisabled -ne $true) {
+  $settings | Add-Member -NotePropertyName 'openUIOnStartupDisabled' -NotePropertyValue $true -Force
+  [IO.Directory]::CreateDirectory($settingsDir) | Out-Null
+  $tempPath = Join-Path $settingsDir ([guid]::NewGuid().ToString() + '.tmp')
+  try {
+    [IO.File]::WriteAllText($tempPath, ($settings | ConvertTo-Json -Depth 100))
+    if ($exists) {
+      [IO.File]::Replace($tempPath, $settingsPath, [System.Management.Automation.Language.NullString]::Value)
+    } else {
+      [IO.File]::Move($tempPath, $settingsPath)
+    }
+  } finally {
+    [IO.File]::Delete($tempPath)
+  }
+}
+Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -WindowStyle Hidden
+`;
 
 export class ComputerDocker {
   constructor(private readonly root: string) {}
 
   args = (socket: string, args: string[]) => ["--host", `unix://${socket}`, ...args];
 
-  private run = (socket: string, args: string[], options: Partial<ProcessRequest> = {}) =>
+  run = (socket: string, args: string[], options: Partial<ProcessRequest> = {}) =>
     execute({
       timeoutMs: 10000,
       ...options,
@@ -68,7 +111,7 @@ export class ComputerDocker {
     return result.stdout.trim();
   }
 
-  async daemon(saved?: Daemon): Promise<Daemon> {
+  async daemon(saved?: Daemon, signal?: AbortSignal): Promise<Daemon> {
     if (process.platform !== "linux" || !process.getuid?.() || !process.getgid?.()) {
       throw new AdeError(
         "isolation",
@@ -81,8 +124,18 @@ export class ComputerDocker {
     const output = await this.command(
       socket,
       ["info", "--format", "{{json .ID}} {{json .OSType}} {{json .SecurityOptions}}"],
-      { rawStdoutForIntegrity: true },
-    );
+      { rawStdoutForIntegrity: true, signal },
+    ).catch((error: unknown) => {
+      if (
+        error instanceof AdeError &&
+        (error.kind === "timeout" ||
+          (error.kind === "docker" && !/permission denied/i.test(error.message)))
+      ) {
+        throw new AdeError("docker_offline", error.message);
+      }
+
+      throw error;
+    });
 
     const [id, type, ...security] = output.split(" ");
 
@@ -111,6 +164,70 @@ export class ComputerDocker {
     }
 
     return { socket, daemon_id: info.ID };
+  }
+
+  async startDaemon(
+    saved: Daemon | undefined,
+    signal: AbortSignal,
+    onProgress: (message: string) => void,
+  ): Promise<Daemon> {
+    try {
+      return await this.daemon(saved, signal);
+    } catch (error) {
+      if (!offline(error)) {
+        throw error;
+      }
+    }
+
+    onProgress("Starting Docker…");
+    const wsl = Boolean(process.env.WSL_DISTRO_NAME);
+
+    const result = await execute({
+      program: wsl ? "powershell.exe" : "systemctl",
+      args: wsl
+        ? ["-NoProfile", "-NonInteractive", "-Command", launchDesktop]
+        : ["--no-ask-password", "--no-block", "start", "docker.service"],
+      cwd: this.root,
+      signal,
+      timeoutMs: 15000,
+      wslInterop: wsl,
+    });
+
+    if (result.code !== 0) {
+      throw new AdeError(
+        "docker_offline",
+        `Could not start Docker. ${(result.stderr || result.stdout).trim().slice(-1000)}`,
+      );
+    }
+
+    onProgress(wsl ? "Waiting for Docker in WSL…" : "Waiting for Docker Engine…");
+    const timeout = AbortSignal.timeout(90000);
+    const waiting = AbortSignal.any([signal, timeout]);
+    try {
+      while (true) {
+        try {
+          return await this.daemon(saved, waiting);
+        } catch (error) {
+          if (!offline(error)) {
+            throw error;
+          }
+        }
+
+        await delay(1000, undefined, { signal: waiting });
+      }
+    } catch (error) {
+      signal.throwIfAborted();
+      if (timeout.aborted) {
+        throw new AdeError(
+          "docker_offline",
+          wsl
+            ? "Docker Desktop did not become available. Check WSL integration for this distribution."
+            : "Docker Engine did not become available. Check the docker.service status.",
+        );
+      }
+
+      throw error;
+    }
   }
 
   async inspect<T>(

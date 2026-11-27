@@ -231,12 +231,13 @@ it("shows a pending command before execution starts", () => {
   expect(screen.getByText("Running command")).toBeTruthy();
 });
 
-it("reveals a new run error after dismissing an earlier one", () => {
+it("keeps the current run error visible and updates when the error changes", () => {
   const ui = render(<RunError error="First error" run={run} />);
-  fireEvent.click(screen.getByLabelText("Dismiss run notice"));
-  expect(screen.queryByLabelText("Run failure")).toBeNull();
-  ui.rerender(<RunError error="Second error" run={{ ...run, id: "next-run" }} />);
-  expect(screen.getByLabelText("Run failure")).toBeTruthy();
+  expect(screen.getByText("First error")).toBeTruthy();
+  expect(screen.queryByLabelText("Dismiss run notice")).toBeNull();
+  ui.rerender(<RunError error="Second error" run={run} />);
+  expect(screen.queryByText("First error")).toBeNull();
+  expect(screen.getByText("Second error")).toBeTruthy();
 });
 
 it("guides users to /clear when native thread recovery fails", () => {

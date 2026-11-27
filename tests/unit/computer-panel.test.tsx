@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { ComputerPanel } from "../../apps/desktop/features/computer/ComputerPanel";
 import { useComputer } from "../../apps/desktop/features/computer/useComputer";
 import { GlobalNotifications } from "../../apps/desktop/app/GlobalNotifications";
+import { App } from "../../apps/desktop/app/App";
 import { TitleBar } from "../../apps/desktop/app/TitleBar";
 import { NavigationSidebar } from "../../apps/desktop/app/NavigationSidebar";
 import { notifications } from "../../apps/desktop/lib/notifications";
@@ -99,6 +100,21 @@ it("labels the computer status outside the interactive desktop", () => {
   view.rerender(<ComputerPanel supported status={stopped} />);
   expect(screen.getByRole("status", { name: "Computer: Stopped" }).textContent).toBe("Stopped");
 
+  view.rerender(
+    <ComputerPanel
+      supported
+      status={{ ...stopped, status: "starting", progress: "Building image" }}
+    />,
+  );
+
+  expect(screen.getByText("Building image")).toBeTruthy();
+
+  view.rerender(
+    <ComputerPanel supported status={{ ...stopped, status: "error", error: "Chromium exited" }} />,
+  );
+
+  expect(screen.getByRole("alert").textContent).toBe("Chromium exited");
+
   view.rerender(<ComputerPanel supported={false} />);
   expect(screen.getByRole("status", { name: "Computer: Unavailable" })).toBeTruthy();
 });
@@ -165,7 +181,12 @@ it("auto-starts Shared Computer on initial load, merges WSL + computer progress,
 
   rpc.mockImplementation((method: string) => {
     if (method === "computer.status") {
-      return Promise.resolve(stopped);
+      return Promise.resolve({
+        ...stopped,
+        status: "error",
+        error: "Docker daemon is stopped",
+        docker: { ready: false, detail: "Docker daemon is stopped" },
+      });
     }
 
     if (method === "computer.control") {
@@ -268,6 +289,93 @@ it("leaves an already running desktop alone on Linux", async () => {
   expect(rpc.mock.calls).toEqual([["computer.status", {}]]);
   expect(screen.queryByText("Starting Shared Computer...")).toBeNull();
   expect(screen.queryByText("Vibestar ready")).toBeNull();
+});
+
+it("keeps sidebar refresh available across WSL and Docker failures", async () => {
+  const dockerDown: ComputerStatus = {
+    ...stopped,
+    status: "error",
+    error: "Docker daemon is stopped",
+    docker: { ready: false, detail: "Docker daemon is stopped" },
+  };
+
+  let helperReady = false;
+  let autoStart = true;
+  let resolveStart!: (status: ComputerStatus) => void;
+  let computerStatus = dockerDown;
+  const retryRuntime = vi.mocked(window.vibestar.retryRuntime);
+
+  retryRuntime.mockImplementation(async () => {
+    receive({ event: "runtime.status", data: { phase: "starting" } });
+    helperReady = true;
+    receive({ event: "runtime.status", data: { phase: "ready" } });
+  });
+
+  rpc.mockImplementation(async (method: string) => {
+    if (method === "snapshot") {
+      if (!helperReady) {
+        throw new Error("WSL unavailable");
+      }
+
+      return { settings: {}, capabilities: { shared_computer: 1 } };
+    }
+
+    if (method === "computer.status") {
+      return computerStatus;
+    }
+
+    if (method === "computer.control") {
+      if (autoStart) {
+        autoStart = false;
+        return dockerDown;
+      }
+
+      return new Promise<ComputerStatus>((resolve) => {
+        resolveStart = resolve;
+      });
+    }
+
+    return [];
+  });
+
+  render(<App />);
+  const refresh = screen.getByRole("button", { name: "Refresh connection" });
+
+  await waitFor(() =>
+    expect(refresh.getAttribute("aria-description")).toBe("Execution helper disconnected"),
+  );
+
+  fireEvent.click(refresh);
+  await waitFor(() => expect(refresh.getAttribute("aria-description")).toBe("Docker disconnected"));
+  expect(retryRuntime).toHaveBeenCalledOnce();
+
+  fireEvent.click(refresh);
+  expect(refresh.getAttribute("aria-busy")).toBe("true");
+  expect(refresh.querySelector(".sidebar-refresh-dot")).toBeTruthy();
+  await act(async () => resolveStart(dockerDown));
+  expect(refresh.getAttribute("aria-description")).toBe("Docker disconnected");
+
+  fireEvent.click(refresh);
+
+  await act(async () => {
+    computerStatus = { ...stopped, status: "ready" };
+    resolveStart(computerStatus);
+  });
+
+  expect(refresh.querySelector(".sidebar-refresh-dot")).toBeNull();
+
+  expect(rpc.mock.calls.filter(([method]) => method === "computer.control")).toEqual([
+    ["computer.control", { action: "start" }],
+    ["computer.control", { action: "start" }],
+    ["computer.control", { action: "start" }],
+  ]);
+
+  fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+  expect(screen.getByRole("button", { name: "Refresh connection" })).toBe(refresh);
+  const callsBeforeRefresh = rpc.mock.calls.length;
+  await act(async () => fireEvent.click(refresh));
+  expect(rpc.mock.calls.slice(callsBeforeRefresh)).toContainEqual(["computer.status", {}]);
+  expect(retryRuntime).toHaveBeenCalledOnce();
 });
 
 it("confirms a Retry Reset and sends reset instead of starting", async () => {

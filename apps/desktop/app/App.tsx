@@ -46,7 +46,7 @@ const subscribeToWindowResize = (onResize: () => void) => {
 const getWindowWidth = () => window.innerWidth;
 
 export const App = () => {
-  const { snapshot, error, refresh, revision } = useWorkspace();
+  const { snapshot, error, runtimeUnavailable, refresh, revision } = useWorkspace();
 
   const {
     profiles,
@@ -61,11 +61,69 @@ export const App = () => {
   );
 
   const [computerOpen, setComputerOpen] = useState(false);
+  const [runtimePhase, setRuntimePhase] = useState<string>();
+  const [connectionRetry, setConnectionRetry] = useState<{ runtime: boolean; issue?: string }>();
   const snapshotReady = Boolean(snapshot);
   const migrationPending = Boolean(snapshot?.migration);
+  const runtimeFailed = runtimePhase === "failed" || runtimeUnavailable;
+
+  const runtimeBusy = Boolean(
+    runtimePhase && runtimePhase !== "ready" && runtimePhase !== "failed",
+  );
+
   const computerSupported = snapshot?.capabilities?.shared_computer === 1;
-  const computer = useComputer(computerSupported, snapshotReady && !migrationPending, computerOpen);
+  const computerAvailable = computerSupported && snapshotReady && !migrationPending;
+
+  const computer = useComputer(
+    computerSupported,
+    computerAvailable && !runtimeFailed && !runtimeBusy && !connectionRetry?.runtime,
+    true,
+  );
+
   const [computerWidth, setComputerWidth] = usePaneSize("sharedComputerWidth", () => 480, 340, 680);
+
+  const dockerUnavailable =
+    computer.status?.docker?.ready === false && !computer.status.reset_pending;
+
+  const connectionIssue = runtimeFailed
+    ? "Execution helper disconnected"
+    : dockerUnavailable
+      ? "Docker disconnected"
+      : connectionRetry?.issue;
+
+  const connectionBusy = Boolean(
+    connectionRetry || runtimeBusy || (!runtimeFailed && computer.status?.status === "starting"),
+  );
+
+  const retryConnection = async () => {
+    if (connectionBusy) {
+      return;
+    }
+
+    setConnectionRetry({ runtime: runtimeFailed, issue: connectionIssue });
+    try {
+      if (runtimeFailed) {
+        await window.vibestar.retryRuntime();
+        await refresh();
+        refreshProfiles();
+      } else if (computerAvailable) {
+        if (
+          !computer.status?.reset_pending &&
+          (computer.status?.status === "error" || computer.status?.status === "stopped")
+        ) {
+          await computer.retry();
+        } else {
+          await computer.refreshStatus();
+        }
+      } else {
+        await refresh();
+      }
+    } catch (reason) {
+      notify.error(errorMessage(reason), { id: runtimeFailed ? "runtime" : "connection-retry" });
+    } finally {
+      setConnectionRetry(undefined);
+    }
+  };
 
   const [newProfile, setNewProfile] = useState<AgentProfile>();
   const [renameOnly, setRenameOnly] = useState(false);
@@ -128,7 +186,6 @@ export const App = () => {
     });
   };
 
-  const [runtimePhase, setRuntimePhase] = useState<string>();
   const [tool, openTool] = useState<WorkspaceTool>();
   const [palette, setPalette] = useState(false);
   const [sidebar, setSidebar] = useState(true);
@@ -250,6 +307,7 @@ export const App = () => {
             }
           }}
           openTool={openTool}
+          connection={{ issue: connectionIssue, busy: connectionBusy, retry: retryConnection }}
         />
 
         {sidebar && (

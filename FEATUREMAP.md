@@ -141,33 +141,59 @@ flowchart LR
     Startup["App Initial Load"] --> BootToast["Merged Initial Load Toast (WSL + Computer)"]
     Startup --> AutoStart["Auto-start Shared Computer"]
     TopBar["Top Bar · Computer Icon"] --> Panel["Computer Panel · Labeled Status"]
-    AutoStart --> Verify{"Sandboxed Chromium and shared write probe ready?"}
+    AutoStart --> Docker{"Docker reachable?"}
+    Docker -->|No| StartDocker["Backend starts Docker in the background and waits for the engine"]
+    StartDocker -->|Ready| Image
+    StartDocker -->|Failed| Unavailable
+    Docker -->|Yes| Image{"Current version under the reusable image tag?"}
+    Image -->|No| Build["Building the Shared Computer image · Progress in panel and toast"]
+    Build --> Verify
+    Image -->|Yes| Verify{"Sandboxed Chromium and shared write probe ready?"}
     Verify -->|Yes| Desktop["Linux desktop · Chromium, Terminal, Files"]
+    Desktop --> Cleanup["Remove superseded unused Shared Computer images"]
     Verify -->|No| Unavailable["Unavailable · startup error"]
     Panel --> Desktop
     Panel --> Pending{"Reset incomplete?"}
     Pending -->|Yes| Retry["Retry Reset · confirm cleanup"]
-    Settings["General → Viber Workspaces"] --> AllowTalk["Allow Vibers to talk with each other"]
-    Settings --> Permission["Permission · Always ask / Full permission"]
+    Settings["General → Viber Workspaces"] --> AllowTalk["Allow Vibers to talk with each other · On by default"]
+    Settings --> Permission["Permission · Always ask by default"]
     Settings --> Memory["Enable Memory"]
     AllowTalk --> Gate{"Sharing enabled?"}
     Gate -- "Off" --> Isolated["Private Viber Workspace Only"]
     Gate -- "On + Always ask" --> Prompt["Per-turn Confirmation Dialog"]
-    Gate -- "On + Full permission" --> Shared["Shared Computer Files & Services"]
+    Gate -- "On + Full permission" --> Shared["Shared Computer Access"]
     Prompt -- "Allow for this turn" --> Shared
     Prompt -- "Keep isolated" --> Isolated
     Shared --> Verify
+    Shared --> Access{"Turn access"}
+    Access -- "Read-only" --> SharedFiles["Read shared files"]
+    Access -- "Workspace-write" --> Guest["Shared files, guest services, and Linux commands"]
+    Guest --> Desktop
+    Guest --> Browser["Automate Chromium with its saved sign-ins"]
 ```
 
 ```mermaid
 flowchart LR
-    Open["Expanded sidebar · Search, Viber previews, workspace tools"] -->|Collapse or Ctrl+B| Rail["Collapsed sidebar · Search, Viber avatars, bottom Settings"]
+    Open["Expanded dark sidebar · Search, Viber previews, workspace tools"] -->|Collapse or Ctrl+B| Rail["Collapsed dark sidebar · Search, Viber avatars, bottom Settings"]
     Rail -->|Expand or Ctrl+B| Open
     Rail -->|Search| Focus["Restore sidebar width and focus search"] --> Open
     Rail -->|Select avatar| Chat["Viber chat"]
+    Open --> Refresh["Refresh icon · Bottom-right sidebar"]
+    Rail --> Refresh
+    Refresh -->|Docker or WSL disconnected| Retry["Red dot · Click to retry"]
+    Retry -->|Connected| Refresh
     Open -->|Select Viber| Chat
+    Open -->|Settings| SettingsOverlay["Settings overlay"]
+    Rail -->|Settings| SettingsOverlay
+    SettingsOverlay -->|Click outside| CloseSettings["Save pending changes and close"]
+    Open -->|Create Viber| Create["Dark Create Viber dialog · Title, close button, avatar preview and centered name prompt"]
+    Create -->|Click outside| CloseCreate{"Unsaved changes?"}
+    CloseCreate -->|No| Open
+    CloseCreate -->|Yes| Discard["Discard changes or keep editing"]
     Open -->|Right click| Actions["Pin, rename, edit or delete"]
     Actions -->|Pin| Pinned["Pinned avatars below search"]
+    Actions -->|Delete| DeleteConfirmation["Compact, centered delete confirmation · Cancel or Delete Viber"]
     Pinned -->|Select avatar| Chat
     Chat --> Greeting["New Viber · Greeting, sidebar preview and timestamp"]
+    Chat -->|Turn fails| Failure["Red Failed label above message · Plain inline error"]
 ```

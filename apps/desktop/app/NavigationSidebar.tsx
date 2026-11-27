@@ -7,6 +7,7 @@ import {
   PanelLeftOpen,
   Plug,
   Pencil,
+  RefreshCw,
   SquarePen,
   Trash2,
   Plus,
@@ -37,6 +38,7 @@ interface NavigationSidebarProps {
   pinnedIds?: string[];
   onViberAction?: (action: "rename" | "edit" | "pin" | "delete", profile: AgentProfile) => void;
   toggleRef?: Ref<HTMLButtonElement>;
+  connection?: { issue?: string; busy: boolean; retry: () => Promise<void> };
 }
 
 export const collapsedSidebarWidth = 64;
@@ -67,6 +69,7 @@ export const NavigationSidebar = ({
   toggleRef,
   pinnedIds = [],
   onViberAction,
+  connection,
 }: NavigationSidebarProps) => {
   const [search, setSearch] = useState("");
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; opener: HTMLElement }>();
@@ -352,6 +355,24 @@ export const NavigationSidebar = ({
               )}
             </div>
           ))}
+        {connection && (
+          <button
+            type="button"
+            className="sidebar-refresh"
+            aria-label="Refresh connection"
+            aria-description={connection.issue}
+            title={connection.issue ? `${connection.issue}. Click to retry` : "Refresh connection"}
+            disabled={connection.busy}
+            aria-busy={connection.busy || undefined}
+            onClick={() => void connection.retry()}
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={connection.busy ? "motion-safe:animate-spin" : undefined}
+            />
+            {connection.issue && <span className="sidebar-refresh-dot" aria-hidden="true" />}
+          </button>
+        )}
       </nav>
     </aside>
   );

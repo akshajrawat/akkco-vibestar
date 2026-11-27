@@ -8,7 +8,13 @@ import { AdeError } from "../domain";
 import type { Engine } from "../execution/engine";
 import { redact } from "../execution/runtime/process";
 import { ComputerDocker, type ContainerInspection, type Daemon } from "./docker";
-import { computerImage, desktopVersion, sharedDirectory } from "./image";
+import {
+  computerImage,
+  desktopImageLabel,
+  desktopImageTag,
+  desktopVersion,
+  sharedDirectory,
+} from "./image";
 import { ComputerDesktop } from "./desktop";
 import { desktopSeccomp } from "./seccomp";
 import { openComputerServices } from "./services";
@@ -32,6 +38,8 @@ export class Computers {
   private readonly network: string;
 
   private readonly filesRoot: string;
+
+  private readonly image = desktopImageTag(process.getuid!(), process.getgid!());
 
   readonly desktop: ComputerDesktop;
 
@@ -76,7 +84,7 @@ export class Computers {
       "SELECT socket,daemon_id,workspace_root,reset_pending FROM shared_computer WHERE singleton=1",
     )[0];
 
-  private daemon = (saved?: Binding) => {
+  private daemon = (saved?: Binding, start = false) => {
     if (saved && saved.workspace_root !== this.engine.root) {
       throw new AdeError(
         "ownership",
@@ -84,7 +92,9 @@ export class Computers {
       );
     }
 
-    return this.docker.daemon(saved);
+    return start
+      ? this.docker.startDaemon(saved, this.shutdown.signal, this.reportStartup)
+      : this.docker.daemon(saved);
   };
 
   private owned = (labels?: Record<string, string>) =>
@@ -167,6 +177,7 @@ export class Computers {
 
     return (
       container.Config.Labels["dev.vibestar.desktop"] === desktopVersion &&
+      container.Config.Image === this.image &&
       container.Config.User === `${process.getuid?.()}:${process.getgid?.()}` &&
       container.Config.Labels["dev.vibestar.files"] === identity &&
       container.HostConfig.NetworkMode === this.network &&
@@ -218,6 +229,10 @@ export class Computers {
   private publish = (status: ComputerStatus) => {
     this.engine.publish({ event: "computer.changed", data: status });
     return status;
+  };
+
+  private reportStartup = (progress: string) => {
+    this.starting = this.publish({ ...this.starting, progress });
   };
 
   status = async (): Promise<ComputerStatus> => {
@@ -292,18 +307,28 @@ export class Computers {
     const identity = await this.filesIdentity();
     const signal = this.shutdown.signal;
     const options = { signal };
-    const image = `vibestar-shared:desktop-${desktopVersion}-${process.getuid?.()}-${process.getgid?.()}`;
     let container = await this.inspect(socket);
+    const needsReplacement = !container || !this.matches(container, identity);
+    const legacy = Boolean(container && container.Config.Image !== this.image);
 
-    if (!container || !this.matches(container, identity)) {
-      if (!(await this.docker.inspect(socket, "image", image))) {
-        await this.docker.command(socket, ["build", "--tag", image, "-"], {
+    if (needsReplacement) {
+      const image = await this.docker.inspect<{
+        Config: { Labels: Record<string, string> | null };
+      }>(socket, "image", this.image);
+
+      if (image?.Config.Labels?.["dev.vibestar.desktop"] !== desktopVersion) {
+        this.reportStartup("Building the Shared Computer image. This can take a few minutes.");
+
+        await this.docker.command(socket, ["build", "--tag", this.image, "-"], {
           input: computerImage(process.getuid!(), process.getgid!()),
           signal,
           timeoutMs: 900000,
         });
       }
+    }
 
+    this.reportStartup("Starting the Shared Computer desktop…");
+    if (needsReplacement) {
       if (container) {
         await this.stop(socket, container);
         await this.docker.command(socket, ["container", "rm", container.Id], options);
@@ -377,7 +402,7 @@ export class Computers {
             "2s",
             "--health-retries",
             "10",
-            image,
+            this.image,
           ],
           options,
         );
@@ -456,6 +481,7 @@ export class Computers {
         }
 
         this.verified = { id: container.Id, startedAt: state.StartedAt, identity };
+        await this.removeUnusedImages(socket, legacy);
         return;
       }
 
@@ -464,8 +490,52 @@ export class Computers {
 
     throw new AdeError(
       "desktop_unavailable",
-      "The Linux desktop could not start Chromium safely. Check that this Linux or WSL engine permits unprivileged user namespaces.",
+      "The Linux desktop could not get Chromium ready. Retry Shared Computer from the sidebar.",
     );
+  };
+
+  private removeUnusedImages = async (socket: string, migrateLegacy: boolean) => {
+    const ids = `${process.getuid!()}-${process.getgid!()}`;
+    const legacy = new RegExp(`^desktop-[0-9]+-${ids}$`);
+    const options = { signal: this.shutdown.signal };
+
+    const results = await Promise.allSettled([
+      migrateLegacy
+        ? this.docker.command(
+            socket,
+            ["image", "ls", "--format", "{{.Tag}}", "vibestar-shared"],
+            options,
+          )
+        : "",
+      this.docker.command(
+        socket,
+        [
+          "image",
+          "ls",
+          "--no-trunc",
+          "--quiet",
+          "--filter",
+          "dangling=true",
+          "--filter",
+          `label=${desktopImageLabel}=${ids}`,
+        ],
+        options,
+      ),
+    ]);
+
+    const [tags, dangling] = results.map((result) =>
+      result.status === "fulfilled" ? result.value.split("\n") : [],
+    );
+
+    const unused = [
+      ...tags.filter((tag) => legacy.test(tag)).map((tag) => `vibestar-shared:${tag}`),
+      ...dangling.filter((id) => /^sha256:[0-9a-f]{64}$/.test(id)),
+    ];
+
+    // Non-forced removal lets Docker preserve images referenced by other containers.
+    for (const image of unused) {
+      await this.docker.command(socket, ["image", "rm", image], options).catch(() => undefined);
+    }
   };
 
   private stop = async (socket: string, container: ContainerInspection | null) => {
@@ -554,14 +624,15 @@ export class Computers {
     try {
       await this.desktop.close().catch(() => undefined);
 
-      const daemon = await this.daemon(saved);
-      next.docker = { ready: true, detail: "Linux Docker engine connected" };
       if (saved?.reset_pending && action !== "reset") {
         throw new AdeError(
           "reset_pending",
           "Reset is incomplete. Confirm Reset again to finish cleanup.",
         );
       }
+
+      const daemon = await this.daemon(saved, action === "start" || action === "restart");
+      next.docker = { ready: true, detail: "Linux Docker engine connected" };
 
       if (action === "reset") {
         if (saved) {

@@ -311,14 +311,6 @@ const SessionChat = ({
           <>
             {data && <ViberGreeting name={profile.name} />}
             {timeline}
-            {data?.messages
-              .filter(
-                (message) =>
-                  message.error && !data.runs.some((run) => run.id === message.run_id && run.error),
-              )
-              .map((message) => (
-                <RunError key={message.id} error={message.error!} conversation />
-              ))}
             {(visibleError || invalid) && (
               <RunError error={visibleError || invalid!} conversation />
             )}
@@ -336,7 +328,7 @@ const SessionChat = ({
           !active &&
           !busy &&
           previousTurn &&
-          (canContinue ? (
+          canContinue && (
             <Button
               variant="ghost"
               size="sm"
@@ -344,11 +336,7 @@ const SessionChat = ({
             >
               {continueLabel}
             </Button>
-          ) : !invalid && previousTurn.status === "failed" && !previousTurn.continue_message_id ? (
-            <Button variant="ghost" size="sm" onClick={() => void send(previousTurn.content)}>
-              Retry
-            </Button>
-          ) : null)
+          )
         }
         composer={
           <Composer

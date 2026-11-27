@@ -60,7 +60,7 @@ export const SettingsSchema = z
     default_editor: z.enum(["", "code", "cursor", "windsurf", "codium"]).default(""),
     notification_preference: z.enum(["necessary", "all"]).default("necessary"),
     viber_workspace_permission: z.enum(["always-ask", "full-permission"]).default("always-ask"),
-    allow_viber_communication: z.boolean().default(false),
+    allow_viber_communication: z.boolean().default(true),
     viber_memory: ViberMemorySettingsSchema.default(defaultViberMemorySettings),
     repository_discovery: z
       .object({
@@ -100,7 +100,7 @@ export const defaultSettings: Settings = {
   default_editor: "",
   notification_preference: "necessary",
   viber_workspace_permission: "always-ask",
-  allow_viber_communication: false,
+  allow_viber_communication: true,
   viber_memory: defaultViberMemorySettings,
   antigravity: { model: "", effort: "high", timeout_secs: 1800 },
   codex_plan: { model: "", effort: "high", timeout_secs: 1800 },

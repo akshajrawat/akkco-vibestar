@@ -1,6 +1,22 @@
+import { dirname } from "node:path";
+import { sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
 import { AdeError, type NormalizedEvent } from "../../domain";
 import type { ProcessInputProtocol } from "../runtime/process";
 import { object, parseLine, withMemoryReference, type AgentRunRequest } from "./contracts";
+
+export const antigravitySharedDirectories = (
+  request: Pick<AgentRunRequest, "sharedComputer" | "access">,
+) => {
+  if (!request.sharedComputer) {
+    return [];
+  }
+
+  return [
+    "--add-dir",
+    sharedFilesMount,
+    ...(request.access === "workspace-write" ? ["--add-dir", dirname(sharedServicesMount)] : []),
+  ];
+};
 
 type AcpPhase =
   | "initialize"
@@ -341,7 +357,7 @@ export const antigravityAcpConversation = (request: AgentRunRequest) => {
 
   return {
     program: "agy",
-    args: ["acp", "--sandbox"],
+    args: ["acp", "--sandbox", ...antigravitySharedDirectories(request)],
     inputProtocol,
     shouldObserveStdout,
     conversationId: (raw: Record<string, unknown>) =>

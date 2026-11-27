@@ -88,11 +88,21 @@ describe("domain and persistence", () => {
       const path = join(dir, "test.sqlite");
       const db = await Database.open(path);
 
+      expect(db.settings()).toMatchObject({
+        allow_viber_communication: true,
+        viber_workspace_permission: "always-ask",
+      });
+
+      expect(
+        SettingsSchema.parse({ ...defaultSettings, allow_viber_communication: undefined })
+          .allow_viber_communication,
+      ).toBe(true);
+
       db.saveSettings({
         ...defaultSettings,
         concurrency: 3,
         viber_workspace_permission: "full-permission",
-        allow_viber_communication: true,
+        allow_viber_communication: false,
       });
 
       expect(db.all("SELECT version FROM schema_migrations")).toEqual([{ version: 0 }]);
@@ -103,7 +113,7 @@ describe("domain and persistence", () => {
       const reopened = await Database.open(path);
       expect(reopened.settings().concurrency).toBe(3);
       expect(reopened.settings().viber_workspace_permission).toBe("full-permission");
-      expect(reopened.settings().allow_viber_communication).toBe(true);
+      expect(reopened.settings().allow_viber_communication).toBe(false);
       expect(() => reopened.saveSettings({ ...defaultSettings, concurrency: 5 })).toThrow();
       reopened.close();
     } finally {

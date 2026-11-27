@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { X } from "lucide-react";
 
 import { defaultAppearance, randomAppearance } from "../../../core/vibers/appearance";
 import {
@@ -52,29 +52,33 @@ export const CreateViberDialog = ({
       label={editing ? title : "Create Viber profile"}
       className={`viber-editor-overlay viber-create-overlay ${renameOnly ? "viber-rename-overlay" : ""}`}
       onClose={requestClose}
+      dismissOnBackdrop
     >
-      <header className="viber-editor-heading flex items-center shrink-0 gap-3">
-        <button
-          className="viber-editor-mascot"
-          type="button"
-          aria-label="Animate Viber"
-          onClick={(event) => {
-            if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-              event.currentTarget.animate(
-                [
-                  { transform: "translateY(0) rotate(0)" },
-                  { transform: "translateY(-6px) rotate(-12deg)" },
-                  { transform: "translateY(0) rotate(0)" },
-                ],
-                { duration: 420, easing: "ease-in-out" },
-              );
-            }
-          }}
-        >
-          <ViberFace appearance={appearance} animated />
-        </button>
+      <header className="viber-editor-heading flex min-h-13 items-center shrink-0 gap-3">
+        {editing && (
+          <button
+            className="viber-editor-mascot"
+            type="button"
+            aria-label="Animate Viber"
+            onClick={(event) => {
+              if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                event.currentTarget.animate(
+                  [
+                    { transform: "translateY(0) rotate(0)" },
+                    { transform: "translateY(-6px) rotate(-12deg)" },
+                    { transform: "translateY(0) rotate(0)" },
+                  ],
+                  { duration: 420, easing: "ease-in-out" },
+                );
+              }
+            }}
+          >
+            <ViberFace appearance={appearance} animated />
+          </button>
+        )}
         <h2>{title}</h2>
         <Button
+          className="ml-auto"
           type="button"
           variant="ghost"
           size="icon"
@@ -134,15 +138,13 @@ export const CreateViberDialog = ({
             )}
             <div className="viber-identity-fields grid gap-2.5 min-w-0">
               <label>
-                <span className="viber-name-label">
-                  <Pencil size={13} aria-hidden="true" /> Viber name
-                </span>
+                <span className="sr-only">Name</span>
                 <input
-                  placeholder="Click to name your Viber"
-                  autoFocus
+                  className="viber-name-input"
+                  placeholder="Name your Viber"
+                  autoFocus={editing}
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  aria-label="Name"
                   required
                   maxLength={100}
                 />

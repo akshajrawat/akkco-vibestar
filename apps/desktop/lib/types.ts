@@ -68,6 +68,7 @@ export interface Message {
   status?: string;
   purpose?: string;
   run_id?: string | null;
+  error?: string | null;
 }
 
 export type { DiffFile } from "../../core/workspace/git";

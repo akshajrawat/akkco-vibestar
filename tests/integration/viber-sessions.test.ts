@@ -878,6 +878,7 @@ it("creates an isolated conversation from profile defaults without requiring a r
 });
 
 it("keeps a resent turn isolated when its original request to share is no longer allowed", async () => {
+  engine.db.saveSettings({ ...engine.db.settings(), allow_viber_communication: false });
   const session = await create();
   const input = { request_id: randomUUID(), shared_computer: true };
 

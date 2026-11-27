@@ -1,6 +1,9 @@
+import { dirname } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+import { sharedFilesMount, sharedServicesMount } from "../../apps/core/computers/contracts";
 import { AdeError } from "../../apps/core/domain";
+import { AntigravityProvider } from "../../apps/core/execution/providers/antigravity";
 import {
   antigravityAcpConversation,
   antigravityAcpNormalize,
@@ -1330,5 +1333,44 @@ describe("antigravityAcpNormalize", () => {
     expect(normalize({ content: [], rawOutput: "Raw fallback" })).toMatchObject([
       { kind: "command.finished", data: { stdout: "Raw fallback" } },
     ]);
+  });
+
+  it("exposes shared computer files and services directory in Antigravity sandbox args", () => {
+    const provider = new AntigravityProvider();
+    const serviceDirectory = dirname(sharedServicesMount);
+
+    const readOnlyAcp = antigravityAcpConversation({
+      ...baseRequest,
+      sharedComputer: true,
+      access: "read-only",
+    });
+
+    expect(readOnlyAcp.args).toEqual(["acp", "--sandbox", "--add-dir", sharedFilesMount]);
+
+    const writableAcp = provider.invocation({
+      ...baseRequest,
+      sharedComputer: true,
+      access: "workspace-write",
+      conversation: { protocol: "acp" },
+    });
+
+    expect(writableAcp.args).toEqual([
+      "acp",
+      "--sandbox",
+      "--add-dir",
+      sharedFilesMount,
+      "--add-dir",
+      serviceDirectory,
+    ]);
+
+    const writablePrint = provider.invocation({
+      ...baseRequest,
+      sharedComputer: true,
+      access: "workspace-write",
+      conversation: undefined,
+    });
+
+    expect(writablePrint.args).toContain(sharedFilesMount);
+    expect(writablePrint.args).toContain(serviceDirectory);
   });
 });

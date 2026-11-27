@@ -1,4 +1,5 @@
-import { sharedFilesMount } from "../../computers/contracts";
+import { dirname } from "node:path";
+import { sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
 import { capture, checked } from "../runtime/process";
 import {
   object,
@@ -94,7 +95,7 @@ export class CodexProvider implements AgentProvider {
             "--ignore-rules",
             ...(r.workspaceType === "utility" ? ["--skip-git-repo-check"] : []),
             ...(r.sharedComputer && r.access === "workspace-write"
-              ? ["--add-dir", sharedFilesMount]
+              ? ["--add-dir", sharedFilesMount, "--add-dir", dirname(sharedServicesMount)]
               : []),
             "--json",
             "--color",

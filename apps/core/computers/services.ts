@@ -11,7 +11,9 @@ import { join } from "node:path";
 import { Duplex, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { cleanEnvironment } from "../execution/runtime/process";
+import { sharedCommandUrl } from "./contracts";
 import type { ComputerDocker } from "./docker";
+import { guestCommandTimeoutMs } from "./image";
 
 const headersFor = (headers: IncomingHttpHeaders) => {
   const hops = new Set([
@@ -31,6 +33,62 @@ const headersFor = (headers: IncomingHttpHeaders) => {
 };
 
 const maxUploadBytes = 2 * 1024 * 1024;
+const maxCommandBytes = 32 * 1024;
+const commandUrl = new URL(sharedCommandUrl);
+
+const runCommand = async (
+  incoming: IncomingMessage,
+  response: ServerResponse,
+  docker: ComputerDocker,
+  target: { socket: string; id: string },
+  signal: AbortSignal,
+) => {
+  if (incoming.method !== "POST" || incoming.url !== commandUrl.pathname) {
+    response.writeHead(400).end();
+    return;
+  }
+
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  response.once("close", abort);
+  try {
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    for await (const chunk of incoming.iterator({ destroyOnReturn: false })) {
+      bytes += chunk.length;
+      if (bytes > maxCommandBytes) {
+        response.writeHead(413, { connection: "close" }).end();
+        return;
+      }
+
+      chunks.push(chunk);
+    }
+
+    const script = Buffer.concat(chunks).toString("utf8");
+    if (!script.trim() || script.includes("\0")) {
+      response.writeHead(400).end();
+      return;
+    }
+
+    const result = await docker.run(
+      target.socket,
+      ["exec", "-i", target.id, "/usr/local/bin/vibestar-exec", script],
+      {
+        signal: AbortSignal.any([signal, controller.signal]),
+        timeoutMs: guestCommandTimeoutMs + 5000,
+        inputProtocol: { start: () => {}, receive: () => {} },
+      },
+    );
+
+    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+  } catch {
+    if (!response.destroyed) {
+      response.writeHead(502, { connection: "close" }).end();
+    }
+  } finally {
+    response.removeListener("close", abort);
+  }
+};
 
 const forward = async (
   incoming: IncomingMessage,
@@ -166,7 +224,11 @@ export const openComputerServices = async (
         return;
       }
 
-      const task = forward(incoming, response, root, docker, target, lifetime)
+      const task = (
+        incoming.headers.host === commandUrl.host
+          ? runCommand(incoming, response, docker, target, lifetime)
+          : forward(incoming, response, root, docker, target, lifetime)
+      )
         .catch(() => {
           response.destroy();
         })

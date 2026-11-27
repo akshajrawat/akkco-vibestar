@@ -1,12 +1,18 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ComputerDocker, type ContainerInspection } from "../../apps/core/computers/docker";
 import { ComputerActionSchema } from "../../apps/core/computers/contracts";
-import { computerImage, desktopVersion, sharedDirectory } from "../../apps/core/computers/image";
+import {
+  computerImage,
+  desktopImageTag,
+  desktopVersion,
+  sharedDirectory,
+} from "../../apps/core/computers/image";
 import { desktopSeccomp } from "../../apps/core/computers/seccomp";
+import { AdeError } from "../../apps/core/domain";
 import { Engine } from "../../apps/core/execution/engine";
 
 let directory: string;
@@ -19,6 +25,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   try {
     await engine.close();
   } finally {
@@ -35,6 +42,59 @@ const bind = (host = engine) =>
   );
 
 const daemon = { socket: "/test.sock", daemon_id: "test-daemon" };
+
+it.each([
+  ["Ubuntu", "powershell.exe", "Start-Process -FilePath $exe -WorkingDirectory"],
+  [undefined, "systemctl", "--no-ask-password --no-block start docker.service"],
+])(
+  "starts the installed Docker engine when the local socket is offline (%s)",
+  async (wsl, program, args) => {
+    vi.stubEnv("WSL_DISTRO_NAME", wsl);
+    vi.stubEnv("PATH", `${directory}:${process.env.PATH}`);
+
+    await writeFile(join(directory, program), '#!/bin/sh\nprintf "%s" "$*" > docker-started\n', {
+      mode: 0o700,
+    });
+
+    const probe = vi
+      .spyOn(ComputerDocker.prototype, "daemon")
+      .mockRejectedValueOnce(new AdeError("docker_offline", "engine is offline"))
+      .mockImplementation(async () => {
+        expect(await readFile(join(directory, "docker-started"), "utf8")).toContain(args);
+        return daemon;
+      });
+
+    const starting = vi.fn();
+
+    await expect(
+      new ComputerDocker(directory).startDaemon(daemon, new AbortController().signal, starting),
+    ).resolves.toEqual(daemon);
+
+    expect(starting.mock.calls).toEqual([
+      ["Starting Docker…"],
+      [wsl ? "Waiting for Docker in WSL…" : "Waiting for Docker Engine…"],
+    ]);
+
+    expect(probe.mock.calls.map(([saved]) => saved)).toEqual([daemon, daemon]);
+  },
+);
+
+it("checks daemon ownership before any automatic launch", async () => {
+  const unavailable = new AdeError(
+    "docker_unavailable",
+    "Reconnect the Docker engine that owns this computer.",
+  );
+
+  vi.spyOn(ComputerDocker.prototype, "daemon").mockRejectedValue(unavailable);
+
+  const starting = vi.fn();
+
+  await expect(
+    new ComputerDocker(directory).startDaemon(daemon, new AbortController().signal, starting),
+  ).rejects.toBe(unavailable);
+
+  expect(starting).not.toHaveBeenCalled();
+});
 
 it("requires an explicit confirmation and rejects caller-supplied profiles, mounts and daemons", () => {
   expect(() => ComputerActionSchema.parse({ action: "reset" })).toThrow();
@@ -253,6 +313,7 @@ it("requires a successful guest write probe for the current boot and shared dire
         "dev.vibestar.files": `${info.dev}:${info.ino}`,
       },
       User: `${process.getuid?.()}:${process.getgid?.()}`,
+      Image: desktopImageTag(process.getuid!(), process.getgid!()),
     },
     HostConfig: {
       NetworkMode: `${name}-net`,
@@ -286,7 +347,24 @@ it("requires a successful guest write probe for the current boot and shared dire
     .spyOn(ComputerDocker.prototype, "command")
     .mockRejectedValueOnce(new Error("guest cannot write"));
 
+  const unusedImage = `sha256:${"a".repeat(64)}`;
+
   probe.mockImplementation(async (_socket, args) => {
+    if (args[0] === "image") {
+      if (args[1] === "ls") {
+        expect(args).toContain("dangling=true");
+
+        expect(args).toContain(
+          `label=dev.vibestar.desktop-image=${process.getuid!()}-${process.getgid!()}`,
+        );
+
+        return `${unusedImage}\nunrelated:latest`;
+      }
+
+      expect(args).toEqual(["image", "rm", unusedImage]);
+      return "";
+    }
+
     expect(args).toEqual(
       expect.arrayContaining(["exec", "desktop-id", "verify-bind", sharedDirectory]),
     );
@@ -341,6 +419,8 @@ it("requires a successful guest write probe for the current boot and shared dire
     "stop",
     "start",
     "exec",
+    "image",
+    "image",
   ]);
 
   container.State.StartedAt = "second-boot";
@@ -391,7 +471,8 @@ it("retries an unconfirmed mouse release before transferring control of the same
 
 it("ships a sandboxed Chromium launcher and guest workspace launchers", () => {
   const image = computerImage(1000, 1000);
-  expect(image).toContain("exec chromium --disable-dev-shm-usage");
+  expect(image).toContain("chromium --disable-dev-shm-usage");
+  expect(image).toContain("--remote-debugging-address=127.0.0.1");
   expect(image).not.toContain("--no-sandbox");
   expect(image).toContain('label="Chromium"');
   expect(image).toContain(`cd ${sharedDirectory} &amp;&amp; exec xterm`);

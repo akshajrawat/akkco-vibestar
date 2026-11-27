@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -9,7 +10,12 @@ import { CodexProvider } from "../../apps/core/execution/providers/codex";
 import type { AgentRunRequest } from "../../apps/core/execution/providers/contracts";
 import { checked } from "../../apps/core/execution/runtime/process";
 import type { ViberMessage, ViberSession } from "../../apps/core/vibers/contracts";
-import { sharedFilesMount, sharedServicesMount } from "../../apps/core/computers/contracts";
+import {
+  sharedCommandUrl,
+  sharedFilesMount,
+  sharedServicesMount,
+} from "../../apps/core/computers/contracts";
+import { desktopImageTag } from "../../apps/core/computers/image";
 import { createFixtureEngine, detectFixtureProvider } from "../helpers/fixtures";
 import { testProfileIds } from "../helpers/viber-fixtures";
 
@@ -32,17 +38,50 @@ class ComputerFixtureProvider extends CodexProvider {
       const files = ${JSON.stringify(sharedFilesMount)};
       const socket = ${JSON.stringify(sharedServicesMount)};
       const use = ${JSON.stringify(request.sharedComputer)};
+      const canControl = use && ${request.access === "workspace-write"};
+      const command = (script) => JSON.parse(execFileSync('curl', [
+        '--fail', '--max-time', '10', '--unix-socket', socket, '--data-binary', script,
+        ${JSON.stringify(sharedCommandUrl)},
+      ], {encoding:'utf8'}));
       assert.equal(fs.existsSync('/var/run/docker.sock'), false);
       assert.equal(fs.existsSync('/tmp/.X11-unix/X0'), false);
       assert.equal(fs.existsSync(files), use);
-      assert.equal(fs.existsSync(socket), use && ${request.access === "workspace-write"});
+      assert.equal(fs.existsSync(socket), canControl);
+      assert.equal(${JSON.stringify(request.prompt.includes(sharedCommandUrl))}, canControl);
       if (${JSON.stringify(request.prompt.includes("write the smoke file"))}) {
         fs.writeFileSync(files + '/index.html', '<h1>${marker}</h1>');
       } else if (use) {
         assert.match(fs.readFileSync(files + '/index.html', 'utf8'), /${marker}/);
       }
-      if (${JSON.stringify(request.prompt.includes("read the guest service"))}) {
+      if (canControl && ${JSON.stringify(request.prompt.includes("read the guest service"))}) {
         assert.match(execFileSync('curl', ['--fail', '--unix-socket', socket, 'http://localhost:8049/'], {encoding:'utf8'}), /${marker}/);
+      }
+      if (${JSON.stringify(request.prompt.includes("open the smoke page in Chromium"))}) {
+        const env = command('printf "%s %s %s" "$DISPLAY" "$PWD" "$BROWSER"; gh --version >/dev/null');
+        assert.equal(env.code, 0, env.stderr);
+        assert.equal(env.stdout, ':0 /home/viber/workspace /usr/local/bin/vibestar-browser');
+        assert.equal(command('exit 7').code, 7);
+        const opened = command('vibestar-browser http://127.0.0.1:8049/');
+        assert.equal(opened.code, 0, opened.stderr);
+      }
+      if (${JSON.stringify(request.prompt.includes("inspect the smoke page in Chromium"))}) {
+        const script = [
+          "node --input-type=module <<'JS'",
+          "const pages = await (await fetch('http://127.0.0.1:9222/json/list')).json();",
+          "const page = pages.find((item) => item.url === 'http://127.0.0.1:8049/');",
+          "const socket = new WebSocket(page.webSocketDebuggerUrl);",
+          "socket.addEventListener('open', () => socket.send(JSON.stringify({",
+          "  id: 1, method: 'Runtime.evaluate', params: { expression: 'document.body.innerText' },",
+          "})));",
+          "socket.addEventListener('message', (event) => {",
+          "  const reply = JSON.parse(event.data);",
+          "  if (reply.id === 1) { console.log(reply.result.result.value); socket.close(); }",
+          "});",
+          "JS",
+        ].join('\\n');
+        const output = command(script);
+        assert.equal(output.code, 0, output.stderr);
+        assert.match(output.stdout, /${marker}/);
       }
       console.log(JSON.stringify({type: 'thread.started', thread_id: ${JSON.stringify(request.conversation?.threadId || request.runId)}}));
       console.log(JSON.stringify({type: 'item.completed', item:{type: 'agent_message',text: 'Isolated chat ran successfully.'}}));
@@ -53,7 +92,7 @@ class ComputerFixtureProvider extends CodexProvider {
 }
 
 it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
-  "runs a real Linux desktop, shares files and a service across Vibers, and resets only its data",
+  "lets opted-in Vibers control a real Chromium desktop and share files and services",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "vibestar-real-computer-"));
     const provider = new ComputerFixtureProvider();
@@ -82,6 +121,7 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
         checked("docker", ["--host", `unix://${socket}`, ...args], directory);
 
       const inspection = JSON.parse(await docker("inspect", name))[0];
+      expect(inspection.Config.Image).toBe(desktopImageTag(process.getuid!(), process.getgid!()));
       expect(inspection.HostConfig.PortBindings ?? {}).toEqual({});
       expect(inspection.Mounts).toHaveLength(2);
       expect(inspection.HostConfig.Privileged).toBe(false);
@@ -170,6 +210,52 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
         .toContain(marker);
 
       await send(sessions[1], "read the guest service");
+      await send(sessions[0], "open the smoke page in Chromium");
+
+      await expect
+        .poll(() => docker("exec", name, "xdotool", "getactivewindow", "getwindowname"))
+        .toContain("127.0.0.1");
+
+      await send(sessions[0], "inspect the smoke page in Chromium");
+
+      const controller = new AbortController();
+      let commandPid: number | undefined;
+
+      await engine.computers.withTurn(false, controller.signal, async ({ socket }) => {
+        const client = request(
+          { socketPath: socket, path: "/exec", method: "POST", headers: { host: "computer" } },
+          (response) => response.resume(),
+        );
+
+        const closed = new Promise<void>((resolve) => client.once("close", resolve));
+        client.on("error", () => {});
+        client.end("echo $$ > command.pid; exec sleep 60");
+
+        try {
+          const pidPath = join(host.root, "shared-computer", "files", "command.pid");
+
+          await expect
+            .poll(async () => {
+              commandPid = Number(await readFile(pidPath, "utf8").catch(() => ""));
+              return commandPid;
+            })
+            .toBeGreaterThan(0);
+        } finally {
+          controller.abort();
+          client.destroy();
+          await closed;
+        }
+      });
+
+      await expect
+        .poll(() =>
+          docker("exec", name, "kill", "-0", String(commandPid)).then(
+            () => true,
+            () => false,
+          ),
+        )
+        .toBe(false);
+
       const controller_id = randomUUID();
       await call("computer.desktop.acquire", { controller_id });
 
@@ -189,7 +275,22 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
         .toContain("127.0.0.1");
 
       expect(await call("computer.desktop.frame", { controller_id })).toMatch(/^\/9j\//);
+      await input({ type: "key", keys: "ctrl+shift+w" });
       await call("computer.desktop.release", { controller_id });
+
+      await expect
+        .poll(() =>
+          docker("exec", name, "curl", "-fsS", "http://127.0.0.1:9222/json/version").catch(
+            () => "",
+          ),
+        )
+        .toBe("");
+
+      await send(sessions[0], "open the smoke page in Chromium after closing it");
+
+      await expect
+        .poll(() => docker("exec", name, "xdotool", "getactivewindow", "getwindowname"))
+        .toContain("127.0.0.1");
 
       await call("profile.delete", { profile_id: sessions[0].profile_id, confirmed: true });
       expect(await call("computer.status", {})).toMatchObject({ status: "ready" });
@@ -200,8 +301,51 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
         status: "ready",
       });
 
+      expect(await docker("inspect", "--format", "{{.Image}}", name)).toBe(inspection.Image);
       expect(await docker("exec", name, "cat", "/home/viber/smoke-home")).toBe("persisted");
       await send(sessions[1], "read the shared file");
+
+      const writable = engine.vibers.profile(sessions[1].profile_id);
+
+      engine.vibers.saveProfile(
+        {
+          ...writable,
+          revision: writable.revision + 1,
+          execution: { ...writable.execution, access: "read-only" },
+        },
+        writable.revision,
+      );
+
+      await send(sessions[1], "read the shared file in read-only mode");
+
+      await docker("exec", name, "sh", "-c", "printf saved > /home/viber/chromium/smoke-profile");
+
+      expect(await call("computer.control", { action: "stop" })).toMatchObject({
+        status: "stopped",
+      });
+
+      await docker("container", "rm", name);
+
+      await docker(
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--entrypoint",
+        "/bin/ln",
+        "--mount",
+        `type=volume,source=${name}-home,target=/home/viber`,
+        desktopImageTag(process.getuid!(), process.getgid!()),
+        "-sfn",
+        "previous-desktop-17",
+        "/home/viber/chromium/SingletonLock",
+      );
+
+      expect(await call("computer.control", { action: "start" })).toMatchObject({
+        status: "ready",
+      });
+
+      expect(await docker("exec", name, "cat", "/home/viber/chromium/smoke-profile")).toBe("saved");
 
       const workspace = await engine.viberSessions.prepareWorkspace(
         sessions[1].id,

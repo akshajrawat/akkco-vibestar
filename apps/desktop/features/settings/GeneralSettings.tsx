@@ -54,8 +54,9 @@ export const GeneralSettings = ({
           <span>
             Permission
             <small>
-              Choose whether Vibers ask before sharing files through Shared Computer or grant access
-              automatically when sharing is enabled.
+              Choose whether Vibers ask before using Shared Computer or get access automatically.
+              This includes shared files, the desktop, and signed-in browser accounts on writable
+              turns.
             </small>
           </span>
           <Select
@@ -77,8 +78,7 @@ export const GeneralSettings = ({
           <span>
             <span id="allow-viber-communication">Allow Vibers to talk with each other</span>
             <small id="allow-viber-communication-description">
-              Enabling this allows Vibers to access each other&apos;s files through the Shared
-              Computer workspace.
+              Lets Vibers share files and use the desktop through Shared Computer.
             </small>
           </span>
           <button

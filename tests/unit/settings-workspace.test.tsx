@@ -155,15 +155,15 @@ it("uses switches for Viber sharing and Memory under Viber Workspaces with indep
   );
 
   const talk = screen.getByRole("switch", { name: "Allow Vibers to talk with each other" });
-  expect(talk.getAttribute("aria-checked")).toBe("false");
-  await act(async () => fireEvent.click(talk));
   expect(talk.getAttribute("aria-checked")).toBe("true");
+  await act(async () => fireEvent.click(talk));
+  expect(talk.getAttribute("aria-checked")).toBe("false");
 
   expect(rpc).toHaveBeenLastCalledWith(
     "settings.save",
     expect.objectContaining({
       viber_workspace_permission: "full-permission",
-      allow_viber_communication: true,
+      allow_viber_communication: false,
     }),
   );
 

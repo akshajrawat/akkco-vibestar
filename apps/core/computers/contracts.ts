@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const sharedFilesMount = "/mnt/vibestar-shared";
-export const sharedServicesMount = "/run/vibestar-computer.sock";
+export const sharedServicesMount = "/mnt/vibestar-computer/http.sock";
+export const sharedCommandUrl = "http://computer/exec";
 
 export const DesktopSize = { width: 1000, height: 640 } as const;
 
@@ -32,6 +33,7 @@ export const DesktopInputSchema = z.discriminatedUnion("type", [
 export interface ComputerStatus {
   status: "starting" | "ready" | "stopped" | "error";
   error: string | null;
+  progress?: string;
   docker: { ready: boolean; detail: string } | null;
   has_data: boolean;
   reset_pending?: boolean;

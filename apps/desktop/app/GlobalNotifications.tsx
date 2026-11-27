@@ -149,7 +149,7 @@ export const GlobalNotifications = ({
       hadStartupProgress.current = true;
       settledReady.current = false;
 
-      notifications.progress("Starting Shared Computer...", {
+      notifications.progress(computer.status.progress || "Starting Shared Computer...", {
         id: "runtime",
         essential: true,
       });

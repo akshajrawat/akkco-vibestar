@@ -69,7 +69,7 @@ it("shows animated work and tool subheadings during streaming, then collapses th
   expect(document.querySelector(".work-log")?.hasAttribute("open")).toBe(false);
 });
 
-it("shows one short standalone error and keeps complete diagnostics under Technical details", () => {
+it("shows one standalone error with its diagnostic visible inline", () => {
   const diagnostic =
     "antigravity model 'claude-opus-4-6-thinking' does not support 'high' effort. Supported: default.";
 
@@ -84,8 +84,9 @@ it("shows one short standalone error and keeps complete diagnostics under Techni
 
   expect(screen.getAllByText("This model doesn't support High reasoning.")).toHaveLength(1);
   expect(screen.getAllByText(diagnostic)).toHaveLength(1);
-  expect(screen.getByText(diagnostic).closest("details")?.open).toBe(false);
-  expect(screen.getByText("Technical details")).toBeTruthy();
+  expect(screen.getByText(diagnostic).closest("details")).toBeNull();
+  expect(screen.queryByText("Technical details")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Dismiss run notice" })).toBeNull();
   expect(screen.queryByText(/preparation failed|This stage/)).toBeNull();
 });
 

@@ -1,4 +1,5 @@
-import { sharedFilesMount } from "../../computers/contracts";
+import { dirname } from "node:path";
+import { sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
 import { AdeError } from "../../domain";
 import { memorySuggestionInstructions } from "../../vibers/memory-local";
 import type { ProcessInputProtocol } from "../runtime/process";
@@ -63,7 +64,10 @@ export const codexConversation = (request: AgentRunRequest) => {
         sandboxPolicy: writable
           ? {
               type: "workspaceWrite",
-              writableRoots: [request.cwd, ...(request.sharedComputer ? [sharedFilesMount] : [])],
+              writableRoots: [
+                request.cwd,
+                ...(request.sharedComputer ? [sharedFilesMount, dirname(sharedServicesMount)] : []),
+              ],
               networkAccess: true,
             }
           : { type: "readOnly" },
