@@ -212,7 +212,7 @@ export const ViberChat = ({
         } as CSSProperties
       }
     >
-      {sessionId === undefined && lookupError && (
+      {!sessionId && lookupError && (
         <div className="px-5 py-3 text-xs">
           <p role="alert">Couldn’t open conversation. {lookupError}</p>
           <Button

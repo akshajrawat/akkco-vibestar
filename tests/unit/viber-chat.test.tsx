@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { defaultSettings } from "../../apps/core/domain";
 import { ViberChat } from "../../apps/desktop/features/vibers/ViberChat";
@@ -56,6 +56,30 @@ it("retries a failed conversation lookup before offering to start a conversation
     "viber.session.list",
     "viber.session.list",
   ]);
+});
+
+it("offers Retry after an empty lookup and hides refresh errors when a conversation is open", async () => {
+  rpc
+    .mockResolvedValueOnce([])
+    .mockRejectedValueOnce(new Error("Refresh failed"))
+    .mockResolvedValueOnce([{ id: "existing" }])
+    .mockRejectedValueOnce(new Error("Background refresh failed"));
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  const { rerender } = render(<ViberChat profile={viberProfile} revision={0} />);
+  await screen.findByRole("textbox");
+
+  rerender(<ViberChat profile={viberProfile} revision={1} />);
+  expect((await screen.findByRole("alert")).textContent).toContain("Refresh failed");
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await screen.findByText("Existing conversation view");
+  await act(async () => rerender(<ViberChat profile={viberProfile} revision={2} />));
+
+  expect(screen.getByText("Existing conversation view")).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  expect(rpc.mock.calls.map(([method]) => method)).toEqual(Array(4).fill("viber.session.list"));
 });
 
 it("opens a Viber without execution and uses standalone sessions on explicit send, retaining a failed request for retry", async () => {
