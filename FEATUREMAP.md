@@ -147,10 +147,12 @@ flowchart LR
     StartDocker -->|Failed| Unavailable
     Docker -->|Yes| Image{"Current version under the reusable image tag?"}
     Image -->|No| Build["Building the Shared Computer image · Progress in panel and toast"]
-    Build --> Verify
-    Image -->|Yes| Verify{"Sandboxed Chromium and shared write probe ready?"}
+    Build --> Cleanup["Remove superseded unused Shared Computer images"]
+    Image -->|Yes| Cleanup
+    Cleanup --> Verify{"Healthy guest boot and shared write probe?"}
     Verify -->|Yes| Desktop["Linux desktop · Chromium, Terminal, Files"]
-    Desktop --> Cleanup["Remove superseded unused Shared Computer images"]
+    Desktop --> Control["Control desktop · F6 returns focus to Vibestar"]
+    Control -->|Tab, shortcuts, or committed text| Desktop
     Verify -->|No| Unavailable["Unavailable · startup error"]
     Panel --> Desktop
     Panel --> Pending{"Reset incomplete?"}
@@ -168,7 +170,9 @@ flowchart LR
     Shared --> Access{"Turn access"}
     Access -- "Read-only" --> SharedFiles["Read shared files"]
     Access -- "Workspace-write" --> Guest["Shared files, guest services, and Linux commands"]
-    Guest --> Desktop
+    Guest --> Boot{"Still on the verified guest boot?"}
+    Boot -->|Yes| Desktop
+    Boot -->|No| Reverify["End turn access · Start Shared Computer to verify again"]
     Guest --> Browser["Automate Chromium with its saved sign-ins"]
 ```
 
@@ -194,6 +198,8 @@ flowchart LR
     Actions -->|Pin| Pinned["Pinned avatars below search"]
     Actions -->|Delete| DeleteConfirmation["Compact, centered delete confirmation · Cancel or Delete Viber"]
     Pinned -->|Select avatar| Chat
-    Chat --> Greeting["New Viber · Greeting, sidebar preview and timestamp"]
+    Chat --> Lookup{"Conversation lookup succeeded?"}
+    Lookup -->|No| RetryLookup["Retry lookup"] --> Lookup
+    Lookup -->|No existing conversation| Greeting["New Viber · Greeting, sidebar preview and timestamp"]
     Chat -->|Turn fails| Failure["Red Failed label above message · Plain inline error"]
 ```

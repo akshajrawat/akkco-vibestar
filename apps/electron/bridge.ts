@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 
 import type { DesktopSettings } from "./contracts";
-import type { CoreEvent } from "../core/domain";
+import { AdeError, type CoreEvent } from "../core/domain";
 import { StreamRedactor } from "../core/execution/output/stream-redactor";
 
 const exec = promisify(execFile);
@@ -341,7 +341,7 @@ export class CoreBridge extends EventEmitter {
   private rejectAll = (message: string) => {
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.reject(new Error(message));
+      p.reject(new AdeError("helper_disconnected", message));
     }
 
     this.pending.clear();
@@ -429,7 +429,10 @@ export class CoreBridge extends EventEmitter {
     const child = this.child;
     if (!child || child.exitCode !== null) {
       return Promise.reject(
-        new Error("Execution core unavailable. Use Settings to install the WSL helper."),
+        new AdeError(
+          "helper_disconnected",
+          "Execution core unavailable. Use Settings to install the WSL helper.",
+        ),
       );
     }
 
@@ -448,7 +451,7 @@ export class CoreBridge extends EventEmitter {
         if (error) {
           clearTimeout(timer);
           this.pending.delete(id);
-          reject(error);
+          reject(new AdeError("helper_disconnected", error.message));
         }
       });
     });

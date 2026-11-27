@@ -27,7 +27,9 @@ export const useWorkspace = () => {
       }
 
       setError(errorMessage(e));
-      setRuntimeUnavailable(true);
+      if (e && typeof e === "object" && "kind" in e && e.kind === "helper_disconnected") {
+        setRuntimeUnavailable(true);
+      }
     }
   }, []);
 

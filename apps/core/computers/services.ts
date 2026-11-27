@@ -4,6 +4,7 @@ import {
   request,
   type IncomingHttpHeaders,
   type IncomingMessage,
+  type OutgoingHttpHeaders,
   type ServerResponse,
 } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -35,13 +36,33 @@ const headersFor = (headers: IncomingHttpHeaders) => {
 const maxUploadBytes = 2 * 1024 * 1024;
 const maxCommandBytes = 32 * 1024;
 const commandUrl = new URL(sharedCommandUrl);
+export const verifiedBootFile = "/tmp/vibestar-verified-boot";
+
+type Target = { socket: string; id: string; bootToken: string };
+
+type Verify = () => Promise<boolean>;
+
+// Check inside the exec as well, since Docker can restart between inspect and exec.
+const guestExec = (target: Target, args: string[]) => [
+  "exec",
+  "-i",
+  target.id,
+  "sh",
+  "-c",
+  'set -e; read -r boot < "$1"; test "$boot" = "$2"; shift 2; exec "$@"',
+  "verify-boot",
+  verifiedBootFile,
+  target.bootToken,
+  ...args,
+];
 
 const runCommand = async (
   incoming: IncomingMessage,
   response: ServerResponse,
   docker: ComputerDocker,
-  target: { socket: string; id: string },
+  target: Target,
   signal: AbortSignal,
+  verify: Verify,
 ) => {
   if (incoming.method !== "POST" || incoming.url !== commandUrl.pathname) {
     response.writeHead(400).end();
@@ -72,7 +93,7 @@ const runCommand = async (
 
     const result = await docker.run(
       target.socket,
-      ["exec", "-i", target.id, "/usr/local/bin/vibestar-exec", script],
+      guestExec(target, ["/usr/local/bin/vibestar-exec", script]),
       {
         signal: AbortSignal.any([signal, controller.signal]),
         timeoutMs: guestCommandTimeoutMs + 5000,
@@ -80,10 +101,15 @@ const runCommand = async (
       },
     );
 
-    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+    if (result.code !== 0 && !(await verify())) {
+      response.writeHead(503, { connection: "close" }).end();
+    } else {
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+    }
   } catch {
-    if (!response.destroyed) {
-      response.writeHead(502, { connection: "close" }).end();
+    if (!response.headersSent && !response.destroyed) {
+      const status = (await verify()) ? 502 : 503;
+      response.writeHead(status, { connection: "close" }).end();
     }
   } finally {
     response.removeListener("close", abort);
@@ -95,8 +121,9 @@ const forward = async (
   response: ServerResponse,
   root: string,
   docker: ComputerDocker,
-  target: { socket: string; id: string },
+  target: Target,
   signal: AbortSignal,
+  verify: Verify,
 ) => {
   const host = /^(?:localhost|127\.0\.0\.1):([0-9]{1,5})$/i.exec(incoming.headers.host ?? "");
   const port = Number(host?.[1]);
@@ -114,18 +141,23 @@ const forward = async (
     return;
   }
 
+  const headers: OutgoingHttpHeaders = { ...headersFor(incoming.headers), connection: "close" };
+  // Node has already validated and decoded the incoming request's framing.
+  const contentLength = incoming.headers["content-length"];
+  if (contentLength !== undefined) {
+    headers["content-length"] = contentLength;
+  } else if (incoming.headers["transfer-encoding"] !== undefined) {
+    headers["transfer-encoding"] = "chunked";
+  }
+
   const timeout = AbortSignal.any([signal, AbortSignal.timeout(30000)]);
 
   const child = spawn(
     "docker",
-    docker.args(target.socket, [
-      "exec",
-      "-i",
-      target.id,
-      "socat",
-      "STDIO",
-      `TCP4:127.0.0.1:${port},connect-timeout=3`,
-    ]),
+    docker.args(
+      target.socket,
+      guestExec(target, ["socat", "STDIO", `TCP4:127.0.0.1:${port},connect-timeout=3`]),
+    ),
     { cwd: root, env: cleanEnvironment(), stdio: ["pipe", "pipe", "ignore"] },
   );
 
@@ -137,7 +169,7 @@ const forward = async (
     port,
     method: incoming.method,
     path: incoming.url,
-    headers: { ...headersFor(incoming.headers), connection: "close" },
+    headers,
     createConnection: () => socket,
     signal: timeout,
   });
@@ -189,7 +221,8 @@ const forward = async (
     await Promise.all([sending, receiving]);
   } catch (error) {
     if (!response.headersSent && !response.destroyed) {
-      response.writeHead(error === oversized ? 413 : 502, { connection: "close" }).end();
+      const status = error === oversized ? 413 : (await verify()) ? 502 : 503;
+      response.writeHead(status, { connection: "close" }).end();
     } else if (!response.writableFinished) {
       response.destroy();
     }
@@ -207,14 +240,23 @@ const forward = async (
 export const openComputerServices = async (
   root: string,
   docker: ComputerDocker,
-  target: { socket: string; id: string },
+  target: Target,
   signal: AbortSignal,
+  verify: Verify,
 ) => {
   const directory = await mkdtemp("/tmp/vibestar-services-");
   const socket = join(directory, "http.sock");
   const active = new Set<Promise<void>>();
   const controller = new AbortController();
   const lifetime = AbortSignal.any([signal, controller.signal]);
+
+  const stillVerified = async () => {
+    if (!lifetime.aborted && !(await verify())) {
+      controller.abort();
+    }
+
+    return !lifetime.aborted;
+  };
 
   const server = createServer(
     { maxHeaderSize: 8192, requestTimeout: 30000, headersTimeout: 10000 },
@@ -224,11 +266,18 @@ export const openComputerServices = async (
         return;
       }
 
-      const task = (
-        incoming.headers.host === commandUrl.host
-          ? runCommand(incoming, response, docker, target, lifetime)
-          : forward(incoming, response, root, docker, target, lifetime)
-      )
+      const task = (async () => {
+        if (!(await stillVerified())) {
+          response.writeHead(503, { connection: "close" }).end();
+          return;
+        }
+
+        if (incoming.headers.host === commandUrl.host) {
+          await runCommand(incoming, response, docker, target, lifetime, stillVerified);
+        } else {
+          await forward(incoming, response, root, docker, target, lifetime, stillVerified);
+        }
+      })()
         .catch(() => {
           response.destroy();
         })

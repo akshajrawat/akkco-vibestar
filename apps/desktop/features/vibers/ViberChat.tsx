@@ -13,6 +13,7 @@ import { SharedWorkspaceDialog } from "./SharedWorkspaceDialog";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
 import { configurationError } from "../../../core/execution/providers/contracts";
+import { Button } from "../../components/ui/button";
 
 const messageTextColor = (color: string) => {
   const [red, green, blue] = [1, 3, 5].map((index) => {
@@ -36,6 +37,8 @@ export const ViberChat = ({
   settings?: Settings;
 }) => {
   const [sessionId, setSessionId] = useState<string | null>();
+  const [lookupError, setLookupError] = useState<string>();
+  const [lookupAttempt, setLookupAttempt] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [sharePrompt, setSharePrompt] = useState<{ content: string }>();
@@ -66,18 +69,19 @@ export const ViberChat = ({
       .then(([session]) => {
         if (active) {
           setSessionId((current) => session?.id ?? current ?? null);
+          setLookupError(undefined);
         }
       })
       .catch((reason) => {
         if (active) {
-          setError(errorMessage(reason));
+          setLookupError(errorMessage(reason));
         }
       });
 
     return () => {
       active = false;
     };
-  }, [profile.id, revision]);
+  }, [profile.id, revision, lookupAttempt]);
 
   const start = async (content = composerContent(getTaskView(draftId)), shareChoice?: boolean) => {
     if (starting.current || invalid) {
@@ -208,6 +212,21 @@ export const ViberChat = ({
         } as CSSProperties
       }
     >
+      {sessionId === undefined && lookupError && (
+        <div className="px-5 py-3 text-xs">
+          <p role="alert">Couldn’t open conversation. {lookupError}</p>
+          <Button
+            variant="secondary"
+            className="mt-2"
+            onClick={() => {
+              setLookupError(undefined);
+              setLookupAttempt((attempt) => attempt + 1);
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
       {(error || (sessionId === null && invalid)) && (
         <RunError error={error || invalid!} conversation />
       )}
@@ -247,7 +266,7 @@ export const ViberChat = ({
             />
           }
         />
-      ) : !error ? (
+      ) : !lookupError ? (
         <p role="status" className="px-5 py-3 text-xs text-ink-muted">
           Opening conversation…
         </p>

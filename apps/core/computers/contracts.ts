@@ -21,7 +21,16 @@ export const DesktopInputSchema = z.discriminatedUnion("type", [
       phase: z.enum(["down", "up", "click", "move"]),
     })
     .strict(),
-  z.object({ type: z.literal("text"), text: z.string().regex(/^[ -~]{1,256}$/) }).strict(),
+  z
+    .object({
+      type: z.literal("text"),
+      text: z
+        .string()
+        .min(1)
+        .max(256)
+        .regex(/^[^\p{Cc}\p{Cs}]+$/u),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("key"),

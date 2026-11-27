@@ -40,6 +40,24 @@ afterEach(() => {
   localStorage.clear();
 });
 
+it("retries a failed conversation lookup before offering to start a conversation", async () => {
+  rpc.mockRejectedValueOnce(new Error("Lookup failed")).mockResolvedValueOnce([{ id: "existing" }]);
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ViberChat profile={viberProfile} revision={0} />);
+
+  expect((await screen.findByRole("alert")).textContent).toContain("Lookup failed");
+  expect(screen.queryByRole("textbox")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+  await screen.findByText("Existing conversation view");
+  expect(screen.queryByRole("alert")).toBeNull();
+
+  expect(rpc.mock.calls.map(([method]) => method)).toEqual([
+    "viber.session.list",
+    "viber.session.list",
+  ]);
+});
+
 it("opens a Viber without execution and uses standalone sessions on explicit send, retaining a failed request for retry", async () => {
   const session = {
     id: crypto.randomUUID(),

@@ -17,14 +17,20 @@ import {
 } from "./image";
 import { ComputerDesktop } from "./desktop";
 import { desktopSeccomp } from "./seccomp";
-import { openComputerServices } from "./services";
+import { openComputerServices, verifiedBootFile } from "./services";
 import type { ComputerStatus } from "./contracts";
 
 type Binding = Daemon & { reset_pending: number; workspace_root: string };
 
 type Action = "start" | "stop" | "restart" | "reset";
 
-type Running = { socket: string; id: string; startedAt: string; filesIdentity: string };
+type Running = {
+  socket: string;
+  id: string;
+  startedAt: string;
+  filesIdentity: string;
+  bootToken: string;
+};
 
 export class Computers {
   private readonly docker: ComputerDocker;
@@ -55,7 +61,7 @@ export class Computers {
 
   private startError?: string;
 
-  private verified?: { id: string; startedAt: string; identity: string };
+  private verified?: { id: string; startedAt: string; identity: string; bootToken: string };
 
   private starting: ComputerStatus = {
     status: "starting",
@@ -436,6 +442,9 @@ export class Computers {
         });
     }
 
+    await this.removeUnusedImages(socket, legacy);
+    signal.throwIfAborted();
+
     for (let attempt = 0; attempt < 40; attempt++) {
       const current = await this.inspect(socket);
       const state = current?.State;
@@ -448,40 +457,50 @@ export class Computers {
         const nonce = randomUUID();
         const probe = `.vibestar-${nonce}`;
         await writeFile(join(source, probe), nonce, { flag: "wx", mode: 0o600 });
+        let observed: string;
         try {
-          const observed = await this.docker.command(
+          observed = await this.docker.command(
             socket,
             [
               "exec",
               container.Id,
               "sh",
               "-c",
-              'set -eC; cat "$1/$2"; : > "$1/$2.write"; rm "$1/$2.write"',
+              'set -eC; cat "$1/$3"; : > "$1/$3.write"; rm "$1/$3.write"; printf "%s\\n" "${3#.vibestar-}" > "$2.$3"; mv -fT -- "$2.$3" "$2"',
               "verify-bind",
               sharedDirectory,
+              verifiedBootFile,
               probe,
             ],
             options,
           );
-
-          const after = await this.inspect(socket);
-          if (
-            observed !== nonce ||
-            (await this.filesIdentity()) !== identity ||
-            after?.Id !== container.Id ||
-            !after.State.Running ||
-            after.State.StartedAt !== state.StartedAt ||
-            after.State.Health?.Status !== "healthy" ||
-            !this.matches(after, identity)
-          ) {
-            throw new AdeError("isolation", "Docker could not access the managed workspace files.");
-          }
         } finally {
           await rm(join(source, probe), { force: true });
         }
 
-        this.verified = { id: container.Id, startedAt: state.StartedAt, identity };
-        await this.removeUnusedImages(socket, legacy);
+        const currentIdentity = await this.filesIdentity();
+        const after = await this.inspect(socket);
+        if (
+          observed !== nonce ||
+          currentIdentity !== identity ||
+          after?.Id !== container.Id ||
+          !after.State.Running ||
+          after.State.StartedAt !== state.StartedAt ||
+          after.State.Health?.Status !== "healthy" ||
+          !this.matches(after, identity)
+        ) {
+          throw new AdeError("isolation", "Docker could not access the managed workspace files.");
+        }
+
+        signal.throwIfAborted();
+
+        this.verified = {
+          id: container.Id,
+          startedAt: state.StartedAt,
+          identity,
+          bootToken: nonce,
+        };
+
         return;
       }
 
@@ -694,7 +713,13 @@ export class Computers {
     const target = await this.inspect(socket);
 
     const identity = await this.isReady(target, revision);
-    if (!target || !identity || revision !== this.revision || this.shutdown.signal.aborted) {
+    if (
+      !target ||
+      !identity ||
+      !this.verified ||
+      revision !== this.revision ||
+      this.shutdown.signal.aborted
+    ) {
       throw new AdeError("computer_stopped", "Shared Computer is unavailable. Check its status.");
     }
 
@@ -703,6 +728,7 @@ export class Computers {
       id: target.Id,
       startedAt: target.State.StartedAt,
       filesIdentity: identity,
+      bootToken: this.verified.bootToken,
     };
   };
 
@@ -722,7 +748,10 @@ export class Computers {
 
       const services = readOnly
         ? undefined
-        : await openComputerServices(this.engine.root, this.docker, running, signal);
+        : await openComputerServices(this.engine.root, this.docker, running, signal, async () => {
+            const current = await this.running().catch(() => undefined);
+            return current?.bootToken === running.bootToken;
+          });
 
       try {
         if ((await this.filesIdentity()) !== running.filesIdentity) {

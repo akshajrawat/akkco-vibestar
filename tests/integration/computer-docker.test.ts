@@ -235,10 +235,13 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
           const pidPath = join(host.root, "shared-computer", "files", "command.pid");
 
           await expect
-            .poll(async () => {
-              commandPid = Number(await readFile(pidPath, "utf8").catch(() => ""));
-              return commandPid;
-            })
+            .poll(
+              async () => {
+                commandPid = Number(await readFile(pidPath, "utf8").catch(() => ""));
+                return commandPid;
+              },
+              { timeout: 10000 },
+            )
             .toBeGreaterThan(0);
         } finally {
           controller.abort();
@@ -249,12 +252,17 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
 
       await expect
         .poll(() =>
-          docker("exec", name, "kill", "-0", String(commandPid)).then(
-            () => true,
-            () => false,
+          docker(
+            "exec",
+            name,
+            "sh",
+            "-c",
+            'if test -d "/proc/$1"; then printf alive; else printf absent; fi',
+            "check-process",
+            String(commandPid),
           ),
         )
-        .toBe(false);
+        .toBe("absent");
 
       const controller_id = randomUUID();
       await call("computer.desktop.acquire", { controller_id });

@@ -1,7 +1,7 @@
 import { DesktopSize } from "./contracts";
 
 export const sharedDirectory = "/home/viber/workspace";
-export const desktopVersion = "5";
+export const desktopVersion = "6";
 export const guestCommandTimeoutMs = 120_000;
 export const desktopImageLabel = "dev.vibestar.desktop-image";
 
@@ -138,7 +138,7 @@ COPY <<'EOF_MENU' /etc/xdg/openbox/menu.xml
 </openbox_menu>
 EOF_MENU
 USER ${uid}:${gid}
-ENV HOME=/home/viber DISPLAY=:0 BROWSER=/usr/local/bin/vibestar-browser
+ENV HOME=/home/viber DISPLAY=:0 BROWSER=/usr/local/bin/vibestar-browser LC_ALL=C.UTF-8
 WORKDIR ${sharedDirectory}
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/usr/local/bin/vibestar-desktop"]

@@ -8,6 +8,7 @@ import { createInterface } from "node:readline";
 import { z } from "zod";
 import { CoreBridge, readDesktopConfig, saveDesktopConfig } from "./bridge";
 import { configureWindowControls } from "./window-controls";
+import { AdeError } from "../core/domain";
 
 const exec = promisify(execFile);
 const isWslg = process.platform === "linux" && !!process.env.WSL_DISTRO_NAME;
@@ -114,7 +115,7 @@ const main = async () => {
     try {
       const p = z.object({ method: z.string().max(100), params: z.unknown() }).parse(input);
       if (!bridge) {
-        throw new Error("Core not initialized");
+        throw new AdeError("helper_disconnected", "Core not initialized");
       }
 
       if (changingRuntime) {

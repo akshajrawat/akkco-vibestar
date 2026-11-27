@@ -27,9 +27,10 @@ it("admits a later pointer move when an earlier move found the queue full", asyn
   Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
   render(<ComputerDesktop />);
 
-  const desktop = await screen.findByRole("button", {
-    name: "Control the Shared Computer desktop",
-  });
+  const control = await screen.findByRole("button", { name: "Control desktop" });
+  fireEvent.click(control);
+  const keyboard = screen.getByRole("textbox", { name: "Shared Computer keyboard input" });
+  const desktop = screen.getByRole("img", { name: "Live Shared Computer desktop" }).parentElement!;
 
   vi.spyOn(desktop, "getBoundingClientRect").mockReturnValue({
     width: 1000,
@@ -44,7 +45,7 @@ it("admits a later pointer move when an earlier move found the queue full", asyn
   });
 
   for (let index = 0; index < 64; index++) {
-    fireEvent.keyDown(desktop, { key: "a" });
+    fireEvent.input(keyboard, { target: { value: "a" } });
   }
 
   fireEvent.pointerMove(desktop, { buttons: 1, clientX: 30, clientY: 20 });
@@ -58,5 +59,52 @@ it("admits a later pointer move when an earlier move found the queue full", asyn
       controller_id: expect.any(String),
       input: { type: "pointer", phase: "move", x: 40, y: 20, button: 1 },
     }),
+  );
+});
+
+it("sends native text and committed composition once, and returns focus with F6 while preserving guest keys", async () => {
+  const rpc = vi.fn(async (method: string) =>
+    method === "computer.desktop.frame" ? "fixture-frame" : null,
+  );
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+  render(<ComputerDesktop />);
+
+  const control = await screen.findByRole("button", { name: "Control desktop" });
+  fireEvent.click(control);
+  const keyboard = screen.getByRole("textbox", { name: "Shared Computer keyboard input" });
+  expect(document.activeElement).toBe(keyboard);
+
+  for (const text of ["a", "é"]) {
+    fireEvent.keyDown(keyboard, { key: text });
+    fireEvent.input(keyboard, { target: { value: text } });
+  }
+
+  fireEvent.compositionStart(keyboard);
+  fireEvent.input(keyboard, { isComposing: true, target: { value: "ni" } });
+  fireEvent.keyDown(keyboard, { key: "Enter", isComposing: true });
+  fireEvent.input(keyboard, { isComposing: true, target: { value: "你" } });
+  fireEvent.compositionEnd(keyboard, { data: "你" });
+  fireEvent.compositionStart(keyboard);
+  fireEvent.input(keyboard, { isComposing: true, target: { value: "cancelled" } });
+  fireEvent.compositionEnd(keyboard, { data: "" });
+
+  expect(fireEvent.keyDown(keyboard, { key: "Tab" })).toBe(false);
+  expect(fireEvent.keyDown(keyboard, { key: "l", ctrlKey: true })).toBe(false);
+  expect(fireEvent.keyDown(keyboard, { key: "F6" })).toBe(false);
+  expect(document.activeElement).toBe(control);
+
+  await waitFor(() =>
+    expect(
+      rpc.mock.calls
+        .filter(([method]) => method === "computer.desktop.input")
+        .map((call) => (call as unknown as [string, { input: unknown }])[1].input),
+    ).toEqual([
+      { type: "text", text: "a" },
+      { type: "text", text: "é" },
+      { type: "text", text: "你" },
+      { type: "key", keys: "Tab" },
+      { type: "key", keys: "ctrl+l" },
+    ]),
   );
 });

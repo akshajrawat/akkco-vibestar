@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { request } from "node:http";
 import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,7 +61,9 @@ it.each([
       .spyOn(ComputerDocker.prototype, "daemon")
       .mockRejectedValueOnce(new AdeError("docker_offline", "engine is offline"))
       .mockImplementation(async () => {
-        expect(await readFile(join(directory, "docker-started"), "utf8")).toContain(args);
+        const launch = await readFile(join(directory, "docker-started"), "utf8");
+        expect(launch).toContain(args);
+        expect(launch).not.toMatch(/settings(?:-store)?\.json|openUIOnStartupDisabled/);
         return daemon;
       });
 
@@ -343,9 +346,9 @@ it("requires a successful guest write probe for the current boot and shared dire
     structuredClone(container),
   );
 
-  const probe = vi
-    .spyOn(ComputerDocker.prototype, "command")
-    .mockRejectedValueOnce(new Error("guest cannot write"));
+  const probe = vi.spyOn(ComputerDocker.prototype, "command");
+  let writable = false;
+  let stopDuringCleanup = false;
 
   const unusedImage = `sha256:${"a".repeat(64)}`;
 
@@ -362,12 +365,20 @@ it("requires a successful guest write probe for the current boot and shared dire
       }
 
       expect(args).toEqual(["image", "rm", unusedImage]);
+      if (stopDuringCleanup) {
+        container.State.Running = false;
+      }
+
       return "";
     }
 
     expect(args).toEqual(
       expect.arrayContaining(["exec", "desktop-id", "verify-bind", sharedDirectory]),
     );
+
+    if (!writable) {
+      throw new Error("guest cannot write");
+    }
 
     return args.at(-1)!.replace(".vibestar-", "");
   });
@@ -390,6 +401,11 @@ it("requires a successful guest write probe for the current boot and shared dire
   await expect(withTurn()).rejects.toThrow("unavailable");
   expect(turn).not.toHaveBeenCalled();
 
+  writable = true;
+  stopDuringCleanup = true;
+  expect(await engine.computers.control("start")).toMatchObject({ status: "error" });
+  stopDuringCleanup = false;
+  container.State.Running = true;
   expect(await engine.computers.control("start")).toMatchObject({ status: "ready" });
   expect((await engine.computers.status()).status).toBe("ready");
   await expect(withTurn()).resolves.toBe("response");
@@ -418,12 +434,30 @@ it("requires a successful guest write probe for the current boot and shared dire
   expect(probe.mock.calls.slice(previousCalls).map(([, [command]]) => command)).toEqual([
     "stop",
     "start",
+    "image",
+    "image",
     "exec",
-    "image",
-    "image",
   ]);
 
-  container.State.StartedAt = "second-boot";
+  await engine.computers.withTurn(false, new AbortController().signal, async ({ socket }) => {
+    container.State.StartedAt = "second-boot";
+
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const client = request(
+        { socketPath: socket, method: "POST", path: "/exec", headers: { host: "computer" } },
+        (response) => {
+          response.resume();
+          resolve(response.statusCode);
+        },
+      );
+
+      client.once("error", reject);
+      client.end("printf stale");
+    });
+
+    expect(status).toBe(503);
+  });
+
   await expect(withTurn()).rejects.toThrow("unavailable");
   expect((await engine.computers.status()).status).not.toBe("ready");
   expect(await engine.computers.control("start")).toMatchObject({ status: "ready" });

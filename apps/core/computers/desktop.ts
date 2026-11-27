@@ -117,7 +117,14 @@ export class ComputerDesktop {
 
     let args: string[];
     if (action.type === "text") {
-      args = ["type", "--clearmodifiers", "--delay", "0", "--", action.text];
+      args = [
+        "type",
+        "--clearmodifiers",
+        "--delay",
+        /^[ -~]+$/.test(action.text) ? "0" : "12",
+        "--",
+        action.text,
+      ];
     } else if (action.type === "key") {
       args = ["key", "--clearmodifiers", action.keys];
     } else {

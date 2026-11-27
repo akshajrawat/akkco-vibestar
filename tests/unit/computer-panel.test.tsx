@@ -314,7 +314,7 @@ it("keeps sidebar refresh available across WSL and Docker failures", async () =>
   rpc.mockImplementation(async (method: string) => {
     if (method === "snapshot") {
       if (!helperReady) {
-        throw new Error("WSL unavailable");
+        throw { kind: "helper_disconnected", message: "WSL unavailable" };
       }
 
       return { settings: {}, capabilities: { shared_computer: 1 } };

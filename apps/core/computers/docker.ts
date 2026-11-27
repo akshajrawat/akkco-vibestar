@@ -58,30 +58,6 @@ if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
   throw 'Docker Desktop executable not found.'
 }
 $exe = (Resolve-Path -LiteralPath $exe).Path
-# Docker reads this preference before deciding whether to show its dashboard.
-$settingsDir = Join-Path $env:APPDATA 'Docker'
-$settingsPath = Join-Path $settingsDir 'settings-store.json'
-$legacyPath = Join-Path $settingsDir 'settings.json'
-if (!(Test-Path -LiteralPath $settingsPath) -and (Test-Path -LiteralPath $legacyPath)) {
-  $settingsPath = $legacyPath
-}
-$exists = Test-Path -LiteralPath $settingsPath
-$settings = if ($exists) { Get-Content -Raw -LiteralPath $settingsPath | ConvertFrom-Json } else { [pscustomobject]@{} }
-if ($settings.openUIOnStartupDisabled -ne $true) {
-  $settings | Add-Member -NotePropertyName 'openUIOnStartupDisabled' -NotePropertyValue $true -Force
-  [IO.Directory]::CreateDirectory($settingsDir) | Out-Null
-  $tempPath = Join-Path $settingsDir ([guid]::NewGuid().ToString() + '.tmp')
-  try {
-    [IO.File]::WriteAllText($tempPath, ($settings | ConvertTo-Json -Depth 100))
-    if ($exists) {
-      [IO.File]::Replace($tempPath, $settingsPath, [System.Management.Automation.Language.NullString]::Value)
-    } else {
-      [IO.File]::Move($tempPath, $settingsPath)
-    }
-  } finally {
-    [IO.File]::Delete($tempPath)
-  }
-}
 Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -WindowStyle Hidden
 `;
 

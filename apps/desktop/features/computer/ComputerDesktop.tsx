@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Monitor, RotateCw } from "lucide-react";
-import { DesktopSize, type ComputerRpc } from "../../../core/computers/contracts";
+import {
+  DesktopInputSchema,
+  DesktopSize,
+  type ComputerRpc,
+} from "../../../core/computers/contracts";
 import { Button } from "../../components/ui/button";
 import { computerRpc, errorMessage } from "../../lib/api";
 
@@ -34,6 +38,10 @@ export const ComputerDesktop = () => {
   const pending = useRef(Promise.resolve());
   const moving = useRef(false);
   const queued = useRef(0);
+  const enterControl = useRef<HTMLButtonElement>(null);
+  const textInput = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  const controlHint = useId();
 
   useEffect(() => {
     const id = crypto.randomUUID();
@@ -114,22 +122,46 @@ export const ComputerDesktop = () => {
     return false;
   };
 
-  const keyboard = (event: KeyboardEvent) => {
-    if (!event.ctrlKey && !event.metaKey && !event.altKey && /^[ -~]$/.test(event.key)) {
+  const sendText = (text: string) => {
+    const input = DesktopInputSchema.safeParse({ type: "text", text });
+    if (input.success) {
+      send(input.data);
+    }
+  };
+
+  const keyboard = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    event.stopPropagation();
+    if (
+      event.key === "F6" &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
-      event.stopPropagation();
-      send({ type: "text", text: event.key });
+      enterControl.current?.focus();
       return;
     }
 
+    if (
+      composing.current ||
+      event.nativeEvent.isComposing ||
+      event.key === "Dead" ||
+      event.key === "Process"
+    ) {
+      return;
+    }
+
+    const shortcut =
+      !event.getModifierState("AltGraph") && (event.ctrlKey || event.metaKey || event.altKey);
+
     const key =
-      keyNames[event.key] ||
-      (/^(?:[a-zA-Z0-9]|F(?:[1-9]|1[0-2]))$/.test(event.key) &&
-        (event.key.length === 1 ? event.key.toLowerCase() : event.key));
+      (event.key !== " " || shortcut ? keyNames[event.key] : undefined) ||
+      (/^F(?:[1-9]|1[0-2])$/.test(event.key) && event.key) ||
+      (shortcut && /^[a-zA-Z0-9]$/.test(event.key) && event.key.toLowerCase());
 
     if (key) {
       event.preventDefault();
-      event.stopPropagation();
 
       const modified = [
         event.ctrlKey || event.metaKey ? "ctrl" : "",
@@ -168,7 +200,7 @@ export const ComputerDesktop = () => {
     return send({ type: "pointer", phase, x, y, button });
   };
 
-  const release = (event: PointerEvent<HTMLButtonElement>) =>
+  const release = (event: PointerEvent<HTMLDivElement>) =>
     pointer(event, "up", [1, 2, 3][event.button] || 1);
 
   return (
@@ -190,37 +222,81 @@ export const ComputerDesktop = () => {
           </Button>
         </div>
       ) : frame ? (
-        <button
-          type="button"
-          className="overflow-hidden rounded-xl ring-1 ring-border-default p-0 bg-black cursor-crosshair select-none"
-          aria-label="Control the Shared Computer desktop"
-          onKeyDown={keyboard}
-          onContextMenu={(event) => event.preventDefault()}
-          onPointerDown={(event) => {
-            event.currentTarget.focus();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            pointer(event, "down", [1, 2, 3][event.button] || 1);
-          }}
-          onPointerUp={release}
-          onPointerCancel={release}
-          onPointerMove={(event) => {
-            if (event.buttons && !moving.current) {
-              moving.current = pointer(event, "move", 1);
-            }
-          }}
-          onWheel={(event) => {
-            if (event.deltaY) {
-              pointer(event, "click", event.deltaY < 0 ? 4 : 5);
-            }
-          }}
-        >
-          <img
-            draggable={false}
-            className="block w-full"
-            src={`data:image/jpeg;base64,${frame}`}
-            alt="Live Shared Computer desktop"
-          />
-        </button>
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              ref={enterControl}
+              variant="secondary"
+              aria-describedby={controlHint}
+              onClick={() => textInput.current?.focus()}
+            >
+              Control desktop
+            </Button>
+            <p id={controlHint} className="text-xs text-ink-muted">
+              Press F6 to return to Vibestar.
+            </p>
+          </div>
+          <div
+            className="relative overflow-hidden rounded-xl ring-1 ring-border-default focus-within:ring-2 focus-within:ring-current bg-black cursor-crosshair select-none"
+            onContextMenu={(event) => event.preventDefault()}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              textInput.current?.focus();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              pointer(event, "down", [1, 2, 3][event.button] || 1);
+            }}
+            onPointerUp={release}
+            onPointerCancel={release}
+            onPointerMove={(event) => {
+              if (event.buttons && !moving.current) {
+                moving.current = pointer(event, "move", 1);
+              }
+            }}
+            onWheel={(event) => {
+              if (event.deltaY) {
+                pointer(event, "click", event.deltaY < 0 ? 4 : 5);
+              }
+            }}
+          >
+            <img
+              draggable={false}
+              className="block w-full"
+              src={`data:image/jpeg;base64,${frame}`}
+              alt="Live Shared Computer desktop"
+            />
+            <textarea
+              ref={textInput}
+              className="pointer-events-none absolute left-0 top-0 size-px opacity-0"
+              aria-label="Shared Computer keyboard input"
+              aria-describedby={controlHint}
+              tabIndex={-1}
+              autoComplete="off"
+              spellCheck={false}
+              onKeyDown={keyboard}
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={(event) => {
+                if (composing.current) {
+                  composing.current = false;
+                  sendText(event.data);
+                  event.currentTarget.value = "";
+                }
+              }}
+              onInput={(event) => {
+                const input = event.nativeEvent as InputEvent;
+                if (!composing.current && !input.isComposing) {
+                  sendText(event.currentTarget.value);
+                  event.currentTarget.value = "";
+                }
+              }}
+              onBlur={(event) => {
+                composing.current = false;
+                event.currentTarget.value = "";
+              }}
+            />
+          </div>
+        </>
       ) : (
         <div
           className="grid aspect-[25/16] place-content-center justify-items-center gap-2 rounded-xl border border-border-default bg-surface-hover text-ink-muted"
