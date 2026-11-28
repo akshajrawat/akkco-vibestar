@@ -108,8 +108,7 @@ details > pre {
   @apply mt-2;
 }
 
-.subtle,
-.muted {
+.subtle {
   @apply text-muted;
 }
 

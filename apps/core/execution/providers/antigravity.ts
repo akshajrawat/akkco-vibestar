@@ -1,4 +1,4 @@
-import { capture, checked } from "../runtime/process";
+import { capture, checked, type ProcessInputProtocol } from "../runtime/process";
 import {
   object,
   parseLine,
@@ -9,8 +9,7 @@ import {
   type ProviderDetection,
 } from "./contracts";
 import { AdeError, type NormalizedEvent } from "../../domain";
-import type { ProcessInputProtocol } from "../runtime/process";
-import { antigravityAcpConversation } from "./antigravity-acp";
+import { antigravityAcpConversation, antigravitySharedDirectories } from "./antigravity-acp";
 
 // The CLI exposes these models with provider-managed reasoning and rejects --effort.
 // Unknown unsuffixed models stay unavailable until their capabilities are known.
@@ -91,6 +90,8 @@ export class AntigravityProvider implements AgentProvider {
   };
 
   invocation = (r: AgentRunRequest) => {
+    const sharedDirectories = antigravitySharedDirectories(r);
+
     if (r.conversation?.protocol === "acp") {
       const conv = antigravityAcpConversation(r);
       this.activeAcp = conv;
@@ -129,6 +130,7 @@ export class AntigravityProvider implements AgentProvider {
       "--mode",
       r.access === "workspace-write" ? "accept-edits" : "plan",
       "--sandbox",
+      ...sharedDirectories,
       "--input-format",
       "stream-json",
       "--output-format",

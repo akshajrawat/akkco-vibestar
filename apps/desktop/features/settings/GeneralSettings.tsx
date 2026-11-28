@@ -50,44 +50,62 @@ export const GeneralSettings = ({
             options={[1, 2, 3, 4].map((item) => ({ value: String(item), label: String(item) }))}
           />
         </label>
-      </div>
-    </section>
-    <section className="settings-section p-[8px_0_24px] settings-general-section">
-      <h2>Notifications</h2>
-      <div className="settings-card">
         <label className="settings-row">
           <span>
-            Notification preference
-            <small>Errors, required input and blocking runtime updates always appear.</small>
+            Permission
+            <small>
+              Choose whether Vibers ask before using Shared Computer or get access automatically.
+              This includes shared files, the desktop, and signed-in browser accounts on writable
+              turns.
+            </small>
           </span>
           <Select
-            label="Notification preference"
-            value={value.notification_preference}
-            onChange={(preference) =>
+            label="Permission"
+            value={value.viber_workspace_permission}
+            onChange={(permission) =>
               setValue({
                 ...value,
-                notification_preference: preference as Settings["notification_preference"],
+                viber_workspace_permission: permission as Settings["viber_workspace_permission"],
               })
             }
             options={[
-              { value: "necessary", label: "Necessary only" },
-              { value: "all", label: "All notifications" },
+              { value: "always-ask", label: "Always ask" },
+              { value: "full-permission", label: "Full permission" },
             ]}
           />
         </label>
-      </div>
-    </section>
-    <section
-      className="settings-section p-[8px_0_24px] settings-general-section"
-      aria-labelledby="enable-memory"
-    >
-      <h2 id="enable-memory">Enable Memory</h2>
-      <div className="settings-card">
         <div className="settings-row grid-cols-[minmax(0,1fr)_auto]!">
-          <p id="enable-memory-description" className="font-normal text-ink-muted">
-            Viber remembers important things from your chats and gets better at helping you over
-            time.
-          </p>
+          <span>
+            <span id="allow-viber-communication">Allow Vibers to talk with each other</span>
+            <small id="allow-viber-communication-description">
+              Lets Vibers share files and use the desktop through Shared Computer.
+            </small>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-labelledby="allow-viber-communication"
+            aria-describedby="allow-viber-communication-description"
+            aria-checked={value.allow_viber_communication}
+            className="group relative h-6 w-11 shrink-0 rounded-full bg-neutral-950 aria-checked:bg-neutral-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+            onClick={() =>
+              setValue({
+                ...value,
+                allow_viber_communication: !value.allow_viber_communication,
+              })
+            }
+          >
+            <span className="absolute top-0.5 left-0.5 size-5 rounded-full bg-neutral-500 transition-transform group-aria-checked:translate-x-5 group-aria-checked:bg-neutral-400 motion-reduce:transition-none" />
+          </button>
+        </div>
+        <div className="settings-row grid-cols-[minmax(0,1fr)_auto]!">
+          <span>
+            <span id="enable-memory">Enable Memory</span>
+            <small id="enable-memory-description">
+              Save useful facts from your chats. Choose which providers can receive recalled facts
+              in Providers settings.
+            </small>
+          </span>
           <button
             type="button"
             role="switch"
@@ -119,6 +137,31 @@ export const GeneralSettings = ({
             <span className="absolute top-0.5 left-0.5 size-5 rounded-full bg-neutral-500 transition-transform group-aria-checked:translate-x-5 group-aria-checked:bg-neutral-400 motion-reduce:transition-none" />
           </button>
         </div>
+      </div>
+    </section>
+    <section className="settings-section p-[8px_0_24px] settings-general-section">
+      <h2>Notifications</h2>
+      <div className="settings-card">
+        <label className="settings-row">
+          <span>
+            Notification preference
+            <small>Errors, required input and blocking runtime updates always appear.</small>
+          </span>
+          <Select
+            label="Notification preference"
+            value={value.notification_preference}
+            onChange={(preference) =>
+              setValue({
+                ...value,
+                notification_preference: preference as Settings["notification_preference"],
+              })
+            }
+            options={[
+              { value: "necessary", label: "Necessary only" },
+              { value: "all", label: "All notifications" },
+            ]}
+          />
+        </label>
       </div>
     </section>
   </>

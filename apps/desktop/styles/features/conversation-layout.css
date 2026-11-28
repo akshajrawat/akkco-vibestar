@@ -11,7 +11,19 @@
 }
 
 .composer-lane {
-  @apply w-full;
+  @apply w-full bg-transparent;
+}
+
+.chat-main:not(.chat-draft) .composer-lane {
+  @apply absolute inset-x-0 bottom-0 z-[3] pointer-events-none bg-transparent;
+}
+
+.chat-main:not(.chat-draft) .composer-lane :is(.chat-input, .chat-actions-content > *) {
+  @apply pointer-events-auto;
+}
+
+.chat-workspace .chat-main:not(.chat-draft) .event-timeline {
+  padding-bottom: calc(var(--composer-height, 140px) + 20px);
 }
 
 .chat-draft .event-timeline {
@@ -20,10 +32,6 @@
 
 .chat-draft .composer-lane {
   @apply mb-auto;
-}
-
-.chat-welcome h1 {
-  @apply text-[24px] font-medium tracking-[-0.5px];
 }
 
 .work-log > summary,
@@ -80,10 +88,6 @@
   @apply capitalize;
 }
 
-.initial-prompt-message {
-  @apply max-w-[80%];
-}
-
 .chat-workspace .user-message {
   @apply bg-[color-mix(in_srgb,_var(--accent)_24%,_var(--background-panel))] rounded-[24px] px-4.5 py-3.5 my-[24px_34px];
 }
@@ -122,10 +126,6 @@ button.scroll-to-latest {
   @apply left-[50%] rounded-[999px] w-9 h-9 p-0 bg-surface-selected;
 }
 
-.agent-turn-heading {
-  @apply text-[11px] mb-2;
-}
-
 .tool-event summary {
   @apply min-h-6 px-0.5 py-0 rounded-[6px] text-[14px] cursor-pointer [transition:background-color_150ms_ease];
 }
@@ -134,24 +134,8 @@ button.scroll-to-latest {
   @apply bg-surface-hover;
 }
 
-.tool-event summary .tool-state {
-  @apply text-[10px];
-}
-
 .tool-event summary > code {
   @apply text-[12px];
-}
-
-.chat-changes {
-  @apply my-3;
-}
-
-.chat-changes .edited-file {
-  @apply px-2 py-1 rounded-[6px];
-}
-
-.chat-changes .edited-file:hover {
-  @apply bg-surface-hover;
 }
 
 @media (hover: none) {

@@ -21,6 +21,7 @@ import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
 import { ViberSessions } from "./engine/viber-sessions";
 import { ViberStore } from "../vibers/store";
+import { Computers } from "../computers/service";
 
 export class Engine extends EventEmitter {
   private readonly state = new ExecutionState();
@@ -40,6 +41,8 @@ export class Engine extends EventEmitter {
   readonly vibers: ViberStore;
 
   readonly memory: ViberMemory;
+
+  readonly computers: Computers;
 
   private readonly runner: AgentRunner;
 
@@ -115,6 +118,8 @@ export class Engine extends EventEmitter {
 
     this.scheduling = new EngineScheduling(this, this.state);
 
+    this.computers = new Computers(this);
+
     this.viberSessions = new ViberSessions(this, this.state, this.runner, {
       withExecutionSlot: this.withExecutionSlot,
       assertExecutionSlot: this.scheduling.assertExecutionSlot,
@@ -177,11 +182,9 @@ export class Engine extends EventEmitter {
 
   changed = (id?: string) => this.publish({ event: "changed", session_id: id });
 
-  isActive = (id: string) => this.state.active.has(id) || this.state.interactive.has(id);
+  isActive = (id: string) => this.state.active.has(id);
 
   hasActive = () => this.cleanupBlockers().length > 0;
-
-  drain = (...args: Parameters<EngineScheduling["drain"]>) => this.scheduling.drain(...args);
 
   register = (...args: Parameters<RepositoryOperations["register"]>) =>
     this.repositories.register(...args);
@@ -206,9 +209,6 @@ export class Engine extends EventEmitter {
 
   fetchRepository = (...args: Parameters<RepositoryOperations["fetchRepository"]>) =>
     this.repositories.fetchRepository(...args);
-
-  configureRepository = (...args: Parameters<RepositoryOperations["configureRepository"]>) =>
-    this.repositories.configureRepository(...args);
 
   beginShutdown = () => {
     this.state.closed = true;
@@ -238,8 +238,16 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.active.values()].map((a) => a.promise));
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
-        await this.memory.close();
-        await this.repositoryIndex.close();
+        const closed = await Promise.allSettled([
+          this.memory.close(),
+          this.computers.close(),
+          this.repositoryIndex.close(),
+        ]);
+
+        const failure = closed.find((result) => result.status === "rejected");
+        if (failure) {
+          throw failure.reason;
+        }
       } finally {
         try {
           this.db.close();

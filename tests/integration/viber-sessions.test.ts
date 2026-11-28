@@ -45,7 +45,7 @@ class SessionProvider extends CodexProvider {
         this.mode === "wait"
           ? "setInterval(()=>{},1000)"
           : this.mode === "failure"
-            ? "process.exit(2)"
+            ? "process.stderr.write('Provider diagnostic'); process.exit(2)"
             : `
         ${request.access === "read-only" ? "" : "require('node:fs').writeFileSync('answer.txt','Session file');"}
         console.log(JSON.stringify({type:'thread.started',thread_id:${JSON.stringify(request.conversation?.threadId || request.runId)}}));
@@ -522,6 +522,11 @@ it("enforces shared execution capacity, serializes one session, supports cancell
   await send(two);
   const failed = await settled(two, "failed");
   expect(failed.messages).toHaveLength(1);
+
+  expect(failed.messages[0].error).toMatch(
+    /exited 2: Provider diagnostic\.\s+Retry after resolving the provider error\./,
+  );
+
   expect(failed.runs[0].status).toBe("failed");
   expect(failed.events.some((event) => event.kind === "run.failed")).toBe(true);
 
@@ -875,4 +880,17 @@ it("creates an isolated conversation from profile defaults without requiring a r
 
   expect(session.repository_id).toBeNull();
   expect(provider.requests).toHaveLength(0);
+});
+
+it("keeps a resent turn isolated when its original request to share is no longer allowed", async () => {
+  engine.db.saveSettings({ ...engine.db.settings(), allow_viber_communication: false });
+  const session = await create();
+  const input = { request_id: randomUUID(), shared_computer: true };
+
+  await send(session, input);
+  await settled(session);
+  await expect(send(session, input)).resolves.toMatchObject({ id: input.request_id });
+
+  expect(provider.requests).toHaveLength(1);
+  expect(provider.requests[0].sharedComputer).toBeFalsy();
 });

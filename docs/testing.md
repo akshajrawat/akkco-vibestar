@@ -13,10 +13,7 @@ Routine tests use disposable data roots, local Git repositories and inert constr
 | `npm test`                 | Unit and component regressions (`unit` project)               |
 | `npm run test:integration` | Integration tests for Viber sessions, workspaces, and runtime |
 | `npm run test:security`    | Deterministic sandbox, ownership, persistence and Git safety  |
-| `npm run test:regression`  | All deterministic test projects (unit, integration, security) |
-| `npm run check`            | Formatting, lint, typecheck and unit tests                    |
-| `npm run prepush`          | Complete verification suite (`npm run verify`)                |
-| `npm run verify`           | `check`, integration, security, and production build          |
+| `npm run verify`           | Formatting, lint, all test suites, typecheck and build        |
 
 `vitest.config.ts` declares three named test projects:
 

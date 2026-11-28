@@ -17,16 +17,15 @@ const terminalStatus = (value: unknown) =>
     "not_run",
   ].includes(String(value).toLowerCase());
 
-export const agentEntries = (events: AgentEvent[], search = "") => {
+export const agentEntries = (events: AgentEvent[]) => {
   const entries: {
     key: string | number;
     event: AgentEvent;
-    initial: AgentEvent;
-    matches: boolean;
     data: Record<string, unknown>;
   }[] = [];
 
   const calls = new Map<string, number>();
+  let thought: { runId: string; key: string } | undefined;
 
   // Persisted IDs establish arrival order even when paged context precedes older deltas.
   const ordered = [...new Map(events.map((event) => [event.id, event])).values()].sort(
@@ -43,7 +42,15 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
       continue;
     }
 
+    // Stored ACP thought chunks have no call ID. Keep them together until another activity arrives.
+    const thoughtDelta =
+      event.kind === "analysis.status" &&
+      typeof data.text_delta === "string" &&
+      data.call_id == null &&
+      !data.tool;
+
     if (
+      !thoughtDelta &&
       event.kind === "analysis.status" &&
       ![
         data.text,
@@ -58,14 +65,20 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
       continue;
     }
 
-    const matches =
-      !search || `${event.data}\n${event.raw}`.toLowerCase().includes(search.toLowerCase());
+    if (thoughtDelta) {
+      if (thought?.runId !== event.run_id) {
+        thought = { runId: event.run_id, key: `thought:${event.id}` };
+      }
 
-    const call = data.call_id != null ? `${event.run_id}/${data.call_id}` : null;
+      data.tool = "reasoning";
+    } else {
+      thought = undefined;
+    }
+
+    const call = thought?.key ?? (data.call_id != null ? `${event.run_id}/${data.call_id}` : null);
     const index = call ? calls.get(call) : undefined;
     if (index !== undefined) {
       const row = entries[index];
-      row.matches ||= matches;
       const clean = Object.fromEntries(Object.entries(data).filter(([, value]) => value != null));
 
       const terminal = row.event.kind === "command.finished" || terminalStatus(row.data.status);
@@ -97,8 +110,6 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
       entries.push({
         key: call || event.id,
         event,
-        initial: event,
-        matches,
         data: {
           ...data,
           text: data.text ?? data.text_delta,

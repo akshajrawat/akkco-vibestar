@@ -54,6 +54,8 @@ export const AgentProfileSchema = z
 
 export type AgentProfile = z.infer<typeof AgentProfileSchema>;
 
+export const viberGreeting = (name: string) => `Hello, I’m ${name}. What can I help you with?`;
+
 export const ConversationSelectionSchema = AgentExecutionSchema.pick({
   provider: true,
   model: true,
@@ -112,6 +114,7 @@ export const ViberSessionSendSchema = ViberSessionScopeSchema.extend({
   new_thread: z.literal(true).optional(),
   acknowledge_uncertain: z.literal(true).optional(),
   continue_message_id: identity.optional(),
+  shared_computer: z.literal(true).optional(),
 }).strict();
 
 export const continueLabel = "Continue where you left off.";
@@ -186,6 +189,7 @@ export interface ViberMessagePreview {
 export interface ViberNavigation {
   profiles: AgentProfile[];
   previews: ViberMessagePreview[];
+  created_at_by_profile?: Record<string, string>;
 }
 
 export interface ViberSessionDetail {

@@ -50,6 +50,23 @@ describe("domain and persistence", () => {
     ).toBe("max");
   });
 
+  it("preserves each provider’s independent memory consent", () => {
+    const settings = SettingsSchema.parse({
+      ...defaultSettings,
+      viber_memory: {
+        ...defaultSettings.viber_memory,
+        recall: true,
+        share_with: { codex: false, antigravity: true },
+      },
+    });
+
+    expect(settings.viber_memory).toEqual({
+      ...defaultSettings.viber_memory,
+      recall: true,
+      share_with: { codex: false, antigravity: true },
+    });
+  });
+
   it("rejects traversal and symlink escape", async () => {
     const dir = await mkdtemp(join(tmpdir(), "vibestar-path-"));
     try {
@@ -70,7 +87,23 @@ describe("domain and persistence", () => {
     try {
       const path = join(dir, "test.sqlite");
       const db = await Database.open(path);
-      db.saveSettings({ ...defaultSettings, concurrency: 3 });
+
+      expect(db.settings()).toMatchObject({
+        allow_viber_communication: true,
+        viber_workspace_permission: "always-ask",
+      });
+
+      expect(
+        SettingsSchema.parse({ ...defaultSettings, allow_viber_communication: undefined })
+          .allow_viber_communication,
+      ).toBe(true);
+
+      db.saveSettings({
+        ...defaultSettings,
+        concurrency: 3,
+        viber_workspace_permission: "full-permission",
+        allow_viber_communication: false,
+      });
 
       expect(db.all("SELECT version FROM schema_migrations")).toEqual([{ version: 0 }]);
 
@@ -79,6 +112,8 @@ describe("domain and persistence", () => {
       db.close();
       const reopened = await Database.open(path);
       expect(reopened.settings().concurrency).toBe(3);
+      expect(reopened.settings().viber_workspace_permission).toBe("full-permission");
+      expect(reopened.settings().allow_viber_communication).toBe(false);
       expect(() => reopened.saveSettings({ ...defaultSettings, concurrency: 5 })).toThrow();
       reopened.close();
     } finally {

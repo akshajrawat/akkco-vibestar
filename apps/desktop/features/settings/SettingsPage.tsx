@@ -15,13 +15,11 @@ import { useSettingsDraft } from "./useSettingsDraft";
 /** Settings is independent of app navigation; panels automatically save changes. */
 export const SettingsPage = ({
   settings,
-  root,
   refresh,
   snapshot,
   close,
 }: {
   settings?: Settings;
-  root?: string;
   refresh: () => Promise<void>;
   snapshot?: Snapshot;
   close: () => void;
@@ -78,6 +76,7 @@ export const SettingsPage = ({
       label="Settings"
       className="tool-overlay settings-workspace"
       onClose={() => void requestClose()}
+      dismissOnBackdrop
     >
       <div className="settings-layout">
         <SettingsNavigation selected={section} select={select} />
@@ -162,7 +161,6 @@ export const SettingsPage = ({
                       desktop={draft.desktop}
                       setDesktop={draft.setDesktop}
                       flush={draft.flush}
-                      root={root}
                       busy={draft.busy}
                       installLog={draft.installLog}
                       install={draft.install}

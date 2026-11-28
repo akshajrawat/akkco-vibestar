@@ -1,5 +1,5 @@
 .vibestar-toast {
-  @apply w-[360px] [font:inherit] [box-shadow:0_8px_28px_var(--shadow)];
+  @apply w-[360px] [font:inherit];
 }
 
 .vibestar-toast > div[role] {
@@ -16,9 +16,6 @@
 
 .notification-error > svg {
   @apply text-accent-red;
-}
-.notification-warning > svg {
-  @apply text-accent-amber;
 }
 .notification-success > svg {
   @apply text-accent-green;

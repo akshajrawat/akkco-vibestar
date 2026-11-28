@@ -5,7 +5,6 @@ import { AdeError, now, type WorkspaceAssignment } from "../domain";
 import type { Database } from "../storage/database";
 import { redact } from "../execution/runtime/process";
 import { ConversationOutputSchema, type AgentExecution } from "../execution/contracts";
-import type { ViberContinuationPrepareSchema } from "./contracts";
 import {
   AgentProfileSchema,
   ConversationSelectionSchema,
@@ -20,6 +19,7 @@ import {
   agentPrompt,
   continueLabel,
   type AgentProfile,
+  type ViberContinuationPrepareSchema,
   type ViberMessagePreview,
   type ViberSessionDetail,
   type ViberSession,
@@ -400,35 +400,17 @@ export class ViberSessionStore {
 
   messagePreviews = () =>
     this.db.all<ViberMessagePreview>(`
-      SELECT s.profile_id, substr(m.content, 1, 280) AS content, m.created_at
-      FROM viber_sessions s
+      SELECT p.id AS profile_id, substr(m.content, 1, 280) AS content, m.created_at
+      FROM agent_profiles p
       JOIN viber_messages m ON m.id = (
-        SELECT id FROM viber_messages
-        WHERE session_id = s.id
-        ORDER BY created_at DESC, rowid DESC
+        SELECT messages.id FROM viber_sessions sessions
+        JOIN viber_messages messages ON messages.session_id = sessions.id
+        WHERE sessions.profile_id = p.id
+        ORDER BY messages.created_at DESC, messages.rowid DESC
         LIMIT 1
       )
-      WHERE s.profile_id NOT IN (SELECT profile_id FROM retired_viber_profiles)
+      WHERE p.id NOT IN (SELECT profile_id FROM retired_viber_profiles)
     `);
-
-  continuousSession = (profileId: string, repositoryId?: string) => {
-    identity.parse(profileId);
-
-    const existing = this.db.all<{ id: string }>(
-      "SELECT id FROM viber_sessions WHERE profile_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 1",
-      profileId,
-    )[0];
-
-    if (existing) {
-      return this.session(existing.id, profileId);
-    }
-
-    return this.create({
-      request_id: randomUUID(),
-      profile_id: profileId,
-      repository_id: repositoryId,
-    });
-  };
 
   detail = (sessionId: string, profileId: string): ViberSessionDetail => {
     const session = this.session(sessionId, profileId);

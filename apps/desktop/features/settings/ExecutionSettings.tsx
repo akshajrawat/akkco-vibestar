@@ -12,7 +12,6 @@ export const ExecutionSettings = ({
 }: {
   desktop: DesktopInfo | null;
   setDesktop: (desktop: DesktopInfo) => void;
-  root?: string;
   busy?: boolean;
   installLog?: string;
   install?: () => Promise<void>;

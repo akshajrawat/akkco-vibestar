@@ -50,7 +50,7 @@ export const redact = (text: string) => {
   }
 
   return text.replace(
-    /(\b(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|cookie|set-cookie)[\\\s"':=]+(?:bearer[\\\s]+)?)[^\s"',;}]+|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{12,}|ya29\.[A-Za-z0-9_.-]+)/gi,
+    /(\b(?:(?:proxy-)?authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|cookie|set-cookie)[\\\s"':=]+(?:(?:bearer|basic|token|digest)[\\\s]+)?)[^\s"',;}]+|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{12,}|ya29\.[A-Za-z0-9_.-]+)/gi,
     "$1[REDACTED]",
   );
 };

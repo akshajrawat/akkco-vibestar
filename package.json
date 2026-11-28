@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:ui": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "build": "tsc --noEmit && node scripts/build.mjs && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -13,18 +12,13 @@
     "format:check": "prettier --check .",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "desktop": "npm run dev",
     "desktop:build": "npm run build && electron-builder --linux deb --publish never",
     "desktop:build:windows": "npm run build && electron-builder --win nsis --publish never",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "start": "electron .",
     "test:security": "vitest run --project security",
     "preinstall": "node -e 'if(process.env.npm_config_user_agent&&/pnpm/i.test(process.env.npm_config_user_agent)){console.error(\"\\x1b[31mError: pnpm is not allowed in this repository. Please use npm.\\x1b[0m\");process.exit(1)}'",
-    "test:regression": "vitest run --project unit --project integration --project security",
-    "verify": "npm run check && npm run test:integration && npm run test:security && npm run build",
-    "prepare": "node scripts/install-hooks.mjs",
-    "hooks:install": "node scripts/install-hooks.mjs",
-    "prepush": "npm run verify"
+    "verify": "npm run format:check && npm run lint && vitest run && npm run build",
+    "prepare": "node scripts/install-hooks.mjs"
   },
   "devDependencies": {
     "@electron/get": "^5.1.0",
@@ -80,7 +74,8 @@
       "package.json",
       "assets/**/*",
       "LICENSE",
-      "docs/third-party-notices.md"
+      "docs/third-party-notices.md",
+      "docs/moby-seccomp-license.txt"
     ],
     "extraResources": [
       {

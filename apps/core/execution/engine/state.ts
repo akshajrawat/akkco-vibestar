@@ -12,15 +12,9 @@ export class ExecutionState {
     }
   >();
 
-  readonly interactive = new Map<string, string>();
-
-  draining = false;
-
   closed = false;
 
   maintenance = false;
-
-  readonly sessionMaintenance = new Map<string, string>();
 
   readonly activities = new Map<string, { blocker: ActivityBlocker; stop: () => Promise<void> }>();
 
