@@ -17,12 +17,10 @@ const terminalStatus = (value: unknown) =>
     "not_run",
   ].includes(String(value).toLowerCase());
 
-export const agentEntries = (events: AgentEvent[], search = "") => {
+export const agentEntries = (events: AgentEvent[]) => {
   const entries: {
     key: string | number;
     event: AgentEvent;
-    initial: AgentEvent;
-    matches: boolean;
     data: Record<string, unknown>;
   }[] = [];
 
@@ -76,14 +74,10 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
       continue;
     }
 
-    const matches =
-      !search || `${event.data}\n${event.raw}`.toLowerCase().includes(search.toLowerCase());
-
     const call = thought?.key ?? (data.call_id != null ? `${event.run_id}/${data.call_id}` : null);
     const index = call ? calls.get(call) : undefined;
     if (index !== undefined) {
       const row = entries[index];
-      row.matches ||= matches;
       const clean = Object.fromEntries(Object.entries(data).filter(([, value]) => value != null));
 
       const terminal = row.event.kind === "command.finished" || terminalStatus(row.data.status);
@@ -115,8 +109,6 @@ export const agentEntries = (events: AgentEvent[], search = "") => {
       entries.push({
         key: call || event.id,
         event,
-        initial: event,
-        matches,
         data: {
           ...data,
           text: data.text ?? data.text_delta,

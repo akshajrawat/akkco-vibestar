@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
-import { Linter } from "eslint";
 import fs from "node:fs";
+import { basename } from "node:path";
+import { Linter } from "eslint";
+import { afterEach, describe, it, expect, vi } from "vitest";
+
 import vibestar from "../../scripts/eslint-plugin-vibestar.mjs";
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("no-pnpm lint rule", () => {
   const linter = new Linter({ configType: "flat" });
@@ -22,25 +26,26 @@ describe("no-pnpm lint rule", () => {
     },
   ] as unknown as Parameters<typeof linter.verify>[1];
 
-  it("reports an error when pnpm lockfile or workspace file exists", () => {
-    const existsSpy = vi.spyOn(fs, "existsSync").mockImplementation((p) => {
-      return String(p).endsWith("pnpm-lock.yaml");
-    });
+  it("reports both pnpm file types when present", () => {
+    const pnpmFiles = ["pnpm-lock.yaml", "pnpm-workspace.yaml"];
+
+    vi.spyOn(fs, "existsSync").mockImplementation((path) =>
+      pnpmFiles.includes(basename(String(path))),
+    );
 
     const messages = linter.verify("const x = 1;", config, { filename: "sample.ts" });
-    expect(messages.map((m) => m.ruleId)).toContain("vibestar/no-pnpm");
-    expect(messages[0].message).toContain('pnpm is forbidden. Found "pnpm-lock.yaml"');
-    existsSpy.mockRestore();
+
+    expect(messages).toMatchObject(
+      pnpmFiles.map((file) => ({
+        ruleId: "vibestar/no-pnpm",
+        message: expect.stringContaining(`pnpm is forbidden. Found "${file}"`),
+      })),
+    );
   });
 
-  it("allows pnpm mentioned in strings or code without error", () => {
+  it("passes when no pnpm files exist, even if code mentions pnpm", () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
     const code = 'const cmd = "pnpm install";';
-    const messages = linter.verify(code, config, { filename: "sample.ts" });
-    expect(messages).toEqual([]);
-  });
-
-  it("passes when no pnpm files exist", () => {
-    const code = 'const cmd = "npm run build";';
     const messages = linter.verify(code, config, { filename: "sample.ts" });
     expect(messages).toEqual([]);
   });

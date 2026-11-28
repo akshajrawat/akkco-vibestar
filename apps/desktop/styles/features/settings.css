@@ -78,11 +78,3 @@
 .spinning {
   @apply animate-[spin_1.5s_linear_infinite];
 }
-
-.chat-changes {
-  @apply mx-0 my-4;
-}
-
-.chat-changes summary {
-  @apply text-muted text-[12px] mb-[5px];
-}

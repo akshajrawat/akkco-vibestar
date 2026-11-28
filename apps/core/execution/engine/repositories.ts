@@ -5,8 +5,11 @@ import { join } from "node:path";
 import type { z } from "zod";
 
 import { AdeError, now, remoteIdentity, type Repository } from "../../domain";
-import type { RepositoryIndex } from "../../workspace/discovery";
-import { ConnectLocalInput, type LocalRepositoryInput } from "../../workspace/discovery";
+import {
+  ConnectLocalInput,
+  type LocalRepositoryInput,
+  type RepositoryIndex,
+} from "../../workspace/discovery";
 import { gitChecked } from "../../workspace/git-command";
 import { exists, inside, managedPath } from "../../workspace/paths";
 import type { Engine } from "../engine";

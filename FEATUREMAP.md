@@ -170,10 +170,17 @@ flowchart LR
     Shared --> Access{"Turn access"}
     Access -- "Read-only" --> SharedFiles["Read shared files"]
     Access -- "Workspace-write" --> Guest["Shared files, guest services, and Linux commands"]
+    SharedFiles --> StartFolder{"Existing private files or linked repository?"}
+    Guest --> StartFolder
+    StartFolder -->|No| SharedStart["Start in the shared files"]
+    StartFolder -->|Yes| PrivateStart["Start in the original workspace with shared files available"]
     Guest --> Boot{"Still on the verified guest boot?"}
     Boot -->|Yes| Desktop
     Boot -->|No| Reverify["End turn access · Start Shared Computer to verify again"]
     Guest --> Browser["Automate Chromium with its saved sign-ins"]
+    Browser --> Handoff["Resume another Viber's project using shared files and the open preview"]
+    Guest --> Preview["Local app preview stays open across Viber turns"]
+    Preview --> Desktop
 ```
 
 ```mermaid

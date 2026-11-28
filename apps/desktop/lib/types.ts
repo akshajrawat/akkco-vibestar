@@ -1,7 +1,6 @@
 import type { Repository, Settings } from "../../core/domain";
-import type { AgentProfile } from "../../core/vibers/contracts";
 
-export type { Repository, Settings, AgentProfile };
+export type { Repository, Settings };
 export type Detection = import("../../core/execution/providers/contracts").ProviderDetection;
 
 export interface AgentEvent {
@@ -66,12 +65,9 @@ export interface Message {
   content: string;
   created_at: string;
   status?: string;
-  purpose?: string;
   run_id?: string | null;
   error?: string | null;
 }
-
-export type { DiffFile } from "../../core/workspace/git";
 
 export type { CoreEvent } from "../../core/domain";
 export type WorkspaceTool = "Repositories" | "Providers" | "Usage" | "Settings";

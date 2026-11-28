@@ -5,7 +5,6 @@ import { AdeError, now, type WorkspaceAssignment } from "../domain";
 import type { Database } from "../storage/database";
 import { redact } from "../execution/runtime/process";
 import { ConversationOutputSchema, type AgentExecution } from "../execution/contracts";
-import type { ViberContinuationPrepareSchema } from "./contracts";
 import {
   AgentProfileSchema,
   ConversationSelectionSchema,
@@ -20,6 +19,7 @@ import {
   agentPrompt,
   continueLabel,
   type AgentProfile,
+  type ViberContinuationPrepareSchema,
   type ViberMessagePreview,
   type ViberSessionDetail,
   type ViberSession,

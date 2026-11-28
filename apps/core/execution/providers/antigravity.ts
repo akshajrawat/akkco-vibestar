@@ -1,4 +1,4 @@
-import { capture, checked } from "../runtime/process";
+import { capture, checked, type ProcessInputProtocol } from "../runtime/process";
 import {
   object,
   parseLine,
@@ -9,7 +9,6 @@ import {
   type ProviderDetection,
 } from "./contracts";
 import { AdeError, type NormalizedEvent } from "../../domain";
-import type { ProcessInputProtocol } from "../runtime/process";
 import { antigravityAcpConversation, antigravitySharedDirectories } from "./antigravity-acp";
 
 // The CLI exposes these models with provider-managed reasoning and rejects --effort.

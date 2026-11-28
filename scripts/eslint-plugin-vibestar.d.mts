@@ -1,8 +1,6 @@
 import type { Rule, Linter } from "eslint";
 
-export const cssParser: Linter.ParserModule;
-
-export interface VibestarPlugin {
+interface VibestarPlugin {
   meta: {
     name: string;
     version: string;

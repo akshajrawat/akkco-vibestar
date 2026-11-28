@@ -1,9 +1,10 @@
 import { sharedCommandUrl, sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
+import { guestServiceCommand, sharedDirectory } from "../../computers/image";
 import { z } from "zod";
 import { Usage } from "../output/usage";
 import { discoverCodexModels } from "../providers/codex-models";
 import { sandboxInvocation } from "../runtime/sandbox";
-import { mkdir, open, writeFile, unlink } from "node:fs/promises";
+import { mkdir, open, readdir, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { AdeError, now, type CoreEvent, type NormalizedEvent } from "../../domain";
@@ -364,6 +365,13 @@ export class AgentRunner {
 
       cwd = viberWorkspace ? await this.git.assertOwnedTask(viberWorkspace) : options!.workspace!;
 
+      const sharedComputer = options.sharedComputer && {
+        ...options.sharedComputer,
+        useAsCwd: viberWorkspace?.workspace_kind === "managed" && (await readdir(cwd)).length === 0,
+      };
+
+      const providerCwd = sharedComputer?.useAsCwd ? sharedFilesMount : cwd;
+
       const detection = await this.detect(provider, signal);
 
       if (signal.aborted) {
@@ -491,23 +499,29 @@ export class AgentRunner {
 
         const directInvocation = provider.invocation({
           runId: id,
-          cwd,
+          cwd: providerCwd,
           stage: 0,
           access: execution.access,
           config: selectedConfig,
-          prompt: options.sharedComputer
+          prompt: sharedComputer
             ? `${text}
 
-Shared Computer is enabled for this turn. Shared workspace files across Vibers and the Shared Computer desktop are at ${sharedFilesMount}.${
-                options.sharedComputer.socket
+Shared Computer is enabled for this turn. Shared workspace files across Vibers and the Shared Computer desktop are at ${sharedFilesMount}. For work started by another Viber, look there for the existing project before asking the user for its location.${
+                sharedComputer.socket
                   ? `
+For a follow-up about an app open in Chromium, use the existing tabs to identify it. For a local preview, match its URL to the project in the shared files. If needed, inspect the serving process and its working directory inside the guest to locate the source. Edit that project and verify the result in the existing preview. Put new projects intended for Shared Computer in a project directory under ${sharedFilesMount}.
+
 Use the Shared Computer to act on requests to open websites, operate the visible Chromium browser, or run commands in its Linux desktop. For example, run:
 curl --noproxy '*' -fsS --unix-socket ${sharedServicesMount} --data-binary 'vibestar-browser https://github.com' ${sharedCommandUrl}
-POST a shell script to that endpoint and check the returned JSON code, stdout, and stderr. Scripts run in the Shared Computer workspace, with DISPLAY=:0 and the saved desktop home. Use Chromium DevTools Protocol at http://127.0.0.1:9222 from inside the guest for page inspection and browser automation, or use xdotool and scrot for desktop input and screenshots. Use the existing browser session for website actions. Git and gh are available in the guest and can use authentication configured in its saved home. For HTTP services running in the computer, use curl --noproxy '*' --unix-socket ${sharedServicesMount} http://localhost:PORT/PATH.`
+POST a shell script to that endpoint and check the returned JSON code, stdout, and stderr. Scripts run in the Shared Computer workspace, with DISPLAY=:0 and the saved desktop home. Use Chromium DevTools Protocol at http://127.0.0.1:9222 from inside the guest for page inspection and browser automation, or use xdotool and scrot for desktop input and screenshots. Use the existing browser session for website actions. Git and gh are available in the guest and can use authentication configured in its saved home. For HTTP services running in the computer, use curl --noproxy '*' --unix-socket ${sharedServicesMount} http://localhost:PORT/PATH.
+
+To open a local app in Chromium, put its files in the shared folder (seen as ${sharedDirectory} in the guest). Chromium's localhost is inside the guest. Start the app there by posting a script to the same endpoint. Use ${guestServiceCommand} COMMAND [ARG...] for a server that needs to keep running after the command and turn finish. For example, for static files in the current directory:
+curl --noproxy '*' -fsS --unix-socket ${sharedServicesMount} --data-binary '${guestServiceCommand} python3 -m http.server 8765 --bind 127.0.0.1' ${sharedCommandUrl}
+Use a free port and bind to 127.0.0.1. Ordinary background jobs (including nohup with &) are cleaned up when the guest command ends. The service helper returns its PID and output log path in stdout. It starts the process without waiting for the app to become ready. After the start request has finished, check the app's HTTP response through the socket, then open that same URL with vibestar-browser and verify the page loaded in Chromium before reporting success. Read the service log via the command endpoint if the HTTP check fails. To stop a service you started, use kill -- -PID in the guest. Services end when Shared Computer stops or restarts.`
                   : " Shared files are read-only for this turn."
               }`
             : text,
-          sharedComputer: Boolean(options.sharedComputer),
+          sharedComputer: Boolean(sharedComputer),
           schemaPath,
           schema: outputSchema,
           workspaceType: "utility",
@@ -570,7 +584,7 @@ POST a shell script to that endpoint and check the returned JSON code, stdout, a
           options.workspace,
           contextPaths,
           options.viberSession?.sessionId,
-          options.sharedComputer,
+          sharedComputer,
         );
       };
 

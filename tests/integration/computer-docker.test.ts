@@ -15,23 +15,32 @@ import {
   sharedFilesMount,
   sharedServicesMount,
 } from "../../apps/core/computers/contracts";
-import { desktopImageTag } from "../../apps/core/computers/image";
+import { desktopImageTag, guestServiceCommand } from "../../apps/core/computers/image";
 import { createFixtureEngine, detectFixtureProvider } from "../helpers/fixtures";
 import { testProfileIds } from "../helpers/viber-fixtures";
 
 const marker = "shared-docker-smoke-ready";
+const editedMarker = "updated-by-second-viber";
 const selection = { provider: "codex", model: "next-model", effort: "high" } as const;
 const profileIds = [testProfileIds.implementer, testProfileIds.reviewer];
 
 class ComputerFixtureProvider extends CodexProvider {
   detect = detectFixtureProvider;
 
-  invocation = (request: AgentRunRequest) => ({
-    program: process.execPath,
-    input: "",
-    args: [
-      "-e",
-      `
+  invocation = (request: AgentRunRequest) => {
+    const [prompt] = request.prompt.split("\n\nShared Computer is enabled");
+    const structuredPrompt = prompt.split("\n\n", 2)[1];
+
+    const content = structuredPrompt?.startsWith("{")
+      ? JSON.parse(structuredPrompt).inputs.at(-1).content
+      : prompt;
+
+    return {
+      program: process.execPath,
+      input: "",
+      args: [
+        "-e",
+        `
       const fs = require("node:fs");
       const { execFileSync } = require("node:child_process");
       const assert = require("node:assert/strict");
@@ -48,15 +57,37 @@ class ComputerFixtureProvider extends CodexProvider {
       assert.equal(fs.existsSync(files), use);
       assert.equal(fs.existsSync(socket), canControl);
       assert.equal(${JSON.stringify(request.prompt.includes(sharedCommandUrl))}, canControl);
-      if (${JSON.stringify(request.prompt.includes("write the smoke file"))}) {
-        fs.writeFileSync(files + '/index.html', '<h1>${marker}</h1>');
+      const privateProject = ${content === "keep using the private project"};
+      assert.equal(process.cwd(), ${JSON.stringify(request.cwd)});
+      if (privateProject) {
+        assert.equal(fs.readFileSync('normal-viber.txt', 'utf8'), 'kept');
+        assert.match(fs.readFileSync(files + '/index.html', 'utf8'), /${editedMarker}/);
       } else if (use) {
-        assert.match(fs.readFileSync(files + '/index.html', 'utf8'), /${marker}/);
+        assert.equal(process.cwd(), files);
       }
-      if (canControl && ${JSON.stringify(request.prompt.includes("read the guest service"))}) {
+      if (${content === "write the smoke file"}) {
+        fs.writeFileSync('index.html', '<h1>${marker}</h1>');
+      } else if (use && !privateProject) {
+        assert.match(fs.readFileSync('index.html', 'utf8'), /${marker}/);
+      }
+      if (${content === "read the shared file in read-only mode"}) {
+        assert.equal(canControl, false);
+        assert.throws(() => fs.appendFileSync('index.html', 'unexpected write'), { code: 'EROFS' });
+      }
+      if (${content === "edit the open smoke app"}) {
+        assert.match(command("curl -fsS http://127.0.0.1:9222/json/list").stdout, /127.0.0.1:8049/);
+        fs.appendFileSync('index.html', '<p>${editedMarker}</p>');
+        assert.match(execFileSync('curl', ['--fail', '--unix-socket', socket, 'http://localhost:8049/'], {encoding:'utf8'}), /${editedMarker}/);
+      }
+      if (${content === "start the smoke server"}) {
+        const started = command('${guestServiceCommand} python3 -m http.server 8049 --bind 127.0.0.1');
+        assert.equal(started.code, 0, started.stderr);
+        assert.ok(JSON.parse(started.stdout).pid > 0);
+      }
+      if (canControl && ${content === "read the guest service"}) {
         assert.match(execFileSync('curl', ['--fail', '--unix-socket', socket, 'http://localhost:8049/'], {encoding:'utf8'}), /${marker}/);
       }
-      if (${JSON.stringify(request.prompt.includes("open the smoke page in Chromium"))}) {
+      if (${content.startsWith("open the smoke page in Chromium")}) {
         const env = command('printf "%s %s %s" "$DISPLAY" "$PWD" "$BROWSER"; gh --version >/dev/null');
         assert.equal(env.code, 0, env.stderr);
         assert.equal(env.stdout, ':0 /home/viber/workspace /usr/local/bin/vibestar-browser');
@@ -64,31 +95,33 @@ class ComputerFixtureProvider extends CodexProvider {
         const opened = command('vibestar-browser http://127.0.0.1:8049/');
         assert.equal(opened.code, 0, opened.stderr);
       }
-      if (${JSON.stringify(request.prompt.includes("inspect the smoke page in Chromium"))}) {
+      if (${content === "inspect the smoke page in Chromium"}) {
         const script = [
           "node --input-type=module <<'JS'",
           "const pages = await (await fetch('http://127.0.0.1:9222/json/list')).json();",
           "const page = pages.find((item) => item.url === 'http://127.0.0.1:8049/');",
           "const socket = new WebSocket(page.webSocketDebuggerUrl);",
-          "socket.addEventListener('open', () => socket.send(JSON.stringify({",
-          "  id: 1, method: 'Runtime.evaluate', params: { expression: 'document.body.innerText' },",
-          "})));",
+          "const send = (id, method, params) => socket.send(JSON.stringify({ id, method, params }));",
+          "socket.addEventListener('open', () => send(1, 'Page.enable'));",
           "socket.addEventListener('message', (event) => {",
           "  const reply = JSON.parse(event.data);",
-          "  if (reply.id === 1) { console.log(reply.result.result.value); socket.close(); }",
+          "  if (reply.id === 1) send(2, 'Page.reload');",
+          "  if (reply.method === 'Page.loadEventFired') send(3, 'Runtime.evaluate', { expression: 'document.body.innerText' });",
+          "  if (reply.id === 3) { console.log(reply.result.result.value); socket.close(); }",
           "});",
           "JS",
         ].join('\\n');
         const output = command(script);
         assert.equal(output.code, 0, output.stderr);
-        assert.match(output.stdout, /${marker}/);
+        assert.match(output.stdout, /${editedMarker}/);
       }
       console.log(JSON.stringify({type: 'thread.started', thread_id: ${JSON.stringify(request.conversation?.threadId || request.runId)}}));
       console.log(JSON.stringify({type: 'item.completed', item:{type: 'agent_message',text: 'Isolated chat ran successfully.'}}));
       console.log(JSON.stringify({type: 'turn.completed'}));
     `,
-    ],
-  });
+      ],
+    };
+  };
 }
 
 it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
@@ -196,14 +229,7 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
         await readFile(join(engine.root, "shared-computer", "files", "index.html"), "utf8"),
       ).toContain(marker);
 
-      await docker(
-        "exec",
-        "-d",
-        name,
-        "sh",
-        "-c",
-        "nohup python3 -m http.server 8049 --bind 127.0.0.1 >/tmp/http.log 2>&1",
-      );
+      await send(sessions[0], "start the smoke server");
 
       await expect
         .poll(() => docker("exec", name, "curl", "-fsS", "http://127.0.0.1:8049").catch(() => ""))
@@ -215,6 +241,12 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
       await expect
         .poll(() => docker("exec", name, "xdotool", "getactivewindow", "getwindowname"))
         .toContain("127.0.0.1");
+
+      await send(sessions[1], "edit the open smoke app");
+
+      expect(
+        await readFile(join(engine.root, "shared-computer", "files", "index.html"), "utf8"),
+      ).toContain(editedMarker);
 
       await send(sessions[0], "inspect the smoke page in Chromium");
 
@@ -311,6 +343,7 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
 
       expect(await docker("inspect", "--format", "{{.Image}}", name)).toBe(inspection.Image);
       expect(await docker("exec", name, "cat", "/home/viber/smoke-home")).toBe("persisted");
+      await expect(docker("exec", name, "curl", "-fsS", "http://127.0.0.1:8049")).rejects.toThrow();
       await send(sessions[1], "read the shared file");
 
       const writable = engine.vibers.profile(sessions[1].profile_id);
@@ -362,6 +395,7 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
 
       const sentinel = join(workspace, "normal-viber.txt");
       await writeFile(sentinel, "kept");
+      await send(sessions[1], "keep using the private project");
 
       expect(await call("computer.control", { action: "stop" })).toMatchObject({
         status: "stopped",

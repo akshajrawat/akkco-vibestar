@@ -274,22 +274,6 @@
   @apply flex-[0_1_auto] mt-auto pb-5;
 }
 
-.viber-chat-page .chat-draft .composer-lane {
-  @apply mb-auto;
-}
-
-.viber-chat-welcome {
-  @apply pb-2;
-}
-
-.viber-chat-welcome > .viber-face {
-  @apply w-[140px] h-[140px] m-[0_auto_22px];
-}
-
-.viber-chat-page .chat-welcome h1 {
-  @apply text-[clamp(28px,_3vw,_36px)] font-medium tracking-[-1px];
-}
-
 @keyframes viber-float {
   0%,
   100% {

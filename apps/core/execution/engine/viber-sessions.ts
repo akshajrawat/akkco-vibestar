@@ -5,8 +5,10 @@ import type { AgentRunner } from "../agents/agent-runner";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 import { ViberSessionStore } from "../../vibers/store";
-import type { ViberContinuationPrepareSchema } from "../../vibers/contracts";
-import { ViberSessionSendSchema } from "../../vibers/contracts";
+import {
+  ViberSessionSendSchema,
+  type ViberContinuationPrepareSchema,
+} from "../../vibers/contracts";
 import { prepareManagedWorkspace } from "../../workspace/managed";
 import { AdeError } from "../../domain";
 

@@ -227,9 +227,7 @@ export const ViberChat = ({
           </Button>
         </div>
       )}
-      {(error || (sessionId === null && invalid)) && (
-        <RunError error={error || invalid!} conversation />
-      )}
+      {(error || (sessionId === null && invalid)) && <RunError error={error || invalid!} />}
       {sessionId ? (
         <ViberSessionChat
           key={sessionId}

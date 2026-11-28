@@ -34,58 +34,12 @@ const conversationError = (error: string) => {
   return "The response couldn't finish.";
 };
 
-export const RunError = ({
-  error,
-  run,
-  stage = run?.stage ?? 0,
-  conversation = false,
-}: {
-  error: string;
-  run?: Run;
-  stage?: number;
-  conversation?: boolean;
-}) => {
+export const RunError = ({ error, run }: { error: string; run?: Run }) => {
   const cancelled =
-    run?.status === "cancelled" || (stage !== 4 && /cancelled|stopped|interrupt/i.test(error));
+    run?.status === "cancelled" || (run?.stage !== 4 && /cancelled|stopped|interrupt/i.test(error));
 
   const reason = errorMessage(error).trim();
-  const validation = stage === 4;
-
-  const provider =
-    run?.provider === "antigravity"
-      ? "Antigravity"
-      : run?.provider === "codex"
-        ? "Codex"
-        : stage === 0
-          ? "Repository"
-          : "Viber";
-
-  const stageName =
-    run?.purpose === "Read-only conversation"
-      ? "conversation"
-      : run?.purpose === "Code Review Ask AI"
-        ? "code review"
-        : stage === 5
-          ? "final review"
-          : stage === 1
-            ? "planning"
-            : stage === 2
-              ? "plan refinement"
-              : stage === 3
-                ? "implementation"
-                : stage === 0
-                  ? "preparation"
-                  : "validation";
-
-  const title = conversation
-    ? cancelled
-      ? "Response stopped."
-      : conversationError(reason)
-    : validation
-      ? "Verification needs attention"
-      : cancelled
-        ? "Run cancelled"
-        : `${provider} ${stageName} failed`;
+  const title = cancelled ? "Response stopped." : conversationError(reason);
 
   return (
     <section
@@ -101,14 +55,6 @@ export const RunError = ({
         <strong className={cancelled ? "text-foreground" : "text-accent-red"}>{title}</strong>
         {reason && reason !== title && (
           <p className="whitespace-pre-wrap text-ink-secondary">{reason}</p>
-        )}
-        {!conversation && (
-          <p className="text-ink-muted">
-            {validation
-              ? "Host validation"
-              : `${provider} · ${stageName} · Exit ${run?.exit_code ?? "unavailable"}`}
-            {run?.id && <> · Run {run.id}</>}
-          </p>
         )}
       </div>
     </section>

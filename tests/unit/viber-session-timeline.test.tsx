@@ -37,7 +37,7 @@ const event: AgentEvent = {
 afterEach(cleanup);
 
 it("shows animated work and tool subheadings during streaming, then collapses the completed activity", () => {
-  const view = render(<AgentTimeline runs={[run]} events={[event]} compact standalone />);
+  const view = render(<AgentTimeline runs={[run]} events={[event]} />);
   expect(screen.getByRole("status").textContent).toBe("Working…");
   expect(screen.getByText("Running command")).toBeTruthy();
   expect(document.querySelector(".work-log")?.hasAttribute("open")).toBe(true);
@@ -59,8 +59,6 @@ it("shows animated work and tool subheadings during streaming, then collapses th
           data: JSON.stringify({ command: "npm test", call_id: "command", exit_code: 0 }),
         },
       ]}
-      compact
-      standalone
     />,
   );
 
@@ -77,8 +75,6 @@ it("shows one standalone error with its diagnostic visible inline", () => {
     <AgentTimeline
       runs={[{ ...run, status: "failed", error: diagnostic }]}
       events={[{ ...event, kind: "run.failed", data: JSON.stringify({ message: diagnostic }) }]}
-      compact
-      standalone
     />,
   );
 
@@ -98,9 +94,7 @@ it("hides empty message events between tools and shows text when a stream has co
     data: JSON.stringify({ call_id: "reply", text: " " }),
   };
 
-  const view = render(
-    <AgentTimeline runs={[run]} events={[placeholder, event]} compact standalone />,
-  );
+  const view = render(<AgentTimeline runs={[run]} events={[placeholder, event]} />);
 
   expect(screen.getByText("Running command")).toBeTruthy();
   expect(view.container.querySelector(".message-event")).toBeNull();
@@ -113,8 +107,6 @@ it("hides empty message events between tools and shows text when a stream has co
         placeholder,
         { ...placeholder, id: 3, data: JSON.stringify({ call_id: "reply", text_delta: "Reply" }) },
       ]}
-      compact
-      standalone
     />,
   );
 

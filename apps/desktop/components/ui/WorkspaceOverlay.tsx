@@ -1,5 +1,11 @@
-import { createContext, useContext, useLayoutEffect, useRef } from "react";
-import type { ReactNode, RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 const OverlayPortal = createContext<RefObject<HTMLDialogElement | null> | null>(null);
 

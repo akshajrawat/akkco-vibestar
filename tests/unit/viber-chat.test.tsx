@@ -138,7 +138,6 @@ it("opens a Viber without execution and uses standalone sessions on explicit sen
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
   await screen.findByText("Existing conversation view");
   expect(screen.queryByText(viberProfile.name, { selector: "strong" })).toBeNull();
-  expect(document.querySelector(".viber-chat-welcome")).toBeNull();
   expect(rpc.mock.calls.filter(([method]) => method === "viber.session.create")).toHaveLength(1);
 
   expect(rpc).toHaveBeenCalledWith("viber.session.create", {

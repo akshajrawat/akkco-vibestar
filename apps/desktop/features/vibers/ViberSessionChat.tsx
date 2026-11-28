@@ -286,18 +286,7 @@ const SessionChat = ({
   };
 
   const timeline = data ? (
-    <AgentTimeline
-      runs={data.runs}
-      events={data.events}
-      messages={data.messages.map((message) => ({
-        ...message,
-        purpose: "chat",
-        status: `chat_${message.status}`,
-      }))}
-      compact
-      standalone
-      expandResults={false}
-    />
+    <AgentTimeline runs={data.runs} events={data.events} messages={data.messages} />
   ) : (
     <p className="px-1.5 py-3 text-[12px] text-ink-muted">Opening conversation…</p>
   );
@@ -311,9 +300,7 @@ const SessionChat = ({
           <>
             {data && <ViberGreeting name={profile.name} />}
             {timeline}
-            {(visibleError || invalid) && (
-              <RunError error={visibleError || invalid!} conversation />
-            )}
+            {(visibleError || invalid) && <RunError error={visibleError || invalid!} />}
             {(active || busy) && !data?.runs.some((run) => run.status === "running") && (
               <p
                 className="working-shimmer inline-block text-ink-secondary animate-[working-shine_2s_linear_infinite] [@media(prefers-reduced-motion:reduce)]:animate-[none]"

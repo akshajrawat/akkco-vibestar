@@ -340,95 +340,6 @@ describe("antigravityAcpConversation protocol", () => {
     expect(promptCall?.params.prompt[0].text).toContain("Rule: always write clean code.");
   });
 
-  it("falls back to session/load when resume is not advertised and suppresses replayed updates", () => {
-    const sent: unknown[] = [];
-    const accepted: string[] = [];
-
-    const invocation = antigravityAcpConversation({
-      ...baseRequest,
-      conversation: { threadId: "saved-sess-88" },
-      viberMemory: {
-        onInputAccepted: (id) => {
-          accepted.push(id);
-        },
-      },
-    });
-
-    invocation.inputProtocol.start(
-      (msg) => {
-        sent.push(msg);
-      },
-      () => {},
-    );
-
-    const receive = (msg: unknown) => {
-      invocation.inputProtocol.receive(JSON.stringify(msg));
-    };
-
-    receive({
-      jsonrpc: "2.0",
-      id: 1,
-      result: {
-        protocolVersion: 1,
-        agentCapabilities: {
-          loadSession: true,
-          sessionCapabilities: {},
-        },
-      },
-    });
-
-    // Uses session/load
-    expect(sent[2]).toMatchObject({
-      jsonrpc: "2.0",
-      id: 2,
-      method: "session/load",
-      params: { sessionId: "saved-sess-88" },
-    });
-
-    const replay = {
-      jsonrpc: "2.0",
-      method: "session/update",
-      params: {
-        sessionId: "saved-sess-88",
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { type: "text", text: "Historical replay chunk" },
-        },
-      },
-    };
-
-    expect(invocation.shouldObserveStdout(replay)).toBe(false);
-    expect(invocation.normalize(replay)).toEqual([]);
-    receive(replay);
-    expect(accepted).toEqual([]);
-
-    // session/load completes
-    receive({
-      jsonrpc: "2.0",
-      id: 2,
-      result: { sessionId: "saved-sess-88" },
-    });
-
-    receive({ jsonrpc: "2.0", id: 3, result: {} });
-    receive({ jsonrpc: "2.0", id: 4, result: {} });
-    receive({ jsonrpc: "2.0", id: 5, result: {} });
-
-    // Active turn update now triggers input acceptance
-    receive({
-      jsonrpc: "2.0",
-      method: "session/update",
-      params: {
-        sessionId: "saved-sess-88",
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { type: "text", text: "New live chunk" },
-        },
-      },
-    });
-
-    expect(accepted).toEqual(["saved-sess-88"]);
-  });
-
   it.each([1, 2, 3, 4, 5])("rejects a malformed setup response at request %i", (id) => {
     const recall = vi.fn(() => []);
 
@@ -494,9 +405,13 @@ describe("antigravityAcpConversation protocol", () => {
     }
   });
 
-  it.each(["resume", "load"])(
-    "confirms an empty %s response and ignores replay and foreign updates",
-    (method) => {
+  it.each([
+    { method: "resume", capabilities: { sessionCapabilities: { resume: {} } } },
+    { method: "load", capabilities: { sessionCapabilities: { load: {} } } },
+    { method: "load", capabilities: { loadSession: true } },
+  ])(
+    "confirms session/$method and ignores replay and foreign updates ($capabilities)",
+    ({ method, capabilities }) => {
       const accept = vi.fn();
 
       const invocation = antigravityAcpConversation({
@@ -505,10 +420,8 @@ describe("antigravityAcpConversation protocol", () => {
         viberMemory: { onInputAccepted: accept },
       });
 
-      invocation.inputProtocol.start(
-        () => {},
-        () => {},
-      );
+      const send = vi.fn();
+      invocation.inputProtocol.start(send, () => {});
 
       const receive = (raw: object) =>
         invocation.inputProtocol.receive(JSON.stringify({ jsonrpc: "2.0", ...raw }));
@@ -516,22 +429,40 @@ describe("antigravityAcpConversation protocol", () => {
       const update = (sessionId: string) => ({
         jsonrpc: "2.0",
         method: "session/update",
-        params: { sessionId, update: { sessionUpdate: "agent_message_chunk", content: "text" } },
+        params: {
+          sessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Reply" },
+          },
+        },
       });
 
       receive({
         id: 1,
         result: {
           protocolVersion: 1,
-          agentCapabilities: { sessionCapabilities: { [method]: {} } },
+          agentCapabilities: capabilities,
         },
       });
 
-      receive(update("saved"));
-      expect(invocation.conversationId(update("saved"))).toBeNull();
-      expect(invocation.normalize(update("saved"))).toEqual([]);
+      expect(send).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          id: 2,
+          method: `session/${method}`,
+          params: expect.objectContaining({ sessionId: "saved" }),
+        }),
+      );
 
-      const reply = { jsonrpc: "2.0", id: 2, result: {} };
+      const replay = update("saved");
+      expect(invocation.shouldObserveStdout(replay)).toBe(false);
+      receive(replay);
+      expect(invocation.conversationId(replay)).toBeNull();
+      expect(invocation.normalize(replay)).toEqual([]);
+      expect(accept).not.toHaveBeenCalled();
+
+      const result = "loadSession" in capabilities ? { sessionId: "saved" } : {};
+      const reply = { jsonrpc: "2.0", id: 2, result };
       expect(invocation.conversationId(reply)).toBe("saved");
 
       expect(invocation.normalize(reply)).toEqual([
@@ -972,148 +903,34 @@ describe("antigravityAcpConversation protocol", () => {
     }).toThrowError(/Unsupported Antigravity ACP protocol version/);
   });
 
-  it("throws provider_failed if session/set_mode returns error", () => {
+  it.each([
+    { id: 3, action: "set_mode", message: "Invalid mode: plan" },
+    { id: 4, action: "set_model", message: "Unknown model: gemini-2.5-pro" },
+    { id: 5, action: "set_config_option", message: "Unsupported thought level: high" },
+  ])("throws provider_failed when session/$action returns an error", ({ id, action, message }) => {
     const invocation = antigravityAcpConversation(baseRequest);
+    const send = vi.fn();
+    invocation.inputProtocol.start(send, () => {});
 
-    invocation.inputProtocol.start(
-      () => {},
-      () => {},
+    const receive = (response: object) =>
+      invocation.inputProtocol.receive(JSON.stringify({ jsonrpc: "2.0", ...response }));
+
+    receive({ id: 1, result: { protocolVersion: 1 } });
+    receive({ id: 2, result: { sessionId: "session" } });
+    for (let replyId = 3; replyId < id; replyId++) {
+      receive({ id: replyId, result: {} });
+    }
+
+    expect(send).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id, method: `session/${action}` }),
     );
 
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        result: {
-          protocolVersion: 1,
-          agentCapabilities: { sessionCapabilities: { resume: {} } },
-        },
+    expect(() => receive({ id, error: { code: -32602, message } })).toThrowError(
+      expect.objectContaining({
+        kind: "provider_failed",
+        message: expect.stringContaining(`Antigravity ${action} failed`),
       }),
     );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 2,
-        result: { sessionId: "sess-err-mode" },
-      }),
-    );
-
-    expect(() => {
-      invocation.inputProtocol.receive(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 3,
-          error: { code: -32602, message: "Invalid mode: plan" },
-        }),
-      );
-    }).toThrowError(/Antigravity set_mode failed/);
-  });
-
-  it("throws provider_failed if session/set_model returns error", () => {
-    const invocation = antigravityAcpConversation({
-      ...baseRequest,
-      config: { model: "unknown-model", effort: "default", timeout_secs: 30 },
-    });
-
-    invocation.inputProtocol.start(
-      () => {},
-      () => {},
-    );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        result: {
-          protocolVersion: 1,
-          agentCapabilities: { sessionCapabilities: { resume: {} } },
-        },
-      }),
-    );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 2,
-        result: { sessionId: "sess-err-model" },
-      }),
-    );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 3,
-        result: {},
-      }),
-    );
-
-    expect(() => {
-      invocation.inputProtocol.receive(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 4,
-          error: { code: -32602, message: "Unknown model: unknown-model" },
-        }),
-      );
-    }).toThrowError(/Antigravity set_model failed/);
-  });
-
-  it("throws provider_failed if session/set_config_option returns error", () => {
-    const invocation = antigravityAcpConversation({
-      ...baseRequest,
-      config: { model: "gemini-2.5-pro", effort: "xhigh", timeout_secs: 30 },
-    });
-
-    invocation.inputProtocol.start(
-      () => {},
-      () => {},
-    );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        result: {
-          protocolVersion: 1,
-          agentCapabilities: { sessionCapabilities: { resume: {} } },
-        },
-      }),
-    );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 2,
-        result: { sessionId: "sess-err-effort" },
-      }),
-    );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 3,
-        result: {},
-      }),
-    );
-
-    invocation.inputProtocol.receive(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 4,
-        result: {},
-      }),
-    );
-
-    expect(() => {
-      invocation.inputProtocol.receive(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 5,
-          error: { code: -32602, message: "Unsupported thought level: xhigh" },
-        }),
-      );
-    }).toThrowError(/Antigravity set_config_option failed/);
   });
 });
 

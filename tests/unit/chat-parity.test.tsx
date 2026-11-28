@@ -50,7 +50,7 @@ it("keeps a long prompt compact and lets the user expand and collapse its comple
 });
 
 it("keeps the working indicator collapsible before tools arrive and preserves a disclosure on a plain completed reply", () => {
-  const ui = render(<AgentTimeline compact runs={[run]} events={[]} />);
+  const ui = render(<AgentTimeline runs={[run]} events={[]} />);
   const log = ui.container.querySelector<HTMLDetailsElement>(".work-log")!;
   expect(log.querySelector("summary")?.textContent).toBe("Working…");
   expect(log.querySelector("summary svg")).not.toBeNull();
@@ -59,7 +59,6 @@ it("keeps the working indicator collapsible before tools arrive and preserves a 
 
   ui.rerender(
     <AgentTimeline
-      compact
       runs={[run]}
       events={[
         event(1, "message", {
@@ -76,7 +75,6 @@ it("keeps the working indicator collapsible before tools arrive and preserves a 
 
   ui.rerender(
     <AgentTimeline
-      compact
       runs={[
         {
           ...run,
@@ -94,10 +92,6 @@ it("keeps the working indicator collapsible before tools arrive and preserves a 
   expect(screen.getByText("Ready to build.").closest(".work-log")).toBeNull();
 });
 
-vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
-  useProviders: () => ({ providers: [], refresh: vi.fn() }),
-}));
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -105,8 +99,7 @@ afterEach(() => {
 
 const run: Run = {
   id: "chat-run",
-  stage: 1,
-  purpose: "Read-only conversation",
+  stage: 0,
   provider: "codex",
   model: "fixture",
   effort: "low",
@@ -140,7 +133,7 @@ it("streams a structured answer through stable message rows and reconciles the f
     />,
   );
 
-  const row = ui.container.querySelector(".message-event");
+  const row = screen.getByText("Hel").closest(".message-event");
   expect(screen.getByText("Hel")).toBeTruthy();
 
   ui.rerender(
@@ -165,7 +158,6 @@ it("streams a structured answer through stable message rows and reconciles the f
 
   expect(screen.getAllByText("Hello")).toHaveLength(1);
   expect(screen.queryByText("INTERNAL_PROMPT")).toBeNull();
-  expect(ui.container.querySelector(".agent-avatar")).toBeNull();
 });
 
 it("retains saved assistant answers on recovery when a matching run has no message output", () => {
@@ -224,10 +216,10 @@ it("shows a pending command before execution starts", () => {
   });
 
   const running = event(2, "command.started", { call_id: "command", status: "in_progress" });
-  const view = render(<AgentTimeline compact runs={[run]} events={[pending]} />);
+  const view = render(<AgentTimeline runs={[run]} events={[pending]} />);
 
   expect(screen.getByText("Command pending")).toBeTruthy();
-  view.rerender(<AgentTimeline compact runs={[run]} events={[pending, running]} />);
+  view.rerender(<AgentTimeline runs={[run]} events={[pending, running]} />);
   expect(screen.getByText("Running command")).toBeTruthy();
 });
 
@@ -241,37 +233,11 @@ it("keeps the current run error visible and updates when the error changes", () 
 });
 
 it("guides users to /clear when native thread recovery fails", () => {
-  render(<RunError error="Native thread not found" conversation />);
+  render(<RunError error="Native thread not found" />);
   expect(screen.getByText(/send \/clear to start a new thread/i)).toBeTruthy();
 });
 
-it("keeps changed files with implementation when a later conversation starts", () => {
-  const ui = render(
-    <AgentTimeline
-      runs={[{ ...run, id: "implementation", stage: 3, purpose: "Implementation" }, run]}
-      events={[]}
-      files={[
-        {
-          path: "source.ts",
-          old_path: null,
-          insertions: 1,
-          deletions: 0,
-          status: "M",
-          staged: false,
-          unstaged: true,
-          untracked: false,
-          binary: false,
-        },
-      ]}
-    />,
-  );
-
-  const turns = ui.container.querySelectorAll(".agent-turn");
-  expect(turns[0].querySelector(".chat-changes")).toBeTruthy();
-  expect(turns[1].querySelector(".chat-changes")).toBeNull();
-});
-
-it("shows chat with a retired expanded tool preference and preserves scrolling behavior", () => {
+it("keeps scroll position while reading older messages and jumps to the latest on request", () => {
   let resized: ResizeObserverCallback = () => {};
 
   vi.stubGlobal(
@@ -294,7 +260,6 @@ it("shows chat with a retired expanded tool preference and preserves scrolling b
 
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   const id = crypto.randomUUID();
-  localStorage.setItem(`vibestar.layout.${id}`, JSON.stringify({ expandedTool: true }));
 
   const props = {
     id,
@@ -396,42 +361,17 @@ it("does not repeat a final answer when the provider emits prose and a separate 
   expect(screen.getAllByText("One final answer")).toHaveLength(1);
 });
 
-it.each([1, 2])("keeps stage %s structured plans folded in the conversation", (stage) => {
-  const output = JSON.stringify({
-    summary: "A concise plan",
-    implementationSteps: ["Inspect the full plan"],
-  });
-
-  const ui = render(
-    <AgentTimeline
-      expandResults={false}
-      runs={[{ ...run, purpose: "Plan", stage, status: "completed", output }]}
-      events={[event(1, "message", { call_id: "plan", text: output })]}
-    />,
-  );
-
-  expect(screen.getByText("A concise plan")).toBeTruthy();
-
-  expect(ui.container.querySelector<HTMLDetailsElement>(".agent-response details")?.open).toBe(
-    false,
-  );
-});
-
-it("shows plan briefs as user messages and keeps the complete plan in the reply", () => {
+it("keeps structured result details visible in a completed reply", () => {
   const output = JSON.stringify({
     summary: "A complete plan",
     implementationSteps: ["Reuse the existing helper", "Run the required regression"],
   });
 
-  const ui = render(
+  render(
     <AgentTimeline
-      compact
-      showPrompts
       runs={[
         {
           ...run,
-          purpose: "Plan",
-          prompt: "This is the issue : Fix the interaction",
           status: "completed",
           ended_at: "2026-10-29T00:00:18Z",
           output,
@@ -441,15 +381,10 @@ it("shows plan briefs as user messages and keeps the complete plan in the reply"
     />,
   );
 
-  expect(ui.container.querySelector(".user-message")?.textContent).toBe(
-    "This is the issue : Fix the interaction",
-  );
-
   expect(screen.getByText("Worked for 18s")).toBeTruthy();
   expect(screen.getByText("Reuse the existing helper")).toBeTruthy();
   expect(screen.getByText("Run the required regression")).toBeTruthy();
   expect(screen.queryByText("View result details")).toBeNull();
-  expect(ui.container.querySelector(".turn-outcome")).toBeNull();
 });
 
 it("collapses completed work while leaving the answer visible and omits protocol metadata", () => {
@@ -457,7 +392,6 @@ it("collapses completed work while leaving the answer visible and omits protocol
 
   const ui = render(
     <AgentTimeline
-      compact
       runs={[{ ...run, status: "completed", ended_at: "2026-10-29T00:00:18Z", output }]}
       events={[
         event(1, "analysis.status", { tool: "userMessage", status: "completed" }),
@@ -477,10 +411,6 @@ it("collapses completed work while leaving the answer visible and omits protocol
   expect(log.querySelector("summary")?.textContent).toBe("Worked for 18s");
   expect(screen.getByText("You’re using Akkco Vibestar.").closest(".work-log")).toBeNull();
   expect(ui.container.textContent).not.toContain("userMessage");
-  expect(ui.container.textContent).not.toContain("Duration not reported");
-  expect(ui.container.textContent).not.toContain("Technical details");
-  expect(ui.container.textContent).not.toContain("Copy tool details");
-  expect(ui.container.querySelector(".turn-outcome")).toBeNull();
   fireEvent.click(log.querySelector("summary")!);
   expect(log.querySelector(".tool-event")?.textContent).toContain("node --test");
 });
@@ -488,7 +418,6 @@ it("collapses completed work while leaving the answer visible and omits protocol
 it("groups streamed reasoning into readable disclosures around tool activity", () => {
   const ui = render(
     <AgentTimeline
-      compact
       runs={[run]}
       events={[
         event(1, "analysis.status", { text_delta: "The user" }),

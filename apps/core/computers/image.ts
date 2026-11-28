@@ -1,7 +1,8 @@
 import { DesktopSize } from "./contracts";
 
 export const sharedDirectory = "/home/viber/workspace";
-export const desktopVersion = "6";
+export const desktopVersion = "7";
+export const guestServiceCommand = "vibestar-service";
 export const guestCommandTimeoutMs = 120_000;
 export const desktopImageLabel = "dev.vibestar.desktop-image";
 
@@ -87,6 +88,46 @@ done
 cat /tmp/vibestar-browser.log >&2
 exit 1
 EOF_BROWSER
+COPY --chmod=755 <<'EOF_SERVICE' /usr/local/bin/${guestServiceCommand}
+#!/usr/bin/env node
+const { spawn } = require("node:child_process");
+const { once } = require("node:events");
+const { mkdtemp, open, rm } = require("node:fs/promises");
+const { tmpdir } = require("node:os");
+const { join } = require("node:path");
+
+const start = async () => {
+  const [command, ...args] = process.argv.slice(2);
+  if (!command) {
+    throw new Error("Usage: ${guestServiceCommand} COMMAND [ARG...]");
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "vibestar-service-"));
+  const log = join(directory, "output.log");
+  try {
+    const output = await open(log, "wx", 0o600);
+    try {
+      const service = spawn(command, args, {
+        detached: true,
+        stdio: ["ignore", output.fd, output.fd],
+      });
+      await once(service, "spawn");
+      service.unref();
+      console.log(JSON.stringify({ pid: service.pid, log }));
+    } finally {
+      await output.close();
+    }
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+};
+
+start().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});
+EOF_SERVICE
 COPY --chmod=755 <<'EOF_EXEC' /usr/local/bin/vibestar-exec
 #!/usr/bin/env node
 const { spawn } = require("node:child_process");
