@@ -155,7 +155,7 @@ export const NavigationSidebar = ({
             : `Chat with ${profile.name}`
         }
       >
-        <ViberFace profile={profile} compact />
+        <ViberFace profile={profile} />
         {pinnedTile && !collapsed && <strong className="w-full truncate">{profile.name}</strong>}
         {!collapsed && !pinnedTile && (
           <span className="sidebar-viber-details">

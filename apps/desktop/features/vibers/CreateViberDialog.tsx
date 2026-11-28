@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Shuffle, X } from "lucide-react";
 
-import { defaultAppearance, randomAppearance } from "../../../core/vibers/appearance";
+import { pixelAppearance, randomAppearance } from "../../../core/vibers/appearance";
 import {
   AgentProfileSchema,
   DEFAULT_VIBER_INSTRUCTIONS,
@@ -30,8 +30,11 @@ export const CreateViberDialog = ({
   const [draft, setDraft] = useState(profile);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const appearance = draft.appearance || defaultAppearance();
-  const [customColor, setCustomColor] = useState(appearance.color);
+
+  const appearance = useMemo(
+    () => pixelAppearance(draft.appearance, profile.id),
+    [draft.appearance, profile.id],
+  );
 
   const [confirmClose, setConfirmClose] = useState(false);
 
@@ -40,7 +43,7 @@ export const CreateViberDialog = ({
       return;
     }
 
-    if (JSON.stringify(draft) !== JSON.stringify(profile) || customColor !== appearance.color) {
+    if (JSON.stringify(draft) !== JSON.stringify(profile)) {
       setConfirmClose(true);
     } else {
       close();
@@ -64,16 +67,16 @@ export const CreateViberDialog = ({
               if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
                 event.currentTarget.animate(
                   [
-                    { transform: "translateY(0) rotate(0)" },
-                    { transform: "translateY(-6px) rotate(-12deg)" },
-                    { transform: "translateY(0) rotate(0)" },
+                    { transform: "translateY(0)" },
+                    { transform: "translateY(-4px)" },
+                    { transform: "translateY(0)" },
                   ],
-                  { duration: 420, easing: "ease-in-out" },
+                  { duration: 360, easing: "steps(4, end)" },
                 );
               }
             }}
           >
-            <ViberFace appearance={appearance} animated />
+            <ViberFace appearance={appearance} />
           </button>
         )}
         <h2>{title}</h2>
@@ -93,11 +96,6 @@ export const CreateViberDialog = ({
         className="viber-profile-editor flex flex-col min-h-0"
         onSubmit={async (event) => {
           event.preventDefault();
-          if (!/^#[0-9a-fA-F]{6}$/.test(customColor)) {
-            setError("Enter a valid six-digit custom HEX color before saving.");
-            return;
-          }
-
           setBusy(true);
           setError("");
           try {
@@ -107,7 +105,7 @@ export const CreateViberDialog = ({
                 : {
                     ...draft,
                     instructions: draft.instructions.trim() || DEFAULT_VIBER_INSTRUCTIONS,
-                    appearance,
+                    ...(editing ? {} : { appearance }),
                   }),
               revision: profile.revision + 1,
             });
@@ -127,64 +125,90 @@ export const CreateViberDialog = ({
         }}
       >
         <div className="viber-editor-content min-h-0 px-6 py-1 [@media(max-width:700px)]:px-4">
-          <div className="viber-editor-main grid grid-cols-[minmax(0,_1.1fr)_minmax(220px,_1fr)] [@media(max-width:700px)]:grid-cols-[minmax(0,_1fr)] items-center">
-            {!renameOnly && (
-              <section
-                className="viber-live-preview grid place-items-center self-stretch"
-                aria-label="Live avatar preview"
-              >
-                <ViberFace appearance={appearance} animated />
-              </section>
-            )}
-            <div className="viber-identity-fields grid gap-2.5 min-w-0">
-              <label>
-                <span className="sr-only">Name</span>
-                <input
-                  className="viber-name-input"
-                  placeholder="Name your Viber"
-                  autoFocus={editing}
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  required
-                  maxLength={100}
-                />
-              </label>
-              {editing && !renameOnly && (
-                <>
-                  <label>
-                    Description
-                    <input
-                      value={draft.description ?? ""}
-                      maxLength={2000}
-                      onChange={(event) =>
-                        setDraft({ ...draft, description: event.currentTarget.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    Instructions
-                    <textarea
-                      value={draft.instructions}
-                      maxLength={32000}
-                      onChange={(event) =>
-                        setDraft({ ...draft, instructions: event.currentTarget.value })
-                      }
-                    />
-                  </label>
-                </>
+          <div className="viber-editor-main">
+            <div className="viber-profile-fields">
+              {!renameOnly && (
+                <section
+                  className="viber-live-preview grid place-items-center self-stretch"
+                  aria-label="Live avatar preview"
+                >
+                  <ViberFace
+                    appearance={appearance}
+                    label={[
+                      `${appearance.color} ${appearance.shape.replaceAll("-", " ")}`,
+                      appearance.eyes === "none" ? "no eyes" : `${appearance.eyes} eyes`,
+                      appearance.mouth !== "none" && `${appearance.mouth} mouth`,
+                      ...[
+                        appearance.headwear,
+                        appearance.eyewear,
+                        appearance.neckwear,
+                        appearance.extra,
+                      ]
+                        .filter((part) => part !== "none")
+                        .map((part) => part.replaceAll("-", " ")),
+                    ]
+                      .filter(Boolean)
+                      .join(", ")}
+                  />
+                </section>
               )}
+              <div className="viber-identity-fields grid gap-2.5 min-w-0">
+                <label>
+                  <span className="sr-only">Name</span>
+                  <input
+                    className="viber-name-input"
+                    placeholder="Name your Viber"
+                    autoFocus={editing}
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    required
+                    maxLength={100}
+                  />
+                </label>
+                {!renameOnly && (
+                  <Button
+                    className="justify-self-center"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setDraft((current) => ({ ...current, appearance: randomAppearance() }))
+                    }
+                  >
+                    <Shuffle size={14} aria-hidden="true" />
+                    Random
+                  </Button>
+                )}
+                {editing && !renameOnly && (
+                  <>
+                    <label>
+                      Description
+                      <input
+                        value={draft.description ?? ""}
+                        maxLength={2000}
+                        onChange={(event) =>
+                          setDraft({ ...draft, description: event.currentTarget.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Instructions
+                      <textarea
+                        value={draft.instructions}
+                        maxLength={32000}
+                        onChange={(event) =>
+                          setDraft({ ...draft, instructions: event.currentTarget.value })
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
             </div>
             {!renameOnly && (
               <AvatarBuilder
                 appearance={appearance}
-                change={(appearance) => setDraft({ ...draft, appearance })}
-                customColor={customColor}
-                setCustomColor={setCustomColor}
-                randomize={() => {
-                  const appearance = randomAppearance();
-                  setDraft({ ...draft, appearance });
-                  setCustomColor(appearance.color);
-                }}
+                change={(appearance) => setDraft((current) => ({ ...current, appearance }))}
               />
             )}
           </div>

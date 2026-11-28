@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { defaultAppearance } from "../../../core/vibers/appearance";
+import { appearanceAccent } from "../../../core/vibers/appearance";
 import type { AgentProfile, ViberSession } from "../../../core/vibers/contracts";
 import type { Settings } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
@@ -204,7 +204,7 @@ export const ViberChat = ({
   );
 
   const composerError = isChatCommand(composerContent(view)) ? null : invalid;
-  const color = profile.appearance?.color ?? defaultAppearance().color;
+  const color = appearanceAccent(profile.appearance);
 
   return (
     <section
