@@ -7,16 +7,16 @@ export type Cadence =
 
 export type ScheduleTask =
   | { kind: "reminder" }
-  | { kind: "github"; pull?: string; repository?: string };
+  | { kind: "instruction" }
+  | {
+      kind: "github";
+      pull?: string;
+      repository?: string;
+      events?: "changes_requested" | "review_requested" | "all";
+    };
 
 export type ScheduleStatus =
-  | "pending"
-  | "active"
-  | "blocked_sign_in"
-  | "retrying"
-  | "paused"
-  | "completed"
-  | "cancelled";
+  "pending" | "active" | "blocked_sign_in" | "retrying" | "paused" | "completed" | "cancelled";
 
 export interface ViberSchedule {
   id: string;
@@ -24,6 +24,8 @@ export interface ViberSchedule {
   instructions: string;
   task: ScheduleTask;
   cadence: Cadence;
+  timezone: string;
+  error: string | null;
   next_run_at: number | null;
   status: ScheduleStatus;
 }
@@ -52,12 +54,14 @@ export const scheduleCadenceLabel = (schedule: Pick<ViberSchedule, "task" | "cad
         undefined,
         { hour: "numeric", minute: "2-digit" },
       );
+
       const day =
         cadence.day !== undefined
           ? `Every ${["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][cadence.day]}`
           : cadence.weekdays
             ? "Weekdays"
             : "Daily";
+
       return `${day} at ${time}`;
     }
   }

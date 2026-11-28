@@ -103,17 +103,21 @@ export const callSystem = async (
         e.providers(),
         services.github.client.detect(),
       ]);
-      return [...providers, {
-        provider: "github",
-        installed: github.installed,
-        connected: github.connected,
-        accountLabel: github.username ?? undefined,
-        version: github.version,
-        error: github.error,
-        models: [],
-        efforts: [],
-        capabilities: ["Read-only PR checks"],
-      }];
+
+      return [
+        ...providers,
+        {
+          provider: "github",
+          installed: github.installed,
+          connected: github.connected,
+          accountLabel: github.username ?? undefined,
+          version: github.version,
+          error: github.error,
+          models: [],
+          efforts: [],
+          capabilities: ["Read-only PR checks"],
+        },
+      ];
     }
 
     case "auth.connect":

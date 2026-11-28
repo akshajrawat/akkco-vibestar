@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { defaultAppearance } from "../../../core/vibers/appearance";
+import { appearanceAccent } from "../../../core/vibers/appearance";
 import type { AgentProfile, ViberSession } from "../../../core/vibers/contracts";
 import type { Settings } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
@@ -13,7 +13,6 @@ import { SharedWorkspaceDialog } from "./SharedWorkspaceDialog";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
 import { configurationError } from "../../../core/execution/providers/contracts";
-import { parseScheduleIntent } from "../../../core/vibers/schedule-intent";
 import { Button } from "../../components/ui/button";
 
 const messageTextColor = (color: string) => {
@@ -84,8 +83,7 @@ export const ViberChat = ({
     };
   }, [profile.id, revision, lookupAttempt]);
 
-  const handlesLocally = (content: string) =>
-    content.trim() === "/clear" || !!parseScheduleIntent(content);
+  const handlesLocally = (content: string) => content.trim() === "/clear";
 
   const start = async (content = composerContent(getTaskView(draftId)), shareChoice?: boolean) => {
     const local = handlesLocally(content);
@@ -116,9 +114,7 @@ export const ViberChat = ({
           ? true
           : undefined;
 
-    const canShare = Boolean(
-      computerSupported && settings?.allow_viber_communication && !local,
-    );
+    const canShare = Boolean(computerSupported && settings?.allow_viber_communication && !local);
 
     let share = false;
     if (shareChoice !== undefined) {
@@ -205,7 +201,7 @@ export const ViberChat = ({
   );
 
   const composerInvalid = handlesLocally(composerContent(view)) ? null : invalid;
-  const color = profile.appearance?.color ?? defaultAppearance().color;
+  const color = appearanceAccent(profile.appearance);
 
   return (
     <section
@@ -233,7 +229,9 @@ export const ViberChat = ({
           </Button>
         </div>
       )}
-      {(error || (sessionId === null && composerInvalid)) && <RunError error={error || composerInvalid!} />}
+      {(error || (sessionId === null && composerInvalid)) && (
+        <RunError error={error || composerInvalid!} />
+      )}
       {sessionId ? (
         <ViberSessionChat
           key={sessionId}

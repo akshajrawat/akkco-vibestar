@@ -19,7 +19,7 @@ import { processIdentity, terminateGroup } from "./runtime/process";
 import { AntigravityProvider } from "./providers/antigravity";
 import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
-import { ViberSessions } from "./engine/viber-sessions";
+import { ViberSessions, type ScheduleInterpreter } from "./engine/viber-sessions";
 import { ViberStore } from "../vibers/store";
 import { Computers } from "../computers/service";
 import { GitHubClient } from "../github/client";
@@ -91,6 +91,7 @@ export class Engine extends EventEmitter {
     providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
     gitHubClient?: GitHubClient,
+    scheduleInterpreter?: ScheduleInterpreter | false,
   ) {
     super();
     this.db = database;
@@ -129,18 +130,26 @@ export class Engine extends EventEmitter {
     this.scheduling = new EngineScheduling(this, this.state);
 
     this.computers = new Computers(this);
+
     this.schedules = new ViberSchedules(
       database,
       gitHubClient ?? new GitHubClient(root),
       () => !this.state.closed && !this.state.maintenance,
       this.changed,
+      (...args) => this.viberSessions.runScheduledInstruction(...args),
     );
 
-    this.viberSessions = new ViberSessions(this, this.state, this.runner, {
-      withExecutionSlot: this.withExecutionSlot,
-      assertExecutionSlot: this.scheduling.assertExecutionSlot,
-      stopActivity: this.stopActivity,
-    });
+    this.viberSessions = new ViberSessions(
+      this,
+      this.state,
+      this.runner,
+      {
+        withExecutionSlot: this.withExecutionSlot,
+        assertExecutionSlot: this.scheduling.assertExecutionSlot,
+        stopActivity: this.stopActivity,
+      },
+      scheduleInterpreter,
+    );
   }
 
   static create = async (
@@ -148,6 +157,7 @@ export class Engine extends EventEmitter {
     providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
     gitHubClient?: GitHubClient,
+    scheduleInterpreter?: ScheduleInterpreter | false,
   ) => {
     root = await createLayout(root);
     const path = join(root, "state", "core.lock");
@@ -162,7 +172,17 @@ export class Engine extends EventEmitter {
     let database: Database | undefined;
     try {
       database = await Database.open(join(root, "state", VIBESTAR_DB_NAME));
-      const engine = new Engine(root, release, database, providers, gitTransport, gitHubClient);
+
+      const engine = new Engine(
+        root,
+        release,
+        database,
+        providers,
+        gitTransport,
+        gitHubClient,
+        scheduleInterpreter,
+      );
+
       for (const run of engine.db.all<{
         pid: number;
         process_identity: string;

@@ -225,9 +225,11 @@ flowchart LR
     Chat["Selected Viber chat"] -->|Ask to create, list, edit, pause, resume or cancel| Schedules["Viber-owned schedules · SQLite"]
     Schedules -->|Only due schedules| Backend["Local backend · Awake and running"]
     Backend --> Reminder["Reminder"]
-    Backend --> Watch["Read-only GitHub poll"]
+    Backend --> Instruction["Read-only Viber instruction"]
+    Backend --> Watch["Read-only GitHub check"]
+    Instruction --> Chat
     Watch -->|New review or PR change| Chat
-    Watch -->|Sign-in required| Providers["Chat prompt · Providers → GitHub"]
+    Watch -->|Sign-in required| Providers["Blocked reason · Providers → GitHub"]
     Reminder --> Chat
     Schedules --> Panel["Below the Computer screen · Name, cadence, next run and status"]
 ```

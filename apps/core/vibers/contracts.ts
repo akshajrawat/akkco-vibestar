@@ -1,4 +1,3 @@
-import type { ScheduleClarification } from "./schedule-intent";
 import { z } from "zod";
 
 import { AgentExecutionSchema, WorkspaceAccessSchema } from "../execution/contracts";
@@ -175,7 +174,10 @@ export const ViberMessageSchema = z.object({
   created_at: z.string(),
   error: z.string().nullable(),
   effects: z.enum(["none", "possible"]).default("possible"),
-  local_schedule: z.preprocess((value) => value === 1 ? true : value ?? undefined, z.literal(true).optional()),
+  local_schedule: z.preprocess(
+    (value) => (value === 1 ? true : (value ?? undefined)),
+    z.literal(true).optional(),
+  ),
   continue_message_id: z.preprocess((value) => value ?? undefined, identity.optional()),
 });
 
@@ -198,7 +200,6 @@ export interface ViberSessionDetail {
   session: ViberSession;
   messages: ViberMessage[];
   recovery_required: boolean;
-  schedule_clarification?: ScheduleClarification;
 }
 
 export const agentPrompt = (instructions: unknown, inputs: unknown) =>

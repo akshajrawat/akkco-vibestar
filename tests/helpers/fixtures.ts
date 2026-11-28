@@ -21,8 +21,16 @@ export const createFixtureEngine = async (
   root: string,
   providers?: Parameters<typeof Engine.create>[1],
   gitHubClient?: GitHubClient,
+  scheduleInterpreter: NonNullable<Parameters<typeof Engine.create>[4]> = false,
 ) => {
-  const engine = await Engine.create(root, providers, fixtureTransport, gitHubClient);
+  const engine = await Engine.create(
+    root,
+    providers,
+    fixtureTransport,
+    gitHubClient,
+    scheduleInterpreter,
+  );
+
   createTestProfiles(engine.db);
 
   return engine;

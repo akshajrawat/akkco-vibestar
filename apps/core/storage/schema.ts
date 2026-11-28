@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS viber_schedules(
   instructions TEXT NOT NULL,
   task TEXT NOT NULL CHECK(json_valid(task)),
   cadence TEXT NOT NULL CHECK(json_valid(cadence)),
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  claim TEXT,
   next_run_at INTEGER,
   status TEXT NOT NULL CHECK(status IN ('pending','active','blocked_sign_in','retrying','paused','completed','cancelled')),
   revision INTEGER NOT NULL DEFAULT 0,
@@ -157,7 +159,8 @@ CREATE TABLE viber_messages(
   configuration TEXT CHECK(configuration IS NULL OR json_valid(configuration)),
   created_at TEXT NOT NULL,
   error TEXT,
-  effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible'))
+  effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible')),
+  timeline_kind TEXT CHECK(timeline_kind IN ('schedule_chat','schedule_notification'))
 );
 
 CREATE UNIQUE INDEX viber_pending_message ON viber_messages(session_id) WHERE status='pending';

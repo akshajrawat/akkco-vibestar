@@ -1,4 +1,3 @@
-import { parseScheduleIntent } from "../../../core/vibers/schedule-intent";
 import { ViberGreeting } from "./ViberGreeting";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -99,7 +98,9 @@ const SessionChat = ({
     effort: view.followupEffort || data?.session.selection.effort || profile.execution.effort,
   };
 
-  const previousTurn = data?.messages.filter((message) => message.role === "user" && !message.local_schedule).at(-1);
+  const previousTurn = data?.messages
+    .filter((message) => message.role === "user" && !message.local_schedule)
+    .at(-1);
 
   const canContinue =
     previousTurn?.status === "cancelled" || previousTurn?.status === "interrupted";
@@ -124,8 +125,7 @@ const SessionChat = ({
       ? error.message
       : "";
 
-  const handlesLocally = (content: string) =>
-    content.trim() === "/clear" || !!parseScheduleIntent(content, data?.schedule_clarification);
+  const handlesLocally = (content: string) => content.trim() === "/clear";
 
   const composerInvalid = handlesLocally(composerContent(view)) ? null : invalid;
 
@@ -182,14 +182,12 @@ const SessionChat = ({
 
     let input = savedInput;
     if (!input) {
-      if (uncertain && !acknowledged && !local) {
+      if (uncertain && !acknowledged) {
         setRecovery({ content, continueMessageId });
         return;
       }
 
-      const canShare = Boolean(
-        computerSupported && settings?.allow_viber_communication && !local,
-      );
+      const canShare = Boolean(computerSupported && settings?.allow_viber_communication && !local);
 
       let share = false;
       if (shareChoice !== undefined) {
@@ -307,7 +305,9 @@ const SessionChat = ({
           <>
             {data && <ViberGreeting name={profile.name} />}
             {timeline}
-            {(visibleError || composerInvalid) && <RunError error={visibleError || composerInvalid!} />}
+            {(visibleError || composerInvalid) && (
+              <RunError error={visibleError || composerInvalid!} />
+            )}
             {(active || busy) && !data?.runs.some((run) => run.status === "running") && (
               <p
                 className="working-shimmer inline-block text-ink-secondary animate-[working-shine_2s_linear_infinite] [@media(prefers-reduced-motion:reduce)]:animate-[none]"

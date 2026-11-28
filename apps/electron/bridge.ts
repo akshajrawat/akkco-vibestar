@@ -190,7 +190,7 @@ export class CoreBridge extends EventEmitter {
 
     if (this.config.helper_path) {
       throw new Error(
-        "The custom WSL helper is missing or incompatible; legacy automatic PR monitoring is blocked. Update the helper at the selected path, or clear Existing helper path in Settings → Execution to use the managed runtime.",
+        "The custom WSL helper is missing or incompatible. Update the helper at the selected path, or clear Existing helper path in Settings → Execution to use the managed runtime.",
       );
     }
 
@@ -215,7 +215,7 @@ export class CoreBridge extends EventEmitter {
       ...(config.data_home ? { VIBESTAR_HOME: config.data_home } : {}),
     };
 
-    const launch = `const path=require('node:path');const os=require('node:os');const fs=require('node:fs/promises');const crypto=require('node:crypto');const c=JSON.parse(process.argv[1]);if(c.data_home)process.env.VIBESTAR_HOME=c.data_home;const helper=c.helper_path||path.join(c.data_home||path.join(os.homedir(),'.akkco-vibestar'),'runtime','core.cjs');fs.readFile(helper).then(bytes=>{if(crypto.createHash('sha256').update(bytes).digest('hex')!==c.bundle_hash)throw Error('The WSL helper differs from this desktop build. Install / update WSL helper in Settings before starting execution; legacy automatic PR monitoring is blocked.');require(helper);}).catch(error=>{process.stderr.write(String(error));process.exit(1);});`;
+    const launch = `const path=require('node:path');const os=require('node:os');const fs=require('node:fs/promises');const crypto=require('node:crypto');const c=JSON.parse(process.argv[1]);if(c.data_home)process.env.VIBESTAR_HOME=c.data_home;const helper=c.helper_path||path.join(c.data_home||path.join(os.homedir(),'.akkco-vibestar'),'runtime','core.cjs');fs.readFile(helper).then(bytes=>{if(crypto.createHash('sha256').update(bytes).digest('hex')!==c.bundle_hash)throw Error('The WSL helper differs from this desktop build. Install / update WSL helper in Settings before starting execution.');require(helper);}).catch(error=>{process.stderr.write(String(error));process.exit(1);});`;
 
     this.child =
       process.platform === "win32"

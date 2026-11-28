@@ -61,6 +61,7 @@ export const callProfiles = async (
 
         engine.db.transaction(() => {
           engine.schedules.cancelForProfile(input.profile_id);
+
           engine.db.run(
             "INSERT OR IGNORE INTO retired_viber_profiles(profile_id) VALUES(?)",
             input.profile_id,

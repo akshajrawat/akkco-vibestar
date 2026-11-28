@@ -5,7 +5,7 @@ import type { ScheduleTask } from "../vibers/schedule-contracts";
 import type { GitHubClient } from "./client";
 import { canonicalPullRequest, type CanonicalPullRequestRef } from "./contracts";
 
-interface PrWatchCursor {
+interface PullRequestCursor {
   state: "OPEN" | "CLOSED" | "MERGED";
   draft: boolean;
   head_sha: string;
@@ -66,7 +66,25 @@ const prResponseSchema = z.object({
   errors: z.array(z.unknown()).optional(),
 });
 
-const compareCursors = (previous: PrWatchCursor, current: PrWatchCursor): string[] => {
+const compareCursors = (
+  previous: PullRequestCursor,
+  current: PullRequestCursor,
+  events: Extract<ScheduleTask, { kind: "github" }>["events"],
+): string[] => {
+  if (events === "changes_requested") {
+    return previous.review_decision !== "CHANGES_REQUESTED" &&
+      current.review_decision === "CHANGES_REQUESTED"
+      ? ["Changes requested by reviewer"]
+      : [];
+  }
+
+  if (events === "review_requested") {
+    return previous.review_decision !== "REVIEW_REQUIRED" &&
+      current.review_decision === "REVIEW_REQUIRED"
+      ? ["Review requested"]
+      : [];
+  }
+
   const changes: string[] = [];
 
   // Lifecycle transitions
@@ -91,9 +109,9 @@ const compareCursors = (previous: PrWatchCursor, current: PrWatchCursor): string
       changes.push("Changes requested by reviewer");
     } else if (
       current.review_decision === "REVIEW_REQUIRED" &&
-      previous.review_decision === "CHANGES_REQUESTED"
+      (previous.review_decision === "CHANGES_REQUESTED" || previous.review_decision === "APPROVED")
     ) {
-      changes.push("Review requested (changes addressed)");
+      changes.push("Review required again");
     }
   }
 
@@ -129,7 +147,7 @@ const fetchPullRequest = async (
   account: string,
   signal: AbortSignal,
 ) => {
-    const query = `query($owner: String!, $repo: String!) {
+  const query = `query($owner: String!, $repo: String!) {
       viewer { login }
       repository(owner: $owner, name: $repo) {
         pullRequest(number: ${ref.number}) {
@@ -157,61 +175,60 @@ const fetchPullRequest = async (
       }
     }`;
 
-    const raw = await client.graphql(query, { owner: ref.owner, repo: ref.repo }, signal);
-    const parsed = prResponseSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new AdeError("github", "GitHub returned malformed pull request data");
-    }
+  const raw = await client.graphql(query, { owner: ref.owner, repo: ref.repo }, signal);
+  const parsed = prResponseSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new AdeError("github", "GitHub returned malformed pull request data");
+  }
 
-    if (parsed.data.errors?.length) {
-      throw new AdeError(
-        "github",
-        "GitHub could not retrieve complete PR details.",
-      );
-    }
+  if (parsed.data.errors?.length) {
+    throw new AdeError("github", "GitHub could not retrieve complete PR details.");
+  }
 
-    if (parsed.data.data?.viewer.login.toLowerCase() !== account) {
-      throw new AdeError("github_account", "GitHub account changed during the PR check.");
-    }
-    const pr = parsed.data.data.repository?.pullRequest;
-    if (!pr) {
-      throw new AdeError(
-        "not_found",
-        `Pull request #${ref.number} was not found in ${ref.owner}/${ref.repo}`,
-      );
-    }
+  if (parsed.data.data?.viewer.login.toLowerCase() !== account) {
+    throw new AdeError("github_account", "GitHub account changed during the PR check.");
+  }
 
-    // Verify response matches requested PR
-    const canonicalReturned = canonicalPullRequest(pr.url);
-    if (
-      canonicalReturned.owner !== ref.owner ||
-      canonicalReturned.repo !== ref.repo ||
-      canonicalReturned.number !== ref.number
-    ) {
-      throw new AdeError("github", "GitHub returned metadata for an unexpected pull request");
-    }
+  const pr = parsed.data.data.repository?.pullRequest;
+  if (!pr) {
+    throw new AdeError(
+      "not_found",
+      `Pull request #${ref.number} was not found in ${ref.owner}/${ref.repo}`,
+    );
+  }
 
-    const lastCommit = pr.commits?.nodes?.[0]?.commit;
+  // Verify response matches requested PR
+  const canonicalReturned = canonicalPullRequest(pr.url);
+  if (
+    canonicalReturned.owner !== ref.owner ||
+    canonicalReturned.repo !== ref.repo ||
+    canonicalReturned.number !== ref.number
+  ) {
+    throw new AdeError("github", "GitHub returned metadata for an unexpected pull request");
+  }
 
-    const checkStatus =
-      lastCommit && lastCommit.oid === pr.headRefOid
-        ? (lastCommit.statusCheckRollup?.state ?? null)
-        : null;
+  const lastCommit = pr.commits?.nodes?.[0]?.commit;
 
-    const cursor: PrWatchCursor = {
-      state: pr.state,
-      draft: pr.isDraft,
-      head_sha: pr.headRefOid,
-      review_decision: pr.reviewDecision,
-      check_status: checkStatus,
-      mergeable: pr.mergeable,
-    };
+  const checkStatus =
+    lastCommit && lastCommit.oid === pr.headRefOid
+      ? (lastCommit.statusCheckRollup?.state ?? null)
+      : null;
 
-    return cursor;
+  const cursor: PullRequestCursor = {
+    state: pr.state,
+    draft: pr.isDraft,
+    head_sha: pr.headRefOid,
+    review_decision: pr.reviewDecision,
+    check_status: checkStatus,
+    mergeable: pr.mergeable,
   };
 
+  return cursor;
+};
+
 type AttentionReason = "Review requested" | "Changes requested";
-type GitHubCursor = { pull: PrWatchCursor } | { attention: string[] };
+
+type GitHubCursor = { pull: PullRequestCursor } | { attention: string[] };
 
 const searchPage = z.object({
   data: z.object({
@@ -236,8 +253,9 @@ const searchForAttention = async (
   let cursor: string | null = null;
   let count: number | undefined;
   for (let page = 0; page < 10; page++) {
-    const result = searchPage.parse(await client.graphql(
-      `query($search: String!, $cursor: String) {
+    const result = searchPage.parse(
+      await client.graphql(
+        `query($search: String!, $cursor: String) {
         viewer { login }
         search(type: ISSUE, query: $search, first: 100, after: $cursor) {
           issueCount
@@ -245,12 +263,15 @@ const searchForAttention = async (
           nodes { ... on PullRequest { url } }
         }
       }`,
-      { search: `is:pr is:open draft:false ${query}`, ...(cursor ? { cursor } : {}) },
-      signal,
-    ));
+        { search: `is:pr is:open draft:false ${query}`, ...(cursor ? { cursor } : {}) },
+        signal,
+      ),
+    );
+
     if (result.data.viewer.login.toLowerCase() !== account) {
       throw new AdeError("github_account", "GitHub account changed during the PR check.");
     }
+
     const { issueCount, pageInfo, nodes } = result.data.search;
     count ??= issueCount;
     if (result.errors?.length || count !== issueCount) {
@@ -262,17 +283,22 @@ const searchForAttention = async (
       if (urls.has(url)) {
         throw new AdeError("github", "GitHub returned duplicate PRs. The watch will retry.");
       }
+
       urls.add(url);
     }
+
     if (!pageInfo.hasNextPage && urls.size === issueCount) {
       return urls;
     }
+
     cursor = pageInfo.endCursor;
     if (!pageInfo.hasNextPage || !cursor || cursors.has(cursor)) {
       break;
     }
+
     cursors.add(cursor);
   }
+
   throw new AdeError("github", "GitHub returned an incomplete list of PRs. The watch will retry.");
 };
 
@@ -291,14 +317,13 @@ export const checkScheduledPullRequests = async (
     if (prior && cursor.mergeable === "UNKNOWN") {
       cursor.mergeable = prior.mergeable;
     }
+
     if (prior?.head_sha === cursor.head_sha && !cursor.check_status) {
       cursor.check_status = prior.check_status;
     }
-    const changes = prior ? compareCursors(prior, cursor) : [];
+
+    const changes = prior ? compareCursors(prior, cursor, task.events) : [];
     const completed = cursor.state !== "OPEN";
-    if (completed && !before) {
-      changes.push(cursor.state === "MERGED" ? "Already merged" : "Already closed");
-    }
     return {
       cursor: JSON.stringify({ pull: cursor }),
       completed,
@@ -314,27 +339,44 @@ export const checkScheduledPullRequests = async (
 
   const repo = task.repository ? ` repo:${task.repository}` : "";
   const matches = new Map<string, AttentionReason>();
-  for (const url of await searchForAttention(client, `review-requested:${account}${repo}`, account, signal)) {
-    matches.set(url, "Review requested");
+  if (task.events !== "changes_requested") {
+    for (const url of await searchForAttention(
+      client,
+      `review-requested:${account}${repo}`,
+      account,
+      signal,
+    )) {
+      matches.set(url, "Review requested");
+    }
   }
-  for (const url of await searchForAttention(client, `author:${account} review:changes_requested${repo}`, account, signal)) {
-    matches.set(url, "Changes requested");
+
+  if (task.events !== "review_requested") {
+    for (const url of await searchForAttention(
+      client,
+      `author:${account} review:changes_requested${repo}`,
+      account,
+      signal,
+    )) {
+      matches.set(url, "Changes requested");
+    }
   }
 
   // Persist only actionable state. Search order, titles, comments, and timestamps cannot trigger a post.
   const keys = [...matches].map(([url, reason]) => `${reason} ${url}`).sort();
   const seen = new Set(before && "attention" in before ? before.attention : []);
-  const changes = keys.filter((key) => !seen.has(key));
+  const changes = before ? keys.filter((key) => !seen.has(key)) : [];
   return {
     cursor: JSON.stringify({ attention: keys }),
     message: changes.length
-      ? `**PRs that need your attention**\n\n${changes.map((key) => {
-          const offset = key.indexOf(" https://");
-          const reason = key.slice(0, offset);
-          const url = key.slice(offset + 1);
-          const ref = canonicalPullRequest(url);
-          return `- ${reason} — [${ref.owner}/${ref.repo} #${ref.number}](${url})`;
-        }).join("\n")}`
+      ? `**PRs that need your attention**\n\n${changes
+          .map((key) => {
+            const offset = key.indexOf(" https://");
+            const reason = key.slice(0, offset);
+            const url = key.slice(offset + 1);
+            const ref = canonicalPullRequest(url);
+            return `- ${reason} — [${ref.owner}/${ref.repo} #${ref.number}](${url})`;
+          })
+          .join("\n")}`
       : undefined,
   };
 };

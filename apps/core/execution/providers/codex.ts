@@ -93,6 +93,7 @@ export class CodexProvider implements AgentProvider {
             "exec",
             "--ignore-user-config",
             "--ignore-rules",
+            ...(r.interpretSchedule ? ["--ephemeral"] : []),
             ...(r.workspaceType === "utility" ? ["--skip-git-repo-check"] : []),
             ...(r.sharedComputer && r.access === "workspace-write"
               ? ["--add-dir", sharedFilesMount, "--add-dir", dirname(sharedServicesMount)]

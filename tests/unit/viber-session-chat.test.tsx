@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { defaultSettings } from "../../apps/core/domain";
+import type { ViberMessage } from "../../apps/core/vibers/contracts";
 import { ViberSessionChat } from "../../apps/desktop/features/vibers/ViberSessionChat";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { mockDialog } from "../helpers/dialog";
@@ -326,7 +327,10 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
 it("waits for explicit Continue and recovery confirmation after stopping a file-changing turn", async () => {
   const turnId: string = crypto.randomUUID();
 
-  const turn = {
+  const turn: Pick<
+    ViberMessage,
+    "id" | "role" | "content" | "created_at" | "status" | "local_schedule"
+  > = {
     id: turnId,
     role: "user",
     content: "Edit the fixture workspace",
@@ -342,7 +346,24 @@ it("waits for explicit Continue and recovery confirmation after stopping a file-
       detail = {
         ...detail,
         recovery_required: true,
-        messages: [{ ...turn, status: "cancelled" }],
+        messages: [
+          { ...turn, status: "cancelled" },
+          {
+            ...turn,
+            id: crypto.randomUUID(),
+            local_schedule: true,
+            status: "completed",
+            content: "List my schedules",
+          },
+          {
+            ...turn,
+            id: crypto.randomUUID(),
+            local_schedule: true,
+            status: "completed",
+            role: "assistant",
+            content: "Scheduled reminder",
+          },
+        ],
       };
     }
 
@@ -359,6 +380,7 @@ it("waits for explicit Continue and recovery confirmation after stopping a file-
   fireEvent.click(await screen.findByRole("button", { name: "Stop response" }));
   const resume = await screen.findByRole("button", { name: "Continue where you left off." });
   expect(rpc).toHaveBeenCalledWith("viber.session.cancel", scope);
+  expect(screen.getByText("Scheduled reminder")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Stop response" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   const sends = () => rpc.mock.calls.filter(([method]) => method === "viber.session.send");
