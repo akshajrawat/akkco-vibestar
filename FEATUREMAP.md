@@ -187,7 +187,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Open["Expanded dark sidebar · Search, Viber previews, workspace tools"] -->|Collapse or Ctrl+B| Rail["Collapsed dark sidebar · Search, Viber avatars, bottom Settings"]
+    Open["Expanded dark sidebar · Search, Viber previews, workspace tools"] -->|Collapse or Ctrl+B| Rail["Collapsed dark sidebar · Search, 32 px pixel avatars, bottom Settings"]
     Rail -->|Expand or Ctrl+B| Open
     Rail -->|Search| Focus["Restore sidebar width and focus search"] --> Open
     Rail -->|Select avatar| Chat["Viber chat"]
@@ -199,11 +199,18 @@ flowchart LR
     Open -->|Settings| SettingsOverlay["Settings overlay"]
     Rail -->|Settings| SettingsOverlay
     SettingsOverlay -->|Click outside| CloseSettings["Save pending changes and close"]
-    Open -->|Create Viber| Create["Dark Create Viber dialog · Title, close button, avatar preview and centered name prompt"]
+    Open -->|Create Viber| Create["Create Viber dialog · Live pixel avatar preview and name"]
+    Create --> Random["Random button below the Viber name · Refreshes the live pixel avatar"]
+    Create --> Avatar["Appearance tabs"]
+    Avatar --> Shapes["Shapes · Eight pixel silhouettes, swatches and custom color"]
+    Avatar --> Face["Face · Optional eyes and mouth with separate colors"]
+    Avatar --> Accessories["Accessories · Head, face, neck and extras with separate colors"]
+    Avatar -->|Save appearance| Views["Same pixel sprite in sidebar, chat header and profile"]
     Create -->|Click outside| CloseCreate{"Unsaved changes?"}
     CloseCreate -->|No| Open
     CloseCreate -->|Yes| Discard["Discard changes or keep editing"]
     Open -->|Right click| Actions["Pin, rename, edit or delete"]
+    Actions -->|Edit| Edit["Edit Viber dialog · Profile fields and live pixel avatar preview"] --> Avatar
     Actions -->|Pin| Pinned["Pinned avatars below search"]
     Actions -->|Delete| DeleteConfirmation["Compact, centered delete confirmation · Cancel or Delete Viber"]
     Pinned -->|Select avatar| Chat
@@ -211,4 +218,18 @@ flowchart LR
     Lookup -->|No| RetryLookup["Retry lookup"] --> Lookup
     Lookup -->|No existing conversation| Greeting["New Viber · Greeting, sidebar preview and timestamp"]
     Chat -->|Turn fails| Failure["Red Failed label above message · Plain inline error"]
+```
+
+```mermaid
+flowchart LR
+    Chat["Selected Viber chat"] -->|Ask to create, list, edit, pause, resume or cancel| Schedules["Viber-owned schedules · SQLite"]
+    Schedules -->|Only due schedules| Backend["Local backend · Awake and running"]
+    Backend --> Reminder["Reminder"]
+    Backend --> Instruction["Read-only Viber instruction"]
+    Backend --> Watch["Read-only GitHub check"]
+    Instruction --> Chat
+    Watch -->|New review or PR change| Chat
+    Watch -->|Sign-in required| Providers["Blocked reason · Providers → GitHub"]
+    Reminder --> Chat
+    Schedules --> Panel["Below the Computer screen · Name, cadence, next run and status"]
 ```

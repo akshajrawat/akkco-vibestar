@@ -98,7 +98,9 @@ const SessionChat = ({
     effort: view.followupEffort || data?.session.selection.effort || profile.execution.effort,
   };
 
-  const previousTurn = data?.messages.filter((message) => message.role === "user").at(-1);
+  const previousTurn = data?.messages
+    .filter((message) => message.role === "user" && !message.local_schedule)
+    .at(-1);
 
   const canContinue =
     previousTurn?.status === "cancelled" || previousTurn?.status === "interrupted";
@@ -123,17 +125,22 @@ const SessionChat = ({
       ? error.message
       : "";
 
+  const handlesLocally = (content: string) => content.trim() === "/clear";
+
+  const composerInvalid = handlesLocally(composerContent(view)) ? null : invalid;
+
   const send = async (
     content = composerContent(getTaskView(id)),
     acknowledged = false,
     continueMessageId?: string,
     shareChoice?: boolean,
   ) => {
+    const local = !continueMessageId && handlesLocally(content);
     if (
       sending.current ||
       !data ||
       active ||
-      (invalid && !continueMessageId && content.trim() !== "/clear") ||
+      (invalid && !continueMessageId && !local) ||
       !content.trim() ||
       content.length > 32000
     ) {
@@ -145,7 +152,7 @@ const SessionChat = ({
       profile_id: profile.id,
       content,
       history_ids: [],
-      ...(share && content.trim() !== "/clear" ? { shared_computer: true } : {}),
+      ...(share && !local ? { shared_computer: true } : {}),
       ...(acknowledge ? { acknowledge_uncertain: true } : {}),
       ...(continueMessageId ? { continue_message_id: continueMessageId } : { selection }),
     });
@@ -180,9 +187,7 @@ const SessionChat = ({
         return;
       }
 
-      const canShare = Boolean(
-        computerSupported && settings?.allow_viber_communication && content.trim() !== "/clear",
-      );
+      const canShare = Boolean(computerSupported && settings?.allow_viber_communication && !local);
 
       let share = false;
       if (shareChoice !== undefined) {
@@ -300,7 +305,9 @@ const SessionChat = ({
           <>
             {data && <ViberGreeting name={profile.name} />}
             {timeline}
-            {(visibleError || invalid) && <RunError error={visibleError || invalid!} />}
+            {(visibleError || composerInvalid) && (
+              <RunError error={visibleError || composerInvalid!} />
+            )}
             {(active || busy) && !data?.runs.some((run) => run.status === "running") && (
               <p
                 className="working-shimmer inline-block text-ink-secondary animate-[working-shine_2s_linear_infinite] [@media(prefers-reduced-motion:reduce)]:animate-[none]"
@@ -341,7 +348,7 @@ const SessionChat = ({
               },
             ]}
             busy={!!busy || active || stopping}
-            disabled={!data || (!!invalid && composerContent(view) !== "/clear")}
+            disabled={!data || !!composerInvalid}
             stop={active ? () => void stop() : undefined}
             model={
               <ViberModelPicker

@@ -139,6 +139,7 @@ export class AntigravityProvider implements AgentProvider {
       ...(r.config.model ? ["--model", r.config.model] : []),
       ...(r.conversation?.threadId ? ["--conversation", r.conversation.threadId] : []),
       ...(r.conversation ? [] : ["--json-schema", r.schemaPath]),
+      ...(r.interpretSchedule ? ["--disable-slash-commands"] : []),
     ];
 
     if (!r.conversation?.threadId && r.viberMemory?.recall) {

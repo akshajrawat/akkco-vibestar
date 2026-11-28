@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { defaultAppearance } from "../../../core/vibers/appearance";
+import { appearanceAccent } from "../../../core/vibers/appearance";
 import type { AgentProfile, ViberSession } from "../../../core/vibers/contracts";
 import type { Settings } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
@@ -83,8 +83,11 @@ export const ViberChat = ({
     };
   }, [profile.id, revision, lookupAttempt]);
 
+  const handlesLocally = (content: string) => content.trim() === "/clear";
+
   const start = async (content = composerContent(getTaskView(draftId)), shareChoice?: boolean) => {
-    if (starting.current || invalid) {
+    const local = handlesLocally(content);
+    if (starting.current || (invalid && !local)) {
       return;
     }
 
@@ -95,7 +98,7 @@ export const ViberChat = ({
     const signatureFor = (share: boolean) =>
       JSON.stringify({
         content,
-        ...(share && content.trim() !== "/clear" ? { shared_computer: true } : {}),
+        ...(share && !local ? { shared_computer: true } : {}),
         profile_id: profile.id,
         selection,
         // Preserve the request signature used by existing managed-workspace drafts.
@@ -111,9 +114,7 @@ export const ViberChat = ({
           ? true
           : undefined;
 
-    const canShare = Boolean(
-      computerSupported && settings?.allow_viber_communication && content.trim() !== "/clear",
-    );
+    const canShare = Boolean(computerSupported && settings?.allow_viber_communication && !local);
 
     let share = false;
     if (shareChoice !== undefined) {
@@ -199,7 +200,8 @@ export const ViberChat = ({
     />
   );
 
-  const color = profile.appearance?.color ?? defaultAppearance().color;
+  const composerInvalid = handlesLocally(composerContent(view)) ? null : invalid;
+  const color = appearanceAccent(profile.appearance);
 
   return (
     <section
@@ -227,7 +229,9 @@ export const ViberChat = ({
           </Button>
         </div>
       )}
-      {(error || (sessionId === null && invalid)) && <RunError error={error || invalid!} />}
+      {(error || (sessionId === null && composerInvalid)) && (
+        <RunError error={error || composerInvalid!} />
+      )}
       {sessionId ? (
         <ViberSessionChat
           key={sessionId}
@@ -258,7 +262,7 @@ export const ViberChat = ({
                 },
               ]}
               busy={busy}
-              disabled={!!invalid}
+              disabled={!!composerInvalid}
               model={modelControl}
               hint="Each Viber uses its own workspace."
             />

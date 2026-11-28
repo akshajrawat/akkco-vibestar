@@ -1,46 +1,117 @@
-.avatar-categories button {
-  @apply flex flex-col items-center gap-[5px] min-w-0 px-0.5 py-2 [border:0] rounded-[8px] bg-transparent text-ink-secondary text-[11px];
+.viber-face {
+  @apply block;
+  image-rendering: pixelated;
 }
 
-.avatar-categories [aria-selected="true"] {
-  @apply bg-surface-elevated;
+.avatar-categories {
+  @apply sticky top-0 z-10 grid grid-cols-3 gap-1 rounded-xl bg-surface-sidebar p-1;
+}
+
+.avatar-categories button {
+  @apply flex min-w-0 items-center justify-center gap-2 rounded-lg border-0 bg-transparent py-2 text-xs font-medium text-ink-secondary;
+}
+
+.avatar-categories button:hover,
+.avatar-options > button:hover {
+  @apply bg-surface-hover text-foreground;
+}
+
+.avatar-categories button[aria-selected="true"],
+.avatar-options > button[aria-pressed="true"] {
+  @apply bg-surface-selected text-foreground;
+}
+
+.avatar-part-group {
+  @apply mt-3 scroll-mt-12;
+}
+
+.avatar-part-heading {
+  @apply mb-1.5 flex min-h-6 items-center justify-between gap-2;
+}
+
+.avatar-part-heading h3 {
+  @apply m-0 text-xs font-semibold text-ink-secondary;
+}
+
+.avatar-part-color {
+  @apply flex items-center gap-1;
+}
+
+.avatar-part-color input[type="color"] {
+  @apply size-6 cursor-pointer rounded-md border-0 bg-transparent p-0 ring-1 ring-inset ring-white/20;
+}
+
+.avatar-part-color button {
+  @apply grid size-6 place-items-center rounded-md border-0 bg-transparent text-ink-secondary;
+}
+
+.avatar-part-color button:hover {
+  @apply bg-surface-hover text-foreground;
+}
+
+.avatar-options {
+  @apply grid grid-cols-[repeat(auto-fill,minmax(52px,1fr))] gap-1.5;
+}
+
+.avatar-part-group[aria-label="Eyes"] .avatar-options {
+  @apply grid-cols-[repeat(auto-fill,minmax(48px,1fr))];
 }
 
 .avatar-options > button {
-  @apply flex flex-col items-center justify-center min-w-0 gap-[3px] px-[3px] py-1.5 [border:0] rounded-[8px] bg-transparent text-foreground;
+  @apply flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border-0 bg-surface-elevated px-1 py-1 text-ink-secondary;
 }
 
-.avatar-options button:hover,
-.avatar-categories button:hover {
-  @apply bg-surface-hover;
+.avatar-options small {
+  @apply text-center text-[11px] leading-tight text-current;
 }
 
-.avatar-options button[aria-pressed="true"] {
-  @apply bg-surface-elevated;
+.avatar-options > button[aria-pressed="true"] {
+  @apply ring-1 ring-inset ring-focus-ring;
 }
 
-.avatar-options .viber-face {
-  @apply w-11 h-11;
+.avatar-options .viber-face,
+.avatar-empty-option {
+  @apply size-8;
 }
 
-.avatar-color {
-  @apply w-[27px] h-[27px] rounded-[50%];
+.avatar-shapes {
+  @apply grid-cols-4;
 }
 
-.viber-profile-editor .avatar-custom-color {
-  @apply flex flex-row flex-wrap items-center gap-2.5 mt-2.5;
+.avatar-shapes .viber-face {
+  @apply size-12 max-w-full object-contain;
 }
 
-.avatar-custom-color input {
-  @apply w-[110px] font-mono;
+.avatar-empty-option {
+  @apply grid place-items-center;
 }
 
-.avatar-custom-color small {
-  @apply text-accent-red;
+.avatar-colors {
+  @apply flex flex-wrap items-center gap-2;
+}
+
+.avatar-colors > button {
+  @apply size-6 rounded-md border-0 ring-1 ring-inset ring-white/20;
+}
+
+.avatar-colors > button[aria-pressed="true"] {
+  @apply ring-2 ring-inset ring-white;
+}
+
+.viber-profile-editor .avatar-colors label {
+  @apply flex flex-row items-center gap-1 text-xs;
+}
+
+.avatar-colors input[type="color"] {
+  @apply size-7 cursor-pointer p-0;
+}
+
+.workspace-overlay.viber-create-overlay[open] {
+  @apply flex flex-col;
 }
 
 .workspace-overlay.viber-create-overlay {
-  @apply h-[min(590px,calc(100dvh_-_40px))] w-[min(720px,calc(100vw_-_24px))] rounded-[22px] bg-black;
+  @apply h-fit max-h-[calc(100dvh_-_40px)] w-[min(780px,calc(100vw_-_24px))] rounded-[22px] bg-black;
 }
 
 .viber-create-overlay .viber-editor-heading {
@@ -56,7 +127,7 @@
 }
 
 .viber-editor-mascot > .viber-face {
-  @apply size-9;
+  @apply size-8;
 }
 
 .viber-create-overlay .viber-profile-editor {
@@ -69,15 +140,35 @@
 }
 
 .viber-create-overlay .viber-editor-main {
-  @apply flex flex-col gap-4;
+  @apply grid grid-cols-[minmax(160px,210px)_minmax(0,1fr)] items-start gap-4;
+}
+
+.viber-profile-fields {
+  @apply sticky top-0 grid min-w-0 justify-items-center gap-3;
+}
+
+.viber-rename-overlay .viber-editor-main {
+  @apply block;
+}
+
+@media (max-width: 680px), (max-height: 575px) {
+  .viber-profile-fields {
+    @apply static;
+  }
+}
+
+@media (max-width: 680px) {
+  .viber-create-overlay .viber-editor-main {
+    @apply grid-cols-1;
+  }
 }
 
 .viber-create-overlay .viber-live-preview {
-  @apply mx-auto w-[min(100%,344px)];
+  @apply mx-auto size-36 rounded-xl border border-border-strong bg-surface-sidebar;
 }
 
 .viber-create-overlay .viber-live-preview > .viber-face {
-  @apply w-[clamp(108px,22dvh,150px)];
+  @apply size-32;
 }
 
 .viber-create-overlay .viber-identity-fields {
@@ -90,64 +181,6 @@
 
 .viber-create-overlay .avatar-builder {
   @apply w-full;
-}
-
-.viber-create-overlay .avatar-categories {
-  @apply rounded-[14px] bg-white/5 p-1;
-}
-
-.viber-create-overlay .avatar-categories button {
-  @apply rounded-[10px] py-2 font-medium;
-}
-
-.viber-create-overlay .avatar-categories button:hover {
-  @apply bg-white/10;
-}
-
-.viber-create-overlay .avatar-categories button[aria-selected="true"],
-.viber-create-overlay .avatar-options button[aria-pressed="true"] {
-  @apply bg-white/18 text-white;
-}
-
-.viber-create-overlay .avatar-options-heading {
-  @apply justify-end py-1;
-}
-
-.viber-create-overlay .avatar-options-heading strong {
-  @apply sr-only;
-}
-
-.viber-create-overlay .avatar-options-heading .button:hover {
-  @apply bg-white/10;
-}
-
-.viber-create-overlay .avatar-options {
-  @apply flex min-h-18 flex-wrap items-stretch justify-center;
-}
-
-.viber-create-overlay .avatar-options > button {
-  @apply min-h-18 w-[min(67px,calc(25%_-_6px))] rounded-xl bg-white/3 text-ink-secondary;
-}
-
-.viber-create-overlay .avatar-options small {
-  color: inherit;
-}
-
-.viber-create-overlay .avatar-options > button:hover {
-  @apply bg-white/8 text-foreground;
-}
-
-.viber-create-overlay .avatar-custom-color {
-  @apply justify-center;
-}
-
-.viber-create-overlay .avatar-custom-color input {
-  @apply bg-white/5;
-}
-
-.viber-create-overlay .avatar-custom-color input:hover,
-.viber-create-overlay .avatar-custom-color input:focus {
-  @apply bg-white/10;
 }
 
 .viber-create-overlay .viber-editor-actions {
@@ -166,62 +199,9 @@
   @apply mt-2 text-center;
 }
 
-@media (max-width: 700px) and (max-height: 650px) {
-  .viber-create-overlay .viber-editor-content {
-    @apply px-3 pb-1;
-  }
-
-  .viber-create-overlay .viber-editor-main {
-    @apply gap-2.5;
-  }
-
-  .viber-create-overlay .viber-live-preview > .viber-face {
-    @apply w-[126px];
-  }
-
-  .viber-create-overlay .viber-name-input {
-    @apply min-h-10;
-  }
-
-  .viber-create-overlay .avatar-categories button {
-    @apply gap-0.5 py-1;
-  }
-
-  .viber-create-overlay .avatar-categories svg {
-    @apply size-4;
-  }
-
-  .viber-create-overlay .avatar-options > button {
-    @apply min-h-15 py-1;
-  }
-
-  .viber-create-overlay .avatar-options .viber-face {
-    @apply size-9;
-  }
-
-  .viber-create-overlay .avatar-options small {
-    @apply leading-tight;
-  }
-
-  .viber-create-overlay .viber-editor-actions {
-    @apply pb-3;
-  }
-}
-
-.viber-face-animated .viber-face-body {
-  transform-box: view-box;
-  transform-origin: center;
-}
-
 @media (prefers-reduced-motion: no-preference) {
-  .viber-face-animated .viber-face-body {
-    animation: viber-float 4.8s ease-in-out infinite;
-  }
-
-  .viber-face-animated .viber-face-eyes {
-    transform-box: fill-box;
-    transform-origin: center;
-    animation: viber-blink 5.4s ease-in-out infinite;
+  .viber-face-animated {
+    animation: viber-float 3.2s steps(2, end) infinite alternate;
   }
 }
 
@@ -234,7 +214,7 @@
 }
 
 .viber-welcome-guide > .viber-face {
-  @apply w-[140px] h-[140px] m-[0_auto_18px];
+  @apply size-32 m-[0_auto_18px];
 }
 
 .viber-welcome-guide h1 {
@@ -275,24 +255,8 @@
 }
 
 @keyframes viber-float {
-  0%,
-  100% {
-    transform: translateY(0) rotate(-2deg);
-  }
-  50% {
-    transform: translateY(-6px) rotate(2deg);
-  }
-}
-
-@keyframes viber-blink {
-  0%,
-  89%,
-  95%,
-  100% {
-    transform: scaleY(1);
-  }
-  92% {
-    transform: scaleY(0.13);
+  to {
+    transform: translateY(-4px);
   }
 }
 

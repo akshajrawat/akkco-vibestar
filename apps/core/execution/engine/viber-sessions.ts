@@ -1,10 +1,19 @@
-import type { z } from "zod";
+import { z } from "zod";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { managedPath } from "../../workspace/paths";
+import {
+  ScheduleProposalSchema,
+  schedulePrompt,
+  type ScheduleProposal,
+} from "../../vibers/schedule-operation";
+import { scheduleTimezone } from "../../vibers/schedule-time";
 
 import type { Engine } from "../engine";
 import type { AgentRunner } from "../agents/agent-runner";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
-import { ViberSessionStore } from "../../vibers/store";
+import { scheduleRequestDigest, ViberSessionStore, ViberStore } from "../../vibers/store";
 import {
   ViberSessionSendSchema,
   type ViberContinuationPrepareSchema,
@@ -12,14 +21,38 @@ import {
 import { prepareManagedWorkspace } from "../../workspace/managed";
 import { AdeError } from "../../domain";
 
+type SendRequest = z.output<typeof ViberSessionSendSchema>;
+
+export type ScheduleInterpreter = (
+  input: SendRequest,
+  signal: AbortSignal,
+) => Promise<ScheduleProposal>;
+
 /** Explicit turns use the same foreground admission, cancellation and runner as other executions. */
 export class ViberSessions {
   readonly store: ViberSessionStore;
 
+  private readonly interpreting = new Map<
+    string,
+    {
+      digest: string;
+      sessionId: string;
+      result: Promise<ReturnType<ViberSessions["sendTurn"]>>;
+    }
+  >();
+
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory" | "computers"
+      | "db"
+      | "root"
+      | "git"
+      | "changed"
+      | "assertAvailable"
+      | "isActive"
+      | "memory"
+      | "computers"
+      | "schedules"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -27,6 +60,7 @@ export class ViberSessions {
       EngineScheduling,
       "withExecutionSlot" | "assertExecutionSlot" | "stopActivity"
     >,
+    private readonly interpreter?: ScheduleInterpreter | false,
   ) {
     this.store = new ViberSessionStore(host.db);
   }
@@ -121,6 +155,19 @@ export class ViberSessions {
       return previous;
     }
 
+    const digest = scheduleRequestDigest(input);
+    const interpreting = this.interpreting.get(input.request_id);
+    if (interpreting) {
+      if (interpreting.digest !== digest) {
+        throw new AdeError(
+          "request_conflict",
+          "This request ID was already used with different input.",
+        );
+      }
+
+      return interpreting.result;
+    }
+
     const key = `viber:${input.session_id}`;
     if (input.content === "/clear" && !input.continue_message_id) {
       if (this.host.isActive(key)) {
@@ -135,6 +182,134 @@ export class ViberSessions {
       return cleared;
     }
 
+    if (input.continue_message_id || this.interpreter === false) {
+      return this.sendTurn(input);
+    }
+
+    this.store.writableSession(input.session_id, input.profile_id);
+    this.operations.assertExecutionSlot(key);
+    const interpret = this.interpreter ?? this.interpretSchedule;
+
+    const result = this.operations
+      .withExecutionSlot(
+        key,
+        "Interpret Viber chat request",
+        this.state.repositoryController.signal,
+        async (signal) => {
+          const proposal = await interpret(input, signal);
+          signal.throwIfAborted();
+
+          return proposal;
+        },
+      )
+      .then((proposal) => {
+        this.host.assertAvailable();
+        const checked = ScheduleProposalSchema.parse(proposal);
+        return checked.action === "chat"
+          ? this.sendTurn(input)
+          : this.host.schedules.apply(input, checked);
+      })
+      .finally(() => {
+        this.interpreting.delete(input.request_id);
+      });
+
+    this.interpreting.set(input.request_id, { digest, result, sessionId: input.session_id });
+    return result;
+  };
+
+  private interpretSchedule: ScheduleInterpreter = async (input, signal) => {
+    const session = this.store.session(input.session_id, input.profile_id);
+    const profile = new ViberStore(this.host.db).profile(input.profile_id);
+    const timezone = scheduleTimezone();
+
+    const workspaceRoot = await managedPath(
+      this.host.root,
+      join(this.host.root, "cache", "utility"),
+    );
+
+    await mkdir(workspaceRoot, { recursive: true, mode: 0o700 });
+    const workspace = await mkdtemp(join(workspaceRoot, "schedule-intent-"));
+    try {
+      const result = await this.runner.runConfigured(
+        { id: session.id },
+        signal,
+        {
+          ...profile.execution,
+          ...(input.selection ?? session.selection),
+          access: "read-only",
+          output: "custom",
+          timeout_secs: Math.min(profile.execution.timeout_secs, 90),
+        },
+        {
+          purpose: "Interpret Viber schedule request",
+          schema: ScheduleProposalSchema,
+          interpretSchedule: true,
+          workspace,
+          prompt: schedulePrompt({
+            message: input.content,
+            currentTime: new Date().toISOString(),
+            timezone,
+            schedules: this.host.schedules
+              .list(input.profile_id)
+              .filter(({ status }) => status !== "cancelled" && status !== "completed")
+              .slice(0, 100)
+              .map(({ id, name, task, cadence, status }) => ({ id, name, task, cadence, status })),
+            clarification: this.host.schedules.clarification(session.id),
+          }),
+        },
+      );
+
+      signal.throwIfAborted();
+      return ScheduleProposalSchema.parse(result);
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+    }
+  };
+
+  runScheduledInstruction = (
+    profileId: string,
+    sessionId: string,
+    instructions: string,
+    signal: AbortSignal,
+  ) => {
+    if ([...this.interpreting.values()].some((request) => request.sessionId === sessionId)) {
+      throw new AdeError("busy", "This Viber is handling a chat request. The schedule will retry.");
+    }
+
+    return this.operations.withExecutionSlot(
+      `viber:${sessionId}`,
+      "Run scheduled Viber instruction",
+      signal,
+      async (runSignal) => {
+        const session = this.store.writableSession(sessionId, profileId);
+        const profile = new ViberStore(this.host.db).profile(profileId);
+        const workspace = await this.prepareWorkspace(sessionId, profileId, runSignal);
+        runSignal.throwIfAborted();
+
+        const output = await this.runner.runConfigured(
+          { id: sessionId },
+          runSignal,
+          {
+            ...profile.execution,
+            ...session.selection,
+            access: "read-only",
+            output: "summary",
+          },
+          {
+            purpose: "Scheduled Viber instruction",
+            workspace,
+            detachedSessionId: sessionId,
+            prompt: `${profile.instructions}\n\nRun this saved instruction once and summarize the result. Use read-only access.\n${instructions}`,
+          },
+        );
+
+        return z.object({ summary: z.string() }).parse(output).summary;
+      },
+    );
+  };
+
+  private sendTurn = (input: SendRequest) => {
+    const key = `viber:${input.session_id}`;
     this.operations.assertExecutionSlot(key);
 
     const shareWorkspace =

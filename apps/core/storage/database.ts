@@ -1,4 +1,9 @@
-import { baselineSchema, schemaVersion, sharedComputerSchema } from "./schema";
+import {
+  baselineSchema,
+  schemaVersion,
+  sharedComputerSchema,
+  viberSchedulesSchema,
+} from "./schema";
 import BetterSqlite3 from "better-sqlite3";
 import { randomBytes } from "node:crypto";
 import { lstat } from "node:fs/promises";
@@ -95,6 +100,71 @@ export class Database {
     return new Database(path, initialize, key);
   };
 
+  private upgradeOptionalSchema = () => {
+    this.connection.exec(sharedComputerSchema + viberSchedulesSchema);
+
+    const columns = new Set(
+      this.all<{ name: string }>("PRAGMA table_info(viber_schedules)").map(({ name }) => name),
+    );
+
+    if (!columns.has("timezone")) {
+      this.run("ALTER TABLE viber_schedules ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'");
+
+      this.run(
+        "UPDATE viber_schedules SET timezone=?",
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      );
+    }
+
+    if (!columns.has("claim")) {
+      this.run("ALTER TABLE viber_schedules ADD COLUMN claim TEXT");
+    }
+
+    if (
+      !this.all<{ name: string }>("PRAGMA table_info(viber_messages)").some(
+        ({ name }) => name === "timeline_kind",
+      )
+    ) {
+      this.run(
+        "ALTER TABLE viber_messages ADD COLUMN timeline_kind TEXT CHECK(timeline_kind IN ('schedule_chat','schedule_notification'))",
+      );
+
+      this.run(
+        `UPDATE viber_messages SET timeline_kind=CASE json_extract(configuration,'$.kind')
+            WHEN 'schedule_notification' THEN 'schedule_notification' ELSE 'schedule_chat' END
+         WHERE json_extract(configuration,'$.kind') IN ('pr_watch','schedule_chat','schedule_notification')`,
+      );
+    }
+
+    if (
+      !this.all("SELECT name FROM sqlite_schema WHERE type='table' AND name='viber_pr_watches'")
+        .length
+    ) {
+      return;
+    }
+
+    this.connection.exec(`
+      INSERT INTO viber_schedules(id,profile_id,name,instructions,task,cadence,next_run_at,status,cursor)
+      SELECT watch.id,session.profile_id,lower(watch.owner || '/' || watch.repo) || ' #' || watch.pull_number,
+        'Watch ' || watch.url,json_object('kind','github','pull',lower(watch.url)),
+        '{"kind":"interval","minutes":5}',
+        CASE WHEN watch.status='active' AND retired.profile_id IS NULL THEN
+          max(unixepoch('now') * 1000,coalesce(unixepoch(watch.last_checked_at) * 1000 + 300000,0))
+        END,
+        CASE WHEN retired.profile_id IS NOT NULL THEN 'cancelled'
+          WHEN watch.status='active' THEN 'pending'
+          WHEN watch.status='failed' THEN 'paused'
+          ELSE watch.status
+        END,
+        CASE WHEN json_valid(watch.cursor) THEN json_object('pull',json(watch.cursor)) END
+      FROM viber_pr_watches watch
+      JOIN viber_sessions session ON session.id=watch.session_id
+      LEFT JOIN retired_viber_profiles retired ON retired.profile_id=session.profile_id;
+
+      DROP TABLE viber_pr_watches;
+    `);
+  };
+
   private constructor(path: string, initialize: boolean, key?: Buffer) {
     this.viberSnapshots = new ViberSnapshots(path === ":memory:" ? randomBytes(32) : key);
     this.connection = new BetterSqlite3(path);
@@ -109,8 +179,8 @@ export class Database {
           this.run("INSERT INTO schema_migrations VALUES(?,?)", schemaVersion, now());
         });
       } else {
-        // Early schema-0 data roots predate the optional shared computer.
-        this.connection.exec(sharedComputerSchema);
+        // Early schema-0 data roots predate these features.
+        this.transaction(this.upgradeOptionalSchema);
       }
 
       this.records.initialize();

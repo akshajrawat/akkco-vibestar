@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useWorkspace } from "../hooks/useWorkspace";
 import { DEFAULT_VIBER_INSTRUCTIONS, type AgentProfile } from "../../core/vibers/contracts";
-import { randomAppearance } from "../../core/vibers/appearance";
+import { defaultAppearance } from "../../core/vibers/appearance";
 import { ViberChat } from "../features/vibers/ViberChat";
 import { CreateViberDialog } from "../features/vibers/CreateViberDialog";
 import type { WorkspaceTool } from "../lib/types";
@@ -173,7 +173,7 @@ export const App = () => {
       id: crypto.randomUUID(),
       revision: 0,
       name: "",
-      appearance: randomAppearance(),
+      appearance: defaultAppearance(),
       description: "",
       instructions: DEFAULT_VIBER_INSTRUCTIONS,
       supported_access: ["read-only", "workspace-write"],
@@ -378,6 +378,8 @@ export const App = () => {
                     status={computer.status}
                     supported={computerSupported}
                     reset={computer.reset}
+                    profileId={chatProfile?.id}
+                    revision={revision}
                   />
                 </div>
               </>

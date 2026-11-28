@@ -32,9 +32,11 @@ interface AgentRunOptions {
   workspace?: string;
   sharedComputer?: { files: string; socket?: string };
   schema?: z.ZodType;
+  interpretSchedule?: boolean;
   contextPaths?: string[];
   conversation?: { threadId?: string; instructions?: string; context?: string };
   originalPrompt?: string;
+  detachedSessionId?: string;
   viberSession?: { sessionId: string; messageId: string };
   memory?: {
     service: ViberMemory;
@@ -210,8 +212,19 @@ export class AgentRunner {
       );
     }
 
-    const viberWorkspace = options.viberSession
-      ? new ViberSessionStore(this.db).workspace(options.viberSession.sessionId)
+    const workspaceSessionId = options.viberSession?.sessionId ?? options.detachedSessionId;
+    if (
+      options.detachedSessionId &&
+      (conversation || execution.access !== "read-only" || options.sharedComputer)
+    ) {
+      throw new AdeError(
+        "isolation",
+        "Background Viber instructions require read-only isolated execution.",
+      );
+    }
+
+    const viberWorkspace = workspaceSessionId
+      ? new ViberSessionStore(this.db).workspace(workspaceSessionId)
       : null;
 
     if (viberWorkspace && options.workspace !== viberWorkspace.worktree_path) {
@@ -524,6 +537,7 @@ Use a free port and bind to 127.0.0.1. Ordinary background jobs (including nohup
           sharedComputer: Boolean(sharedComputer),
           schemaPath,
           schema: outputSchema,
+          interpretSchedule: options.interpretSchedule,
           workspaceType: "utility",
           conversation: thread,
           signal: runSignal,
@@ -583,7 +597,7 @@ Use a free port and bind to 127.0.0.1. Ordinary background jobs (including nohup
             : undefined,
           options.workspace,
           contextPaths,
-          options.viberSession?.sessionId,
+          workspaceSessionId,
           sharedComputer,
         );
       };
@@ -699,6 +713,23 @@ Use a free port and bind to 127.0.0.1. Ordinary background jobs (including nohup
           for (const event of stream === "stderr"
             ? [{ kind: "command.output" as const, data: { stderr: line } }]
             : provider.normalize(raw)) {
+            if (
+              options.interpretSchedule &&
+              stream === "stdout" &&
+              ((event.kind.startsWith("command.") && event.kind !== "command.output") ||
+                event.kind.startsWith("file.") ||
+                object(event.data).type === "tool_use" ||
+                object(raw.step_update).step_type === "tool" ||
+                ["mcp_tool_call", "web_search"].includes(String(object(raw.item).type)))
+            ) {
+              outputFailure = new AdeError(
+                "provider_failed",
+                "The schedule interpreter tried to use a tool.",
+              );
+
+              outputAbort.abort();
+            }
+
             if (conversation && event.kind === "message") {
               const data = object(event.data);
               const key = String(data.call_id ?? "answer");

@@ -5,6 +5,7 @@ import { isAbsolute, join } from "node:path";
 import { checked } from "../../apps/core/execution/runtime/process";
 import { now, type Repository, type WorkspaceAssignment } from "../../apps/core/domain";
 import { Engine } from "../../apps/core/execution/engine";
+import type { GitHubClient } from "../../apps/core/github/client";
 import type { ProviderDetection } from "../../apps/core/execution/providers/contracts";
 import { createTestProfiles } from "./viber-fixtures";
 
@@ -19,8 +20,17 @@ const fixtureTransport = (url: string) => {
 export const createFixtureEngine = async (
   root: string,
   providers?: Parameters<typeof Engine.create>[1],
+  gitHubClient?: GitHubClient,
+  scheduleInterpreter: NonNullable<Parameters<typeof Engine.create>[4]> = false,
 ) => {
-  const engine = await Engine.create(root, providers, fixtureTransport);
+  const engine = await Engine.create(
+    root,
+    providers,
+    fixtureTransport,
+    gitHubClient,
+    scheduleInterpreter,
+  );
+
   createTestProfiles(engine.db);
 
   return engine;

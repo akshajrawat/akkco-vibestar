@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import type { ComputerStatus } from "../../../core/computers/contracts";
 import { ComputerDesktop } from "./ComputerDesktop";
+import { ViberSchedules } from "./ViberSchedules";
 
 const labels: Record<ComputerStatus["status"], string> = {
   starting: "Starting",
@@ -21,10 +22,14 @@ export const ComputerPanel = ({
   supported,
   status,
   reset,
+  profileId,
+  revision = 0,
 }: {
   supported: boolean;
   status?: ComputerStatus;
   reset?: () => Promise<void>;
+  profileId?: string;
+  revision?: number;
 }) => {
   const [confirming, setConfirming] = useState(false);
   const state = supported ? (status?.status ?? "starting") : "error";
@@ -84,6 +89,7 @@ export const ComputerPanel = ({
       ) : (
         <div className="aspect-[25/16] rounded-xl border border-border-default bg-surface-hover" />
       )}
+      {profileId && <ViberSchedules key={profileId} profileId={profileId} revision={revision} />}
     </aside>
   );
 };

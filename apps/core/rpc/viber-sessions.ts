@@ -18,6 +18,7 @@ export const viberSessionMethods = [
   "viber.session.create",
   "viber.session.list",
   "viber.session.detail",
+  "viber.schedule.list",
   "viber.session.send",
   "viber.session.prepareContinuation",
   "viber.session.cancel",
@@ -76,6 +77,11 @@ export const callViberSessions = async (
 
     case "viber.session.list":
       return sessions.store.list(
+        z.object({ profile_id: z.string().uuid() }).strict().parse(raw).profile_id,
+      );
+
+    case "viber.schedule.list":
+      return engine.schedules.list(
         z.object({ profile_id: z.string().uuid() }).strict().parse(raw).profile_id,
       );
 

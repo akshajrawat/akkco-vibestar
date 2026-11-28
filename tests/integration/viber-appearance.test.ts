@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 
 import { defaultAppearance } from "../../apps/core/vibers/appearance";
+import type { AgentProfile } from "../../apps/core/vibers/contracts";
 import { Rpc } from "../../apps/core/rpc";
 import { createFixtureEngine } from "../helpers/fixtures";
 
@@ -13,9 +14,42 @@ it("round-trips appearance and description through profile RPC and database reop
   let engine = await createFixtureEngine(dir);
   let rpc = new Rpc(engine);
   try {
-    const original = engine.vibers.profile(
+    const fixture = engine.vibers.profile(
       engine.db.all<{ id: string }>("SELECT id FROM agent_profiles")[0].id,
     );
+
+    const original: AgentProfile = {
+      ...fixture,
+      id: randomUUID(),
+      appearance: {
+        version: 1,
+        shape: "capsule",
+        color: "#123aBc",
+        device: "laptop",
+        eyes: "wink",
+        eyebrows: "sharp",
+        glasses: "oversized",
+        accessory: "headphones",
+      },
+    };
+
+    await rpc.call("profile.save", { profile: original, expected_revision: null });
+    const scope = { session_id: randomUUID(), profile_id: original.id };
+
+    await rpc.call("viber.session.create", {
+      profile_id: original.id,
+      request_id: scope.session_id,
+    });
+
+    await rpc.call("viber.session.send", {
+      ...scope,
+      request_id: randomUUID(),
+      content: "/clear",
+      history_ids: [],
+    });
+
+    const conversation = await rpc.call("viber.session.detail", scope);
+    expect(conversation).toMatchObject({ messages: [expect.anything(), expect.anything()] });
 
     const bytes = () =>
       engine.db.all<{ data: string }>(
@@ -26,7 +60,17 @@ it("round-trips appearance and description through profile RPC and database reop
     const legacy = bytes();
     expect(engine.vibers.profile(original.id)).toEqual(original);
     expect(bytes()).toBe(legacy);
-    const appearance = { ...defaultAppearance(), color: "#123aBc", lips: "smile" as const };
+
+    const appearance = {
+      ...defaultAppearance(),
+      shape: "double-blob" as const,
+      color: "#ba33c9",
+      headwear: "crown" as const,
+      neckwear: "scarf" as const,
+      extra: "sparkles" as const,
+      colors: { eyes: "#000000", headwear: "#f19e00", neckwear: "#ffffff", extra: "#30d8d0" },
+    };
+
     const profile = { ...original, id: randomUUID(), appearance, description: "Fixture avatar" };
     await rpc.call("profile.save", { profile, expected_revision: null });
 
@@ -64,6 +108,7 @@ it("round-trips appearance and description through profile RPC and database reop
     });
 
     expect(bytes()).toBe(legacy);
+    expect(await rpc.call("viber.session.detail", scope)).toEqual(conversation);
   } finally {
     await rpc.close();
     await engine.close();

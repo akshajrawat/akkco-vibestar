@@ -72,6 +72,7 @@ export interface AgentRunRequest {
   prompt: string;
   memory?: string[];
   schemaPath: string;
+  interpretSchedule?: boolean;
   schema: Record<string, unknown>;
   workspaceType?: "task" | "utility";
   conversation?: { threadId?: string; confirmResume?: true; protocol?: "acp" };

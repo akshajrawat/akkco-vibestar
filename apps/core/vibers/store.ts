@@ -51,6 +51,9 @@ const historyItems = (history: HistoryMessage[], limit?: number) => {
   return items.reverse().join("\n\n");
 };
 
+export const scheduleRequestDigest = (input: z.output<typeof ViberSessionSendSchema>) =>
+  createHash("sha256").update(JSON.stringify(input)).digest("hex");
+
 const buildHandoffPrompt = (
   history: HistoryMessage[],
   header: string,
@@ -420,7 +423,7 @@ export class ViberSessionStore {
       recovery_required: this.requiresRecovery(sessionId, profileId),
       messages: this.db
         .all(
-          "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id FROM viber_messages WHERE session_id=? ORDER BY rowid",
+          "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id,CASE WHEN timeline_kind IS NOT NULL THEN 1 END AS local_schedule FROM viber_messages WHERE session_id=? ORDER BY rowid",
           sessionId,
         )
         .map((row) => ViberMessageSchema.parse(row)),
@@ -431,7 +434,7 @@ export class ViberSessionStore {
     const session = this.session(sessionId, profileId);
 
     const last = this.db.all<{ status: string; effects: string }>(
-      "SELECT status,effects FROM viber_messages WHERE session_id=? AND role='user' ORDER BY rowid DESC LIMIT 1",
+      "SELECT status,effects FROM viber_messages WHERE session_id=? AND role='user' AND timeline_kind IS NULL ORDER BY rowid DESC LIMIT 1",
       sessionId,
     )[0];
 
@@ -458,8 +461,9 @@ export class ViberSessionStore {
       role: string;
       content: string;
       status: string;
+      local_schedule?: number;
     }>(
-      "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id FROM viber_messages WHERE id=?",
+      "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id,CASE WHEN timeline_kind IS NOT NULL THEN 1 END AS local_schedule FROM viber_messages WHERE id=?",
       input.request_id,
     )[0];
 
@@ -477,6 +481,22 @@ export class ViberSessionStore {
       !input.continue_message_id
     ) {
       return ViberMessageSchema.parse(row);
+    }
+
+    if (row.local_schedule) {
+      if (
+        row.session_id === input.session_id &&
+        row.role === "user" &&
+        row.status === "completed" &&
+        JSON.parse(row.configuration ?? "{}").request_digest === scheduleRequestDigest(input)
+      ) {
+        return ViberMessageSchema.parse(row);
+      }
+
+      throw new AdeError(
+        "request_conflict",
+        "This message request belongs to another session or message.",
+      );
     }
 
     const snapshot = row.configuration
@@ -500,7 +520,7 @@ export class ViberSessionStore {
     return ViberMessageSchema.parse(row);
   };
 
-  private writableSession = (sessionId: string, profileId: string) => {
+  writableSession = (sessionId: string, profileId: string) => {
     const session = this.session(sessionId, profileId);
     if (
       this.db.all("SELECT profile_id FROM retired_viber_profiles WHERE profile_id=?", profileId)
@@ -573,6 +593,7 @@ export class ViberSessionStore {
               json_extract(m.configuration,'$.continue_message_id') AS continuation
        FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id
        WHERE m.session_id=? AND m.rowid>? AND m.id<>? AND m.status IN ('completed','cancelled','interrupted')
+         AND m.timeline_kind IS NULL
          AND (m.role<>'assistant' OR NOT EXISTS (SELECT 1 FROM viber_memory_private_runs p WHERE p.run_id=m.run_id))
          AND (? IS NULL OR r.conversation_id IS NULL OR r.conversation_id<>? OR r.provider<>?)
        ORDER BY m.rowid`,
@@ -622,7 +643,7 @@ export class ViberSessionStore {
       conversation_id: string | null;
       run_provider: string | null;
     }>(
-      "SELECT m.id,m.status,m.content,m.configuration,r.conversation_id,r.provider AS run_provider FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id WHERE m.session_id=? AND m.role='user' ORDER BY m.rowid DESC LIMIT 1",
+      "SELECT m.id,m.status,m.content,m.configuration,r.conversation_id,r.provider AS run_provider FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id WHERE m.session_id=? AND m.role='user' AND m.timeline_kind IS NULL ORDER BY m.rowid DESC LIMIT 1",
       session.id,
     )[0];
 
@@ -842,6 +863,7 @@ export class ViberSessionStore {
         history = input.history_ids.map((id) => {
           const row = this.db.all<HistoryMessage>(
             `SELECT role,content FROM viber_messages m WHERE id=? AND session_id=? AND status='completed'
+             AND timeline_kind IS NULL
              AND (role<>'assistant' OR NOT EXISTS (SELECT 1 FROM viber_memory_private_runs p WHERE p.run_id=m.run_id))`,
             id,
             session.id,

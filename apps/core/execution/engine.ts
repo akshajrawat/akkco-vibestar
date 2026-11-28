@@ -19,9 +19,11 @@ import { processIdentity, terminateGroup } from "./runtime/process";
 import { AntigravityProvider } from "./providers/antigravity";
 import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
-import { ViberSessions } from "./engine/viber-sessions";
+import { ViberSessions, type ScheduleInterpreter } from "./engine/viber-sessions";
 import { ViberStore } from "../vibers/store";
 import { Computers } from "../computers/service";
+import { GitHubClient } from "../github/client";
+import { ViberSchedules } from "../vibers/schedules";
 
 export class Engine extends EventEmitter {
   private readonly state = new ExecutionState();
@@ -44,6 +46,8 @@ export class Engine extends EventEmitter {
 
   readonly computers: Computers;
 
+  readonly schedules: ViberSchedules;
+
   private readonly runner: AgentRunner;
 
   private closing: Promise<void> | undefined;
@@ -53,8 +57,13 @@ export class Engine extends EventEmitter {
     label = "Repository preparation is running",
   ) => this.scheduling.repositoryOperation(operation, label);
 
-  withStorageMaintenance = <T>(operation: () => Promise<T>) =>
-    this.scheduling.withStorageMaintenance(operation);
+  withStorageMaintenance = async <T>(operation: () => Promise<T>) => {
+    try {
+      return await this.scheduling.withStorageMaintenance(operation);
+    } finally {
+      this.schedules.wake();
+    }
+  };
 
   cleanupBlockers = (...args: Parameters<EngineScheduling["cleanupBlockers"]>) =>
     this.scheduling.cleanupBlockers(...args);
@@ -81,6 +90,8 @@ export class Engine extends EventEmitter {
     database: Database,
     providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
+    gitHubClient?: GitHubClient,
+    scheduleInterpreter?: ScheduleInterpreter | false,
   ) {
     super();
     this.db = database;
@@ -120,17 +131,33 @@ export class Engine extends EventEmitter {
 
     this.computers = new Computers(this);
 
-    this.viberSessions = new ViberSessions(this, this.state, this.runner, {
-      withExecutionSlot: this.withExecutionSlot,
-      assertExecutionSlot: this.scheduling.assertExecutionSlot,
-      stopActivity: this.stopActivity,
-    });
+    this.schedules = new ViberSchedules(
+      database,
+      gitHubClient ?? new GitHubClient(root),
+      () => !this.state.closed && !this.state.maintenance,
+      this.changed,
+      (...args) => this.viberSessions.runScheduledInstruction(...args),
+    );
+
+    this.viberSessions = new ViberSessions(
+      this,
+      this.state,
+      this.runner,
+      {
+        withExecutionSlot: this.withExecutionSlot,
+        assertExecutionSlot: this.scheduling.assertExecutionSlot,
+        stopActivity: this.stopActivity,
+      },
+      scheduleInterpreter,
+    );
   }
 
   static create = async (
     root: string,
     providers?: (stage: number, provider?: "codex" | "antigravity") => AgentProvider,
     gitTransport?: (url: string) => string,
+    gitHubClient?: GitHubClient,
+    scheduleInterpreter?: ScheduleInterpreter | false,
   ) => {
     root = await createLayout(root);
     const path = join(root, "state", "core.lock");
@@ -145,7 +172,17 @@ export class Engine extends EventEmitter {
     let database: Database | undefined;
     try {
       database = await Database.open(join(root, "state", VIBESTAR_DB_NAME));
-      const engine = new Engine(root, release, database, providers, gitTransport);
+
+      const engine = new Engine(
+        root,
+        release,
+        database,
+        providers,
+        gitTransport,
+        gitHubClient,
+        scheduleInterpreter,
+      );
+
       for (const run of engine.db.all<{
         pid: number;
         process_identity: string;
@@ -168,6 +205,7 @@ export class Engine extends EventEmitter {
 
       engine.db.recover();
       engine.memory.queueIndex();
+      engine.schedules.start();
       return engine;
     } catch (error) {
       database?.close();
@@ -212,6 +250,7 @@ export class Engine extends EventEmitter {
 
   beginShutdown = () => {
     this.state.closed = true;
+    this.schedules.stop();
     this.state.repositoryController.abort();
     for (const a of this.state.active.values()) {
       a.controller.abort();
@@ -242,6 +281,7 @@ export class Engine extends EventEmitter {
           this.memory.close(),
           this.computers.close(),
           this.repositoryIndex.close(),
+          this.schedules.close(),
         ]);
 
         const failure = closed.find((result) => result.status === "rejected");

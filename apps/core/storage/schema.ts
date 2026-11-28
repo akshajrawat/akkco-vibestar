@@ -1,3 +1,25 @@
+export const viberSchedulesSchema = `
+CREATE TABLE IF NOT EXISTS viber_schedules(
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+  name TEXT NOT NULL,
+  instructions TEXT NOT NULL,
+  task TEXT NOT NULL CHECK(json_valid(task)),
+  cadence TEXT NOT NULL CHECK(json_valid(cadence)),
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  claim TEXT,
+  next_run_at INTEGER,
+  status TEXT NOT NULL CHECK(status IN ('pending','active','blocked_sign_in','retrying','paused','completed','cancelled')),
+  revision INTEGER NOT NULL DEFAULT 0,
+  account TEXT,
+  cursor TEXT CHECK(cursor IS NULL OR json_valid(cursor)),
+  error TEXT,
+  CHECK((next_run_at IS NULL) = (status IN ('paused','completed','cancelled')))
+);
+CREATE INDEX IF NOT EXISTS viber_schedule_profile ON viber_schedules(profile_id);
+CREATE INDEX IF NOT EXISTS viber_schedule_due ON viber_schedules(next_run_at) WHERE next_run_at IS NOT NULL;
+`;
+
 export const sharedComputerSchema = `
 CREATE TABLE IF NOT EXISTS shared_computer(
   singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
@@ -137,7 +159,8 @@ CREATE TABLE viber_messages(
   configuration TEXT CHECK(configuration IS NULL OR json_valid(configuration)),
   created_at TEXT NOT NULL,
   error TEXT,
-  effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible'))
+  effects TEXT NOT NULL DEFAULT 'possible' CHECK(effects IN ('none','possible')),
+  timeline_kind TEXT CHECK(timeline_kind IN ('schedule_chat','schedule_notification'))
 );
 
 CREATE UNIQUE INDEX viber_pending_message ON viber_messages(session_id) WHERE status='pending';
@@ -230,4 +253,5 @@ CREATE TABLE viber_memory_private_runs(
   run_id TEXT PRIMARY KEY REFERENCES utility_runs(id) ON DELETE CASCADE
 );
 ${sharedComputerSchema}
+${viberSchedulesSchema}
 `;

@@ -174,6 +174,10 @@ export const ViberMessageSchema = z.object({
   created_at: z.string(),
   error: z.string().nullable(),
   effects: z.enum(["none", "possible"]).default("possible"),
+  local_schedule: z.preprocess(
+    (value) => (value === 1 ? true : (value ?? undefined)),
+    z.literal(true).optional(),
+  ),
   continue_message_id: z.preprocess((value) => value ?? undefined, identity.optional()),
 });
 

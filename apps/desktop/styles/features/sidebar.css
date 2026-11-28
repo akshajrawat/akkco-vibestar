@@ -110,15 +110,11 @@
 }
 
 .sidebar-collapsed .sidebar-viber > .viber-face {
-  @apply size-9;
+  @apply size-8;
 }
 
 .sidebar-rail-error {
   @apply m-0 grid place-items-center text-accent-red;
-}
-
-.sidebar-viber .viber-face-shadow {
-  @apply hidden;
 }
 
 .sidebar-viber-details {

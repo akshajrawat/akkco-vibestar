@@ -1,7 +1,13 @@
 import { AdeError } from "../domain";
 
 export const parsePullRequest = (value: string) => {
-  const u = new URL(value);
+  let u: URL;
+  try {
+    u = new URL(value.trim());
+  } catch {
+    throw new AdeError("invalid_input", "Use an HTTPS github.com/owner/repository/pull/number URL");
+  }
+
   const match = u.pathname.match(/^\/([\w.-]+)\/([\w.-]+)\/pull\/([1-9]\d*)\/?$/);
   if (
     u.protocol !== "https:" ||
@@ -23,6 +29,25 @@ export const parsePullRequest = (value: string) => {
     repo: match[2],
     number: Number(match[3]),
     url: `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}`,
+  };
+};
+
+export interface CanonicalPullRequestRef {
+  owner: string;
+  repo: string;
+  number: number;
+  url: string;
+}
+
+export const canonicalPullRequest = (value: string): CanonicalPullRequestRef => {
+  const parsed = parsePullRequest(value);
+  const owner = parsed.owner.toLowerCase();
+  const repo = parsed.repo.toLowerCase();
+  return {
+    owner,
+    repo,
+    number: parsed.number,
+    url: `https://github.com/${owner}/${repo}/pull/${parsed.number}`,
   };
 };
 
