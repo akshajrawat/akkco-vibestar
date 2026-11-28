@@ -106,7 +106,7 @@ export const TitleBar = ({
       }}
     >
       <div className="titlebar-identity flex flex-1 min-w-0 items-center gap-1.5 px-3">
-        {profile && <ViberFace profile={profile} compact className="size-[54px] shrink-0" />}
+        {profile && <ViberFace profile={profile} className="size-12 shrink-0" />}
         <strong className="truncate text-[16px] font-bold">{profile?.name || "Vibestar"}</strong>
       </div>
 

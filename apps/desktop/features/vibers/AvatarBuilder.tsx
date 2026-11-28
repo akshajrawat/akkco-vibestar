@@ -1,35 +1,35 @@
 import { useId, useRef, useState } from "react";
-import {
-  Circle,
-  Droplet,
-  Laptop,
-  Eye,
-  Glasses,
-  Headphones,
-  Spline,
-  Shuffle,
-  Smile,
-} from "lucide-react";
+import { Circle, Eye, Headphones, Minus, RotateCcw } from "lucide-react";
 
 import {
-  avatarColors,
-  defaultAppearance,
-  ViberAppearanceSchema,
-  type ViberAppearance,
+  avatarColorChoices,
+  avatarPalette,
+  PixelAppearanceSchema,
+  type AvatarPart,
+  type PixelAppearance,
 } from "../../../core/vibers/appearance";
-import { Button } from "../../components/ui/button";
+import { partDefaultColor } from "./avatar-art";
 import { ViberFace } from "./ViberFace";
 
-const categories = [
-  { key: "shape", label: "Shape", icon: Circle },
-  { key: "color", label: "Color", icon: Droplet },
-  { key: "device", label: "Device", icon: Laptop },
-  { key: "eyes", label: "Eyes", icon: Eye },
-  { key: "eyebrows", label: "Eyebrows", icon: Spline },
-  { key: "glasses", label: "Glasses", icon: Glasses },
-  { key: "lips", label: "Lips", icon: Smile },
-  { key: "accessory", label: "Accessories", icon: Headphones },
+const tabs = [
+  { key: "shape", label: "Shapes", icon: Circle },
+  { key: "face", label: "Face", icon: Eye },
+  { key: "accessories", label: "Accessories", icon: Headphones },
 ] as const;
+
+const faceGroups = [
+  ["eyes", "Eyes"],
+  ["mouth", "Mouth"],
+] as const;
+
+const accessoryGroups = [
+  ["headwear", "Head"],
+  ["eyewear", "Face accessories"],
+  ["neckwear", "Neck"],
+  ["extra", "Extras"],
+] as const;
+
+const fields = PixelAppearanceSchema.shape;
 
 const optionLabel = (value: string) =>
   value.replaceAll("-", " ").replace(/^./, (letter) => letter.toUpperCase());
@@ -37,148 +37,164 @@ const optionLabel = (value: string) =>
 export const AvatarBuilder = ({
   appearance,
   change,
-  randomize,
-  customColor,
-  setCustomColor,
 }: {
-  appearance: ViberAppearance;
-  change: (appearance: ViberAppearance) => void;
-  randomize: () => void;
-  customColor: string;
-  setCustomColor: (color: string) => void;
+  appearance: PixelAppearance;
+  change: (appearance: PixelAppearance) => void;
 }) => {
-  const [category, setCategory] = useState<(typeof categories)[number]>(categories[0]);
-  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [active, setActive] = useState<(typeof tabs)[number]["key"]>("shape");
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const id = useId();
 
-  const options =
-    category.key === "color"
-      ? []
-      : category.key === "lips"
-        ? ViberAppearanceSchema.shape.lips.unwrap().options
-        : ViberAppearanceSchema.shape[category.key].options;
+  const changePartColor = (part: AvatarPart, color?: string) => {
+    const colors = { ...appearance.colors };
+    if (color && color !== partDefaultColor(part, appearance[part])) {
+      colors[part] = color;
+    } else {
+      delete colors[part];
+    }
+
+    const next = { ...appearance };
+    if (Object.keys(colors).length) {
+      next.colors = colors;
+    } else {
+      delete next.colors;
+    }
+
+    return next;
+  };
 
   return (
-    <section className="avatar-builder col-[1_/_-1] min-w-0" aria-label="Appearance">
-      <div
-        role="tablist"
-        aria-label="Appearance categories"
-        className="avatar-categories grid grid-cols-[repeat(8,_minmax(0,_1fr))] [@media(max-width:700px)]:grid-cols-[repeat(4,_minmax(0,_1fr))] gap-1"
-      >
-        {categories.map((item, index) => (
+    <section className="avatar-builder min-w-0" aria-label="Appearance">
+      <div role="tablist" aria-label="Appearance categories" className="avatar-categories">
+        {tabs.map(({ key, label, icon: Icon }, index) => (
           <button
-            key={item.key}
+            key={key}
             ref={(element) => {
-              tabs.current[index] = element;
+              tabRefs.current[index] = element;
             }}
             type="button"
             role="tab"
-            id={`${id}-${item.key}`}
+            id={`${id}-${key}`}
             aria-controls={`${id}-options`}
-            aria-selected={category.key === item.key}
-            tabIndex={category.key === item.key ? 0 : -1}
-            onClick={() => setCategory(item)}
+            aria-selected={active === key}
+            tabIndex={active === key ? 0 : -1}
+            onClick={() => setActive(key)}
             onKeyDown={(event) => {
-              let next = index;
+              let next: number;
               if (event.key === "ArrowRight") {
-                next = (index + 1) % categories.length;
+                next = (index + 1) % tabs.length;
               } else if (event.key === "ArrowLeft") {
-                next = (index + categories.length - 1) % categories.length;
+                next = (index + tabs.length - 1) % tabs.length;
               } else if (event.key === "Home") {
                 next = 0;
               } else if (event.key === "End") {
-                next = categories.length - 1;
+                next = tabs.length - 1;
               } else {
                 return;
               }
 
               event.preventDefault();
-              setCategory(categories[next]);
-              tabs.current[next]?.focus();
+              setActive(tabs[next].key);
+              tabRefs.current[next]?.focus();
             }}
           >
-            <item.icon size={19} />
-            <span>{item.label}</span>
+            <Icon size={16} aria-hidden="true" />
+            <span>{label}</span>
           </button>
         ))}
       </div>
-      <div
-        role="tabpanel"
-        id={`${id}-options`}
-        aria-labelledby={`${id}-${category.key}`}
-        className="avatar-options-panel"
-      >
-        <div className="avatar-options-heading flex items-center justify-between gap-2.5 px-0 py-2">
-          <strong>{category.label}</strong>
-          <Button type="button" variant="ghost" size="sm" onClick={randomize}>
-            <Shuffle size={14} />
-            Randomize Appearance
-          </Button>
-        </div>
-        <div className="avatar-options grid grid-cols-[repeat(auto-fit,_minmax(66px,_1fr))] gap-1.5 min-h-19">
-          {category.key === "color"
-            ? Object.entries(avatarColors).map(([label, color]) => (
+
+      <div role="tabpanel" id={`${id}-options`} aria-labelledby={`${id}-${active}`}>
+        {(active === "shape"
+          ? ([["shape", "Base shapes"]] as const)
+          : active === "face"
+            ? faceGroups
+            : accessoryGroups
+        ).map(([key, label]) => (
+          <section key={key} aria-label={label} className="avatar-part-group">
+            <header className="avatar-part-heading">
+              <h3>{label}</h3>
+              {key !== "shape" && appearance[key] !== "none" && (
+                <div className="avatar-part-color">
+                  <input
+                    type="color"
+                    aria-label={`${label} color`}
+                    title={`${label} color`}
+                    value={appearance.colors?.[key] ?? partDefaultColor(key, appearance[key])}
+                    onChange={(event) => change(changePartColor(key, event.currentTarget.value))}
+                  />
+                  {appearance.colors?.[key] && (
+                    <button
+                      type="button"
+                      aria-label={`Reset ${label.toLowerCase()} color`}
+                      title="Restore default color"
+                      onClick={() => change(changePartColor(key))}
+                    >
+                      <RotateCcw size={13} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </header>
+            <div className={`avatar-options ${key === "shape" ? "avatar-shapes" : ""}`}>
+              {fields[key].options.map((value) => {
+                const title = optionLabel(value);
+                return (
+                  <button
+                    type="button"
+                    key={value}
+                    aria-pressed={appearance[key] === value}
+                    onClick={() =>
+                      change({
+                        ...(value === "none" && key !== "shape"
+                          ? changePartColor(key)
+                          : appearance),
+                        [key]: value,
+                      })
+                    }
+                  >
+                    {value === "none" ? (
+                      <span className="avatar-empty-option" aria-hidden="true">
+                        <Minus size={14} />
+                      </span>
+                    ) : (
+                      <ViberFace appearance={{ ...appearance, [key]: value }} sample={key} />
+                    )}
+                    <small>{title}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+
+        {active === "shape" && (
+          <section aria-label="Color" className="avatar-part-group">
+            <header className="avatar-part-heading">
+              <h3>Body color</h3>
+            </header>
+            <div className="avatar-colors">
+              {avatarColorChoices.map((key) => (
                 <button
                   type="button"
-                  key={label}
-                  aria-label={label}
-                  aria-pressed={appearance.color.toLowerCase() === color}
-                  onClick={() => {
-                    change({ ...appearance, color });
-                    setCustomColor(color);
-                  }}
-                >
-                  <span
-                    className="avatar-color"
-                    style={{
-                      backgroundImage: `radial-gradient(circle at 30% 25%, color-mix(in oklab, ${color} 58%, white), ${color} 55%, color-mix(in oklab, ${color} 66%, black))`,
-                    }}
-                  />
-                  <small>{label}</small>
-                </button>
-              ))
-            : options.map((option) => (
-                <button
-                  type="button"
-                  key={option}
-                  aria-label={optionLabel(option)}
-                  aria-pressed={(appearance[category.key] ?? "none") === option}
-                  onClick={() => change({ ...appearance, [category.key]: option })}
-                >
-                  <ViberFace
-                    appearance={{
-                      ...(category.key === "shape"
-                        ? { ...defaultAppearance(), color: appearance.color }
-                        : appearance),
-                      [category.key]: option,
-                    }}
-                  />
-                  <small>{optionLabel(option)}</small>
-                </button>
+                  key={key}
+                  aria-pressed={appearance.color.toLowerCase() === avatarPalette[key]}
+                  aria-label={optionLabel(key)}
+                  title={optionLabel(key)}
+                  style={{ backgroundColor: avatarPalette[key] }}
+                  onClick={() => change({ ...appearance, color: avatarPalette[key] })}
+                />
               ))}
-        </div>
-        {category.key === "color" && (
-          <label className="avatar-custom-color">
-            Custom HEX
-            <input
-              aria-label="Custom HEX"
-              value={customColor}
-              maxLength={7}
-              placeholder="#2478ff"
-              spellCheck={false}
-              aria-invalid={!/^#[0-9a-fA-F]{6}$/.test(customColor)}
-              onChange={(event) => {
-                const color = event.target.value;
-                setCustomColor(color);
-                if (/^#[0-9a-fA-F]{6}$/.test(color)) {
-                  change({ ...appearance, color });
-                }
-              }}
-            />
-            {!/^#[0-9a-fA-F]{6}$/.test(customColor) && (
-              <small role="alert">Enter # followed by six HEX digits.</small>
-            )}
-          </label>
+              <label>
+                <input
+                  type="color"
+                  value={appearance.color}
+                  onChange={(event) => change({ ...appearance, color: event.target.value })}
+                />
+                Custom color
+              </label>
+            </div>
+          </section>
         )}
       </div>
     </section>
