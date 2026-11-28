@@ -1,3 +1,4 @@
+import { sharedFilesMount, sharedServicesMount } from "../../computers/contracts";
 import { gitChecked } from "../../workspace/git-command";
 import { homedir } from "node:os";
 import { dirname, join, isAbsolute, resolve } from "node:path";
@@ -5,10 +6,10 @@ import { realpath, lstat, readlink, writeFile } from "node:fs/promises";
 import { AdeError, type WorkspaceAssignment } from "../../domain";
 import { exists, taskRoot, inside, managedPath } from "../../workspace/paths";
 import type { Database } from "../../storage/database";
+import { sqliteFilePaths, VIBESTAR_DB_NAME } from "../../storage/contracts";
 import { viberSnapshotKeyPath } from "../../storage/viber-snapshots";
-import { checked, cleanEnvironment } from "./process";
+import { checked, cleanEnvironment, type ProcessInputProtocol } from "./process";
 import { taskRuntime } from "../../workspace/runtime";
-import type { ProcessInputProtocol } from "./process";
 import { assertManagedWorkspace } from "../../workspace/managed";
 import { ViberSessionStore } from "../../vibers/store";
 import { GitWorkspace } from "../../workspace/git";
@@ -31,6 +32,7 @@ export const sandboxInvocation = async (
   analysisWorkspace?: string,
   contextPaths: string[] = [],
   viberSessionId?: string,
+  sharedComputer?: { files: string; socket?: string; useAsCwd?: boolean },
 ) => {
   if (process.platform !== "linux") {
     throw new AdeError("sandbox", "The execution core must run inside Linux/WSL.");
@@ -64,6 +66,19 @@ export const sandboxInvocation = async (
     throw new AdeError("isolation", "PR analysis workspace is outside the managed root");
   }
 
+  if (sharedComputer) {
+    const expected = join(root, "shared-computer", "files");
+    if (
+      !viberSessionId ||
+      (sharedComputer.useAsCwd && task?.workspace_kind !== "managed") ||
+      sharedComputer.files !== expected ||
+      (await realpath(expected)) !== expected
+    ) {
+      throw new AdeError("isolation", "Shared Computer files are outside their managed directory.");
+    }
+  }
+
+  const executionCwd = sharedComputer?.useAsCwd ? sharedFilesMount : cwd;
   const repository = task?.repo_id ? db.repository(task.repo_id) : null;
   const repo = repository ? await realpath(repository.path) : null;
   if (repo && repository?.source !== "imported" && !inside(join(root, "repos"), repo)) {
@@ -255,7 +270,10 @@ export const sandboxInvocation = async (
         throw new AdeError("sandbox", "Unsupported isolated provider configuration");
       }
 
-      const projectConfigDirectory = join(cwd, ".codex");
+      const projectConfigDirectory = join(
+        sharedComputer?.useAsCwd ? sharedComputer.files : cwd,
+        ".codex",
+      );
 
       const projectConfigParent = await lstat(projectConfigDirectory).catch(
         (error: NodeJS.ErrnoException) => {
@@ -272,9 +290,9 @@ export const sandboxInvocation = async (
       }
 
       const configs: string[] = [];
-      for (const config of [
-        join(state, "config.toml"),
-        join(projectConfigDirectory, "config.toml"),
+      for (const [config, target] of [
+        [join(state, "config.toml"), join(state, "config.toml")],
+        [join(projectConfigDirectory, "config.toml"), join(executionCwd, ".codex", "config.toml")],
       ]) {
         const entry = await lstat(config).catch((error: NodeJS.ErrnoException) => {
           if (error.code === "ENOENT") {
@@ -292,7 +310,7 @@ export const sandboxInvocation = async (
         }
 
         if (entry) {
-          configs.push(config);
+          configs.push(target);
         }
       }
 
@@ -400,20 +418,33 @@ export const sandboxInvocation = async (
     args.push("--ro-bind", context, context);
   }
 
+  if (sharedComputer) {
+    args.push(readOnly ? "--ro-bind" : "--bind", sharedComputer.files, sharedFilesMount);
+    if (!readOnly && sharedComputer.socket) {
+      args.push("--ro-bind", sharedComputer.socket, sharedServicesMount);
+    }
+  }
+
   // File overlays follow directory mounts so a source mount cannot expose its project configuration again.
   args.push(...configurationMounts);
-  const key = viberSnapshotKeyPath(join(root, "state", "vibestar.sqlite"));
+  const databasePath = join(root, "state", VIBESTAR_DB_NAME);
+  const privatePaths = [...sqliteFilePaths(databasePath), viberSnapshotKeyPath(databasePath)];
 
   const mounts = args.flatMap((arg, index) =>
     arg === "--bind" || arg === "--ro-bind" ? [args[index + 1]] : [],
   );
 
   const mounted = await Promise.all(mounts.map((source) => realpath(source)));
-  if (mounted.some((source) => source === key || inside(source, key))) {
-    throw new AdeError("isolation", "A sandbox mount overlaps the private Viber snapshot key.");
+  if (
+    mounted.some((source) => privatePaths.some((path) => source === path || inside(source, path)))
+  ) {
+    throw new AdeError(
+      "isolation",
+      "A sandbox mount overlaps the private Vibestar database or snapshot key.",
+    );
   }
 
-  args.push("--chdir", cwd, "--", invocation.program, ...invocation.args);
+  args.push("--chdir", executionCwd, "--", invocation.program, ...invocation.args);
   return {
     program: "bwrap",
     args,

@@ -74,7 +74,7 @@ export const ViberRecoveryDialog = ({
       {(inspection || error) && (
         <div className="viber-recovery-inspection max-h-[50vh] wrap-anywhere">
           {activity}
-          {error && <RunError error={error} conversation />}
+          {error && <RunError error={error} />}
           {inspection && (
             <>
               <h3>Workspace files</h3>

@@ -64,21 +64,11 @@ Explicit discard binds the exact preview and acknowledgment and still requires o
 Git-operation and dependency checks. History-only removal retains worktree ownership.
 No broad recursive data-root reset is permitted.
 
-## Git operations and manual terminals
+## Git operations
 
 Core-managed Git operations inspect local/worktree configuration, suppress global/system
 executable configuration and use argv arrays. Agent and verification processes remain
 sandboxed. The application no longer stages, commits or publishes through dedicated RPCs.
-
-Explicit user-operated terminals are normal Linux/WSL shells with the user's own
-permissions, environment, Git configuration and authentication. They start only after
-worktree ownership validation and acquiring the workspace lease. They are not an
-agent execution path and are not constrained by the agent sandbox. Opening the terminal
-dock starts and focuses the shell; hiding it does not close the session. For a managed
-clone only, startup adds a missing `origin` alias from its registered fork or repository
-URL under the repository lock after ownership validation. Existing remotes and imported
-checkout configuration are preserved. Output remains bounded and redacted. Restart
-terminates sessions and never replays entered commands.
 
 Historical Git journals remain protected by persistence/recovery and storage checks.
 No old journal or saved preset can authorize a new commit or push. Contributor hooks

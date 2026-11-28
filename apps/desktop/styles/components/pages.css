@@ -22,14 +22,6 @@
   @apply bg-transparent text-ink-primary p-0;
 }
 
-.status {
-  @apply whitespace-nowrap;
-}
-
-.status i {
-  @apply w-1 h-1 rounded-[50%] [background:currentColor];
-}
-
 .error-box,
 .notice {
   @apply text-accent-red bg-surface-error [border-left:2px_solid_var(--accent-red)];

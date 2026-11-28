@@ -122,7 +122,7 @@ it("saves setting changes automatically across categories", async () => {
   expect(screen.queryByText("Local repository discovery")).toBeNull();
 });
 
-it("uses one Memory switch and keeps each provider's sharing permission separate", async () => {
+it("uses switches for Viber sharing and Memory under Viber Workspaces with independent provider memory controls", async () => {
   vi.mocked(useProviders).mockReturnValue({
     providers: ["codex", "antigravity"].map((provider) => ({
       provider,
@@ -140,8 +140,35 @@ it("uses one Memory switch and keeps each provider's sharing permission separate
   });
 
   open();
+  expect(screen.queryByRole("heading", { name: "Enable Memory" })).toBeNull();
+  expect(screen.getByRole("heading", { name: "Viber Workspaces" })).toBeTruthy();
+
+  const permission = screen.getByLabelText("Permission");
+  expect(permission.getAttribute("data-value")).toBe("always-ask");
+  selectValue(permission, "full-permission");
+
+  await waitFor(() =>
+    expect(rpc).toHaveBeenLastCalledWith(
+      "settings.save",
+      expect.objectContaining({ viber_workspace_permission: "full-permission" }),
+    ),
+  );
+
+  const talk = screen.getByRole("switch", { name: "Allow Vibers to talk with each other" });
+  expect(talk.getAttribute("aria-checked")).toBe("true");
+  await act(async () => fireEvent.click(talk));
+  expect(talk.getAttribute("aria-checked")).toBe("false");
+
+  expect(rpc).toHaveBeenLastCalledWith(
+    "settings.save",
+    expect.objectContaining({
+      viber_workspace_permission: "full-permission",
+      allow_viber_communication: false,
+    }),
+  );
+
   const memory = screen.getByRole("switch", { name: "Enable Memory" });
-  expect(screen.getAllByRole("switch")).toHaveLength(1);
+  expect(screen.getAllByRole("switch")).toHaveLength(2);
   expect(memory.getAttribute("aria-checked")).toBe("false");
   expect(screen.queryByRole("checkbox", { name: /share recalled memories/i })).toBeNull();
   await act(async () => fireEvent.click(memory));
@@ -153,12 +180,14 @@ it("uses one Memory switch and keeps each provider's sharing permission separate
       viber_memory: expect.objectContaining({
         automatic_saving: true,
         recall: true,
-        share_with: { codex: false, antigravity: false },
       }),
     }),
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Providers" }));
+
+  expect(screen.getByRole("heading", { name: "OpenAI Codex" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Google Antigravity" })).toBeTruthy();
 
   const codex = screen.getByRole<HTMLInputElement>("checkbox", {
     name: "Share recalled memories with OpenAI Codex",
@@ -173,6 +202,13 @@ it("uses one Memory switch and keeps each provider's sharing permission separate
   await act(async () => fireEvent.click(codex));
   expect(antigravity.checked).toBe(false);
 
+  expect(rpc).toHaveBeenLastCalledWith(
+    "settings.save",
+    expect.objectContaining({
+      viber_memory: expect.objectContaining({ share_with: { codex: true, antigravity: false } }),
+    }),
+  );
+
   fireEvent.click(screen.getByRole("button", { name: "General" }));
   await act(async () => fireEvent.click(memory));
   expect(memory.getAttribute("aria-checked")).toBe("false");
@@ -183,7 +219,6 @@ it("uses one Memory switch and keeps each provider's sharing permission separate
       viber_memory: expect.objectContaining({
         automatic_saving: false,
         recall: false,
-        share_with: { codex: true, antigravity: false },
       }),
     }),
   );
@@ -350,6 +385,7 @@ it("continues newer saves after a failure without replaying a failed field", asy
   selectValue(screen.getByLabelText("Concurrency"), "3");
   await waitFor(() => expect(attempts).toHaveLength(3));
   expect(attempts[2]).toMatchObject({ concurrency: 3, notification_preference: "all" });
+  expect(await screen.findByText("Settings saved")).toBeTruthy();
 });
 
 it("serializes rapid edits and rolls a later failure back to the newest acknowledged value", async () => {

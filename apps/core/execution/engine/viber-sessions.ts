@@ -5,8 +5,10 @@ import type { AgentRunner } from "../agents/agent-runner";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 import { ViberSessionStore } from "../../vibers/store";
-import type { ViberContinuationPrepareSchema } from "../../vibers/contracts";
-import { ViberSessionSendSchema } from "../../vibers/contracts";
+import {
+  ViberSessionSendSchema,
+  type ViberContinuationPrepareSchema,
+} from "../../vibers/contracts";
 import { prepareManagedWorkspace } from "../../workspace/managed";
 import { AdeError } from "../../domain";
 import { parseWatchCommand } from "../../github/contracts";
@@ -18,7 +20,15 @@ export class ViberSessions {
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory" | "prWatches"
+      | "db"
+      | "root"
+      | "git"
+      | "changed"
+      | "assertAvailable"
+      | "isActive"
+      | "memory"
+      | "computers"
+      | "prWatches"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -154,6 +164,9 @@ export class ViberSessions {
 
     this.operations.assertExecutionSlot(key);
 
+    const shareWorkspace =
+      input.shared_computer && this.host.db.settings().allow_viber_communication;
+
     const snapshot = this.store.capture(input);
 
     const completed = this.operations.withExecutionSlot(
@@ -187,14 +200,12 @@ export class ViberSessions {
 
           signal.throwIfAborted();
 
-          const output = await this.runner.runConfigured(
-            { id: input.session_id },
-            signal,
-            snapshot.execution,
-            {
+          const run = (sharedComputer?: { files: string; socket?: string }) =>
+            this.runner.runConfigured({ id: input.session_id }, signal, snapshot.execution, {
               prompt: snapshot.prompt,
               purpose: `${snapshot.profile.name} session`,
               workspace,
+              sharedComputer,
               conversation: snapshot.conversation,
               originalPrompt: snapshot.originalPrompt,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
@@ -210,8 +221,15 @@ export class ViberSessions {
                     }
                   : undefined,
               },
-            },
-          );
+            });
+
+          const output = shareWorkspace
+            ? await this.host.computers.withTurn(
+                snapshot.execution.access === "read-only",
+                signal,
+                run,
+              )
+            : await run();
 
           this.store.finish(input.request_id, "completed", output);
           if (suggestionSignal) {

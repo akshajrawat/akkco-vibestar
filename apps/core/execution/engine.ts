@@ -6,6 +6,7 @@ import lockfile from "proper-lockfile";
 
 import { AdeError, type CoreEvent } from "../domain";
 import { Database } from "../storage/database";
+import { VIBESTAR_DB_NAME } from "../storage/contracts";
 import { RepositoryIndex } from "../workspace/discovery";
 import { GitWorkspace } from "../workspace/git";
 import { createLayout } from "../workspace/paths";
@@ -20,6 +21,7 @@ import { CodexProvider } from "./providers/codex";
 import type { AgentProvider } from "./providers/contracts";
 import { ViberSessions } from "./engine/viber-sessions";
 import { ViberStore } from "../vibers/store";
+import { Computers } from "../computers/service";
 import { PrWatchService } from "../github/pr-watches";
 import { GitHubClient } from "../github/client";
 
@@ -41,6 +43,8 @@ export class Engine extends EventEmitter {
   readonly vibers: ViberStore;
 
   readonly memory: ViberMemory;
+
+  readonly computers: Computers;
 
   readonly prWatches: PrWatchService;
 
@@ -130,6 +134,8 @@ export class Engine extends EventEmitter {
 
     this.scheduling = new EngineScheduling(this, this.state);
 
+    this.computers = new Computers(this);
+
     this.viberSessions = new ViberSessions(this, this.state, this.runner, {
       withExecutionSlot: this.withExecutionSlot,
       assertExecutionSlot: this.scheduling.assertExecutionSlot,
@@ -155,7 +161,7 @@ export class Engine extends EventEmitter {
 
     let database: Database | undefined;
     try {
-      database = await Database.open(join(root, "state", "vibestar.sqlite"));
+      database = await Database.open(join(root, "state", VIBESTAR_DB_NAME));
       const engine = new Engine(root, release, database, providers, gitTransport, gitHubClient);
       for (const run of engine.db.all<{
         pid: number;
@@ -193,11 +199,9 @@ export class Engine extends EventEmitter {
 
   changed = (id?: string) => this.publish({ event: "changed", session_id: id });
 
-  isActive = (id: string) => this.state.active.has(id) || this.state.interactive.has(id);
+  isActive = (id: string) => this.state.active.has(id);
 
   hasActive = () => this.cleanupBlockers().length > 0;
-
-  drain = (...args: Parameters<EngineScheduling["drain"]>) => this.scheduling.drain(...args);
 
   register = (...args: Parameters<RepositoryOperations["register"]>) =>
     this.repositories.register(...args);
@@ -222,9 +226,6 @@ export class Engine extends EventEmitter {
 
   fetchRepository = (...args: Parameters<RepositoryOperations["fetchRepository"]>) =>
     this.repositories.fetchRepository(...args);
-
-  configureRepository = (...args: Parameters<RepositoryOperations["configureRepository"]>) =>
-    this.repositories.configureRepository(...args);
 
   beginShutdown = () => {
     this.state.closed = true;
@@ -254,9 +255,17 @@ export class Engine extends EventEmitter {
         await Promise.allSettled([...this.state.active.values()].map((a) => a.promise));
         await Promise.allSettled([...this.state.repositoryOperations.keys()]);
 
-        await this.prWatches.close();
-        await this.memory.close();
-        await this.repositoryIndex.close();
+        const closed = await Promise.allSettled([
+          this.prWatches.close(),
+          this.memory.close(),
+          this.computers.close(),
+          this.repositoryIndex.close(),
+        ]);
+
+        const failure = closed.find((result) => result.status === "rejected");
+        if (failure) {
+          throw failure.reason;
+        }
       } finally {
         try {
           this.db.close();

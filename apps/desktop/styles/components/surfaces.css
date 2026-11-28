@@ -9,18 +9,6 @@
   @apply bg-surface-panel;
 }
 
-.run-error-failed strong {
-  @apply text-accent-red;
-}
-
-.run-error-details summary {
-  @apply text-muted cursor-pointer;
-}
-
-.run-error-details pre {
-  @apply whitespace-pre-wrap max-h-[180px] overflow-auto;
-}
-
 .compact-dialog {
   @apply w-[min(590px,_90vw)] p-6 max-h-[85vh] overflow-y-auto bg-surface-panel;
 }

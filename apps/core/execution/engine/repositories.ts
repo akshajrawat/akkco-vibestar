@@ -5,8 +5,11 @@ import { join } from "node:path";
 import type { z } from "zod";
 
 import { AdeError, now, remoteIdentity, type Repository } from "../../domain";
-import type { RepositoryIndex } from "../../workspace/discovery";
-import { ConnectLocalInput, type LocalRepositoryInput } from "../../workspace/discovery";
+import {
+  ConnectLocalInput,
+  type LocalRepositoryInput,
+  type RepositoryIndex,
+} from "../../workspace/discovery";
 import { gitChecked } from "../../workspace/git-command";
 import { exists, inside, managedPath } from "../../workspace/paths";
 import type { Engine } from "../engine";
@@ -396,86 +399,5 @@ export class RepositoryOperations {
 
     this.host.changed();
     return r;
-  };
-
-  configureRepository = (...args: Parameters<RepositoryOperations["configureRepositoryData"]>) =>
-    this.operation(
-      () => this.configureRepositoryData(...args),
-      "Repository configuration is being updated",
-    );
-
-  private configureRepositoryData = async (
-    id: string,
-    configuration: {
-      upstream_url: string;
-      origin_url: string | null;
-      base_branch: string;
-    },
-  ) => {
-    const r = this.host.db.repository(id);
-    const identity = remoteIdentity(configuration.upstream_url);
-    if (
-      `${identity.owner}/${identity.name}`.toLowerCase() !== `${r.owner}/${r.name}`.toLowerCase()
-    ) {
-      throw new AdeError("invalid_input", "Upstream must match the managed repository");
-    }
-
-    if (configuration.origin_url) {
-      remoteIdentity(configuration.origin_url);
-    }
-
-    await gitChecked(
-      ["check-ref-format", "--branch", configuration.base_branch],
-      this.host.root,
-      this.signal,
-    );
-
-    const blockers = this.host.cleanupBlockers();
-    if (blockers.length) {
-      throw new AdeError(
-        "busy",
-        "Wait for active operations on this repository before changing its remotes",
-      );
-    }
-
-    const updated = {
-      ...r,
-      ...configuration,
-      ...(r.source !== "imported"
-        ? { origin_remote: configuration.origin_url ? "origin" : null }
-        : {}),
-    };
-
-    await this.host.git.withLock(id, async () => {
-      if (r.source !== "imported" && (await exists(join(r.path, ".git")))) {
-        await gitChecked(
-          ["remote", "set-url", "upstream", updated.upstream_url],
-          r.path,
-          this.signal,
-        );
-
-        const remotes = (await gitChecked(["remote"], r.path, this.signal)).split("\n");
-        if (updated.origin_url) {
-          await gitChecked(
-            [
-              "remote",
-              remotes.includes("origin") ? "set-url" : "add",
-              "origin",
-              updated.origin_url,
-            ],
-            r.path,
-            this.signal,
-          );
-        } else if (remotes.includes("origin")) {
-          await gitChecked(["remote", "remove", "origin"], r.path, this.signal);
-        }
-      }
-
-      this.signal.throwIfAborted();
-      this.host.db.saveRepository(updated);
-    });
-
-    this.host.changed();
-    return updated;
   };
 }

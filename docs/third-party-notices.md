@@ -89,3 +89,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Shared Computer seccomp profile
+
+The Shared Computer embeds the Moby default seccomp profile from
+[moby/profiles](https://github.com/moby/profiles/blob/a0fa70805f742f7da15b367770d802ea2a86c68b/seccomp/default.json)
+under [Apache License 2.0](moby-seccomp-license.txt). Vibestar adds the guest calls
+needed by Chromium's Linux namespace sandbox. The container still drops all capabilities
+and uses Docker's default AppArmor policy where available.

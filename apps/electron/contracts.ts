@@ -18,7 +18,6 @@ export interface DesktopApi {
   saveDesktopSettings: (config: DesktopSettings) => Promise<boolean>;
   installHelper: () => Promise<void>;
   retryRuntime: () => Promise<void>;
-  openExternal: (url: string) => Promise<void>;
 }
 
 interface WindowState {

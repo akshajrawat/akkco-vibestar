@@ -25,7 +25,6 @@ export const ToolOverlay = ({
     return (
       <SettingsPage
         settings={snapshot?.settings}
-        root={snapshot?.root}
         snapshot={snapshot || undefined}
         refresh={refresh}
         close={close}

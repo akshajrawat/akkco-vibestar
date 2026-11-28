@@ -2,6 +2,7 @@
 // recognized values are suppressed incrementally, regardless of their length.
 const fields = [
   "authorization",
+  "proxy-authorization",
   "apikey",
   "api_key",
   "api-key",
@@ -86,7 +87,7 @@ export class StreamRedactor {
       const cookie = this.field === "cookie" || this.field === "set-cookie";
       if (/^[\r\n"']$/.test(value) || (!cookie && /^[\s,;}\]]$/.test(value))) {
         if (
-          this.field === "authorization" &&
+          this.field.endsWith("authorization") &&
           this.firstWord &&
           /^[ \t]$/.test(value) &&
           /^(bearer|basic|token|digest)$/i.test(this.scheme)

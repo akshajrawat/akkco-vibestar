@@ -1,17 +1,11 @@
-import { migrations } from "./migrations";
+import { baselineSchema, prWatchSchema, schemaVersion, sharedComputerSchema } from "./schema";
 import BetterSqlite3 from "better-sqlite3";
-import { randomBytes, randomUUID } from "node:crypto";
-import { chmod } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { lstat } from "node:fs/promises";
 import { exists } from "../workspace/paths";
 import { PersistedRecords } from "./records";
-import { RepositoryRecordSchema } from "./contracts";
-import { ViberMessageSnapshotSchema } from "../vibers/contracts";
-import {
-  ViberSnapshots,
-  loadViberSnapshotKey,
-  viberSnapshotKeyPath,
-  viberSnapshotVersion,
-} from "./viber-snapshots";
+import { RepositoryRecordSchema, sqliteFilePaths } from "./contracts";
+import { ViberSnapshots, loadViberSnapshotKey, viberSnapshotKeyPath } from "./viber-snapshots";
 import {
   defaultSettings,
   AdeError,
@@ -29,8 +23,26 @@ export class Database {
   readonly viberSnapshots: ViberSnapshots;
 
   static open = async (path: string) => {
-    let scrubViberSnapshots = false;
+    let initialize = true;
     let hasSealedSnapshots = false;
+    if (path !== ":memory:") {
+      for (const file of sqliteFilePaths(path)) {
+        try {
+          const entry = await lstat(file);
+          if (entry.isSymbolicLink() || !entry.isFile() || entry.nlink > 1) {
+            throw new AdeError(
+              "isolation",
+              `Database file ${file} must be a regular non-symlink file without hard links.`,
+            );
+          }
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw e;
+          }
+        }
+      }
+    }
+
     if (path !== ":memory:" && (await exists(path))) {
       const source = new BetterSqlite3(path, {
         readonly: true,
@@ -38,38 +50,37 @@ export class Database {
       });
 
       try {
-        const table = source
-          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'")
-          .get();
+        const objects = source.prepare("SELECT name FROM sqlite_schema").pluck().all();
+        const userVersion = source.pragma("user_version", { simple: true });
 
-        const version = table
-          ? ((
-              source.prepare("SELECT max(version) version FROM schema_migrations").get() as {
-                version: number | null;
-              }
-            ).version ?? -1)
-          : -1;
+        const versions = objects.includes("schema_migrations")
+          ? source.prepare("SELECT version FROM schema_migrations ORDER BY version").pluck().all()
+          : [];
 
-        const hasViberMessages = source
-          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='viber_messages'")
-          .get();
+        initialize = objects.length === 0;
 
-        scrubViberSnapshots = Boolean(hasViberMessages && version < viberSnapshotVersion);
+        // The previous schema also started at 0, before introducing private memory runs.
+        if (
+          userVersion !== schemaVersion ||
+          (!initialize &&
+            (versions.length !== 1 ||
+              versions[0] !== schemaVersion ||
+              !objects.includes("viber_memory_private_runs")))
+        ) {
+          throw new AdeError(
+            "migration",
+            `Database ${path} is incompatible with schema ${schemaVersion} (recorded versions: ${versions.join(", ") || "none"}, SQLite user_version: ${userVersion}). Preserve the database and choose a fresh data root.`,
+          );
+        }
 
-        hasSealedSnapshots = Boolean(
-          hasViberMessages &&
-          source
-            .prepare(
-              "SELECT 1 FROM viber_messages WHERE json_type(configuration,'$.sealed') IS NOT NULL LIMIT 1",
-            )
-            .get(),
-        );
-
-        // A pre-encryption database can contain plaintext even in unused pages.
-        if (version < migrations.at(-1)!.version && !scrubViberSnapshots) {
-          const backup = `${path}.before-v${version}-${randomUUID()}.sqlite`;
-          await source.backup(backup);
-          await chmod(backup, 0o600);
+        if (!initialize) {
+          hasSealedSnapshots = Boolean(
+            source
+              .prepare(
+                "SELECT 1 FROM viber_messages WHERE json_type(configuration,'$.sealed') IS NOT NULL LIMIT 1",
+              )
+              .get(),
+          );
         }
       } finally {
         source.close();
@@ -81,10 +92,10 @@ export class Database {
         ? undefined
         : await loadViberSnapshotKey(viberSnapshotKeyPath(path), !hasSealedSnapshots);
 
-    return new Database(path, key, scrubViberSnapshots);
+    return new Database(path, initialize, key);
   };
 
-  private constructor(path: string, key?: Buffer, scrubViberSnapshots = false) {
+  private constructor(path: string, initialize: boolean, key?: Buffer) {
     this.viberSnapshots = new ViberSnapshots(path === ":memory:" ? randomBytes(32) : key);
     this.connection = new BetterSqlite3(path);
     try {
@@ -92,45 +103,14 @@ export class Database {
       this.connection.pragma("foreign_keys = ON");
       this.connection.pragma("busy_timeout = 5000");
 
-      this.connection.exec(
-        "CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT NOT NULL)",
-      );
-
-      for (const migration of migrations) {
-        if (
-          !this.connection
-            .prepare("SELECT version FROM schema_migrations WHERE version=?")
-            .get(migration.version)
-        ) {
-          if (migration.version === viberSnapshotVersion && scrubViberSnapshots) {
-            this.protectLegacyViberSnapshots(migration.sql);
-          }
-
-          const rebuild = "foreign_keys_off" in migration && migration.foreign_keys_off;
-          if (rebuild) {
-            this.connection.pragma("foreign_keys = OFF");
-          }
-
-          try {
-            this.connection.transaction(() => {
-              this.connection.exec(migration.sql);
-
-              this.run(
-                "INSERT OR IGNORE INTO schema_migrations VALUES(?,?)",
-                migration.version,
-                now(),
-              );
-
-              if (this.all("PRAGMA foreign_key_check").length) {
-                throw new Error("Repository migration failed foreign key verification");
-              }
-            })();
-          } finally {
-            if (rebuild) {
-              this.connection.pragma("foreign_keys = ON");
-            }
-          }
-        }
+      if (initialize) {
+        this.transaction(() => {
+          this.connection.exec(baselineSchema);
+          this.run("INSERT INTO schema_migrations VALUES(?,?)", schemaVersion, now());
+        });
+      } else {
+        // Early schema-0 data roots can lack optional feature tables.
+        this.connection.exec(sharedComputerSchema + prWatchSchema);
       }
 
       this.records.initialize();
@@ -139,46 +119,6 @@ export class Database {
       throw error;
     }
   }
-
-  private protectLegacyViberSnapshots = (trigger: string) => {
-    this.connection.pragma("secure_delete = ON");
-
-    this.connection.function(
-      "seal_viber_snapshot",
-      (source: string, id: string, sessionId: string) => {
-        const snapshot = ViberMessageSnapshotSchema.safeParse(JSON.parse(source));
-        if (
-          !snapshot.success ||
-          snapshot.data.request.request_id !== id ||
-          snapshot.data.request.session_id !== sessionId
-        ) {
-          throw new AdeError("snapshot_integrity", "The saved Viber turn could not be verified.");
-        }
-
-        return this.viberSnapshots.seal(snapshot.data);
-      },
-    );
-
-    this.transaction(() => {
-      this.connection.exec("DROP TRIGGER IF EXISTS viber_message_snapshot_immutable");
-
-      this.connection.exec(
-        "UPDATE viber_messages SET configuration=seal_viber_snapshot(configuration,id,session_id) WHERE configuration IS NOT NULL AND json_type(configuration,'$.sealed') IS NULL",
-      );
-
-      this.connection.exec(trigger);
-    });
-
-    // Compact old/free pages and retire the pre-upgrade WAL before recording the migration.
-    this.connection.exec("VACUUM");
-    const [result] = this.all<{ busy: number }>("PRAGMA wal_checkpoint(TRUNCATE)");
-    if (result.busy) {
-      throw new AdeError(
-        "migration",
-        "Close other database readers before protecting Viber snapshots.",
-      );
-    }
-  };
 
   run = (sql: string, ...params: unknown[]) => this.connection.prepare(sql).run(...params);
 

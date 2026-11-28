@@ -1,17 +1,17 @@
-import { useEffect, useState, useRef, type Ref } from "react";
-import { Minus, Square, Copy, X, PanelLeftOpen } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Minus, Square, Copy, X, Monitor } from "lucide-react";
 
 import type { AgentProfile } from "../../core/vibers/contracts";
 import { ViberFace } from "../features/vibers/ViberFace";
 
 export const TitleBar = ({
   profile,
-  onSidebar,
-  toggleRef,
+  computerOpen = false,
+  onToggleComputer,
 }: {
   profile?: AgentProfile;
-  onSidebar?: () => void;
-  toggleRef?: Ref<HTMLButtonElement>;
+  computerOpen?: boolean;
+  onToggleComputer?: () => void;
 } = {}) => {
   const [maximized, setMaximized] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -105,18 +105,6 @@ export const TitleBar = ({
         }
       }}
     >
-      {onSidebar && (
-        <button
-          ref={toggleRef}
-          className="titlebar-action grid place-items-center shrink-0 p-0 [border:0] focus-visible:[outline:1px_solid_var(--focus-ring)] focus-visible:outline-offset-[-2px]"
-          aria-label="Expand sidebar"
-          aria-expanded="false"
-          title="Expand sidebar (Ctrl+B)"
-          onClick={onSidebar}
-        >
-          <PanelLeftOpen size={18} aria-hidden="true" />
-        </button>
-      )}
       <div className="titlebar-identity flex flex-1 min-w-0 items-center gap-1.5 px-3">
         {profile && <ViberFace profile={profile} compact className="size-[54px] shrink-0" />}
         <strong className="truncate text-[16px] font-bold">{profile?.name || "Vibestar"}</strong>
@@ -128,7 +116,24 @@ export const TitleBar = ({
         </span>
       )}
 
-      <div className="window-controls shrink-0 flex ml-auto" aria-label="Window controls">
+      {onToggleComputer && (
+        <button
+          type="button"
+          className={`titlebar-computer w-12 h-full grid place-items-center shrink-0 ml-auto p-0 [border:0] [border-radius:0] cursor-pointer ${computerOpen ? "bg-surface-hover text-foreground" : "bg-transparent text-ink-secondary"}`}
+          aria-label="Computer"
+          aria-expanded={computerOpen}
+          aria-controls={computerOpen ? "computer-panel" : undefined}
+          title="Computer"
+          onClick={onToggleComputer}
+        >
+          <Monitor size={16} aria-hidden="true" />
+        </button>
+      )}
+
+      <div
+        className={`window-controls shrink-0 flex ${onToggleComputer ? "" : "ml-auto"}`}
+        aria-label="Window controls"
+      >
         <button
           aria-label="Minimize window"
           onClick={() => control(window.electronWindow.minimize)}

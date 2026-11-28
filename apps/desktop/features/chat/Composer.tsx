@@ -30,14 +30,11 @@ export const Composer = ({
   sendLabel,
   onSend,
   stop,
-  save,
   model,
   context,
   busy,
   disabled,
   hint,
-  notice,
-  onEdit,
   maxLength = 32000,
   compact = false,
 }: {
@@ -47,14 +44,11 @@ export const Composer = ({
   sendLabel: string;
   onSend: () => void;
   stop?: () => void;
-  save?: { label: string; run: () => void; disabled?: boolean };
   model: ReactNode;
   context: ContextOption[];
   busy: boolean;
   disabled?: boolean;
   hint: string;
-  notice?: string;
-  onEdit?: () => void;
   maxLength?: number;
   compact?: boolean;
 }) => {
@@ -114,7 +108,6 @@ export const Composer = ({
         ],
       });
 
-      onEdit?.();
       setOpen(false);
       setOption(undefined);
       setInput("");
@@ -176,7 +169,6 @@ export const Composer = ({
         placeholder={placeholder}
         onChange={(event) => {
           updateTaskView(id, { draft: event.target.value });
-          onEdit?.();
         }}
         onKeyDown={(event) => {
           if (
@@ -302,16 +294,6 @@ export const Composer = ({
           )}
         </div>
 
-        {save && content && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || !content || tooLong || save.disabled}
-            onClick={save.run}
-          >
-            {save.label}
-          </Button>
-        )}
         <span className="flex-1 min-w-0" />
         {compact ? <div className="composer-model">{model}</div> : model}
         {stop ? (
@@ -347,16 +329,10 @@ export const Composer = ({
         </small>
       )}
 
-      {view.persistenceError ? (
+      {view.persistenceError && (
         <small role="alert" className="failure">
           {view.persistenceError}
         </small>
-      ) : (
-        notice && (
-          <small className="block pt-[5px] text-ink-secondary text-[11px]" role="status">
-            {notice}
-          </small>
-        )
       )}
     </form>
   );

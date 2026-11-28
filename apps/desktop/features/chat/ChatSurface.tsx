@@ -184,7 +184,7 @@ const ConversationSurface = ({
       </div>
       {away && !empty && (
         <Button
-          className="scroll-to-latest z-[2] transform-[translateX(-50%)] [box-shadow:0_3px_12px_var(--shadow)]"
+          className="scroll-to-latest z-[4] transform-[translateX(-50%)] [box-shadow:0_3px_12px_var(--shadow)]"
           size="icon"
           aria-label="Jump to latest"
           title="Jump to latest"
@@ -204,10 +204,12 @@ const ConversationSurface = ({
           <ArrowDown size={19} />
         </Button>
       )}
-      <div className="shrink-0 px-[var(--chat-gutter)] py-0">
-        <div className="chat-actions-content max-w-[var(--chat-reading-width)]">{actions}</div>
-      </div>
       <div className="composer-lane shrink-0" ref={composerLane}>
+        {actions && (
+          <div className="px-[var(--chat-gutter)] py-0">
+            <div className="chat-actions-content max-w-[var(--chat-reading-width)]">{actions}</div>
+          </div>
+        )}
         {composer}
       </div>
     </div>

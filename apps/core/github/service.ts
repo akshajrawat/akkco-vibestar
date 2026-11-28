@@ -494,9 +494,6 @@ export class GitHubService {
     return this.snapshot();
   };
 
-  // Kept for older callers: starting the service never schedules a GitHub read.
-  start = () => {};
-
   close = async () => {
     this.closed = true;
     this.controller.abort();

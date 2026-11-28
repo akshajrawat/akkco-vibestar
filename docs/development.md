@@ -31,7 +31,8 @@ npm run dev
 The launcher builds the Node core and Electron entries, starts Vite on loopback port
 1420 and opens Electron. Renderer changes use HMR. Backend/Electron changes rebuild
 and restart the host after graceful core shutdown. Closing the desktop stops Vite.
-`npm run dev:ui` starts only Vite; the app still needs its preload API for real operations.
+For renderer-only work, `npm exec -- vite --host 127.0.0.1 --port 1420 --strictPort`
+starts Vite without Electron. Operations that use the preload API require Electron.
 
 For manual experiments, choose a separate absolute Linux data directory:
 
@@ -106,9 +107,9 @@ Never commit generated `out/`, coverage, local databases or test evidence.
 linked worktrees and source archives without a Git directory. It preserves an existing
 `core.hooksPath` or ordinary custom hook set. Husky's generated `.husky/_` is ignored.
 
-Pre-commit formats/lints staged files via lint-staged; its default backup and partial
-staging protection remain enabled. Pre-push runs formatting, lint, types, regular
-regressions and security checks. `npm run verify` adds integration and production build.
+Pre-commit formats and lints staged files via lint-staged. Its default backup and partial
+staging protection remain enabled. Pre-push runs `npm run verify`, which checks formatting
+and lint, runs all test suites, and typechecks and builds the app.
 
 See [Husky's documentation](https://typicode.github.io/husky/how-to.html) and
 [lint-staged's documentation](https://github.com/lint-staged/lint-staged#readme)

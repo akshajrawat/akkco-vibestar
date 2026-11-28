@@ -11,6 +11,8 @@ export interface ProcessInputProtocol {
   start: (send: (message: unknown) => void, end: () => void) => void;
   validate?: (line: string) => void;
   receive: (line: string) => void;
+  cancel?: (send: (message: unknown) => void) => void;
+  receiveCancellation?: (line: string, send: (message: unknown) => void) => void;
   validateExit?: (output: ProcessOutput) => void;
 }
 
@@ -48,7 +50,7 @@ export const redact = (text: string) => {
   }
 
   return text.replace(
-    /(\b(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|cookie|set-cookie)[\\\s"':=]+(?:bearer[\\\s]+)?)[^\s"',;}]+|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{12,}|ya29\.[A-Za-z0-9_.-]+)/gi,
+    /(\b(?:(?:proxy-)?authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|oauth[_-]?token|cookie|set-cookie)[\\\s"':=]+(?:(?:bearer|basic|token|digest)[\\\s]+)?)[^\s"',;}]+|\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{12,}|ya29\.[A-Za-z0-9_.-]+)/gi,
     "$1[REDACTED]",
   );
 };
@@ -158,6 +160,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     let settled = false;
     let aborted: Error | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
     let stdout = "";
     let stderr = "";
     const truncated = { stdout: false, stderr: false };
@@ -176,23 +179,30 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     const cap = 32 * 1024 * 1024;
     const outputBudget = new OutputBudget();
 
-    const line = (stream: "stdout" | "stderr", value: string) => {
-      if (aborted) {
-        return;
-      }
+    const awaitingCancellation = () => graceTimer !== undefined && killTimer === undefined;
 
+    const send = (message: unknown) => child.stdin.write(JSON.stringify(message) + "\n");
+
+    const line = (stream: "stdout" | "stderr", value: string) => {
       try {
         const safe = redact(value);
-        if (stream === "stdout") {
-          r.inputProtocol?.validate?.(safe);
+        if (!aborted) {
+          if (stream === "stdout") {
+            r.inputProtocol?.validate?.(safe);
+          }
+
+          r.onLine?.(stream, safe);
         }
 
-        r.onLine?.(stream, safe);
         if (stream === "stdout") {
-          r.inputProtocol?.receive(safe);
+          if (!aborted) {
+            r.inputProtocol?.receive(safe);
+          } else if (awaitingCancellation()) {
+            r.inputProtocol?.receiveCancellation?.(safe, send);
+          }
         }
       } catch (e) {
-        aborted = e instanceof Error ? e : new Error(String(e));
+        aborted ||= e instanceof Error ? e : new Error(String(e));
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -200,14 +210,14 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     };
 
     const consume = (stream: "stdout" | "stderr", chunk: Buffer) => {
-      if (aborted) {
+      if (aborted && (stream !== "stdout" || !awaitingCancellation())) {
         return;
       }
 
       try {
         outputBudget.consume(chunk);
       } catch (error) {
-        aborted = error as Error;
+        aborted ||= error as Error;
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -222,7 +232,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
             ? integrityDecoder.decode(chunk, { stream: true })
             : decoders[stream].write(chunk);
       } catch {
-        aborted = new AdeError(
+        aborted ||= new AdeError(
           "integrity_encoding",
           "Integrity identifiers contain unsupported non-UTF-8 bytes",
         );
@@ -247,7 +257,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       }
 
       if (r.rawStdoutForIntegrity && (truncated.stdout || integrityBytes > cap)) {
-        aborted = new AdeError("output_limit", "Integrity output exceeded the capture limit");
+        aborted ||= new AdeError("output_limit", "Integrity output exceeded the capture limit");
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -261,7 +271,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       buffers[stream] += text;
       if (buffers[stream].length > 2 * 1024 * 1024) {
-        aborted = new AdeError("output_limit", "Provider emitted a line larger than 2 MiB");
+        aborted ||= new AdeError("output_limit", "Provider emitted a line larger than 2 MiB");
         if (child.pid) {
           terminateGroup(child.pid, "SIGKILL");
         }
@@ -271,7 +281,7 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
 
       let i;
       while (
-        !aborted &&
+        (!aborted || awaitingCancellation()) &&
         (i = r.progressLines ? buffers[stream].search(/[\r\n]/) : buffers[stream].indexOf("\n")) >=
           0
       ) {
@@ -281,11 +291,11 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     };
 
     const interrupt = (error: Error) => {
-      if (settled || aborted) {
+      if (settled || killTimer) {
         return;
       }
 
-      aborted = error;
+      aborted ||= error;
       if (child.pid) {
         terminateGroup(child.pid);
 
@@ -299,7 +309,43 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       }
     };
 
-    const abort = () => interrupt(new AdeError("cancelled", "Run cancelled"));
+    const abort = () => {
+      if (settled || aborted) {
+        return;
+      }
+
+      let cancelSent = false;
+      if (r.inputProtocol?.cancel && child.pid) {
+        try {
+          r.inputProtocol.cancel((message) => {
+            try {
+              send(message);
+              cancelSent = true;
+            } catch {
+              // Ignore stdin write error on abort
+            }
+          });
+        } catch {
+          // Ignore protocol cancel failure on abort
+        }
+      }
+
+      const cancelError = new AdeError("cancelled", "Run cancelled");
+      if (cancelSent && child.pid) {
+        aborted = cancelError;
+
+        graceTimer = setTimeout(() => {
+          if (!settled && child.pid) {
+            interrupt(cancelError);
+          }
+        }, 500);
+
+        graceTimer.unref();
+      } else {
+        interrupt(cancelError);
+      }
+    };
+
     r.signal?.addEventListener("abort", abort, { once: true });
 
     const timeout = r.deadline === undefined ? (r.timeoutMs ?? 120000) : r.deadline - Date.now();
@@ -322,6 +368,10 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
       clearTimeout(timer);
       if (killTimer) {
         clearTimeout(killTimer);
+      }
+
+      if (graceTimer) {
+        clearTimeout(graceTimer);
       }
 
       r.signal?.removeEventListener("abort", abort);
@@ -356,7 +406,11 @@ export const execute = async (r: ProcessRequest): Promise<ProcessOutput> => {
     if (r.inputProtocol) {
       try {
         r.inputProtocol.start(
-          (message) => child.stdin.write(JSON.stringify(message) + "\n"),
+          (message) => {
+            if (!aborted) {
+              send(message);
+            }
+          },
           () => child.stdin.end(),
         );
       } catch (error) {

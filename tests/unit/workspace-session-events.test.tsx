@@ -41,3 +41,34 @@ it("refreshes active session output on scoped utility events and releases its su
   await act(async () => {});
   expect(unsubscribe).toHaveBeenCalledOnce();
 });
+
+it("keeps the helper available on snapshot application errors and reconnects after transport errors", async () => {
+  const snapshot = { capabilities: { shared_computer: 1 } };
+
+  const rpc = vi
+    .fn()
+    .mockResolvedValueOnce(snapshot)
+    .mockRejectedValueOnce({ kind: "operation_failed", message: "Database error" })
+    .mockRejectedValueOnce({ kind: "helper_disconnected", message: "Helper disconnected" })
+    .mockResolvedValueOnce(snapshot);
+
+  Object.defineProperty(window, "vibestar", {
+    configurable: true,
+    value: { rpc, subscribe: () => () => {} },
+  });
+
+  const hook = renderHook(() => useWorkspace());
+  await act(async () => {});
+
+  await act(hook.result.current.refresh);
+  expect(hook.result.current.snapshot).toBe(snapshot);
+  expect(hook.result.current.error).toBe("Database error");
+  expect(hook.result.current.runtimeUnavailable).toBe(false);
+
+  await act(hook.result.current.refresh);
+  expect(hook.result.current.runtimeUnavailable).toBe(true);
+
+  await act(hook.result.current.refresh);
+  expect(hook.result.current.runtimeUnavailable).toBe(false);
+  expect(hook.result.current.error).toBe("");
+});
