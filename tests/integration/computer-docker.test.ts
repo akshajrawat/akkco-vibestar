@@ -314,17 +314,21 @@ it.skipIf(process.env.VIBESTAR_DOCKER_TEST !== "1")(
         .poll(() => docker("exec", name, "xdotool", "getactivewindow", "getwindowname"))
         .toContain("127.0.0.1");
 
+      const browserState = () =>
+        docker(
+          "exec",
+          name,
+          "sh",
+          "-c",
+          'status=0; pgrep -x chromium >/dev/null || status=$?; case "$status" in 0) printf open ;; 1) printf closed ;; *) exit "$status" ;; esac',
+        );
+
       expect(await call("computer.desktop.frame", { controller_id })).toMatch(/^\/9j\//);
+      expect(await browserState()).toBe("open");
       await input({ type: "key", keys: "ctrl+shift+w" });
       await call("computer.desktop.release", { controller_id });
 
-      await expect
-        .poll(() =>
-          docker("exec", name, "curl", "-fsS", "http://127.0.0.1:9222/json/version").catch(
-            () => "",
-          ),
-        )
-        .toBe("");
+      await expect.poll(browserState).toBe("closed");
 
       await send(sessions[0], "open the smoke page in Chromium after closing it");
 

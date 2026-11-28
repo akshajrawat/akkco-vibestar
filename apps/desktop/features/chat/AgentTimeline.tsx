@@ -9,6 +9,9 @@ import { responseSummary } from "./output/response";
 import { WorkLog } from "./WorkLog";
 import { UserMessageBody } from "./UserMessageBody";
 
+const isReasoning = (data: Record<string, unknown>) =>
+  ["reasoning", "analysis"].includes(String(data.tool));
+
 export const AgentTimeline = ({
   events,
   runs,
@@ -18,7 +21,23 @@ export const AgentTimeline = ({
   runs: Run[];
   messages?: Message[];
 }) => {
-  const entries = useMemo(() => agentEntries(events), [events]);
+  const entries = useMemo(
+    () =>
+      agentEntries(events).filter(({ event, data }) => {
+        if (["run.failed", "run.cancelled"].includes(event.kind)) {
+          return false;
+        }
+
+        return (
+          event.kind === "message" ||
+          event.stream === "stderr" ||
+          typeof data.unparsed === "string" ||
+          !isReasoning(data) ||
+          String(data.text || "").trim().length > 0
+        );
+      }),
+    [events],
+  );
 
   const runById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs]);
 
@@ -86,11 +105,8 @@ export const AgentTimeline = ({
       );
     }
 
-    if (["reasoning", "analysis"].includes(String(data.tool))) {
+    if (isReasoning(data)) {
       const text = String(data.text || "").trim();
-      if (!text) {
-        return null;
-      }
 
       return (
         <details className="reasoning-event" key={row.key}>
@@ -317,7 +333,7 @@ export const AgentTimeline = ({
         : undefined;
 
     const activity = local.filter((row) => {
-      if (row === finalMessage || ["run.failed", "run.cancelled"].includes(row.event.kind)) {
+      if (row === finalMessage) {
         return false;
       }
 

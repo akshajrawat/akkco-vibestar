@@ -12,7 +12,8 @@ sequenceDiagram
     Chat->>Codex: Start thread with message
     Codex-->>Chat: Reply and tool activity
     Note over Chat: Tool activity shows only messages with text
-    Note over Chat: Consecutive reasoning chunks appear in one collapsible activity entry
+    Note over Chat: Reasoning stays in one disclosure across invisible usage updates<br/>Visible tool activity starts a new reasoning group
+    Note over Chat: A streamed reply stays outside the collapsed Work Log when an empty thought arrives
     User->>Chat: Switch to Antigravity and send
     Chat->>AGY: Negotiate ACP v1 initialize and create session
     AGY-->>Chat: Return session ID, set scoped mode and config
@@ -98,6 +99,7 @@ sequenceDiagram
     else Resume outcome is uncertain or a saved print-mode thread is rejected
         Chat-->>User: Show the failure and keep the saved thread
     end
+    Note over Chat: A missing native thread shows /clear guidance even after a connection interruption
     User->>Chat: Send /clear
     alt Viber has an active turn
         Chat-->>User: Wait for the turn to finish

@@ -45,7 +45,7 @@ class SessionProvider extends CodexProvider {
         this.mode === "wait"
           ? "setInterval(()=>{},1000)"
           : this.mode === "failure"
-            ? "process.exit(2)"
+            ? "process.stderr.write('Provider diagnostic'); process.exit(2)"
             : `
         ${request.access === "read-only" ? "" : "require('node:fs').writeFileSync('answer.txt','Session file');"}
         console.log(JSON.stringify({type:'thread.started',thread_id:${JSON.stringify(request.conversation?.threadId || request.runId)}}));
@@ -522,6 +522,11 @@ it("enforces shared execution capacity, serializes one session, supports cancell
   await send(two);
   const failed = await settled(two, "failed");
   expect(failed.messages).toHaveLength(1);
+
+  expect(failed.messages[0].error).toMatch(
+    /exited 2: Provider diagnostic\.\s+Retry after resolving the provider error\./,
+  );
+
   expect(failed.runs[0].status).toBe("failed");
   expect(failed.events.some((event) => event.kind === "run.failed")).toBe(true);
 

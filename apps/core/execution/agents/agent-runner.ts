@@ -801,7 +801,7 @@ Use a free port and bind to 127.0.0.1. Ordinary background jobs (including nohup
           "provider_failed",
           privateContext
             ? `${provider.name} failed to complete this turn (exit ${code}).`
-            : `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Inspect technical details and logs, then retry after resolving the provider error.`,
+            : `${provider.name} / ${purpose} exited ${code}: ${JSON.stringify(failure) || output.stderr.slice(-6000)}. Retry after resolving the provider error.`,
           { provider: provider.name, stage: 0, code },
         );
       }

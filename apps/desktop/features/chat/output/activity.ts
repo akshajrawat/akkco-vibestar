@@ -49,17 +49,8 @@ export const agentEntries = (events: AgentEvent[]) => {
       data.call_id == null &&
       !data.tool;
 
-    if (thoughtDelta) {
-      if (thought?.runId !== event.run_id) {
-        thought = { runId: event.run_id, key: `thought:${event.id}` };
-      }
-
-      data.tool = "reasoning";
-    } else {
-      thought = undefined;
-    }
-
     if (
+      !thoughtDelta &&
       event.kind === "analysis.status" &&
       ![
         data.text,
@@ -72,6 +63,16 @@ export const agentEntries = (events: AgentEvent[]) => {
       ].some((value) => typeof value === "string" && value.trim())
     ) {
       continue;
+    }
+
+    if (thoughtDelta) {
+      if (thought?.runId !== event.run_id) {
+        thought = { runId: event.run_id, key: `thought:${event.id}` };
+      }
+
+      data.tool = "reasoning";
+    } else {
+      thought = undefined;
     }
 
     const call = thought?.key ?? (data.call_id != null ? `${event.run_id}/${data.call_id}` : null);

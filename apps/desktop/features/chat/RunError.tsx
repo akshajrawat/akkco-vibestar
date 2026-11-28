@@ -31,15 +31,18 @@ const conversationError = (error: string) => {
     return "AI context couldn't be resumed. Send /clear to start a new thread.";
   }
 
-  return "The response couldn't finish.";
+  return undefined;
 };
 
 export const RunError = ({ error, run }: { error: string; run?: Run }) => {
-  const cancelled =
-    run?.status === "cancelled" || (run?.stage !== 4 && /cancelled|stopped|interrupt/i.test(error));
-
   const reason = errorMessage(error).trim();
-  const title = cancelled ? "Response stopped." : conversationError(reason);
+  const guidance = conversationError(reason);
+
+  const cancelled =
+    run?.status === "cancelled" ||
+    (!guidance && run?.stage !== 4 && /cancelled|stopped|interrupt/i.test(reason));
+
+  const title = cancelled ? "Response stopped." : (guidance ?? "The response couldn't finish.");
 
   return (
     <section

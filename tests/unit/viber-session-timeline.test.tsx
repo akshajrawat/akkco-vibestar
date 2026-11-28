@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { AgentTimeline } from "../../apps/desktop/features/chat/AgentTimeline";
 import type { AgentEvent, Run } from "../../apps/desktop/lib/types";
@@ -112,4 +112,32 @@ it("hides empty message events between tools and shows text when a stream has co
 
   expect(screen.getByText("Reply")).toBeTruthy();
   expect(view.container.querySelectorAll(".message-event")).toHaveLength(1);
+});
+
+it("keeps the streamed reply outside a collapsed Work Log when an empty thought arrives", () => {
+  const reply: AgentEvent = {
+    ...event,
+    id: 2,
+    kind: "message",
+    data: JSON.stringify({ text: "Streamed reply" }),
+  };
+
+  const view = render(<AgentTimeline runs={[run]} events={[event, reply]} />);
+  const workLog = view.container.querySelector<HTMLDetailsElement>(".work-log")!;
+  fireEvent.click(workLog.querySelector("summary")!);
+  expect(workLog.open).toBe(false);
+
+  view.rerender(
+    <AgentTimeline
+      runs={[run]}
+      events={[
+        event,
+        reply,
+        { ...event, id: 3, kind: "analysis.status", data: JSON.stringify({ text_delta: " " }) },
+      ]}
+    />,
+  );
+
+  expect(workLog.open).toBe(false);
+  expect(screen.getByText("Streamed reply").closest(".work-log")).toBeNull();
 });

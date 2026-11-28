@@ -233,8 +233,19 @@ it("keeps the current run error visible and updates when the error changes", () 
 });
 
 it("guides users to /clear when native thread recovery fails", () => {
-  render(<RunError error="Native thread not found" />);
+  const error = "Native thread not found after an interrupted connection";
+  const ui = render(<RunError error={error} run={{ ...run, status: "failed" }} />);
   expect(screen.getByText(/send \/clear to start a new thread/i)).toBeTruthy();
+  expect(screen.getByLabelText("Run failure")).toBeTruthy();
+
+  ui.rerender(<RunError error={error} run={{ ...run, status: "cancelled" }} />);
+  expect(screen.getByText("Response stopped.")).toBeTruthy();
+  expect(screen.getByLabelText("Cancelled run")).toBeTruthy();
+});
+
+it("recognizes interruption text when there is no specific recovery guidance", () => {
+  render(<RunError error="The response was interrupted" />);
+  expect(screen.getByText("Response stopped.")).toBeTruthy();
 });
 
 it("keeps scroll position while reading older messages and jumps to the latest on request", () => {
@@ -415,16 +426,17 @@ it("collapses completed work while leaving the answer visible and omits protocol
   expect(log.querySelector(".tool-event")?.textContent).toContain("node --test");
 });
 
-it("groups streamed reasoning into readable disclosures around tool activity", () => {
+it("keeps streamed reasoning together across usage updates and splits it around tool activity", () => {
   const ui = render(
     <AgentTimeline
       runs={[run]}
       events={[
         event(1, "analysis.status", { text_delta: "The user" }),
-        event(2, "analysis.status", { text_delta: " " }),
-        event(3, "analysis.status", { text_delta: "wants to open the desktop." }),
-        event(4, "command.finished", { command: "ls", exit_code: 0 }),
-        event(5, "analysis.status", { text_delta: "The workspace is ready." }),
+        event(2, "analysis.status", { usage: { sessionUpdate: "usage_update", outputTokens: 7 } }),
+        event(3, "analysis.status", { text_delta: " " }),
+        event(4, "analysis.status", { text_delta: "wants to open the desktop." }),
+        event(5, "command.finished", { command: "ls", exit_code: 0 }),
+        event(6, "analysis.status", { text_delta: "The workspace is ready." }),
       ]}
     />,
   );
