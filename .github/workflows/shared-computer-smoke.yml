@@ -3,23 +3,23 @@ name: Shared computer smoke test
 on:
   pull_request:
     paths:
-      - 'apps/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'vitest.config.ts'
-      - '.github/workflows/shared-computer-smoke.yml'
+      - "apps/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vitest.config.ts"
+      - ".github/workflows/shared-computer-smoke.yml"
   push:
     branches: [main]
     paths:
-      - 'apps/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'vitest.config.ts'
-      - '.github/workflows/shared-computer-smoke.yml'
+      - "apps/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vitest.config.ts"
+      - ".github/workflows/shared-computer-smoke.yml"
   workflow_dispatch:
 
 permissions:
