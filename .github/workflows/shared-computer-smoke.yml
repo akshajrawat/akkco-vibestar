@@ -1,0 +1,75 @@
+name: Shared computer smoke test
+
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vitest.config.ts'
+      - '.github/workflows/shared-computer-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vitest.config.ts'
+      - '.github/workflows/shared-computer-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HUSKY: "0"
+
+jobs:
+  docker-smoke:
+    name: Docker and Chromium smoke test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check whether the smoke test is available
+        id: smoke
+        shell: bash
+        run: |
+          if [[ -f tests/integration/computer-docker.test.ts ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docker smoke test not run: its test file has not landed on this revision."
+            echo "Docker smoke test not run: the test file is missing on this revision (introduced by PR #9)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Set up Node.js
+        if: steps.smoke.outputs.available == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22.x
+          cache: npm
+      - name: Verify Docker and install test dependencies
+        if: steps.smoke.outputs.available == 'true'
+        run: |
+          docker --host unix:///var/run/docker.sock info
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap build-essential python3
+      - name: Install dependencies
+        if: steps.smoke.outputs.available == 'true'
+        run: npm ci
+      - name: Run the real shared computer smoke test
+        if: steps.smoke.outputs.available == 'true'
+        env:
+          VIBESTAR_DOCKER_TEST: "1"
+        run: npm run test:integration -- tests/integration/computer-docker.test.ts
