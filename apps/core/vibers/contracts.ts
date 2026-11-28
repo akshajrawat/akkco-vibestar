@@ -1,3 +1,4 @@
+import type { ScheduleClarification } from "./schedule-intent";
 import { z } from "zod";
 
 import { AgentExecutionSchema, WorkspaceAccessSchema } from "../execution/contracts";
@@ -53,6 +54,8 @@ export const AgentProfileSchema = z
   });
 
 export type AgentProfile = z.infer<typeof AgentProfileSchema>;
+
+export const viberGreeting = (name: string) => `Hello, I’m ${name}. What can I help you with?`;
 
 export const ConversationSelectionSchema = AgentExecutionSchema.pick({
   provider: true,
@@ -112,6 +115,7 @@ export const ViberSessionSendSchema = ViberSessionScopeSchema.extend({
   new_thread: z.literal(true).optional(),
   acknowledge_uncertain: z.literal(true).optional(),
   continue_message_id: identity.optional(),
+  shared_computer: z.literal(true).optional(),
 }).strict();
 
 export const continueLabel = "Continue where you left off.";
@@ -124,6 +128,7 @@ export const ViberContinuationPrepareSchema = ViberSessionScopeSchema.extend({
 export const ViberThreadSchema = z.object({
   thread_id: z.string().min(1).max(500),
   provider: AgentExecutionSchema.shape.provider,
+  protocol: z.enum(["acp", "print"]).optional(),
   model: z.string().default(""),
   configuration: z.string(),
   status: z.enum(["ready", "uncertain"]),
@@ -170,6 +175,7 @@ export const ViberMessageSchema = z.object({
   created_at: z.string(),
   error: z.string().nullable(),
   effects: z.enum(["none", "possible"]).default("possible"),
+  local_schedule: z.preprocess((value) => value === 1 ? true : value ?? undefined, z.literal(true).optional()),
   continue_message_id: z.preprocess((value) => value ?? undefined, identity.optional()),
 });
 
@@ -185,12 +191,14 @@ export interface ViberMessagePreview {
 export interface ViberNavigation {
   profiles: AgentProfile[];
   previews: ViberMessagePreview[];
+  created_at_by_profile?: Record<string, string>;
 }
 
 export interface ViberSessionDetail {
   session: ViberSession;
   messages: ViberMessage[];
   recovery_required: boolean;
+  schedule_clarification?: ScheduleClarification;
 }
 
 export const agentPrompt = (instructions: unknown, inputs: unknown) =>

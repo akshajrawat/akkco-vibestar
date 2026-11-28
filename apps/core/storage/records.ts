@@ -50,7 +50,7 @@ export class PersistedRecords {
       return;
     }
 
-    // Source bytes remain in their original record and pre-migration backup.
+    // Source bytes remain in their original record.
     // Diagnostics never copy potentially sensitive payloads into UI or errors.
     this.db.run(
       "INSERT INTO persistence_diagnostics(table_name,record_id,column_name,source_hash,first_seen,last_seen) VALUES(?,?,?,?,?,?) ON CONFLICT(table_name,record_id,column_name) DO UPDATE SET source_hash=excluded.source_hash,last_seen=excluded.last_seen,resolved_at=NULL",

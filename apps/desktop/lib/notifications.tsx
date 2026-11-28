@@ -1,11 +1,11 @@
 import toast from "react-hot-toast";
-import { CircleCheck, CircleAlert, TriangleAlert, Info, LoaderCircle, X } from "lucide-react";
+import { CircleCheck, CircleAlert, LoaderCircle, X } from "lucide-react";
 
 import type { Settings } from "./types";
 import { errorMessage } from "./api";
 import { Button } from "../components/ui/button";
 
-type Kind = "success" | "error" | "warning" | "information" | "progress";
+type Kind = "success" | "error" | "progress";
 
 type Options = {
   id?: string;
@@ -50,8 +50,6 @@ const notify = (kind: Kind, message: string, options: Options = {}) => {
   const Icon = {
     success: CircleCheck,
     error: CircleAlert,
-    warning: TriangleAlert,
-    information: Info,
     progress: LoaderCircle,
   }[kind];
 
@@ -110,8 +108,6 @@ const notify = (kind: Kind, message: string, options: Options = {}) => {
 export const notifications = {
   success: (message: string, options?: Options) => notify("success", message, options),
   error: (message: string, options?: Options) => notify("error", message, options),
-  warning: (message: string, options?: Options) => notify("warning", message, options),
-  information: (message: string, options?: Options) => notify("information", message, options),
   progress: (message: string, options?: Options) => notify("progress", message, options),
   dismiss: (id: string) => {
     toast.dismiss(id);

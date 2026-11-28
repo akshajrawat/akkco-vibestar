@@ -34,7 +34,11 @@ export const SettingsNavigation = ({
   const visible = groups.map((group) => ({
     ...group,
     items: group.items.filter((item) => {
-      const labels = item.name === "General" ? "Enable Memory" : "";
+      const labels =
+        item.name === "General"
+          ? "Viber Workspaces Permission Always ask Full permission Allow Vibers to talk with each other Enable Memory"
+          : "";
+
       return `${group.label} ${item.name} ${labels}`
         .toLowerCase()
         .includes(query.trim().toLowerCase());

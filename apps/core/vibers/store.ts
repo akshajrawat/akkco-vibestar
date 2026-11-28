@@ -5,7 +5,6 @@ import { AdeError, now, type WorkspaceAssignment } from "../domain";
 import type { Database } from "../storage/database";
 import { redact } from "../execution/runtime/process";
 import { ConversationOutputSchema, type AgentExecution } from "../execution/contracts";
-import type { ViberContinuationPrepareSchema } from "./contracts";
 import {
   AgentProfileSchema,
   ConversationSelectionSchema,
@@ -20,6 +19,7 @@ import {
   agentPrompt,
   continueLabel,
   type AgentProfile,
+  type ViberContinuationPrepareSchema,
   type ViberMessagePreview,
   type ViberSessionDetail,
   type ViberSession,
@@ -400,35 +400,17 @@ export class ViberSessionStore {
 
   messagePreviews = () =>
     this.db.all<ViberMessagePreview>(`
-      SELECT s.profile_id, substr(m.content, 1, 280) AS content, m.created_at
-      FROM viber_sessions s
+      SELECT p.id AS profile_id, substr(m.content, 1, 280) AS content, m.created_at
+      FROM agent_profiles p
       JOIN viber_messages m ON m.id = (
-        SELECT id FROM viber_messages
-        WHERE session_id = s.id
-        ORDER BY created_at DESC, rowid DESC
+        SELECT messages.id FROM viber_sessions sessions
+        JOIN viber_messages messages ON messages.session_id = sessions.id
+        WHERE sessions.profile_id = p.id
+        ORDER BY messages.created_at DESC, messages.rowid DESC
         LIMIT 1
       )
-      WHERE s.profile_id NOT IN (SELECT profile_id FROM retired_viber_profiles)
+      WHERE p.id NOT IN (SELECT profile_id FROM retired_viber_profiles)
     `);
-
-  continuousSession = (profileId: string, repositoryId?: string) => {
-    identity.parse(profileId);
-
-    const existing = this.db.all<{ id: string }>(
-      "SELECT id FROM viber_sessions WHERE profile_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 1",
-      profileId,
-    )[0];
-
-    if (existing) {
-      return this.session(existing.id, profileId);
-    }
-
-    return this.create({
-      request_id: randomUUID(),
-      profile_id: profileId,
-      repository_id: repositoryId,
-    });
-  };
 
   detail = (sessionId: string, profileId: string): ViberSessionDetail => {
     const session = this.session(sessionId, profileId);
@@ -438,7 +420,7 @@ export class ViberSessionStore {
       recovery_required: this.requiresRecovery(sessionId, profileId),
       messages: this.db
         .all(
-          "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id FROM viber_messages WHERE session_id=? ORDER BY rowid",
+          "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id,CASE WHEN json_extract(configuration,'$.kind') IN ('pr_watch','schedule_chat','schedule_notification') THEN 1 END AS local_schedule FROM viber_messages WHERE session_id=? ORDER BY rowid",
           sessionId,
         )
         .map((row) => ViberMessageSchema.parse(row)),
@@ -449,7 +431,7 @@ export class ViberSessionStore {
     const session = this.session(sessionId, profileId);
 
     const last = this.db.all<{ status: string; effects: string }>(
-      "SELECT status,effects FROM viber_messages WHERE session_id=? AND role='user' AND coalesce(json_extract(configuration,'$.kind'),'')<>'pr_watch' ORDER BY rowid DESC LIMIT 1",
+      "SELECT status,effects FROM viber_messages WHERE session_id=? AND role='user' AND coalesce(json_extract(configuration,'$.kind'),'') NOT IN ('pr_watch','schedule_chat','schedule_notification') ORDER BY rowid DESC LIMIT 1",
       sessionId,
     )[0];
 
@@ -476,8 +458,9 @@ export class ViberSessionStore {
       role: string;
       content: string;
       status: string;
+      local_schedule?: number;
     }>(
-      "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id FROM viber_messages WHERE id=?",
+      "SELECT *,json_extract(configuration,'$.continue_message_id') AS continue_message_id,CASE WHEN json_extract(configuration,'$.kind') IN ('pr_watch','schedule_chat','schedule_notification') THEN 1 END AS local_schedule FROM viber_messages WHERE id=?",
       input.request_id,
     )[0];
 
@@ -498,20 +481,14 @@ export class ViberSessionStore {
     }
 
     if (
-      row.configuration !== null &&
+      row.local_schedule &&
       row.session_id === input.session_id &&
       row.role === "user" &&
       row.status === "completed" &&
+      (row.content === input.content || row.content === redact(input.content)) &&
       !input.continue_message_id
     ) {
-      try {
-        const config = JSON.parse(row.configuration) as Record<string, unknown>;
-        if (config?.kind === "pr_watch") {
-          return ViberMessageSchema.parse(row);
-        }
-      } catch {
-        /* Not JSON config */
-      }
+      return ViberMessageSchema.parse(row);
     }
 
     const snapshot = row.configuration
@@ -535,7 +512,7 @@ export class ViberSessionStore {
     return ViberMessageSchema.parse(row);
   };
 
-  private writableSession = (sessionId: string, profileId: string) => {
+  writableSession = (sessionId: string, profileId: string) => {
     const session = this.session(sessionId, profileId);
     if (
       this.db.all("SELECT profile_id FROM retired_viber_profiles WHERE profile_id=?", profileId)
@@ -608,7 +585,7 @@ export class ViberSessionStore {
               json_extract(m.configuration,'$.continue_message_id') AS continuation
        FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id
        WHERE m.session_id=? AND m.rowid>? AND m.id<>? AND m.status IN ('completed','cancelled','interrupted')
-         AND coalesce(json_extract(m.configuration,'$.kind'),'')<>'pr_watch'
+         AND coalesce(json_extract(m.configuration,'$.kind'),'') NOT IN ('pr_watch','schedule_chat','schedule_notification')
          AND (m.role<>'assistant' OR NOT EXISTS (SELECT 1 FROM viber_memory_private_runs p WHERE p.run_id=m.run_id))
          AND (? IS NULL OR r.conversation_id IS NULL OR r.conversation_id<>? OR r.provider<>?)
        ORDER BY m.rowid`,
@@ -658,7 +635,7 @@ export class ViberSessionStore {
       conversation_id: string | null;
       run_provider: string | null;
     }>(
-      "SELECT m.id,m.status,m.content,m.configuration,r.conversation_id,r.provider AS run_provider FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id WHERE m.session_id=? AND m.role='user' AND coalesce(json_extract(m.configuration,'$.kind'),'')<>'pr_watch' ORDER BY m.rowid DESC LIMIT 1",
+      "SELECT m.id,m.status,m.content,m.configuration,r.conversation_id,r.provider AS run_provider FROM viber_messages m LEFT JOIN utility_runs r ON r.id=m.run_id WHERE m.session_id=? AND m.role='user' AND coalesce(json_extract(m.configuration,'$.kind'),'') NOT IN ('pr_watch','schedule_chat','schedule_notification') ORDER BY m.rowid DESC LIMIT 1",
       session.id,
     )[0];
 
@@ -1090,6 +1067,8 @@ export class ViberSessionStore {
         "The native thread changed. Send /clear to start a new thread.",
       );
     }
+
+    return thread;
   };
 
   recordThread = (
@@ -1098,6 +1077,7 @@ export class ViberSessionStore {
     threadId: string,
     model: string,
     injectedThrough?: number,
+    protocol?: "acp" | "print",
   ) => {
     const row = this.db.all<{
       configuration: string;
@@ -1149,6 +1129,7 @@ export class ViberSessionStore {
     const thread = ViberThreadSchema.parse({
       thread_id: threadId,
       provider: snapshot.execution.provider,
+      protocol,
       configuration: threadConfiguration(snapshot.execution, snapshot.profile.instructions),
       status: "uncertain",
       model,

@@ -24,7 +24,7 @@ export const systemMethods = [
 
 /** Validates and dispatches system requests through their existing domain services. */
 export const callSystem = async (
-  services: Pick<RpcServices, "engine" | "auth">,
+  services: Pick<RpcServices, "engine" | "auth" | "github">,
   method: string,
   input: unknown,
 ) => {
@@ -53,6 +53,7 @@ export const callSystem = async (
         capabilities: {
           viber_conversations: 1,
           viber_sessions: 3,
+          shared_computer: 1,
         },
         execution_environment: {
           distro: process.env.WSL_DISTRO_NAME || "Linux",
@@ -97,12 +98,27 @@ export const callSystem = async (
       return after;
     }
 
-    case "providers.detect":
-      return e.providers();
+    case "providers.detect": {
+      const [providers, github] = await Promise.all([
+        e.providers(),
+        services.github.client.detect(),
+      ]);
+      return [...providers, {
+        provider: "github",
+        installed: github.installed,
+        connected: github.connected,
+        accountLabel: github.username ?? undefined,
+        version: github.version,
+        error: github.error,
+        models: [],
+        efforts: [],
+        capabilities: ["Read-only PR checks"],
+      }];
+    }
 
     case "auth.connect":
       return services.auth.connect(
-        z.object({ provider: z.enum(["codex", "antigravity"]) }).parse(input).provider,
+        z.object({ provider: z.enum(["codex", "antigravity", "github"]) }).parse(input).provider,
       );
 
     case "auth.input": {

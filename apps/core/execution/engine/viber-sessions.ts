@@ -5,11 +5,12 @@ import type { AgentRunner } from "../agents/agent-runner";
 import type { EngineScheduling } from "./scheduling";
 import type { ExecutionState } from "./state";
 import { ViberSessionStore } from "../../vibers/store";
-import type { ViberContinuationPrepareSchema } from "../../vibers/contracts";
-import { ViberSessionSendSchema } from "../../vibers/contracts";
+import {
+  ViberSessionSendSchema,
+  type ViberContinuationPrepareSchema,
+} from "../../vibers/contracts";
 import { prepareManagedWorkspace } from "../../workspace/managed";
 import { AdeError } from "../../domain";
-import { parseWatchCommand } from "../../github/contracts";
 
 /** Explicit turns use the same foreground admission, cancellation and runner as other executions. */
 export class ViberSessions {
@@ -18,7 +19,7 @@ export class ViberSessions {
   constructor(
     private readonly host: Pick<
       Engine,
-      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory" | "prWatches"
+      "db" | "root" | "git" | "changed" | "assertAvailable" | "isActive" | "memory" | "computers" | "schedules"
     >,
     private readonly state: ExecutionState,
     private readonly runner: AgentRunner,
@@ -111,7 +112,7 @@ export class ViberSessions {
     return this.detail(input.session_id, input.profile_id);
   };
 
-  send = async (raw: z.input<typeof ViberSessionSendSchema>) => {
+  send = (raw: z.input<typeof ViberSessionSendSchema>) => {
     const input = ViberSessionSendSchema.parse(raw);
     this.host.assertAvailable();
 
@@ -134,25 +135,18 @@ export class ViberSessions {
       return cleared;
     }
 
-    const watchCommand = !input.continue_message_id ? parseWatchCommand(input.content) : null;
-    if (watchCommand) {
-      if (this.host.isActive(key)) {
-        throw new AdeError(
-          "busy",
-          "Wait for this Viber session to finish before sending a watch command.",
-        );
-      }
-
-      return await this.host.prWatches.handleChatCommand(
-        input.session_id,
-        input.profile_id,
-        input.request_id,
-        input.content,
-        watchCommand,
-      );
+    if (
+      this.host.schedules.handleChat(input, () => {
+        this.store.writableSession(input.session_id, input.profile_id);
+      })
+    ) {
+      return this.store.previous(input)!;
     }
 
     this.operations.assertExecutionSlot(key);
+
+    const shareWorkspace =
+      input.shared_computer && this.host.db.settings().allow_viber_communication;
 
     const snapshot = this.store.capture(input);
 
@@ -187,14 +181,12 @@ export class ViberSessions {
 
           signal.throwIfAborted();
 
-          const output = await this.runner.runConfigured(
-            { id: input.session_id },
-            signal,
-            snapshot.execution,
-            {
+          const run = (sharedComputer?: { files: string; socket?: string }) =>
+            this.runner.runConfigured({ id: input.session_id }, signal, snapshot.execution, {
               prompt: snapshot.prompt,
               purpose: `${snapshot.profile.name} session`,
               workspace,
+              sharedComputer,
               conversation: snapshot.conversation,
               originalPrompt: snapshot.originalPrompt,
               viberSession: { sessionId: input.session_id, messageId: input.request_id },
@@ -210,8 +202,15 @@ export class ViberSessions {
                     }
                   : undefined,
               },
-            },
-          );
+            });
+
+          const output = shareWorkspace
+            ? await this.host.computers.withTurn(
+                snapshot.execution.access === "read-only",
+                signal,
+                run,
+              )
+            : await run();
 
           this.store.finish(input.request_id, "completed", output);
           if (suggestionSignal) {
@@ -242,6 +241,7 @@ export class ViberSessions {
 
   detail = (sessionId: string, profileId: string) => ({
     ...this.store.detail(sessionId, profileId),
+    schedule_clarification: this.host.schedules.clarification(sessionId),
     runs: this.host.db.all(
       "SELECT * FROM utility_runs WHERE viber_session_id=? ORDER BY rowid",
       sessionId,

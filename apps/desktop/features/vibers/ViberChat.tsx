@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { defaultAppearance } from "../../../core/vibers/appearance";
-import type { AgentProfile } from "../../../core/vibers/contracts";
-import type { ViberSession } from "../../../core/vibers/contracts";
+import type { AgentProfile, ViberSession } from "../../../core/vibers/contracts";
+import type { Settings } from "../../lib/types";
 import { rpc, errorMessage } from "../../lib/api";
 import { getTaskView, useTaskView, updateTaskView } from "../../lib/taskView";
 import { Composer, composerContent } from "../chat/Composer";
 import { ChatSurface } from "../chat/ChatSurface";
 import { ViberModelPicker } from "./ViberModelPicker";
-import { ViberFace } from "./ViberFace";
+import { ViberGreeting } from "./ViberGreeting";
 import { ViberSessionChat } from "./ViberSessionChat";
+import { SharedWorkspaceDialog } from "./SharedWorkspaceDialog";
 import { RunError } from "../chat/RunError";
 import { useProviders } from "../../hooks/useWorkspace";
 import { configurationError } from "../../../core/execution/providers/contracts";
+import { parseScheduleIntent } from "../../../core/vibers/schedule-intent";
+import { Button } from "../../components/ui/button";
 
 const messageTextColor = (color: string) => {
   const [red, green, blue] = [1, 3, 5].map((index) => {
@@ -23,15 +26,23 @@ const messageTextColor = (color: string) => {
   return luminance > 0.179 ? "#000" : "#fff";
 };
 
-const isChatCommand = (text: string) => {
-  const trimmed = text.trim();
-  return trimmed === "/clear" || /^\/(?:watch(?:es)?|unwatch)(?:\s|$)/i.test(trimmed);
-};
-
-export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revision: number }) => {
-  const [sessionId, setSessionId] = useState<string>();
+export const ViberChat = ({
+  profile,
+  revision,
+  computerSupported = false,
+  settings,
+}: {
+  profile: AgentProfile;
+  revision: number;
+  computerSupported?: boolean;
+  settings?: Settings;
+}) => {
+  const [sessionId, setSessionId] = useState<string | null>();
+  const [lookupError, setLookupError] = useState<string>();
+  const [lookupAttempt, setLookupAttempt] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sharePrompt, setSharePrompt] = useState<{ content: string }>();
   const request = useRef({ signature: "", id: "", session: null as ViberSession | null });
   const starting = useRef(false);
   const draftId = `viber:${profile.id}:new-chat`;
@@ -57,24 +68,28 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
 
     void rpc<ViberSession[]>("viber.session.list", { profile_id: profile.id })
       .then(([session]) => {
-        if (active && session) {
-          setSessionId(session.id);
+        if (active) {
+          setSessionId((current) => session?.id ?? current ?? null);
+          setLookupError(undefined);
         }
       })
       .catch((reason) => {
         if (active) {
-          setError(errorMessage(reason));
+          setLookupError(errorMessage(reason));
         }
       });
 
     return () => {
       active = false;
     };
-  }, [profile.id, revision]);
+  }, [profile.id, revision, lookupAttempt]);
 
-  const start = async () => {
-    const content = composerContent(getTaskView(draftId));
-    if (starting.current || (invalid && !isChatCommand(content))) {
+  const handlesLocally = (content: string) =>
+    content.trim() === "/clear" || !!parseScheduleIntent(content);
+
+  const start = async (content = composerContent(getTaskView(draftId)), shareChoice?: boolean) => {
+    const local = handlesLocally(content);
+    if (starting.current || (invalid && !local)) {
       return;
     }
 
@@ -82,21 +97,51 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
       return;
     }
 
-    starting.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      const signature = JSON.stringify({
+    const signatureFor = (share: boolean) =>
+      JSON.stringify({
         content,
+        ...(share && !local ? { shared_computer: true } : {}),
         profile_id: profile.id,
         selection,
         // Preserve the request signature used by existing managed-workspace drafts.
         repositoryId: "",
       });
 
-      if (request.current.signature !== signature) {
-        const saved = getTaskView(draftId).messageRequest;
+    const saved = getTaskView(draftId).messageRequest;
 
+    const savedChoice =
+      saved?.signature === signatureFor(false)
+        ? false
+        : saved?.signature === signatureFor(true)
+          ? true
+          : undefined;
+
+    const canShare = Boolean(
+      computerSupported && settings?.allow_viber_communication && !local,
+    );
+
+    let share = false;
+    if (shareChoice !== undefined) {
+      share = canShare && shareChoice;
+    } else if (savedChoice !== undefined) {
+      share = savedChoice;
+    } else if (canShare) {
+      if (settings?.viber_workspace_permission === "full-permission") {
+        share = true;
+      } else {
+        setSharePrompt({ content });
+        return;
+      }
+    }
+
+    starting.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const computer = share ? { shared_computer: true as const } : {};
+      const signature = signatureFor(share);
+
+      if (request.current.signature !== signature) {
         request.current = {
           signature,
           id: saved?.signature === signature ? saved.id : crypto.randomUUID(),
@@ -122,6 +167,7 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
         request_id: request.current.id,
         content,
         history_ids: [],
+        ...computer,
         selection,
       });
 
@@ -158,6 +204,7 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
     />
   );
 
+  const composerInvalid = handlesLocally(composerContent(view)) ? null : invalid;
   const color = profile.appearance?.color ?? defaultAppearance().color;
 
   return (
@@ -171,25 +218,36 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
         } as CSSProperties
       }
     >
-      {(error || (!sessionId && invalid)) && <RunError error={error || invalid!} conversation />}
+      {!sessionId && lookupError && (
+        <div className="px-5 py-3 text-xs">
+          <p role="alert">Couldn’t open conversation. {lookupError}</p>
+          <Button
+            variant="secondary"
+            className="mt-2"
+            onClick={() => {
+              setLookupError(undefined);
+              setLookupAttempt((attempt) => attempt + 1);
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+      {(error || (sessionId === null && composerInvalid)) && <RunError error={error || composerInvalid!} />}
       {sessionId ? (
         <ViberSessionChat
           key={sessionId}
           sessionId={sessionId}
           profile={profile}
           revision={revision}
+          computerSupported={computerSupported}
+          settings={settings}
         />
-      ) : (
+      ) : sessionId === null ? (
         <ChatSurface
           id={draftId}
           revision={revision}
-          empty
-          conversation={
-            <div className="chat-welcome py-[0_24px] text-center viber-chat-welcome">
-              <ViberFace profile={profile} animated />
-              <h1>Ready when you are.</h1>
-            </div>
-          }
+          conversation={<ViberGreeting name={profile.name} />}
           composer={
             <Composer
               compact
@@ -206,11 +264,31 @@ export const ViberChat = ({ profile, revision }: { profile: AgentProfile; revisi
                 },
               ]}
               busy={busy}
-              disabled={!!invalid && !isChatCommand(composerContent(view))}
+              disabled={!!composerInvalid}
               model={modelControl}
               hint="Each Viber uses its own workspace."
             />
           }
+        />
+      ) : !lookupError ? (
+        <p role="status" className="px-5 py-3 text-xs text-ink-muted">
+          Opening conversation…
+        </p>
+      ) : null}
+      {sharePrompt && (
+        <SharedWorkspaceDialog
+          viberName={profile.name}
+          cancel={() => setSharePrompt(undefined)}
+          keepIsolated={() => {
+            const prompt = sharePrompt;
+            setSharePrompt(undefined);
+            void start(prompt.content, false);
+          }}
+          allow={() => {
+            const prompt = sharePrompt;
+            setSharePrompt(undefined);
+            void start(prompt.content, true);
+          }}
         />
       )}
     </section>

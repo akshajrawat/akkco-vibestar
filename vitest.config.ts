@@ -15,7 +15,11 @@ export default defineConfig({
         },
       },
       ...separateSuites.map((suite) => ({
-        test: { name: suite, include: [`tests/${suite}/${testFiles}`] },
+        test: {
+          name: suite,
+          include: [`tests/${suite}/${testFiles}`],
+          setupFiles: suite === "integration" ? ["tests/helpers/integration-home.ts"] : [],
+        },
       })),
     ],
   },

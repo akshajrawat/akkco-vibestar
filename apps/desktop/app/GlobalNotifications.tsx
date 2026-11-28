@@ -1,20 +1,41 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Toaster } from "react-hot-toast";
 
 import type { Settings } from "../lib/types";
 import { notifications } from "../lib/notifications";
 import { subscribe } from "../lib/api";
+import type { ComputerStatus } from "../../core/computers/contracts";
+
+interface ComputerBootState {
+  snapshotReady: boolean;
+  migrationPending: boolean;
+  supported: boolean;
+  status?: ComputerStatus;
+  didStart: boolean;
+  retry: () => Promise<void> | void;
+}
 
 /** One live region follows the active native modal without stealing focus or blocking it. */
 export const GlobalNotifications = ({
   preference,
   onRuntimeStatus,
+  computer,
 }: {
   preference?: Settings["notification_preference"];
   onRuntimeStatus?: (phase: string) => void;
+  computer?: ComputerBootState;
 }) => {
   const [host] = useState(() => document.createElement("div"));
+
+  const [runtimeState, setRuntimeState] = useState<{
+    phase: string;
+    text?: string;
+    essential?: boolean;
+  }>();
+
+  const hadStartupProgress = useRef(false);
+  const settledReady = useRef(false);
 
   useLayoutEffect(() => {
     const place = () => {
@@ -59,17 +80,7 @@ export const GlobalNotifications = ({
         observedRuntime = true;
         const state = event.data as { phase: string; essential?: boolean };
         onRuntimeStatus?.(state.phase);
-        const options = { id: "runtime", essential: state.essential };
-        if (state.phase === "failed") {
-          notifications.error(event.text || "Runtime unavailable", {
-            ...options,
-            action: { label: "Retry", run: () => window.vibestar.retryRuntime() },
-          });
-        } else if (state.phase === "ready") {
-          notifications.success("Runtime ready", { id: "runtime" });
-        } else {
-          notifications.progress(event.text || "Preparing Vibestar runtime...", options);
-        }
+        setRuntimeState({ phase: state.phase, text: event.text, essential: state.essential });
       }
     };
 
@@ -88,9 +99,82 @@ export const GlobalNotifications = ({
 
     return () => {
       disposed = true;
-      void subscription.then((unsubscribe) => unsubscribe());
+      void subscription.then((unsubscribe) => unsubscribe()).catch(() => undefined);
     };
   }, [onRuntimeStatus]);
+
+  useEffect(() => {
+    if (runtimeState?.phase === "failed") {
+      settledReady.current = false;
+
+      notifications.error(runtimeState.text || "Runtime unavailable", {
+        id: "runtime",
+        essential: true,
+        action: { label: "Retry", run: () => window.vibestar.retryRuntime() },
+      });
+
+      return;
+    }
+
+    if (runtimeState && runtimeState.phase !== "ready") {
+      hadStartupProgress.current = true;
+      settledReady.current = false;
+
+      notifications.progress(runtimeState.text || "Preparing Vibestar runtime...", {
+        id: "runtime",
+        essential: computer ? true : runtimeState.essential,
+      });
+
+      return;
+    }
+
+    if (computer && !computer.snapshotReady) {
+      return;
+    }
+
+    if (!computer?.supported || computer.migrationPending) {
+      if (runtimeState?.phase === "ready" && !settledReady.current) {
+        settledReady.current = true;
+        notifications.success("Runtime ready", { id: "runtime" });
+      }
+
+      return;
+    }
+
+    if (computer.didStart) {
+      hadStartupProgress.current = true;
+    }
+
+    if (computer.status?.status === "starting") {
+      hadStartupProgress.current = true;
+      settledReady.current = false;
+
+      notifications.progress(computer.status.progress || "Starting Shared Computer...", {
+        id: "runtime",
+        essential: true,
+      });
+    } else if (computer.status?.status === "error") {
+      settledReady.current = false;
+
+      notifications.error(computer.status.error || "Could not start Shared Computer.", {
+        id: "runtime",
+        ...(computer.status.reset_pending
+          ? {}
+          : { action: { label: "Retry", run: computer.retry } }),
+      });
+    } else if (
+      computer.status?.status === "ready" &&
+      (hadStartupProgress.current || runtimeState?.phase === "ready") &&
+      !settledReady.current
+    ) {
+      settledReady.current = true;
+
+      notifications.success("Vibestar ready", {
+        id: "runtime",
+        essential: hadStartupProgress.current,
+      });
+    }
+  }, [computer, runtimeState]);
 
   return createPortal(
     <Toaster
@@ -99,9 +183,10 @@ export const GlobalNotifications = ({
       toastOptions={{
         className: "vibestar-toast",
         style: {
-          background: "var(--background-elevated)",
+          background: "var(--background-selected)",
           color: "var(--text-primary)",
-          border: "none",
+          border: "1px solid #ffffff29",
+          boxShadow: "0 8px 28px var(--shadow)",
           padding: 0,
           maxWidth: "min(360px, calc(100vw - 32px))",
         },

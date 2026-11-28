@@ -4,7 +4,7 @@ import { noInputBorderWithoutHover } from "./eslint-rules/no-input-border-withou
 import { noInputBorderOnClick } from "./eslint-rules/no-input-border-on-click.mjs";
 import { noPnpm } from "./eslint-rules/no-pnpm.mjs";
 
-export const cssParser = {
+const cssParser = {
   parseForESLint(code) {
     const lines = code.split("\n");
 

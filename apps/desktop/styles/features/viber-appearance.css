@@ -40,7 +40,7 @@
 }
 
 .workspace-overlay.viber-create-overlay {
-  @apply h-[640px] w-[min(780px,calc(100vw_-_24px))] rounded-[22px] bg-black;
+  @apply h-[min(590px,calc(100dvh_-_40px))] w-[min(720px,calc(100vw_-_24px))] rounded-[22px] bg-black;
 }
 
 .viber-create-overlay .viber-editor-heading {
@@ -77,15 +77,15 @@
 }
 
 .viber-create-overlay .viber-live-preview > .viber-face {
-  @apply w-[clamp(144px,25dvh,206px)];
+  @apply w-[clamp(108px,22dvh,150px)];
 }
 
 .viber-create-overlay .viber-identity-fields {
   @apply w-[min(100%,360px)];
 }
 
-.viber-create-overlay .viber-identity-fields input {
-  @apply min-h-11 bg-transparent px-4 text-center text-[15px] font-semibold placeholder:text-ink-secondary focus:placeholder:text-foreground;
+.viber-create-overlay .viber-name-input {
+  @apply min-h-11 bg-transparent px-4 text-center text-[15px] font-semibold placeholder:text-ink-secondary focus:placeholder:text-transparent;
 }
 
 .viber-create-overlay .avatar-builder {
@@ -179,7 +179,7 @@
     @apply w-[126px];
   }
 
-  .viber-create-overlay .viber-identity-fields input {
+  .viber-create-overlay .viber-name-input {
     @apply min-h-10;
   }
 
@@ -268,27 +268,10 @@
 
 .viber-chat-page .event-timeline {
   @apply pt-6;
-  @apply pb-5;
 }
 
 .viber-chat-page .chat-draft .event-timeline {
-  @apply flex-[0_1_auto] mt-auto;
-}
-
-.viber-chat-page .chat-draft .composer-lane {
-  @apply mb-auto;
-}
-
-.viber-chat-welcome {
-  @apply pb-2;
-}
-
-.viber-chat-welcome > .viber-face {
-  @apply w-[140px] h-[140px] m-[0_auto_22px];
-}
-
-.viber-chat-page .chat-welcome h1 {
-  @apply text-[clamp(28px,_3vw,_36px)] font-medium tracking-[-1px];
+  @apply flex-[0_1_auto] mt-auto pb-5;
 }
 
 @keyframes viber-float {
@@ -523,4 +506,8 @@
   .viber-chat-page .agent-turn > .agent-response {
     @apply max-w-[88%];
   }
+}
+
+.workspace-overlay.viber-rename-overlay {
+  @apply h-auto w-[min(410px,calc(100vw_-_24px))];
 }

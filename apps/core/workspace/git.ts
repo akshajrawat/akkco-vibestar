@@ -9,7 +9,6 @@ import { gitChecked, gitExecute, gitCapture } from "./git-command";
 import {
   mkdir,
   readFile,
-  rm,
   stat,
   writeFile,
   realpath,
@@ -58,29 +57,6 @@ export class GitWorkspace {
 
   commonDirectory = async (cwd: string) =>
     realpath(await gitChecked(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd));
-
-  acquireWrite = async (cwd: string, identity: string) => {
-    const common = await this.commonDirectory(cwd);
-    const key = createHash("sha256").update(identity).digest("hex");
-    const target = join(common, `vibestar-write-${key}`);
-    await writeFile(target, "", { flag: "a", mode: 0o600 });
-    try {
-      return await lockfile.lock(target, {
-        stale: 30000,
-        update: 10000,
-        retries: 0,
-      });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ELOCKED") {
-        throw new AdeError(
-          "busy",
-          "Another operation has exclusive write access to this Git workspace or PR destination.",
-        );
-      }
-
-      throw error;
-    }
-  };
 
   withLock = async <T>(repoId: string | null, operation: () => Promise<T>) => {
     if (!repoId || !/^[\w-]+$/.test(repoId)) {
@@ -357,12 +333,6 @@ export class GitWorkspace {
     return o.stdout.trim();
   };
 
-  recoverTaskPreparation = (
-    repo: Repository,
-    task: WorkspaceAssignment,
-    checkpoint?: (task: WorkspaceAssignment) => void,
-  ) => this.withLock(repo.id, () => this.reconcileTaskPreparation(repo, task, checkpoint));
-
   private reconcileTaskPreparation = async (
     repo: Repository,
     task: WorkspaceAssignment,
@@ -633,8 +603,6 @@ export class GitWorkspace {
     return cwd;
   };
 
-  assertOwnedWorkspace = this.assertOwnedTask;
-
   removeOwnedWorktree = async (repo: Repository, task: WorkspaceAssignment, save: () => void) =>
     this.withLock(repo.id, async () => {
       const path = await managedPath(this.root, task.worktree_path);
@@ -710,11 +678,6 @@ export class GitWorkspace {
     }
   };
 
-  contentFingerprint = (t: WorkspaceAssignment) => this.workspaceFingerprint(t, false, true);
-
-  disposalFingerprint = (t: WorkspaceAssignment) =>
-    this.workspaceFingerprint(t, true, true, { includeIgnored: true });
-
   private workspaceFingerprint = async (
     t: WorkspaceAssignment,
     includeHistory: boolean,
@@ -722,12 +685,10 @@ export class GitWorkspace {
     {
       physicalDirectory,
       depth = 0,
-      includeIgnored = false,
       validateOnly = false,
     }: {
       physicalDirectory?: string;
       depth?: number;
-      includeIgnored?: boolean;
       validateOnly?: boolean;
     } = {},
   ) => {
@@ -794,10 +755,7 @@ export class GitWorkspace {
           "--",
         ])) +
         (await output(["ls-files", "--others", "--exclude-standard", "-z"])) +
-        (allTracked ? await output(["ls-files", "-z"]) : "") +
-        (includeIgnored
-          ? await output(["ls-files", "--others", "--ignored", "--exclude-standard", "-z"])
-          : "")
+        (allTracked ? await output(["ls-files", "-z"]) : "")
       )
         .split("\0")
         .filter(Boolean),
@@ -895,7 +853,7 @@ export class GitWorkspace {
           { ...t, base_commit_sha: head },
           true,
           true,
-          { physicalDirectory: file, depth: depth + 1, includeIgnored, validateOnly },
+          { physicalDirectory: file, depth: depth + 1, validateOnly },
         );
 
         hash?.update(nested);
@@ -1120,34 +1078,6 @@ export class GitWorkspace {
       deletions: files.reduce((n, f) => n + f.deletions, 0),
       base: t.base_commit_sha,
     };
-  };
-
-  discard = async (t: WorkspaceAssignment, path?: string) => {
-    const cwd = await this.assertTask(t);
-    for (const f of (await this.diff(t)).files.filter((f) => !path || f.path === path)) {
-      const file = await safeFile(cwd, f.path);
-      const tracked = await gitCapture(["cat-file", "-e", `${t.base_commit_sha}:${f.path}`], cwd);
-      if (tracked.code === 0) {
-        await gitChecked(
-          ["restore", "--source", t.base_commit_sha, "--staged", "--worktree", "--", f.path],
-          cwd,
-        );
-      } else {
-        await gitCapture(["rm", "--cached", "--ignore-unmatch", "--", f.path], cwd);
-        if (await exists(file)) {
-          await rm(file);
-        }
-      }
-
-      if (f.old_path) {
-        await safeFile(cwd, f.old_path);
-
-        await gitChecked(
-          ["restore", "--source", t.base_commit_sha, "--staged", "--worktree", "--", f.old_path],
-          cwd,
-        );
-      }
-    }
   };
 }
 

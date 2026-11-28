@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Menu, screen, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, screen, dialog } from "electron";
 import { mkdir, writeFile, cp, access } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -8,6 +8,7 @@ import { createInterface } from "node:readline";
 import { z } from "zod";
 import { CoreBridge, readDesktopConfig, saveDesktopConfig } from "./bridge";
 import { configureWindowControls } from "./window-controls";
+import { AdeError } from "../core/domain";
 
 const exec = promisify(execFile);
 const isWslg = process.platform === "linux" && !!process.env.WSL_DISTRO_NAME;
@@ -114,7 +115,7 @@ const main = async () => {
     try {
       const p = z.object({ method: z.string().max(100), params: z.unknown() }).parse(input);
       if (!bridge) {
-        throw new Error("Core not initialized");
+        throw new AdeError("helper_disconnected", "Core not initialized");
       }
 
       if (changingRuntime) {
@@ -262,16 +263,6 @@ const main = async () => {
     } finally {
       changingRuntime = false;
     }
-  });
-
-  ipcMain.handle("desktop:external", async (event, url) => {
-    trusted(event);
-    const u = new URL(z.string().parse(url));
-    if (u.protocol !== "https:" || u.hostname !== "github.com" || u.username || u.password) {
-      throw new Error("Only HTTPS GitHub links may be opened");
-    }
-
-    await shell.openExternal(u.href);
   });
 
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;

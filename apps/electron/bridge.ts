@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 
 import type { DesktopSettings } from "./contracts";
-import type { CoreEvent } from "../core/domain";
+import { AdeError, type CoreEvent } from "../core/domain";
 import { StreamRedactor } from "../core/execution/output/stream-redactor";
 
 const exec = promisify(execFile);
@@ -41,8 +41,6 @@ export class CoreBridge extends EventEmitter {
 
   private warning: string | undefined;
 
-  private manualTerminalAvailable = false;
-
   private stopping = false;
 
   private starting = false;
@@ -70,6 +68,8 @@ export class CoreBridge extends EventEmitter {
   private viberConversationsAvailable = false;
 
   private viberSessionsAvailable = false;
+
+  private computersAvailable = false;
 
   private pending = new Map<
     string,
@@ -99,7 +99,7 @@ export class CoreBridge extends EventEmitter {
     this.notificationPreferencesAvailable = false;
     this.viberConversationsAvailable = false;
     this.viberSessionsAvailable = false;
-    this.manualTerminalAvailable = false;
+    this.computersAvailable = false;
 
     this.checking = this.launch()
       .catch((error) => {
@@ -301,7 +301,7 @@ export class CoreBridge extends EventEmitter {
         build: string;
         viber_conversations?: number;
         viber_sessions?: number;
-        manual_user_terminal?: number;
+        shared_computer?: number;
         runtime_restart?: number;
         notification_preferences?: number;
       }>("core.info", {}, 15000),
@@ -311,7 +311,7 @@ export class CoreBridge extends EventEmitter {
         this.notificationPreferencesAvailable = info.notification_preferences === 1;
         this.viberConversationsAvailable = info.viber_conversations === 1;
         this.viberSessionsAvailable = info.viber_sessions === 3;
-        this.manualTerminalAvailable = info.manual_user_terminal === 1;
+        this.computersAvailable = info.shared_computer === 1;
 
         this.warning = !this.viberSessionsAvailable
           ? "The running core is missing required Viber functionality. Update the WSL helper in Settings → Execution, then restart."
@@ -341,7 +341,7 @@ export class CoreBridge extends EventEmitter {
   private rejectAll = (message: string) => {
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.reject(new Error(message));
+      p.reject(new AdeError("helper_disconnected", message));
     }
 
     this.pending.clear();
@@ -373,11 +373,11 @@ export class CoreBridge extends EventEmitter {
     }
 
     if (method.startsWith("git.")) {
-      throw new Error("Use the built-in terminal to run Git commands manually.");
+      throw new Error("Run Git commands outside Vibestar.");
     }
 
-    if (!this.manualTerminalAvailable && method === "terminal.open") {
-      throw new Error("Update the execution helper before opening a manual user terminal.");
+    if (!this.computersAvailable && method.startsWith("computer.")) {
+      throw new Error("Update the execution helper before using Shared Computer.");
     }
 
     const settings =
@@ -405,6 +405,7 @@ export class CoreBridge extends EventEmitter {
           capabilities: {
             ...(this.viberConversationsAvailable ? { viber_conversations: 1 } : {}),
             ...(this.viberSessionsAvailable ? { viber_sessions: 3 } : {}),
+            ...(this.computersAvailable ? { shared_computer: 1 } : {}),
           },
           ...(this.warning ? { warning: this.warning } : {}),
         };
@@ -428,7 +429,10 @@ export class CoreBridge extends EventEmitter {
     const child = this.child;
     if (!child || child.exitCode !== null) {
       return Promise.reject(
-        new Error("Execution core unavailable. Use Settings to install the WSL helper."),
+        new AdeError(
+          "helper_disconnected",
+          "Execution core unavailable. Use Settings to install the WSL helper.",
+        ),
       );
     }
 
@@ -447,7 +451,7 @@ export class CoreBridge extends EventEmitter {
         if (error) {
           clearTimeout(timer);
           this.pending.delete(id);
-          reject(error);
+          reject(new AdeError("helper_disconnected", error.message));
         }
       });
     });

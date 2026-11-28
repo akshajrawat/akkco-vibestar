@@ -1,5 +1,7 @@
 import { expect, it, vi } from "vitest";
 
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,7 +9,9 @@ import { createServer } from "node:net";
 
 import { sandboxInvocation } from "../../apps/core/execution/runtime/sandbox";
 import { execute } from "../../apps/core/execution/runtime/process";
+import { viberSnapshotKeyPath } from "../../apps/core/storage/viber-snapshots";
 import { createFixtureEngine, fixtureRepository, prepareFixtureTask } from "../helpers/fixtures";
+import { testProfileIds } from "../helpers/viber-fixtures";
 
 const fixture = vi.hoisted(() => ({ home: "" }));
 
@@ -40,13 +44,19 @@ it("mounts only the selected provider state and toolchain from a home outside /h
     const { repo } = await fixtureRepository(engine, dir);
     const task = await prepareFixtureTask(engine, repo, "sandbox-manifest");
 
+    const databases = engine.db.all<{ name: string; file: string }>("PRAGMA database_list");
+    const activeDatabase = databases.find(({ name }) => name === "main")?.file;
+    assert.ok(activeDatabase);
+    const snapshotKey = viberSnapshotKeyPath(activeDatabase);
+
     const hidden = [
       join(fixture.home, "personal-fixture"),
       join(other, "other-fixture"),
       "/etc/hostname",
       "/etc/machine-id",
       socket,
-      join(engine.root, "state", "vibestar.sqlite"),
+      activeDatabase,
+      snapshotKey,
     ];
 
     const code = `#!/usr/bin/env node
@@ -83,6 +93,16 @@ const fs=require('node:fs/promises');const net=require('node:net');
     expect(result.stdout).toContain("TOOLCHAIN_OK");
     expect(await readFile(join(state, "new-session-fixture"), "utf8")).toBe("provider update");
     expect(await readFile(join(task.worktree_path, "source.txt"), "utf8")).toBe("base\n");
+
+    for (const program of [activeDatabase, snapshotKey]) {
+      await expect(
+        sandboxInvocation(engine.root, engine.db, task, { program, args: [] }, true),
+      ).rejects.toMatchObject({
+        kind: "isolation",
+        message: expect.stringContaining("mount overlaps the private Vibestar database"),
+      });
+    }
+
     const relative = join(task.worktree_path, "fixture-check.sh");
 
     await writeFile(relative, "#!/bin/sh\nprintf 'RELATIVE_TOOL_OK\\n'\n", {
@@ -122,6 +142,48 @@ const fs=require('node:fs/promises');const net=require('node:net');
     ]);
   }
 }, 15000);
+
+it("masks the Codex project configuration when starting in the shared files", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "vibestar-shared-config-"));
+  fixture.home = join(dir, "home");
+  await mkdir(fixture.home);
+  const engine = await createFixtureEngine(join(dir, "data"));
+  try {
+    const session = engine.viberSessions.store.create({
+      request_id: randomUUID(),
+      profile_id: testProfileIds.implementer,
+    });
+
+    const workspace = await engine.viberSessions.prepareWorkspace(session.id, session.profile_id);
+    const files = join(engine.root, "shared-computer", "files");
+    const config = join(files, ".codex", "config.toml");
+    await mkdir(join(files, ".codex"), { recursive: true });
+    await writeFile(config, "INERT_SHARED_PROJECT_CONFIG");
+
+    const invocation = await sandboxInvocation(
+      engine.root,
+      engine.db,
+      engine.viberSessions.store.workspace(session.id),
+      { program: "cat", args: [".codex/config.toml"], isolateProviderConfig: true },
+      false,
+      undefined,
+      "codex",
+      workspace,
+      [],
+      session.id,
+      { files, useAsCwd: true },
+    );
+
+    const output = await execute({ ...invocation, cwd: workspace });
+    expect(output.code, output.stderr).toBe(0);
+    expect(output.stdout).toBe("");
+    expect(await readFile(config, "utf8")).toBe("INERT_SHARED_PROJECT_CONFIG");
+  } finally {
+    await engine.close();
+    fixture.home = "";
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 it("masks Codex app-server configuration inside the sandbox while retaining CLI-owned session storage", async () => {
   const dir = await mkdtemp(join(tmpdir(), "vibestar-conversation-sandbox-"));

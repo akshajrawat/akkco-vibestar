@@ -4,7 +4,7 @@ import type { AgentProfile, ViberNavigation } from "../../../core/vibers/contrac
 import { rpc, errorMessage } from "../../lib/api";
 
 export const useProfiles = (revision: number) => {
-  const [{ profiles, previews }, setNavigation] = useState<ViberNavigation>({
+  const [{ profiles, previews, created_at_by_profile }, setNavigation] = useState<ViberNavigation>({
     profiles: [],
     previews: [],
   });
@@ -39,5 +39,5 @@ export const useProfiles = (revision: number) => {
     };
   }, [revision, reload]);
 
-  return { profiles, previews, error, refresh };
+  return { profiles, previews, createdAtByProfile: created_at_by_profile, error, refresh };
 };

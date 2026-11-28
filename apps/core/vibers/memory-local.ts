@@ -86,7 +86,7 @@ const readLocal = <T>(
     req.end(input === undefined ? undefined : JSON.stringify(input));
   });
 
-export const embeddingVectorSchema = z.array(z.number()).min(1).max(8192);
+const embeddingVectorSchema = z.array(z.number()).min(1).max(8192);
 
 const modelTag = (name: string) => (name.includes(":") ? name : `${name}:latest`);
 

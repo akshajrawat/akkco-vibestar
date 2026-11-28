@@ -22,7 +22,6 @@ const api: DesktopApi = {
   saveDesktopSettings: (config) => ipcRenderer.invoke("desktop:save", config),
   installHelper: () => ipcRenderer.invoke("desktop:install"),
   retryRuntime: () => ipcRenderer.invoke("desktop:retry"),
-  openExternal: (url) => ipcRenderer.invoke("desktop:external", url),
 };
 
 contextBridge.exposeInMainWorld("vibestar", api);

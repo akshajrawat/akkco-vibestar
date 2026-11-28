@@ -72,12 +72,10 @@ const resultValue = (value: unknown): React.ReactNode => {
 export const AgentResponse = memo(
   ({
     text,
-    expanded = false,
     structured = false,
     inline = false,
   }: {
     text: string;
-    expanded?: boolean;
     structured?: boolean;
     inline?: boolean;
   }) => {
@@ -118,7 +116,7 @@ export const AgentResponse = memo(
             (inline ? (
               <div className="response-fields">{sections}</div>
             ) : (
-              <details open={expanded || undefined}>
+              <details>
                 <summary>View result details</summary>
                 {sections}
               </details>

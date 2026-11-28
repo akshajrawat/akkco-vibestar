@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { defaultSettings } from "../../apps/core/domain";
 import { ViberSessionChat } from "../../apps/desktop/features/vibers/ViberSessionChat";
 import { viberProfile } from "../helpers/viber-fixtures";
 import { mockDialog } from "../helpers/dialog";
@@ -34,20 +35,11 @@ vi.mock("../../apps/desktop/hooks/useWorkspace", () => ({
 
 beforeEach(mockDialog);
 
-vi.mock("../../apps/desktop/features/chat/AgentTimeline", () => ({
-  AgentTimeline: ({ messages }: { messages: { id: string; content: string }[] }) => (
-    <div>
-      {messages.map((message) => (
-        <p key={message.id}>{message.content}</p>
-      ))}
-    </div>
-  ),
-}));
-
 const rpc = vi.fn();
 const sessionId = crypto.randomUUID();
 const userId = crypto.randomUUID();
 const answerId = crypto.randomUUID();
+const createdAt = "2026-11-17T00:00:00.000Z";
 
 const stored = {
   session: {
@@ -56,8 +48,20 @@ const stored = {
     selection: { provider: "codex", model: "persisted-model", effort: "low" },
   },
   messages: [
-    { id: userId, role: "user", content: "Previous question", status: "completed" },
-    { id: answerId, role: "assistant", content: "Previous answer", status: "completed" },
+    {
+      id: userId,
+      role: "user",
+      content: "Previous question",
+      status: "completed",
+      created_at: createdAt,
+    },
+    {
+      id: answerId,
+      role: "assistant",
+      content: "Previous answer",
+      status: "completed",
+      created_at: createdAt,
+    },
   ],
   runs: [],
   events: [],
@@ -102,20 +106,6 @@ it("allows a local context reset when the saved provider model is unavailable", 
     expect(rpc).toHaveBeenCalledWith(
       "viber.session.send",
       expect.objectContaining({ session_id: id, content: "/clear" }),
-    ),
-  );
-
-  fireEvent.change(draft, { target: { value: " /watch https://github.com/owner/repo/pull/1 " } });
-  expect(send.disabled).toBe(false);
-  fireEvent.click(send);
-
-  await waitFor(() =>
-    expect(rpc).toHaveBeenCalledWith(
-      "viber.session.send",
-      expect.objectContaining({
-        session_id: id,
-        content: "/watch https://github.com/owner/repo/pull/1",
-      }),
     ),
   );
 });
@@ -214,7 +204,14 @@ it("keeps the draft when model validation blocks a send", async () => {
 
 it("keeps an unsent draft when the provider fails an accepted turn", async () => {
   const session = crypto.randomUUID();
-  const turn = { id: crypto.randomUUID(), role: "user", content: "Submitted question" };
+
+  const turn = {
+    id: crypto.randomUUID(),
+    role: "user",
+    content: "Submitted question",
+    created_at: createdAt,
+  };
+
   const detail = { ...stored, session: { ...stored.session, id: session } };
 
   rpc
@@ -249,6 +246,7 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
         id: crypto.randomUUID(),
         role: "user",
         content: "Running question",
+        created_at: createdAt,
         status: "pending",
         error: null,
       },
@@ -292,6 +290,7 @@ it("disables overlapping turns, shows interrupted errors and stops only the curr
         id: interruptedId,
         role: "user",
         content: "Interrupted question",
+        created_at: createdAt,
         status: "interrupted",
         error: "Execution interrupted",
       },
@@ -331,6 +330,7 @@ it("waits for explicit Continue and recovery confirmation after stopping a file-
     id: turnId,
     role: "user",
     content: "Edit the fixture workspace",
+    created_at: createdAt,
     status: "pending",
   };
 
@@ -392,7 +392,14 @@ it("waits for explicit Continue and recovery confirmation after stopping a file-
 });
 
 it("prepares a switched thread before allowing Continue to send", async () => {
-  const turn = { id: userId, role: "user", content: "Stopped question", status: "cancelled" };
+  const turn = {
+    id: userId,
+    role: "user",
+    content: "Stopped question",
+    status: "cancelled",
+    created_at: createdAt,
+  };
+
   let detail = {
     ...stored,
     session: {
@@ -453,6 +460,7 @@ it("sends beyond 50 saved messages using native context", async () => {
     id: crypto.randomUUID(),
     role: "assistant",
     content: `Answer ${index}`,
+    created_at: createdAt,
     status: "completed",
   }));
 
@@ -490,6 +498,7 @@ it("bypasses recovery only with backend evidence", async () => {
         id: crypto.randomUUID(),
         role: "user",
         content: "Invalid model request",
+        created_at: createdAt,
         status: "failed",
         error: "Model not supported",
       },
@@ -500,7 +509,13 @@ it("bypasses recovery only with backend evidence", async () => {
   render(<ViberSessionChat sessionId={crypto.randomUUID()} profile={viberProfile} revision={0} />);
   await screen.findByText("Invalid model request");
   expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
+    target: { value: "Invalid model request" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
   await waitFor(() =>
     expect(rpc).toHaveBeenCalledWith(
@@ -564,7 +579,7 @@ it("retains request identity across remounts after a lost transport response", a
   expect(sends[0]).toEqual(sends[1]);
 });
 
-it("starts a fresh explicit retry once a lost-response request is known to have failed", async () => {
+it("shows the failure beside its prompt and starts a new request when the retained draft is sent", async () => {
   const session = crypto.randomUUID();
   let failedRequest: { request_id: string; content: string } | undefined;
 
@@ -587,6 +602,7 @@ it("starts a fresh explicit retry once a lost-response request is known to have 
               id: failedRequest.request_id,
               role: "user",
               content: failedRequest.content,
+              created_at: createdAt,
               status: "failed",
               error: "Failed before invocation",
             },
@@ -609,11 +625,16 @@ it("starts a fresh explicit retry once a lost-response request is known to have 
   await screen.findByText("Failed before invocation");
   expect(screen.queryByText("Connection lost")).toBeNull();
 
-  expect(
-    screen.getAllByText("The response couldn't finish. Review the details and try again."),
-  ).toHaveLength(1);
+  expect(screen.getAllByText("The response couldn't finish.")).toHaveLength(1);
 
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  const bubble = screen
+    .getByText("Retry explicitly", { selector: ".user-message p" })
+    .closest(".user-message");
+
+  expect(bubble?.previousElementSibling).toBe(screen.getByText("Failed", { exact: true }));
+  expect(bubble?.nextElementSibling?.textContent).toContain("Failed before invocation");
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
   await waitFor(() =>
     expect(rpc.mock.calls.filter(([method]) => method === "viber.session.send")).toHaveLength(2),
@@ -665,4 +686,96 @@ it("retains recovery acknowledgement when resending a lost-response request afte
   const sends = rpc.mock.calls.filter(([method]) => method === "viber.session.send");
   expect(sends[0]).toEqual(sends[1]);
   expect(sends[0][1].acknowledge_uncertain).toBe(true);
+});
+
+it("enforces Viber Workspace sharing permissions after recovery and without re-prompting on lost-response retry", async () => {
+  const session = crypto.randomUUID();
+  let failSend = true;
+
+  rpc.mockImplementation(async (method: string) => {
+    if (method === "viber.session.send") {
+      if (failSend) {
+        failSend = false;
+        throw new Error("Connection lost");
+      }
+
+      return {};
+    }
+
+    return { ...stored, session: { ...stored.session, id: session }, recovery_required: true };
+  });
+
+  Object.defineProperty(window, "vibestar", { configurable: true, value: { rpc } });
+
+  const view = render(
+    <ViberSessionChat
+      sessionId={session}
+      profile={viberProfile}
+      revision={0}
+      computerSupported
+      settings={{
+        ...defaultSettings,
+        allow_viber_communication: true,
+        viber_workspace_permission: "always-ask",
+      }}
+    />,
+  );
+
+  await screen.findByText("Previous answer");
+  expect(screen.queryByRole("button", { name: /Computer/i })).toBeNull();
+
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
+    target: { value: "Collaborate" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
+  expect(screen.getByRole("dialog", { name: "Shared workspace permission" })).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Allow for this turn" }));
+  await screen.findByText("Connection lost");
+
+  // Lost-response retry preserves both flags without opening either dialog again.
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+  await waitFor(() =>
+    expect(rpc.mock.calls.filter(([method]) => method === "viber.session.send")).toHaveLength(2),
+  );
+
+  const sends = rpc.mock.calls.filter(([method]) => method === "viber.session.send");
+  expect(sends[0]).toEqual(sends[1]);
+
+  expect(sends[0][1]).toMatchObject({
+    acknowledge_uncertain: true,
+    shared_computer: true,
+  });
+
+  // Full permission sends shared_computer automatically, while /clear stays isolated.
+  rpc.mockClear();
+
+  view.rerender(
+    <ViberSessionChat
+      sessionId={session}
+      profile={viberProfile}
+      revision={1}
+      computerSupported
+      settings={{
+        ...defaultSettings,
+        allow_viber_communication: true,
+        viber_workspace_permission: "full-permission",
+      }}
+    />,
+  );
+
+  fireEvent.change(screen.getByRole("textbox", { name: `Message ${viberProfile.name}` }), {
+    target: { value: "/clear" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  fireEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith("viber.session.send", expect.any(Object)));
+
+  expect(
+    rpc.mock.calls.find(([method]) => method === "viber.session.send")?.[1].shared_computer,
+  ).toBeUndefined();
 });

@@ -1,5 +1,7 @@
+import { dirname } from "node:path";
 import { expect, it } from "vitest";
 
+import { sharedFilesMount, sharedServicesMount } from "../../apps/core/computers/contracts";
 import {
   codexConversation,
   codexMemoryEvent,
@@ -422,3 +424,43 @@ it.each(["item/started", "item/completed"])(
     ).toEqual([]);
   },
 );
+
+it("includes shared computer files and services directory in writable Codex invocations", () => {
+  const serviceDirectory = dirname(sharedServicesMount);
+
+  const execInvocation = new CodexProvider().invocation({
+    ...request,
+    sharedComputer: true,
+    access: "workspace-write",
+    conversation: undefined,
+  });
+
+  expect(execInvocation.args).toContain(sharedFilesMount);
+  expect(execInvocation.args).toContain(serviceDirectory);
+
+  const messages: Record<string, unknown>[] = [];
+
+  const protocol = codexConversation({
+    ...request,
+    sharedComputer: true,
+    access: "workspace-write",
+  }).inputProtocol;
+
+  protocol.start(
+    (message) => messages.push(message as Record<string, unknown>),
+    () => {},
+  );
+
+  protocol.receive('{"id":0,"result":{}}');
+  protocol.receive('{"id":1,"result":{"thread":{"id":"chat-shared"}}}');
+
+  expect(messages[3]).toMatchObject({
+    params: {
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: [request.cwd, sharedFilesMount, serviceDirectory],
+        networkAccess: true,
+      },
+    },
+  });
+});

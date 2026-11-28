@@ -83,7 +83,9 @@ export class Usage {
     const result = object(raw.result);
     const step = object(raw.step_update);
     const stepUsage = object(step.usage);
-    let usage = object(raw.usage || result.usage);
+    const update = object(object(raw.params).update);
+    const updateUsage = update.sessionUpdate === "usage_update" ? update : undefined;
+    let usage = object(raw.usage || result.usage || updateUsage);
     if (raw.method === "thread/tokenUsage/updated") {
       const tokenUsage = object(object(raw.params).tokenUsage);
       const current = object(tokenUsage.total);
@@ -143,16 +145,21 @@ export class Usage {
     const input = object(usage.input_tokens_details);
 
     const values = {
-      input_tokens: usage.input_tokens,
+      input_tokens: usage.input_tokens ?? usage.inputTokens,
       cached_input_tokens:
-        usage.cached_input_tokens ?? usage.cache_read_tokens ?? input.cached_tokens,
-      output_tokens: usage.output_tokens,
+        usage.cached_input_tokens ??
+        usage.cachedReadTokens ??
+        usage.cachedInputTokens ??
+        usage.cache_read_tokens ??
+        input.cached_tokens,
+      output_tokens: usage.output_tokens ?? usage.outputTokens,
       reasoning_tokens:
         usage.reasoning_tokens ??
         usage.reasoning_output_tokens ??
         usage.thinking_tokens ??
+        usage.thoughtTokens ??
         details.reasoning_tokens,
-      total_tokens: usage.total_tokens,
+      total_tokens: usage.total_tokens ?? usage.totalTokens,
     };
 
     for (const [key, value] of Object.entries(values)) {

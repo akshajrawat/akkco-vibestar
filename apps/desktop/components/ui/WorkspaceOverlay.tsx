@@ -1,5 +1,11 @@
-import { createContext, useContext, useLayoutEffect, useRef } from "react";
-import type { ReactNode, RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 const OverlayPortal = createContext<RefObject<HTMLDialogElement | null> | null>(null);
 
@@ -12,11 +18,13 @@ export const WorkspaceOverlay = ({
   onClose,
   children,
   className = "",
+  dismissOnBackdrop = false,
 }: {
   label: string;
   onClose: () => void;
   children: ReactNode;
   className?: string;
+  dismissOnBackdrop?: boolean;
 }) => {
   const dialog = useRef<HTMLDialogElement>(null);
 
@@ -43,6 +51,7 @@ export const WorkspaceOverlay = ({
       className={`workspace-overlay fixed inset-0 max-w-[1600px] m-auto p-0 text-foreground [box-shadow:0_24px_100px_var(--shadow)] [&.viber-editor-overlay]:flex-col ${className}`}
       aria-label={label}
       aria-modal="true"
+      closedby={dismissOnBackdrop ? "any" : undefined}
       onCancel={(event) => {
         event.preventDefault();
         event.stopPropagation();

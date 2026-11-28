@@ -305,3 +305,38 @@ it("resolves existing CLI defaults to a real model and stores its concrete reaso
     }),
   );
 });
+
+it.each([
+  { effort: "high", label: "High" },
+  { effort: "xhigh", label: "Extra High" },
+])(
+  "shows the saved Antigravity model with $label once while its catalog entry is unavailable",
+  ({ effort, label }) => {
+    vi.mocked(useProviders).mockReturnValue({
+      providers: [],
+      loading: true,
+      error: "",
+      refresh: vi.fn(),
+    });
+
+    const change = vi.fn();
+
+    render(
+      <Harness
+        change={change}
+        initial={{
+          ...viberProfile.execution,
+          provider: "antigravity",
+          model: `gemini-3.8-flash-${effort}`,
+          effort,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "Model" }).textContent).toBe(
+      `Gemini 3.8 Flash ${label}`,
+    );
+
+    expect(change).not.toHaveBeenCalled();
+  },
+);

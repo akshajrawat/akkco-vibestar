@@ -1,15 +1,3 @@
-.agent-turn-heading {
-  @apply text-[12px] mb-3;
-}
-
-.agent-turn-heading strong {
-  @apply font-medium;
-}
-
-.agent-turn-heading small {
-  @apply ml-auto text-[10px];
-}
-
 .markdown p {
   @apply mb-[9px];
 }
@@ -100,22 +88,6 @@
 
 .tool-details > small {
   @apply block mt-1;
-}
-
-.edited-file {
-  @apply w-full bg-transparent [border:0];
-}
-
-.edited-file:hover code {
-  @apply text-ink-primary underline;
-}
-
-.inline-diff-link {
-  @apply bg-transparent text-ink-secondary;
-}
-
-.inline-diff-link:hover {
-  @apply text-ink-primary;
 }
 
 /* User messages share the app palette; assistant prose stays unboxed. */
